@@ -60,6 +60,10 @@ class Archive final {
 public:
     [[nodiscard]] static Archive parse(std::span<const std::uint8_t> bytes);
     [[nodiscard]] static Archive open(const std::filesystem::path& path);
+    [[nodiscard]] static Archive openRegion(
+        const std::filesystem::path& path,
+        std::uint64_t offset,
+        std::uint64_t size);
 
     [[nodiscard]] const Header& header() const noexcept { return header_; }
     [[nodiscard]] const std::vector<DirectoryEntry>& directories() const noexcept {
@@ -67,6 +71,7 @@ public:
     }
     [[nodiscard]] const std::vector<FileEntry>& files() const noexcept { return files_; }
     [[nodiscard]] std::uint64_t archiveSize() const noexcept { return archiveSize_; }
+    [[nodiscard]] std::uint64_t backingOffset() const noexcept { return backingOffset_; }
 
 private:
     [[nodiscard]] static Archive parseMetadata(
@@ -80,6 +85,7 @@ private:
     std::vector<DirectoryEntry> directories_;
     std::vector<FileEntry> files_;
     std::uint64_t archiveSize_{};
+    std::uint64_t backingOffset_{};
 };
 
 [[nodiscard]] std::uint32_t nameHash(std::string_view name) noexcept;

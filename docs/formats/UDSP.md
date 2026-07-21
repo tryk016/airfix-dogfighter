@@ -150,6 +150,11 @@ bytes (about 1/1,303 of the previous allocation). Diagnostic `--verify` mode
 deliberately buffers the full archive so it can validate every payload stream;
 that mode is tooling, not the iOS runtime path.
 
+`Archive::openRegion` applies the same validation and bounded metadata reads to
+a `[baseOffset, size)` region of a containing file. AFPACK validation therefore
+opens nested `Resource.up` and localization archives directly in place without
+copying their 192 MB combined payload to another buffer or temporary file.
+
 ## Security requirements
 
 - Treat all sizes, offsets, names, terminators, hashes, and ratios as untrusted.

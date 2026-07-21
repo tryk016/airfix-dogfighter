@@ -129,3 +129,41 @@ superseded evidence.
   path, which validates stored compression streams.
 - Added a synthetic filesystem-backed test in addition to in-memory and
   malformed-input tests.
+
+## 2026-07-21 — startup and plugin contracts
+
+- `EV-20260721-013`: targeted Ghidra xrefs recovered type discovery
+  (`game\\types\\*.type`, `nfVersion == 0x6D`, `typeCreate`), mode discovery
+  (`game\\modes\\*.mode`, `missionName`, optional `bMultiplayer`,
+  `missionCreate`), and renderer probing/creation (`dllVer == 0x3B`, `dllName`,
+  `dllCreate`).
+- `EV-20260721-014`: recovered the Windows application loop,
+  `NfMain::LoadPackages`, package fallback/substitution behavior, and the
+  high-level `NfMain::Open` initialization order.
+- Section entropy and import/string evidence classify `Dogfighter.icd` as an
+  older protected/compressed artifact; `Dogfighter.exe` is the usable v1.01
+  reference bootstrap.
+- Added reusable Ghidra scripts for string-xref and selected-name decompilation;
+  strengthened the wrapper so a failed post-script cannot report false success.
+- Designed the iOS replacement boundary as deterministic compile-time type,
+  mode, and renderer registries rather than runtime Windows DLL loading.
+
+## 2026-07-21 — private AFPACK conversion boundary
+
+- `EV-20260721-015`: specified AFPACK v1 with fixed 64/80-byte-safe metadata,
+  normalized UTF-8 paths, per-entry SHA-256, no redundant outer compression,
+  a deterministic manifest, and atomic iOS import requirements.
+- Implemented a portable C++20 bounded metadata parser and verifier, streaming
+  SHA-256 with published known-vector tests, deterministic writer, malformed
+  pack cases, traversal rejection, corruption detection, and refusal to replace
+  an existing output.
+- Added an allowlisted `afpack-create` CLI. It accepts only `Resource.up` and one
+  known localization selected from the installation root; original Windows
+  executables and plugins cannot be supplied as arbitrary inputs.
+- Extended the UDSP parser with bounded containing-file regions so nested
+  archives are validated directly inside AFPACK without extracting them.
+- `EV-20260721-016`: produced a temporary English pack from the owner's
+  read-only installation, streamed and reverified all content digests, reopened
+  both nested archives (2,628 resource and 218 localization records), and
+  confirmed a 192,755,765-byte/3-entry result. The temporary private pack was
+  removed after validation and no original data entered Git or CI.

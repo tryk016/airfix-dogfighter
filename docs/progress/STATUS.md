@@ -31,6 +31,16 @@
   `Resource.up` metadata buffering fell from 170,642,453 to 130,961 bytes.
 - Draft PR #1 is published; portable CI passes on Ubuntu, Windows, and ARM64
   macOS 26.
+- Recovered package-chain startup and the type/mode/graphics plugin discovery,
+  version gates, metadata, factory calls, and unloading behavior.
+- Classified `Dogfighter.exe` as the usable v1.01 bootstrap reference and the
+  near-maximal-entropy `.icd` as an older protected/compressed artifact.
+- Specified AFPACK v1 and implemented its bounded parser, deterministic local
+  writer, streaming SHA-256 verifier, normalized-path checks, and atomic partial
+  output behavior.
+- Added bounded UDSP-in-container reads and completed a real English content
+  pack round trip (192,755,765 bytes, 3 entries) outside Git; the temporary pack
+  was removed after verification.
 
 ## Confirmed
 
@@ -58,12 +68,13 @@
 
 ## Next
 
-1. Analyze the executable/bootstrap and dynamic plugin loading contract.
-2. Define and implement the private `.afpack` conversion boundary.
-3. Add bounded file-payload reads for the local converter/runtime importer.
-4. Add a tested no-music asset configuration because the original CD/audio is
+1. Inventory payload formats by extension/magic and prioritize world/object/
+   model/texture contracts.
+2. Add a tested no-music asset configuration because the original CD/audio is
    unavailable.
-5. Create the initial iOS 16.4 application shell and unsigned Actions build.
+3. Implement manifest semantic checks and the transactional iOS import service.
+4. Create the initial iOS 16.4 application shell and unsigned Actions build.
+5. Recover the first renderable room/model/texture vertical slice.
 
 ## Open questions
 

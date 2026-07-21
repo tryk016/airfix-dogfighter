@@ -263,6 +263,18 @@ Archive Archive::parseMetadata(
 }
 
 Archive Archive::open(const std::filesystem::path& path) {
+    std::error_code sizeError;
+    const auto size = std::filesystem::file_size(path, sizeError);
+    if (sizeError) {
+        throw ParseError("cannot determine archive size: " + path.string());
+    }
+    return openRegion(path, 0U, size);
+}
+
+Archive Archive::openRegion(
+    const std::filesystem::path& path,
+    const std::uint64_t offset,
+    const std::uint64_t size) {
     std::ifstream input(path, std::ios::binary | std::ios::ate);
     if (!input) {
         throw ParseError("cannot open archive: " + path.string());
@@ -272,10 +284,14 @@ Archive Archive::open(const std::filesystem::path& path) {
     if (end < 0) {
         throw ParseError("cannot determine archive size: " + path.string());
     }
-    const auto size = static_cast<std::uint64_t>(end);
+    const auto physicalSize = static_cast<std::uint64_t>(end);
+    requireRange(offset, size, physicalSize, "UDSP containing-file region");
+    if (size < kHeaderSize) {
+        throw ParseError("archive region is shorter than the UDSP header");
+    }
 
     std::array<std::uint8_t, kHeaderSize> headerBytes{};
-    readExact(input, 0U, headerBytes, path);
+    readExact(input, offset, headerBytes, path);
     const auto header = readHeader(headerBytes);
     validateLayout(header, size);
 
@@ -284,18 +300,24 @@ Archive Archive::open(const std::filesystem::path& path) {
         throw ParseError("UDSP metadata is too large for this process");
     }
     std::vector<std::uint8_t> metadata(static_cast<std::size_t>(metadataSize));
-    readExact(input, header.directoryOffset, metadata, path);
+    readExact(
+        input,
+        checkedAdd(offset, header.directoryOffset, "UDSP metadata absolute offset"),
+        metadata,
+        path);
 
     const auto directoryStart = std::size_t{0};
     const auto fileStart = static_cast<std::size_t>(header.fileOffset - header.directoryOffset);
     const auto stringStart = static_cast<std::size_t>(header.stringOffset - header.directoryOffset);
     const auto metadataView = std::span<const std::uint8_t>(metadata);
-    return parseMetadata(
+    auto archive = parseMetadata(
         header,
         size,
         metadataView.subspan(directoryStart, header.directoryBytes),
         metadataView.subspan(fileStart, header.fileBytes),
         metadataView.subspan(stringStart, header.stringBytes));
+    archive.backingOffset_ = offset;
+    return archive;
 }
 
 std::vector<std::uint8_t> decompress(

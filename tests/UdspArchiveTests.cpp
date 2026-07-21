@@ -163,6 +163,27 @@ void testFileBackedArchive() {
     require(archive.files().size() == 1U, "file-backed file count mismatch");
 }
 
+void testEmbeddedFileBackedArchive() {
+    const auto archiveBytes = makeArchive();
+    constexpr std::size_t prefixSize = 19U;
+    Bytes container(prefixSize, 0xA5U);
+    container.insert(container.end(), archiveBytes.begin(), archiveBytes.end());
+    container.insert(container.end(), 11U, 0x5AU);
+    const TempFile file(container);
+
+    const auto archive = airfix::udsp::Archive::openRegion(
+        file.path(), prefixSize, archiveBytes.size());
+    require(archive.archiveSize() == archiveBytes.size(), "embedded size mismatch");
+    require(archive.backingOffset() == prefixSize, "embedded backing offset mismatch");
+    require(archive.directories().size() == 1U, "embedded directory count mismatch");
+    require(archive.files().size() == 1U, "embedded file count mismatch");
+
+    requireParseError([&] {
+        (void)airfix::udsp::Archive::openRegion(
+            file.path(), prefixSize, archiveBytes.size() + 12U);
+    });
+}
+
 void testMalformedArchives() {
     {
         auto bytes = makeArchive();
@@ -225,6 +246,7 @@ int main() {
         testHash();
         testValidArchive();
         testFileBackedArchive();
+        testEmbeddedFileBackedArchive();
         testMalformedArchives();
         testDecompression();
         std::cout << "all UDSP tests passed\n";

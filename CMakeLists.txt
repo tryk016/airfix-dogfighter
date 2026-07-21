@@ -4,6 +4,23 @@ project(AirfixDogfighterReconstruction VERSION 0.1.0 LANGUAGES CXX)
 
 option(AIRFIX_BUILD_TESTS "Build reconstruction tests" ON)
 
+add_library(airfix_crypto
+    src/airfix/crypto/Sha256.cpp
+)
+add_library(airfix::crypto ALIAS airfix_crypto)
+
+target_include_directories(airfix_crypto
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+)
+target_compile_features(airfix_crypto PUBLIC cxx_std_20)
+
+if(MSVC)
+    target_compile_options(airfix_crypto PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(airfix_crypto PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
 add_library(airfix_udsp
     src/airfix/archive/UdspArchive.cpp
 )
@@ -21,12 +38,42 @@ else()
     target_compile_options(airfix_udsp PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+add_library(airfix_afpack
+    src/airfix/package/AfPack.cpp
+    src/airfix/package/AfPackWriter.cpp
+)
+add_library(airfix::afpack ALIAS airfix_afpack)
+
+target_include_directories(airfix_afpack
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+)
+target_compile_features(airfix_afpack PUBLIC cxx_std_20)
+target_link_libraries(airfix_afpack PUBLIC airfix::crypto)
+
+if(MSVC)
+    target_compile_options(airfix_afpack PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(airfix_afpack PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
 add_executable(udsp-list tools/udsp/main.cpp)
 target_link_libraries(udsp-list PRIVATE airfix::udsp)
+
+add_executable(afpack-create tools/afpack/main.cpp)
+target_link_libraries(afpack-create PRIVATE airfix::afpack airfix::udsp)
 
 if(AIRFIX_BUILD_TESTS)
     enable_testing()
     add_executable(airfix_udsp_tests tests/UdspArchiveTests.cpp)
     target_link_libraries(airfix_udsp_tests PRIVATE airfix::udsp)
     add_test(NAME airfix_udsp_tests COMMAND airfix_udsp_tests)
+
+    add_executable(airfix_afpack_tests tests/AfPackTests.cpp)
+    target_link_libraries(airfix_afpack_tests PRIVATE airfix::afpack)
+    add_test(NAME airfix_afpack_tests COMMAND airfix_afpack_tests)
+
+    add_executable(airfix_crypto_tests tests/Sha256Tests.cpp)
+    target_link_libraries(airfix_crypto_tests PRIVATE airfix::crypto)
+    add_test(NAME airfix_crypto_tests COMMAND airfix_crypto_tests)
 endif()
