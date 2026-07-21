@@ -198,7 +198,9 @@ Sha256Digest sha256FileRegion(
         throw std::runtime_error("cannot seek file for SHA-256: " + path.string());
     }
 
-    constexpr std::size_t kBufferSize = 1024U * 1024U;
+    // Keep well below the default 1 MiB Windows thread stack. This buffer is
+    // intentionally stack-local and throughput remains I/O bound at 64 KiB.
+    constexpr std::size_t kBufferSize = 64U * 1024U;
     std::array<std::uint8_t, kBufferSize> buffer{};
     Sha256 hash;
     auto remaining = size;

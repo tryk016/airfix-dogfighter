@@ -159,7 +159,9 @@ void writeSource(
     if (!input) {
         throw std::runtime_error("cannot reopen AFPACK source: " + entry.sourcePath.string());
     }
-    constexpr std::size_t kBufferSize = 1024U * 1024U;
+    // MSVC executables default to a 1 MiB thread stack; leave ample headroom
+    // for the caller and hashing state while retaining bounded streaming I/O.
+    constexpr std::size_t kBufferSize = 64U * 1024U;
     std::array<std::uint8_t, kBufferSize> buffer{};
     crypto::Sha256 hash;
     auto remaining = entry.size;
