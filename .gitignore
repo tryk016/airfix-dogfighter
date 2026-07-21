@@ -24,3 +24,13 @@
 # Generated inventories
 /artifacts/
 
+# Apple signing and private distribution outputs
+*.ipa
+*.p12
+*.cer
+*.mobileprovision
+*.provisionprofile
+/signing/
+
+# Private converted runtime content
+*.afpack

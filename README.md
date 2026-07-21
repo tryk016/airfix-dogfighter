@@ -18,6 +18,8 @@ other public distribution are explicitly out of scope.
 - Resource archives use a custom `UDSP` container and are not recognized by
   7-Zip.
 - The source tree and toolchain have not yet been implemented.
+- iOS builds/signing will run on GitHub Actions; runtime tests target iPhone 17
+  Pro Max/iOS 26.6 and iPhone SE 3/iOS 26.3 with deployment target iOS 16.4.
 
 ## Working principles
 
@@ -37,9 +39,11 @@ other public distribution are explicitly out of scope.
 - [Reverse-engineering workflow](docs/RE-WORKFLOW.md)
 - [Complete iOS port requirements](docs/design/IOS-PORT-REQUIREMENTS.md)
 - [Accepted version 1.0 scope](docs/design/V1-SCOPE.md)
+- [GitHub Actions iOS build/signing design](docs/ci/GITHUB-ACTIONS-IOS.md)
 - [Input, touch, controller, and haptics specification](docs/systems/INPUT.md)
 - [Initial source inventory](docs/evidence/SOURCE-INVENTORY.md)
 - [Current status](docs/progress/STATUS.md)
 - [ADR-0001: reconstruction strategy](docs/adr/0001-port-strategy.md)
 - [ADR-0002: input architecture](docs/adr/0002-input-architecture.md)
 - [ADR-0003: private single-player scope](docs/adr/0003-v1-scope.md)
+- [ADR-0004: GitHub Actions and private data package](docs/adr/0004-github-actions-ios-builds.md)

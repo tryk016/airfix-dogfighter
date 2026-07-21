@@ -79,6 +79,9 @@ Tasks:
 - Create a version lock document with download source, version, hash, and license.
 - Create one Ghidra project per immutable build; enable versioned symbol/export
   scripts, but ignore the database itself.
+- Connect a private GitHub repository and add a portable validation workflow.
+- Reserve an explicit GitHub-hosted macOS runner/Xcode selection for iOS jobs;
+  PR jobs remain unsigned and secret-free.
 - Add scripts for hashes, PE headers, imports, exports, sections, strings, RTTI,
   and headless analysis reports.
 - Compile and run a trivial C++20 test program in the Windows harness.
@@ -164,6 +167,9 @@ Tasks:
   sounds/music, scripts/missions, UI/fonts.
 - Prefer lossless intermediate representations and retain original coordinate,
   unit, color-space, alpha, and winding metadata.
+- Define the versioned private `.afpack` runtime package. It is built locally on
+  Windows, transferred separately, and imported/validated by the data-less iOS
+  app; it is never uploaded to GitHub Actions.
 
 Exit gate:
 
@@ -260,13 +266,18 @@ Exit gate:
 
 Tasks:
 
-- Add Xcode project generation/build on macOS and ARM64 device tests.
+- Add Xcode project generation and build it on an explicit GitHub-hosted macOS
+  runner. Local Xcode/Mac access is not required.
 - Set the deployment target to iOS 16.4 and use availability guards for any
   newer API.
-- Register and use the available Apple Developer account and iPhone 17 Pro Max
-  for the primary physical-device path. Use simulator/availability testing for
-  the iOS 16.4 boundary; identify an older physical device only if genuine
-  old-hardware support becomes important.
+- Add unsigned simulator CI for pull requests and a protected, manually triggered
+  signed IPA workflow using an ephemeral keychain and GitHub environment secrets.
+- Register and use the available Apple Developer account with iPhone 17 Pro Max
+  on iOS 26.6 and iPhone SE (3rd generation) on iOS 26.3. Set 16.4 in build
+  metadata and availability checks, but do not claim runtime coverage on 16.4.
+- Make the app boot without data and implement atomic `.afpack` import before the
+  first full device slice.
+- Select and document a Windows-compatible installation path for the signed IPA.
 - Integrate SDL3 xcframework or the result of its technical spike.
 - Implement Metal surface/backend, shader compilation, resource residency, and
   device-loss/lifecycle handling.
@@ -291,7 +302,10 @@ Exit gate:
 - A physical device completes the selected single-player path with no lifecycle,
   memory, input, save, audio, or safe-area blockers and meets the agreed
   sustained performance budget. The selected campaign path is completable once
-  with touch only and once with a physical controller only.
+  with touch only and once with a physical controller only. Compact-layout and
+  A15 performance scenarios pass on iPhone SE 3/iOS 26.3; large-screen,
+  Dynamic-Island, high-refresh, and high-quality scenarios pass on iPhone 17 Pro
+  Max/iOS 26.6.
 
 ## Phase 10 — visual modernization
 
@@ -327,7 +341,10 @@ Tasks:
   performance matrix.
 - Rebuild from a clean checkout plus separately supplied legal asset input.
 - Produce dependency licenses, local diagnostic instructions, provisioning
-  notes, and a reproducible private installation procedure.
+  notes, Actions workflow/version manifest, and a reproducible private Windows
+  installation procedure.
+- Verify signature, provisioning, entitlements, ARM64 slice, iOS 16.4 minimum,
+  IPA checksum, and forbidden-file scan in CI.
 - Verify that the signed application and converted assets are not placed in any
   public artifact, repository, package feed, or distribution channel.
 
@@ -361,7 +378,9 @@ contract, evidence, implementation, tests, parity result, and documentation agre
 | Compiler optimizations erase types | Slower recovery | RTTI/vtable/string clustering plus runtime object traces |
 | Physics changes across CPU/compiler | Gameplay drift | Preserve float precision/update order; deterministic curves and tolerances |
 | Transparent/lightmapped legacy rendering | Visual mismatch | Record render states and create a faithful fixed-function shader path first |
-| Mac/Xcode host not yet confirmed | Delays iOS proof | Secure the Mac before the first device spike; developer account/device are available |
+| GitHub runner image changes Xcode | Breaks CI/reproducibility | Explicit runner/Xcode selection, preflight and build manifest |
+| Signed IPA cannot be installed from Windows | Blocks device tests | Prove the installation path in the first signed device spike |
+| No iOS 16.4 runtime device | Minimum-version behavior can regress | Treat 16.4 as build/availability coverage only and state the limitation |
 | Private artifacts are accidentally shared | Unauthorized redistribution | Ignore originals/converted assets and audit every packaged/staged artifact |
 | Scope expansion into enhancements | Delays playability | Lock faithful vertical slice before modern rendering work |
 
@@ -384,3 +403,5 @@ contract, evidence, implementation, tests, parity result, and documentation agre
 14. Build a viewer for the first decoded model/room format.
 15. Re-estimate remaining work after archive inventory and first vertical-slice
     dependencies are known.
+16. Connect a private GitHub repository and implement CI after the portable CMake
+    skeleton exists.

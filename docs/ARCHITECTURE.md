@@ -7,15 +7,15 @@
 
 - The reference build is Windows PE32/x86 and uses DirectX 7-era APIs plus an
   optional Glide renderer.
-- iOS requires a native ARM64 application and an Apple build/signing stage in
-  Xcode on macOS.
+- iOS requires a native ARM64 application and Xcode build/signing, provided by
+  an explicit GitHub-hosted macOS runner; no local Mac is required.
 - The original source code is unavailable. Decompiled output is evidence, not
   production-ready source.
 - Original assets are in custom `UDSP` packages and must be understood before a
   complete vertical slice can load.
 - Fidelity and modernization are separate acceptance dimensions.
-- Version 1.0 is a private signed sideload with deployment target iOS 16.4 and
-  iPhone 17 Pro Max as the primary physical test device.
+- Version 1.0 is a private signed sideload with deployment target iOS 16.4.
+  Runtime tests use iPhone 17 Pro Max/iOS 26.6 and iPhone SE 3/iOS 26.3.
 - Multiplayer, House Editor, Paint Room, App Store services, and unavailable CD
   music are outside the v1.0 product boundary.
 
@@ -39,6 +39,10 @@ flowchart TD
     J --> N["Metal renderer"]
     L --> N
     G --> O["Deterministic and parity tests"]
+    Q["GitHub Actions macOS runner"] --> L
+    Q --> P["Signed data-less IPA"]
+    D --> X["Local private .afpack"]
+    X --> L
 ```
 
 ## Component boundaries
@@ -67,6 +71,11 @@ Two layers:
 
 The first extractor must also support a listing-only mode so research can
 progress without copying full assets.
+
+The production iOS app is built without original data. The Windows converter
+creates a private, versioned `.afpack` imported after installation. Original and
+converted game content never enters the GitHub repository, Actions cache, logs,
+or artifacts.
 
 ### `render`
 
@@ -134,7 +143,8 @@ private-fixtures/         # original-derived fixtures; ignored by Git
   inventoried.
 - Post-v1 multiplayer/editor scope: preserve useful shared-interface findings,
   but do not schedule implementation during v1.0.
-- Old-device physical testing depth: iOS 16.4 is the deployment target, while
-  iPhone 17 Pro Max is the only confirmed device.
+- Runtime coverage below iOS 26.3: iOS 16.4 remains a deployment/availability
+  contract but has no accepted runtime test device.
 - Whether `GCVirtualController` is useful for the first device spike before the
   final custom touch overlay is ready.
+- Windows-compatible installation method for the signed IPA produced by Actions.

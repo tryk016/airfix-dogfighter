@@ -35,5 +35,10 @@ Statuses: `not-investigated`, `observed`, `specified`, `implemented`, `verified`
 | iOS atomic saves and migration | P0 | specified | SCN-IOS-006 | Recovery from interrupted write |
 | iOS safe-area and adaptive UI | P0 | specified | SCN-IOS-011 | Phone/tablet variants |
 | iOS performance/thermal behavior | P1 | specified | SCN-IOS-009 | Sustained device test |
+| iPhone 17 Pro Max / iOS 26.6 | P0 | specified | SCN-IOS-DEVICE-001 | Large Dynamic Island/120 Hz/high quality |
+| iPhone SE 3 / iOS 26.3 | P0 | specified | SCN-IOS-DEVICE-002 | Compact Home-button/A15 floor |
+| iOS 16.4 deployment compatibility | P0 | specified | SCN-IOS-BUILD-001 | Build/availability only; no runtime test |
+| GitHub Actions signed IPA | P0 | specified | SCN-IOS-CI-001 | Protected secrets, signature, min OS, ARM64 |
+| Private `.afpack` import | P0 | specified | SCN-IOS-DATA-001 | Original data never enters CI |
 | Faithful renderer | P0 | not-investigated | SCN-RENDER-001 | |
 | Enhanced renderer | P3 | deferred | SCN-RENDER-101 | Begins after faithful slice |

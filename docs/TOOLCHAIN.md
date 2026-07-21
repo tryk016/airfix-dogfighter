@@ -28,7 +28,7 @@ than relying on whichever executable happens to be on `PATH`.
 | Tests | lightweight C++ test runner selected with the skeleton |
 | Platform/input/controller/audio | SDL3 technical spike |
 | iOS graphics | Metal with MetalKit/Objective-C++ bridge as needed |
-| iOS build/signing | Supported Xcode on macOS |
+| iOS build/signing | Pinned Xcode on explicit GitHub-hosted macOS runner |
 
 SDL3's official iOS guide recommends its xcframework distribution. This is a
 starting choice, not permission to let SDL types leak into the portable game
@@ -44,14 +44,18 @@ core.
 - Treat old game binaries and extracted content as untrusted input.
 - Perform dynamic execution in an isolated, snapshot-capable environment.
 
-## Apple dependency
+## Apple and CI dependency
 
-The Windows workstation can host static analysis, asset tools, portable core,
-and the desktop reference build. Final iOS compilation, signing, simulator use,
-Metal validation, and physical-device testing require macOS with Xcode. This is
-a hardware/tooling gate, not something Ghidra or a Windows cross-compiler removes.
+The Windows workstation hosts static analysis, local conversion of private game
+data, the portable core, and desktop reference build. GitHub Actions supplies an
+ephemeral macOS runner with Xcode for simulator compilation and signed IPA
+export, so no owner-operated Mac/Xcode installation is required.
 
-The accepted iOS deployment target is 16.4. The available Apple Developer
-account and iPhone 17 Pro Max provide the primary signed device path; the
-Mac/Xcode host remains to be confirmed. At implementation time, pin a current
-Xcode release whose supported deployment-target table still includes iOS 16.4.
+Use an explicit runner label such as `macos-26`, select an explicit installed
+stable Xcode, and record runner/Xcode/SDK versions. Do not rely on the moving
+`macos-latest` alias. The accepted deployment target is iOS 16.4; runtime device
+tests are iPhone 17 Pro Max/iOS 26.6 and iPhone SE 3/iOS 26.3.
+
+Signing uses a protected Actions environment, temporary keychain, certificate,
+and provisioning profile covering both devices. See
+`docs/ci/GITHUB-ACTIONS-IOS.md`.

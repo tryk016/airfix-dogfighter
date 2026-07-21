@@ -47,3 +47,18 @@ superseded evidence.
   v1.0 supports absent music and must not source unofficial copies.
 - Added `V1-SCOPE.md` and ADR-0003 and updated plan, requirements, and parity
   priorities.
+
+## 2026-07-21 — GitHub Actions and device matrix
+
+- Owner selected GitHub Actions hosted macOS/Xcode for all iOS compilation;
+  local Mac/Xcode is not required.
+- Kept iOS 16.4 as deployment target while defining runtime coverage only on
+  iPhone 17 Pro Max/iOS 26.6 and iPhone SE 3/iOS 26.3.
+- Added the compact 4.7-inch Home-button/A15 device path alongside the large
+  Dynamic Island/high-refresh device path.
+- Designed unsigned pull-request builds and a protected manual signed-IPA job
+  with ephemeral keychain, certificate/profile secrets, verification, and
+  short-lived artifacts.
+- Separated CI-built data-less IPA from a locally converted private `.afpack` so
+  original/converted assets never enter GitHub.
+- Added ADR-0004 and `docs/ci/GITHUB-ACTIONS-IOS.md`.

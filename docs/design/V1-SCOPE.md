@@ -19,18 +19,24 @@
 | Constraint | Accepted value |
 |---|---|
 | Minimum deployment target | iOS 16.4 |
-| Primary physical device | iPhone 17 Pro Max |
+| Large/high-end device | iPhone 17 Pro Max, iOS 26.6 |
+| Compact/performance device | iPhone SE (3rd generation), iOS 26.3 |
 | Developer account | Available |
-| Mac/Xcode host | Still to be confirmed |
+| Build host | GitHub-hosted macOS runner through Actions |
+| Local Mac/Xcode | Not required |
 | Initial presentation | Landscape |
 | Initial architecture | Native ARM64, Metal |
 
-The iPhone 17 Pro Max is the primary device for real input, controller, Metal,
-safe-area, performance, thermal, audio, and lifecycle testing. It cannot prove
-runtime behavior on iOS 16.4-era hardware. The build must therefore compile with
-an iOS 16.4 deployment target and receive an appropriate simulator/availability
-test. A physical older device is desirable only if genuine old-device support is
-important; it is not currently required for the owner's private-device goal.
+The iPhone 17 Pro Max covers a large 6.9-inch Dynamic Island/ProMotion display and
+high-end Metal/thermal behavior. The iPhone SE 3 covers a compact 4.7-inch
+Home-button layout and A15 performance. Both run iOS 26.x, so neither proves
+runtime behavior on iOS 16.4. The accepted 16.4 boundary is build-time only:
+deployment metadata, API availability, linker/dependency checks, and compile
+coverage. Runtime testing below iOS 26.3 is not planned.
+
+GitHub Actions supplies Xcode on a hosted macOS runner. The signed IPA contains
+no game data; a private `.afpack` produced by the Windows converter is imported
+separately on each device.
 
 ## Included in version 1.0
 
@@ -76,7 +82,8 @@ v1.0.
 
 Version 1.0 is complete when the selected single-player campaign path:
 
-1. Runs on the owner's iPhone 17 Pro Max as a signed private installation.
+1. Builds/signs reproducibly through GitHub Actions and installs privately from
+   Windows on both owner devices.
 2. Can be completed with touch only.
 3. Can be completed with a supported physical controller only after launch.
 4. Safely survives pause, controller loss, audio interruption,
@@ -84,12 +91,13 @@ Version 1.0 is complete when the selected single-player campaign path:
 5. Contains no dependency on multiplayer, either editor, CD audio, network
    access, or App Store services.
 6. Uses an iOS 16.4 deployment target with documented API availability guards.
+7. Imports a validated private `.afpack` without uploading original or converted
+   assets to GitHub.
 
-## Remaining owner/environment decision
+## Remaining implementation decision
 
-- Which Mac with a currently suitable Xcode installation will perform signing,
-  simulator tests, and device deployment?
+- Which Windows-compatible IPA installation method will be used after Actions
+  produces the signed artifact?
 
-This does not block Windows static analysis, archive decoding, reconstruction,
-or the desktop vertical slice.
-
+This is proven during the first signed device spike and does not block Windows
+static analysis, archive decoding, reconstruction, or the desktop vertical slice.

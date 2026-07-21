@@ -21,6 +21,10 @@ the original game logic; accepted v1.0 boundary is in `V1-SCOPE.md`
 One level on a physical device with touch flight, combat, pause, audio, safe
 resume, Metal rendering, and basic saving. This proves the architecture.
 
+The accepted physical matrix is iPhone 17 Pro Max/iOS 26.6 and iPhone SE
+(3rd generation)/iOS 26.3. iOS 16.4 is the deployment target, not a runtime test
+environment.
+
 ### Single-player release candidate
 
 Complete campaign path, all required controls, controller support, menus,
@@ -69,6 +73,8 @@ Detailed contract: `docs/systems/INPUT.md`.
 - Handle screenshots/photos/stickers through sandbox-safe APIs. (P2)
 - Consider external display and Stage Manager only after core iPad behavior is
   stable. (P3)
+- Explicitly test large 6.9-inch Dynamic Island/ProMotion layout on iPhone 17 Pro
+  Max and compact 4.7-inch Home-button layout on iPhone SE 3. (P0)
 
 ## 3. App lifecycle and interruptions
 
@@ -121,8 +127,9 @@ ColdStart -> Loading -> Running <-> Paused
 
 ## 5. Performance, memory, storage, and power
 
-Budgets are fixed after selecting the oldest target device, but instrumentation
-exists before optimization.
+Budgets use iPhone SE 3/A15 as the available performance floor and iPhone 17 Pro
+Max as the high-quality/high-refresh target. Instrumentation exists before
+optimization.
 
 - Record CPU/GPU frame time, fixed-tick overruns, input-to-tick latency, peak and
   resident memory, asset load duration, storage usage, and thermal state. (P0)
@@ -184,8 +191,12 @@ exists before optimization.
   checksums, required/optional content, localization, and compatibility range.
   (P0)
 - Private builds may bundle locally converted content for installation on the
-  owner's registered device. Signed builds and converted packages are not
-  published or redistributed. (P0)
+  owner's registered device. The accepted CI design instead keeps the IPA
+  data-less and imports a locally converted private `.afpack` after installation.
+  Signed builds and converted packages are not published or redistributed. (P0)
+- The app boots without content, exposes a private import flow, validates and
+  atomically installs `.afpack`, and preserves saves when content is replaced.
+  (P0)
 - Fail startup with an actionable error when package version or required assets
   are missing; do not crash deep in a level loader. (P0)
 - No public content import or distribution model is required. (P0)
@@ -282,7 +293,8 @@ exists before optimization.
 ## 15. Build, signing, and private installation
 
 - Reproducible CMake/native build for the portable core and Xcode build/signing
-  on macOS. (P0)
+  through GitHub Actions on an explicit hosted macOS runner. No local Mac/Xcode
+  environment is required. (P0)
 - Separate debug/development, internal test, and release configurations; release
   excludes analysis tools and private fixtures. (P0)
 - Automated check that no original executable, Ghidra database, dump, trace, or
@@ -290,8 +302,14 @@ exists before optimization.
 - Set `IPHONEOS_DEPLOYMENT_TARGET` to 16.4 and guard newer APIs. Use a current
   suitable Xcode version that still supports that deployment target. (P0)
 - Use the available Apple Developer account to sign/provision the owner's iPhone
-  17 Pro Max. Record device-registration, certificate/profile, install, renew,
-  and recovery steps without committing credentials. (P0)
+  17 Pro Max/iOS 26.6 and iPhone SE 3/iOS 26.3. Record device registration,
+  certificate/profile, install, renew, and recovery steps without committing
+  credentials. (P0)
+- Pull requests build without secrets. Signed IPA export is a protected,
+  manually triggered workflow using an ephemeral keychain and environment
+  secrets. (P0)
+- Verify the iOS 16.4 deployment target and API/dependency availability at build
+  time; clearly report that no iOS 16.4 runtime test exists. (P0)
 - App Store metadata, review, public support, and public distribution artifacts
   are not produced. (P0)
 - Audit the private package to ensure it is not uploaded to a public CI artifact,
@@ -318,15 +336,17 @@ exists before optimization.
 
 - Private signed sideload only; never an App Store product.
 - Minimum deployment target iOS 16.4.
-- Primary device iPhone 17 Pro Max; Apple Developer account available.
+- Runtime devices: iPhone 17 Pro Max/iOS 26.6 and iPhone SE 3/iOS 26.3; Apple
+  Developer account available.
+- All iOS compilation/signing uses GitHub Actions hosted macOS runners; no local
+  Mac is required.
 - Version 1.0 excludes House Editor, Paint Room, and multiplayer.
 - Original CD image/audio tracks are unavailable, so original music is absent.
 
 ## Decisions that need owner input later
 
-- Which Mac/Xcode host is available for signing, simulator, and device builds.
-- Whether physical testing on an older iOS-16-compatible device matters beyond
-  deployment-target and simulator/availability validation.
+- Which Windows-compatible method installs the signed Actions IPA on both
+  registered iPhones.
 - Whether faithful 4:3 framing or an expanded widescreen camera is the default.
 - Whether the available legacy videos are retained in v1.0 after codec testing.
 

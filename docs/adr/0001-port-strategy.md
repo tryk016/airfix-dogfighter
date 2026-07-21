@@ -1,6 +1,7 @@
 # ADR-0001: Reconstruct portable native source, then port to iOS
 
-**Status:** Accepted as working baseline  
+**Status:** Accepted as working baseline; local Mac consequence amended by
+ADR-0004
 **Date:** 2026-07-21  
 **Deciders:** project owner and implementation lead
 
@@ -97,8 +98,8 @@ every iteration.
 
 ## Consequences
 
-- A macOS machine with supported Xcode and at least one physical iOS device is a
-  required later-stage dependency.
+- Xcode on macOS is required, but ADR-0004 supplies it through a GitHub-hosted
+  runner; no owner-operated Mac is required. Physical devices remain required.
 - Static analysis databases and original-derived traces stay local; durable
   conclusions are recorded as text and tests.
 - Each recovered behavior needs a confidence level and evidence link.
@@ -115,4 +116,3 @@ every iteration.
 4. [ ] Establish a safe, recordable Windows reference runtime.
 5. [ ] Build the first archive-listing tool.
 6. [ ] Produce a desktop vertical slice before beginning the iOS shell.
-
