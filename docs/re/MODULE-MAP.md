@@ -31,7 +31,7 @@ because those plugins do not appear in static import tables.
 | Module ID | File | Role hypothesis | Confidence | First question |
 |---|---|---|---:|---|
 | `DOGFIGHTER` | `Dogfighter.exe` | launcher/bootstrap | 1 | Does it launch `.icd`, or contain the patched game entry? |
-| `DOGFIGHTER_ICD` | `Dogfighter.icd` | original/protected executable body | 1 | What imports and section entropy distinguish it from the launcher? |
+| `DOGFIGHTER_ICD` | `Dogfighter.icd` | older protected/compressed executable body | 2 | Is it retained only as a SafeDisc-era artifact after the v1.01 patch? |
 | `AFENGINE` | `AfEngine.dll` | core runtime and service interfaces | 2 | What is its exported bootstrap/update API? |
 | `CC` | `Cc.dll` | unknown shared component | 0 | Who imports its exports and what strings/RTTI identify it? |
 | `UDSPACK` | `UdsPack.dll` | archive open/list/read/decompress | 3 | What are the two remaining unknown directory fields? |
@@ -100,3 +100,10 @@ export reports under ignored `artifacts/pe/`. The current run covered all 16
 PE32/i386 modules. Notable export counts are 2,089 for `AfEngine.dll`, 1,220 for
 `Cc.dll`, 44 for `UdsPack.dll`, 2 per type module, 4/6 per mode module, and 3 per
 graphics adapter.
+
+`Dogfighter.icd` has near-maximal entropy in `.text` (7.984 bits/byte) and
+`.data` (7.986), a 2000 timestamp, and almost no readable gameplay strings.
+`Dogfighter.exe` has ordinary code/data entropy (6.240/4.459), complete Windows
+bootstrap imports, readable game strings, and the same 2001 timestamp family as
+the v1.01 modules. Static reconstruction therefore uses `Dogfighter.exe` as the
+v1.01 executable reference and retains `.icd` only as corroborating metadata.

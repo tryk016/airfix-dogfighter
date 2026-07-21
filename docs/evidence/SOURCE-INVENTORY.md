@@ -26,7 +26,7 @@ history.
 | File | Bytes | PE kind | Preliminary role |
 |---|---:|---|---|
 | `Dogfighter.exe` | 290,816 | EXE | launcher/bootstrap |
-| `Dogfighter.icd` | 282,669 | EXE | likely protected/effective executable boundary; unconfirmed |
+| `Dogfighter.icd` | 282,669 | EXE | older high-entropy protected/compressed executable artifact |
 | `AfEngine.dll` | 696,320 | DLL | probable engine core |
 | `Cc.dll` | 380,928 | DLL | unknown shared subsystem |
 | `UdsPack.dll` | 24,576 | DLL | probable `UDSP` archive API |
@@ -79,4 +79,3 @@ comparison proves otherwise.
 
 See `source-manifest.sha256`. Re-run `tools/Inspect-Source.ps1` before relying on
 addresses or binary-specific conclusions.
-

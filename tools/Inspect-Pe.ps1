@@ -35,6 +35,51 @@ $modules = Get-ChildItem -LiteralPath $resolvedRoot -Recurse -File |
     Where-Object { $_.Extension.ToLowerInvariant() -in $extensions } |
     Sort-Object FullName
 
+function Get-PeSectionEntropy {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $stream = [System.IO.File]::OpenRead($Path)
+    $reader = [System.IO.BinaryReader]::new($stream)
+    try {
+        $stream.Position = 0x3C
+        $peOffset = $reader.ReadUInt32()
+        $stream.Position = $peOffset + 6
+        $sectionCount = $reader.ReadUInt16()
+        $stream.Position = $peOffset + 20
+        $optionalHeaderSize = $reader.ReadUInt16()
+        $sectionTable = $peOffset + 24 + $optionalHeaderSize
+
+        $result = for ($index = 0; $index -lt $sectionCount; $index++) {
+            $stream.Position = $sectionTable + $index * 40
+            $name = [Text.Encoding]::ASCII.GetString($reader.ReadBytes(8)).TrimEnd([char]0)
+            $stream.Position += 8
+            $rawSize = $reader.ReadUInt32()
+            $rawOffset = $reader.ReadUInt32()
+            if ($rawSize -eq 0 -or $rawOffset + $rawSize -gt $stream.Length) {
+                "$name=0.000"
+                continue
+            }
+
+            $stream.Position = $rawOffset
+            $data = $reader.ReadBytes([int]$rawSize)
+            $counts = [int[]]::new(256)
+            foreach ($value in $data) { $counts[$value]++ }
+            $entropy = 0.0
+            foreach ($count in $counts) {
+                if ($count -eq 0) { continue }
+                $probability = $count / [double]$data.Length
+                $entropy -= $probability * ([Math]::Log($probability) / [Math]::Log(2.0))
+            }
+            '{0}={1:F3}' -f $name, $entropy
+        }
+        return $result -join ';'
+    }
+    finally {
+        $reader.Dispose()
+        $stream.Dispose()
+    }
+}
+
 $summary = foreach ($module in $modules) {
     $relativePath = $module.FullName.Substring($resolvedRoot.TrimEnd('\\').Length).TrimStart('\\')
     $reportName = ($relativePath -replace '[\\/:*?"<>|]', '_') + '.llvm.txt'
@@ -76,6 +121,7 @@ $summary = foreach ($module in $modules) {
         Architecture = $architecture
         Timestamp = $timestamp
         Sections = ($sectionNames -join ';')
+        SectionEntropy = Get-PeSectionEntropy -Path $module.FullName
         ImportLibraries = ($imports -join ';')
         ImportSymbols = $importSymbols
         Exports = $exports
