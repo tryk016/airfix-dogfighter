@@ -62,3 +62,14 @@ superseded evidence.
 - Separated CI-built data-less IPA from a locally converted private `.afpack` so
   original/converted assets never enter GitHub.
 - Added ADR-0004 and `docs/ci/GITHUB-ACTIONS-IOS.md`.
+
+## 2026-07-21 — MacBook escalation policy
+
+- Owner confirmed that work may move to a MacBook when genuinely needed.
+- Accepted two escalation thresholds: hard blocker without local Xcode/device
+  tooling, or a documented estimate of at least 20% acceleration for the
+  affected remaining task/milestone.
+- Added a required explicit `MACBOOK GATE` notification format, measurement
+  formula, likely trigger list, and hybrid Windows/Actions/Mac responsibility
+  boundary.
+- Current phase does not require a MacBook.

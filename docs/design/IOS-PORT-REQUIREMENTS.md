@@ -294,7 +294,8 @@ optimization.
 
 - Reproducible CMake/native build for the portable core and Xcode build/signing
   through GitHub Actions on an explicit hosted macOS runner. No local Mac/Xcode
-  environment is required. (P0)
+  environment is required by default; apply the blocker/20% MacBook gate when
+  interactive device work justifies it. (P0)
 - Separate debug/development, internal test, and release configurations; release
   excludes analysis tools and private fixtures. (P0)
 - Automated check that no original executable, Ghidra database, dump, trace, or

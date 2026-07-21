@@ -34,6 +34,8 @@
 - GitHub Actions hosted macOS/Xcode is the accepted iOS build/signing host; no
   local Mac is required. CI produces a signed data-less IPA and private original
   data remains local in an imported `.afpack`.
+- MacBook policy accepted: request a move only for a clearly reported hard
+  blocker or documented >=20% acceleration of the affected remaining work.
 
 ## Next
 
@@ -61,3 +63,4 @@ These questions do not block static analysis or the archive work.
   before the first signed device spike.
 - No public distribution is planned; private signed/converted artifacts must not
   be shared.
+- No MacBook blocker exists in the current project phase.

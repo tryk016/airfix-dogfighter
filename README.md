@@ -40,6 +40,7 @@ other public distribution are explicitly out of scope.
 - [Complete iOS port requirements](docs/design/IOS-PORT-REQUIREMENTS.md)
 - [Accepted version 1.0 scope](docs/design/V1-SCOPE.md)
 - [GitHub Actions iOS build/signing design](docs/ci/GITHUB-ACTIONS-IOS.md)
+- [MacBook blocker/20% acceleration gate](docs/process/MACBOOK-GATE.md)
 - [Input, touch, controller, and haptics specification](docs/systems/INPUT.md)
 - [Initial source inventory](docs/evidence/SOURCE-INVENTORY.md)
 - [Current status](docs/progress/STATUS.md)

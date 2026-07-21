@@ -23,7 +23,7 @@
 | Compact/performance device | iPhone SE (3rd generation), iOS 26.3 |
 | Developer account | Available |
 | Build host | GitHub-hosted macOS runner through Actions |
-| Local Mac/Xcode | Not required |
+| Local Mac/Xcode | Not required by default; use only at hard gate or >=20% measured acceleration |
 | Initial presentation | Landscape |
 | Initial architecture | Native ARM64, Metal |
 
@@ -37,6 +37,11 @@ coverage. Runtime testing below iOS 26.3 is not planned.
 GitHub Actions supplies Xcode on a hosted macOS runner. The signed IPA contains
 no game data; a private `.afpack` produced by the Windows converter is imported
 separately on each device.
+
+If interactive device debugging later becomes blocked or the measured
+Actions-to-device loop makes a concrete milestone at least 20% slower, the owner
+can provide a MacBook under `docs/process/MACBOOK-GATE.md`. This is an explicit
+escalation, not an assumed prerequisite.
 
 ## Included in version 1.0
 

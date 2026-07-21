@@ -96,6 +96,9 @@ tag. Never run for pull requests or untrusted branches.
 Physical installation and testing are manual after artifact download. GitHub
 Actions does not replace the device test pass.
 
+A MacBook is introduced only under `docs/process/MACBOOK-GATE.md`: a hard
+blocker or evidence that it reduces the remaining affected work by at least 20%.
+
 ## Signing secrets
 
 The protected environment holds only the items required for signing:
@@ -199,6 +202,7 @@ Store publication.
 | IPA cannot reach device without Mac | validate Windows installation path in the first device spike |
 | iOS 16.4 regression remains unseen | label it build-time compatibility only; add older runtime/device only if required |
 | Actions success mistaken for device success | separate physical scenario checklist on both phones |
+| cloud/device feedback loop becomes too slow | measure one full loop and apply the MacBook 20% acceleration gate |
 
 ## Implementation order
 
@@ -212,6 +216,8 @@ Store publication.
 8. Select/verify Windows-to-iPhone IPA installation method.
 9. Import the locally converted private data package.
 10. Execute device scenarios on iOS 26.6 and 26.3.
+11. Measure Actions queue/build/download/install/debug feedback time and evaluate
+    the MacBook gate before intensive Metal/input/performance iteration.
 
 ## Authoritative references
 
@@ -225,4 +231,3 @@ Store publication.
   <https://docs.github.com/en/actions/reference/security/secrets>
 - Workflow artifacts and retention
   <https://docs.github.com/en/actions/concepts/workflows-and-actions/workflow-artifacts>
-

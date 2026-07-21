@@ -69,6 +69,9 @@ if hosted-runner/Xcode constraints make a required build impossible.
   accepted device matrix.
 - The Windows-compatible installation path for the produced IPA must be proven
   during the first device spike.
+- A MacBook is not a default prerequisite. Escalate clearly if work becomes
+  blocked without local Xcode or measured evidence shows at least 20% saving for
+  the affected remaining work; see `docs/process/MACBOOK-GATE.md`.
 
 ## Revisit conditions
 
@@ -76,6 +79,7 @@ if hosted-runner/Xcode constraints make a required build impossible.
 - Actions costs or queue times become unacceptable.
 - A secure/private content transfer method cannot be made usable.
 - The owner later provides a local Mac or self-hosted macOS runner and prefers it.
+- The MacBook gate reports a hard blocker or >=20% measured acceleration.
 - Actual runtime verification on iOS 16.4 becomes a requirement.
 
 ## Action items
@@ -87,4 +91,3 @@ if hosted-runner/Xcode constraints make a required build impossible.
 5. [ ] Register both device UDIDs and create/export signing materials.
 6. [ ] Configure the protected `ios-private` environment and secrets.
 7. [ ] Build, download, install, and verify the first IPA on both phones.
-
