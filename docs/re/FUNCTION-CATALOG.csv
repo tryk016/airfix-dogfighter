@@ -1,2 +1,8 @@
 function_id,module,rva,original_symbol,working_name,system,state,confidence,calls,called_by,evidence_ids,scenario_ids,source_path,notes
-
+FN-UDSPACK-00001000,UDSPACK,00001000,??0UpHashTable@@QAE@PAUUpHashEntry@@HH@Z,UpHashTable::UpHashTable,archive,understood,2,,,EV-20260721-006,,src/airfix/archive/UdspArchive.cpp,Wraps an existing 24-byte record array
+FN-UDSPACK-00001160,UDSPACK,00001160,?Add@UpHashTable@@QAE_NPAUUpHashEntry@@@Z,UpHashTable::Add,archive,understood,3,,,EV-20260721-007;EV-20260721-008,,src/airfix/archive/UdspArchive.cpp,Computes legacy name hash and inserts in sorted order
+FN-UDSPACK-000012D0,UDSPACK,000012D0,?Lookup@UpHashTable@@QAEPAUUpHashEntry@@PBD@Z,UpHashTable::Lookup,archive,understood,3,,,EV-20260721-007;EV-20260721-008,,src/airfix/archive/UdspArchive.cpp,Binary search by hash then case-insensitive name compare
+FN-UDSPACK-000014B0,UDSPACK,000014B0,??0UpPackage@@QAE@PBDPAV0@@Z,UpPackage::UpPackage,archive,specified,3,,,EV-20260721-006;EV-20260721-007,,src/airfix/archive/UdspArchive.cpp,Validates header and relocates three metadata tables
+FN-UDSPACK-000017E0,UDSPACK,000017E0,?Open@UpPackage@@QAEPAUUpHashEntry@@PBDPAI1@Z,UpPackage::Open,archive,specified,3,FN-UDSPACK-000012D0,,EV-20260721-007,,src/airfix/archive/UdspArchive.cpp,Resolves directory and filename and returns stored data span
+FN-UDSPACK-00002280,UDSPACK,00002280,??0UpFile@@QAE@PBDPAVUpPackage@@W4__UPFILE_OPENMODE@@@Z,UpFile::UpFile,archive,implemented,3,FN-UDSPACK-000017E0,,EV-20260721-007;EV-20260721-009,,src/airfix/archive/UdspArchive.cpp,Opens raw or packaged file and decodes flag-bit-0 compression
+FN-UDSPACK-00002530,UDSPACK,00002530,?Read@UpFile@@QAEIPAXII@Z,UpFile::Read,archive,specified,2,,,EV-20260721-006,,src/airfix/archive/UdspArchive.cpp,Reads disk package or decompressed-memory backing

@@ -15,9 +15,13 @@ other public distribution are explicitly out of scope.
 - 33 files / 356,442,590 bytes identified.
 - 16 native modules identified as 32-bit x86 PE files, including modules whose
   extensions are `.mode` and `.type`.
-- Resource archives use a custom `UDSP` container and are not recognized by
-  7-Zip.
-- The source tree and toolchain have not yet been implemented.
+- The custom `UDSP` metadata, name hashing, directory ranges, and compression
+  stream have been recovered and documented.
+- A portable C++20 `UDSP` library, read-only listing/verifier CLI, and synthetic
+  tests are implemented. All five supplied archives pass structural and payload
+  validation without being copied into the repository.
+- Portable CI builds/tests on Ubuntu 24.04, Windows Server 2025, and native
+  ARM64 macOS 26 runners.
 - iOS builds/signing will run on GitHub Actions; runtime tests target iPhone 17
   Pro Max/iOS 26.6 and iPhone SE 3/iOS 26.3 with deployment target iOS 16.4.
 
@@ -48,3 +52,15 @@ other public distribution are explicitly out of scope.
 - [ADR-0002: input architecture](docs/adr/0002-input-architecture.md)
 - [ADR-0003: private single-player scope](docs/adr/0003-v1-scope.md)
 - [ADR-0004: GitHub Actions and private data package](docs/adr/0004-github-actions-ios-builds.md)
+
+## Portable build
+
+```text
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DAIRFIX_BUILD_TESTS=ON
+cmake --build build --config Release --parallel
+ctest --test-dir build --build-config Release --output-on-failure
+```
+
+The local read-only inspector accepts `udsp-list [--summary|--verify]
+<archive.up>`. Never add original archives or generated asset packages to this
+repository.

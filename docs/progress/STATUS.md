@@ -1,7 +1,7 @@
 # Project status
 
 **Updated:** 2026-07-21  
-**Stage:** Phase 0 — initial baseline complete; Phase 1 not started
+**Stage:** Phase 1 — static analysis and archive recovery in progress
 
 ## Now
 
@@ -12,6 +12,21 @@
   semantic input architecture recorded in ADR-0002.
 - Local Git repository initialized on branch `main`; planning baseline committed
   as `59828ed`.
+- GitHub remote `tryk016/airfix-dogfighter` connected and the planning baseline
+  published.
+- Phase 1 toolchain installed and pinned: Ghidra 12.1.2, Temurin JDK 21.0.11,
+  Python 3.14.6, CMake 4.4.0, Ninja 1.13.2, LLVM 22.1.8, and GCC 15.2.0.
+- Initial LLVM report for `UdsPack.dll` found 44 named C++ exports covering
+  `UpPackage`, `UpFile`, `UpFileInfo`, and `UpHashTable`.
+- Recovered the complete header layout, both 24-byte record layouts, legacy
+  signed-byte name hash, and compression opcodes for FMT-UDSP.
+- Implemented portable C++20 metadata parser, listing/verifier CLI, decompressor,
+  and malformed-input tests.
+- All five supplied archives and all 1,911 compressed streams pass the new
+  parser; original data remains external and read-only.
+- Added three-platform portable CI including native ARM64 `macos-26`.
+- Generated reproducible LLVM sections/imports/exports reports for all 16 PE
+  modules and confirmed the plugin factory ABI names.
 
 ## Confirmed
 
@@ -22,8 +37,8 @@
 - `Resource.up` and language `.up` files begin with `UDSP 01 01` and are not
   standard archives recognized by 7-Zip.
 - Original rendering uses Direct3D/DirectX 7-era interfaces and optional Glide.
-- Current workstation has Git and 7-Zip, but Ghidra, Java, Python, CMake, Ninja,
-  and PE command-line tools were not found on `PATH`.
+- The locked Phase 1 toolchain is installed and its versions and source hashes
+  are recorded in `docs/toolchain/LOCK.md`.
 - The iOS control baseline requires full touch-only play plus controller-only
   play, hot-plug recovery, remapping, deterministic input frames, safe-area
   layouts, and optional haptics.
@@ -39,13 +54,12 @@
 
 ## Next
 
-1. Install/pin the Phase 1 toolchain.
-2. Generate full imports/exports/sections reports.
-3. Analyze `UdsPack.dll` and document the `UDSP` directory structure.
+1. Convert `UDSP` parsing from full-file buffering to bounded random-access I/O.
+2. Analyze the executable/bootstrap and dynamic plugin loading contract.
+3. Define and implement the private `.afpack` conversion boundary.
 4. Add a tested no-music asset configuration because the original CD/audio is
    unavailable.
-5. Connect a private GitHub remote and add CI after the portable build skeleton
-   exists.
+5. Create the initial iOS 16.4 application shell and unsigned Actions build.
 
 ## Open questions
 
@@ -58,9 +72,11 @@ These questions do not block static analysis or the archive work.
 ## Blockers
 
 - None for Phase 1 static analysis.
-- A private GitHub remote, signing certificate/profile for both device UDIDs,
-  protected Actions secrets, and Windows IPA installation path are required
-  before the first signed device spike.
+- The connected repository is public. Before the first signed device spike,
+  signed IPA artifacts must be encrypted/protected (or repository visibility
+  deliberately changed), because provisioning data must not be published.
+- A signing certificate/profile for both device UDIDs, protected Actions
+  secrets, and a Windows IPA installation path are required before that spike.
 - No public distribution is planned; private signed/converted artifacts must not
   be shared.
 - No MacBook blocker exists in the current project phase.

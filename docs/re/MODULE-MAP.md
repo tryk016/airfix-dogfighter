@@ -1,23 +1,30 @@
 # Module map
 
 **Build key:** SHA-256 values in `docs/evidence/source-manifest.sha256`  
-**State:** initial hypotheses; imports/exports and call edges not yet collected
+**State:** `UdsPack.dll` imports/exports and archive call paths recovered;
+remaining modules await automated reports
 
-## Provisional layers
+## Confirmed static import layers
 
 ```mermaid
 flowchart LR
     EXE["Dogfighter.exe / .icd"] --> ENGINE["AfEngine.dll"]
-    EXE --> MODES["*.mode"]
-    ENGINE --> PACK["UdsPack.dll"]
-    ENGINE --> CC["Cc.dll"]
-    ENGINE --> GFX["gtDirect3D.dll or gt3DFX.dll"]
-    MODES --> TYPES["*.type actor modules"]
-    TYPES --> ENGINE
+    EXE --> CC["Cc.dll"]
+    EXE --> PACK["UdsPack.dll"]
+    ENGINE --> CC
+    ENGINE --> PACK
+    CC --> PACK
+    MODES["*.mode"] --> ENGINE
+    MODES --> CC
+    TYPES["*.type"] --> ENGINE
+    TYPES --> CC
+    GFX["gtDirect3D.dll / gt3DFX.dll"] --> CC
     PACK --> UP["Resource.up and language.up"]
 ```
 
-Arrows are dependency hypotheses, not confirmed import edges.
+Arrows above are confirmed PE imports. Runtime loading edges from the executable
+or engine to `.mode`, `.type`, and graphics adapter modules remain to be located
+because those plugins do not appear in static import tables.
 
 ## Module register
 
@@ -27,7 +34,7 @@ Arrows are dependency hypotheses, not confirmed import edges.
 | `DOGFIGHTER_ICD` | `Dogfighter.icd` | original/protected executable body | 1 | What imports and section entropy distinguish it from the launcher? |
 | `AFENGINE` | `AfEngine.dll` | core runtime and service interfaces | 2 | What is its exported bootstrap/update API? |
 | `CC` | `Cc.dll` | unknown shared component | 0 | Who imports its exports and what strings/RTTI identify it? |
-| `UDSPACK` | `UdsPack.dll` | archive open/list/read/decompress | 2 | What record points to the first directory entry? |
+| `UDSPACK` | `UdsPack.dll` | archive open/list/read/decompress | 3 | What are the two remaining unknown directory fields? |
 | `GTDIRECT3D` | `gtDirect3D.dll` | Direct3D renderer adapter | 3 | What abstract renderer interface does it implement? |
 | `GT3DFX` | `gt3DFX.dll` | Glide renderer adapter | 3 | Which entry points match the Direct3D adapter? |
 | `MODE_DOGFIGHT` | `Game/Modes/Dogfight.mode` | dogfight flow/rules | 2 | What mode factory/export registers it? |
@@ -42,10 +49,54 @@ Arrows are dependency hypotheses, not confirmed import edges.
 
 ## Required next reports
 
-- PE sections and entropy.
-- Imports and exports, including ordinals and forwarded entries.
+- Section entropy and compiler/RTTI classification.
 - Export-to-export similarity between both graphics adapters.
 - Module load order and dynamic lookup strings (`LoadLibrary`/`GetProcAddress`).
 - MSVC RTTI, vtables, exception data, and decorated names.
 - Cross-module factory/registration interfaces.
 
+## Confirmed `UDSPACK` interface
+
+LLVM reports 44 named MSVC C++ exports and imports only MSVCRT plus
+`DisableThreadLibraryCalls` from KERNEL32. The exported surface contains
+constructors/destructors and operations for `UpPackage`, `UpFile`,
+`UpFileInfo`, and `UpHashTable`.
+
+Static call path:
+
+```mermaid
+flowchart LR
+    PACKAGE["UpPackage constructor"] --> HEADER["Validate UDSP/0x101"]
+    PACKAGE --> TABLES["Load directory, file, and string tables"]
+    OPEN["UpPackage::Open"] --> DIRLOOKUP["Hash directory path"]
+    OPEN --> FILELOOKUP["Hash filename in directory range"]
+    UPFILE["UpFile constructor"] --> OPEN
+    UPFILE --> RAW["Read stored payload"]
+    UPFILE --> DECODE["Decode opcodes 0x65-0x67 when flag bit 0 is set"]
+```
+
+See `docs/formats/UDSP.md` and the `FN-UDSPACK-*` catalog entries for durable
+contracts. Raw decompiler output remains local under the ignored `artifacts/`
+tree.
+
+## Plugin ABI evidence
+
+`EV-20260721-011` confirms a deliberately small C-style plugin boundary:
+
+| Module family | Exports | Confirmed names |
+|---|---:|---|
+| each `*.type` | 2 | `nfVersion`, `typeCreate` |
+| `Singleplayer.mode` | 4 | `bMultiplayer`, `missionCreate`, `missionName`, `nfVersion` |
+| `Dogfight.mode` | 6 | the four mode exports plus `setupServer`, `showInfo` |
+| each graphics adapter | 3 | `dllCreate`, `dllName`, `dllVer` |
+
+This gives reconstruction seams for actor registration, mission creation, and
+renderer selection without preserving the original Windows DLL ABI on iOS.
+
+## Report inventory
+
+`tools/Inspect-Pe.ps1` reproduces raw LLVM file-header, section, import, and
+export reports under ignored `artifacts/pe/`. The current run covered all 16
+PE32/i386 modules. Notable export counts are 2,089 for `AfEngine.dll`, 1,220 for
+`Cc.dll`, 44 for `UdsPack.dll`, 2 per type module, 4/6 per mode module, and 3 per
+graphics adapter.

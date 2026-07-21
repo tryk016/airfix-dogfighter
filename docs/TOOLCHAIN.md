@@ -1,7 +1,9 @@
 # Toolchain plan
 
-**State on 2026-07-21:** Git and 7-Zip are available on `PATH`; Ghidra, Java,
-Python, CMake, Ninja, `dumpbin`, and LLVM PE tools were not found.
+**State on 2026-07-21:** the Phase 1 Windows toolchain is installed and verified.
+Exact packages, source artifacts, licenses, and hashes are recorded in
+`docs/toolchain/LOCK.md`. `dumpbin` is not required because LLVM supplies the PE
+reporting tools.
 
 ## Reverse engineering
 
@@ -9,14 +11,15 @@ Python, CMake, Ninja, `dumpbin`, and LLVM PE tools were not found.
 |---|---|---|
 | Static analysis/decompiler | Ghidra 12.1 | PE import, types, disassembly, decompilation, headless reports |
 | Ghidra runtime | 64-bit JDK 21 | Required by the current official Ghidra guide |
-| Ghidra scripting/debug bridge | Python 3.12 initially | Within current supported PyGhidra/debugger range |
+| Ghidra scripting/debug bridge | Python 3.14 | Within the supported PyGhidra range for the locked release |
 | PE command-line reports | LLVM tools | Reproducible sections/imports/exports/disassembly |
 | Dynamic x86 analysis | debugger chosen in Phase 1 | Breakpoints, module load, memory/object traces in isolated VM |
 | Filesystem/process observation | Windows tracing tools in VM | Runtime access and module behavior |
 
 Official Ghidra requirements and security advisories are checked before
-installation. Versions and download hashes will be pinned in a lock file rather
-than relying on whichever executable happens to be on `PATH`.
+installation. Versions and download hashes are pinned in
+`docs/toolchain/LOCK.md` rather than relying on whichever executable happens to
+be on `PATH`.
 
 ## Reconstruction build
 
