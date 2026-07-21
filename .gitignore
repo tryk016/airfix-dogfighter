@@ -1,0 +1,26 @@
+# Build products
+/build/
+/out/
+/DerivedData/
+/.cache/
+
+# IDE and local configuration
+/.idea/
+/.vscode/
+*.user
+*.suo
+*.xcuserstate
+
+# Reverse-engineering working data (large and machine-specific)
+/analysis/ghidra-projects/
+/analysis/dumps/
+/analysis/traces/
+/analysis/screenshots/
+
+# Original copyrighted game data must remain outside this repository
+/original/
+/private-fixtures/
+
+# Generated inventories
+/artifacts/
+
