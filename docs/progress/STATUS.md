@@ -8,6 +8,8 @@
 - Planning and documentation system established.
 - Original installation inventoried without executing binaries.
 - Port strategy recorded in ADR-0001.
+- Local Git repository initialized on branch `main`; planning baseline committed
+  as `59828ed`.
 
 ## Confirmed
 
@@ -23,11 +25,10 @@
 
 ## Next
 
-1. Initialize version control and record this planning baseline.
-2. Install/pin the Phase 1 toolchain.
-3. Generate full imports/exports/sections reports.
-4. Analyze `UdsPack.dll` and document the `UDSP` directory structure.
-5. Ask the project owner to locate the original disc/image and CD audio tracks.
+1. Install/pin the Phase 1 toolchain.
+2. Generate full imports/exports/sections reports.
+3. Analyze `UdsPack.dll` and document the `UDSP` directory structure.
+4. Ask the project owner to locate the original disc/image and CD audio tracks.
 
 ## Open questions
 
@@ -44,4 +45,3 @@ These questions do not block static analysis or the archive work.
 - None for Phase 1 static analysis.
 - A Mac with Xcode and a physical iOS device will be required before Phase 9.
 - Rights documentation will be required before distributing original content.
-

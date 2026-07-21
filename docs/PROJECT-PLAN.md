@@ -350,7 +350,7 @@ contract, evidence, implementation, tests, parity result, and documentation agre
 
 ## Immediate ordered backlog
 
-1. Initialize Git and commit planning baseline.
+1. **Completed:** initialize Git and commit planning baseline (`59828ed`).
 2. Classify mutable versus immutable source files and regenerate the manifest.
 3. Confirm availability of the original CD/disc image and audio tracks.
 4. Install pinned JDK, Ghidra, Python, compiler, CMake, and Ninja.
@@ -366,4 +366,3 @@ contract, evidence, implementation, tests, parity result, and documentation agre
 14. Build a viewer for the first decoded model/room format.
 15. Re-estimate remaining work after archive inventory and first vertical-slice
     dependencies are known.
-

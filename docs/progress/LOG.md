@@ -16,5 +16,6 @@ superseded evidence.
   files appear in the installation inventory.
 - Created ADR-0001, architecture, detailed roadmap, workflow, and initial parity
   matrix.
+- Initialized the local Git repository and committed the planning baseline as
+  `59828ed`.
 - No original binaries were executed or modified.
-
