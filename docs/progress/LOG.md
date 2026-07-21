@@ -19,3 +19,18 @@ superseded evidence.
 - Initialized the local Git repository and committed the planning baseline as
   `59828ed`.
 - No original binaries were executed or modified.
+
+## 2026-07-21 — iOS product and input requirements
+
+- Designed the semantic action/input-context architecture and deterministic
+  per-tick `InputFrame` contract.
+- Specified touch flight stick, latching throttle, weapons, camera, multi-touch,
+  layout profiles, handedness, calibration, controller mapping/hot-plug, and
+  phone/controller haptics.
+- Added lifecycle failure behavior for cancellation, backgrounding, overlays,
+  audio interruption, and controller loss.
+- Added complete port checklist covering screen/safe area, rendering,
+  performance, thermal state, audio/video, atomic saves, packaging,
+  accessibility, localization, security, diagnostics, testing, and release.
+- Recorded ADR-0002; no production implementation or original-binary execution
+  occurred.

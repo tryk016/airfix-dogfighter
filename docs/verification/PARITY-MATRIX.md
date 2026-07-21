@@ -24,7 +24,16 @@ Statuses: `not-investigated`, `observed`, `specified`, `implemented`, `verified`
 | Dogfight/multiplayer | P2 | not-investigated | SCN-DOGFIGHT-001 | Scope decision deferred |
 | House Editor | P2 | not-investigated | SCN-EDITOR-001 | Scope decision deferred |
 | Paint Room | P2 | not-investigated | SCN-PAINT-001 | Scope decision deferred |
-| iOS touch/controller input | P0 | not-investigated | SCN-IOS-INPUT-001 | New platform behavior |
+| Semantic actions and deterministic input frames | P0 | specified | SCN-INPUT-001 | ADR-0002 |
+| iOS touch flight controls | P0 | specified | SCN-IOS-002 | Stick, throttle, fire, camera |
+| Touch layout profiles/editor | P1 | specified | SCN-INPUT-004 | Phone/tablet/handedness |
+| Controller gameplay and menus | P1 | specified | SCN-IOS-003 | Bluetooth/USB extended gamepad |
+| Controller hot-plug/disconnect | P1 | specified | SCN-IOS-004 | Release, pause, touch recovery |
+| Input remapping/calibration | P1 | specified | SCN-INPUT-006 | Deadzone/curve/invert/conflicts |
+| Phone/controller haptics | P1 | specified | SCN-INPUT-007 | Capability fallback and stop rules |
+| iOS lifecycle/interruption recovery | P0 | specified | SCN-IOS-005 | No stuck input/audio |
+| iOS atomic saves and migration | P0 | specified | SCN-IOS-006 | Recovery from interrupted write |
+| iOS safe-area and adaptive UI | P0 | specified | SCN-IOS-011 | Phone/tablet variants |
+| iOS performance/thermal behavior | P1 | specified | SCN-IOS-009 | Sustained device test |
 | Faithful renderer | P0 | not-investigated | SCN-RENDER-001 | |
 | Enhanced renderer | P3 | deferred | SCN-RENDER-101 | Begins after faithful slice |
-

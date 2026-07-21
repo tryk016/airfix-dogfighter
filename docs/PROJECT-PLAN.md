@@ -268,13 +268,23 @@ Tasks:
 - Support Game Controller devices, safe areas, rotation policy, interruptions,
   background/foreground, audio sessions, thermal state, memory warnings, and
   sandboxed save locations.
+- Implement semantic actions, input contexts, remapping, deterministic
+  `InputFrame` capture/replay, source arbitration, controller hot-plug, synthetic
+  release on cancellation, layout profiles, calibration, and touch/controller
+  haptic routing according to `docs/systems/INPUT.md`.
+- Complete the cross-cutting product checklist in
+  `docs/design/IOS-PORT-REQUIREMENTS.md`, including atomic saves, asset package
+  compatibility, audio-route handling, accessibility, diagnostics, and release
+  packaging.
 - Measure cold start, level load, peak memory, sustained frame time, battery, and
   heat on the oldest and newest target devices.
 
 Exit gate:
 
 - A physical device completes the selected single-player path with no lifecycle,
-  memory, or input blockers and meets the agreed sustained performance budget.
+  memory, input, save, audio, or safe-area blockers and meets the agreed
+  sustained performance budget. The selected campaign path is completable once
+  with touch only and once with a physical controller only.
 
 ## Phase 10 — visual modernization
 

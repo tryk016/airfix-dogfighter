@@ -36,7 +36,9 @@ rights check.
 - [Detailed project plan](docs/PROJECT-PLAN.md)
 - [Target architecture](docs/ARCHITECTURE.md)
 - [Reverse-engineering workflow](docs/RE-WORKFLOW.md)
+- [Complete iOS port requirements](docs/design/IOS-PORT-REQUIREMENTS.md)
+- [Input, touch, controller, and haptics specification](docs/systems/INPUT.md)
 - [Initial source inventory](docs/evidence/SOURCE-INVENTORY.md)
 - [Current status](docs/progress/STATUS.md)
 - [ADR-0001: reconstruction strategy](docs/adr/0001-port-strategy.md)
-
+- [ADR-0002: input architecture](docs/adr/0002-input-architecture.md)

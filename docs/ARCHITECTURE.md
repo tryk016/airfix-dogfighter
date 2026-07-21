@@ -79,6 +79,12 @@ localization, lifecycle, and video. SDL3 is the proposed portability layer for
 window/event/controller/audio plumbing. A small Objective-C++ bridge handles
 iOS-specific lifecycle, storage, safe-area, audio-session, and Metal integration.
 
+Input is a distinct subsystem: platform adapters produce normalized physical
+events, a context/binding router resolves semantic actions, and the simulation
+receives immutable per-tick `InputFrame` values. Touch, controllers, desktop test
+input, and optional motion never enter the game core as platform key/button
+codes. See `docs/systems/INPUT.md` and ADR-0002.
+
 ### `apps`
 
 - `reference-win`: desktop executable used during reconstruction and comparison.
@@ -126,4 +132,5 @@ private-fixtures/         # original-derived fixtures; ignored by Git
   only after single-player parity.
 - Minimum supported iOS/device generation: set after the first Metal vertical
   slice and memory measurements.
-
+- Whether `GCVirtualController` is useful for the first device spike before the
+  final custom touch overlay is ready.

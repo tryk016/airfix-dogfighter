@@ -8,6 +8,8 @@
 - Planning and documentation system established.
 - Original installation inventoried without executing binaries.
 - Port strategy recorded in ADR-0001.
+- Complete iOS port checklist and input/control/haptics system specified;
+  semantic input architecture recorded in ADR-0002.
 - Local Git repository initialized on branch `main`; planning baseline committed
   as `59828ed`.
 
@@ -22,6 +24,9 @@
 - Original rendering uses Direct3D/DirectX 7-era interfaces and optional Glide.
 - Current workstation has Git and 7-Zip, but Ghidra, Java, Python, CMake, Ninja,
   and PE command-line tools were not found on `PATH`.
+- The iOS control baseline requires full touch-only play plus controller-only
+  play, hot-plug recovery, remapping, deterministic input frames, safe-area
+  layouts, and optional haptics.
 
 ## Next
 
