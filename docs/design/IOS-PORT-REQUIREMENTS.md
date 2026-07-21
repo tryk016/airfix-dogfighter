@@ -2,8 +2,8 @@
 
 **Status:** proposed product/system requirements
 
-**Scope:** everything the port needs beyond reconstruction of the original game
-logic
+**Scope:** everything the private iOS sideload needs beyond reconstruction of
+the original game logic; accepted v1.0 boundary is in `V1-SCOPE.md`
 
 ## Priority model
 
@@ -27,11 +27,11 @@ Complete campaign path, all required controls, controller support, menus,
 localization, saves, accessibility baseline, performance tiers, lifecycle and
 interruption handling, packaging, diagnostics, and device matrix.
 
-### Full parity and enhancement
+### Post-v1 optional work
 
-Editors, multiplayer if selected, every original presentation feature, modern
-lighting, optional higher-resolution content, platform services, and additional
-input modes.
+Modern lighting, optional higher-resolution content, and additional input modes.
+Multiplayer, House Editor, Paint Room, App Store services, and public
+distribution are not part of v1.0.
 
 ## 1. Input and interaction
 
@@ -148,8 +148,9 @@ exists before optimization.
   paused. (P0)
 - Provide independent master/music/effects/voice controls and subtitle controls
   where voice/dialogue exists. (P1)
-- Determine whether original CD audio tracks are available and legally usable;
-  transcode from a lossless source, never from an arbitrary online copy. (P1)
+- Original CD audio tracks are unavailable. Treat music as an optional absent
+  content set, never fail boot/level loading because tracks are missing, and do
+  not obtain unofficial copies. Preserve a future optional music interface. (P1)
 - Decode/transcode legacy AVI intros into an Apple-supported delivery path or
   replace/omit them with documented behavior if rights/codec constraints require
   it. (P2)
@@ -182,13 +183,12 @@ exists before optimization.
 - Runtime package records source build ID, converter version, schema, entry
   checksums, required/optional content, localization, and compatibility range.
   (P0)
-- Development/private builds may bundle locally converted content. Any public
-  build includes only content whose distribution rights are documented. (P0)
+- Private builds may bundle locally converted content for installation on the
+  owner's registered device. Signed builds and converted packages are not
+  published or redistributed. (P0)
 - Fail startup with an actionable error when package version or required assets
   are missing; do not crash deep in a level loader. (P0)
-- Decide whether a public product bundles assets, imports user-owned data, or uses
-  another authorized model only after rights and review implications are clear.
-  (P1)
+- No public content import or distribution model is required. (P0)
 - Converted asset caches are reproducible and can be rebuilt; saves never depend
   on cache file offsets. (P1)
 - Test case-sensitive paths because Apple filesystems and archive lookup behavior
@@ -240,14 +240,11 @@ exists before optimization.
 ## 12. Networking and platform services
 
 - Single-player must not require network connectivity or an account. (P1)
-- Original dogfight networking is separately analyzed for protocol, security,
-  determinism, and viability; do not expose an unsafe legacy protocol directly.
-  (P2)
-- If multiplayer is selected, specify discovery/matchmaking, NAT/relay,
-  disconnect/rejoin, host authority, cheating, version compatibility, privacy,
-  abuse handling, and service operating cost before implementation. (P2)
-- Game Center achievements/leaderboards and cloud saves are optional integrations
-  after core gameplay works offline. (P3)
+- Dogfight/multiplayer and network protocol reconstruction are outside the v1.0
+  product scope. Shared interfaces may be documented when analysis encounters
+  them. (P3/deferred)
+- Game Center, achievements, leaderboards, and cloud saves are outside v1.0.
+  (P3/deferred)
 - No analytics, account, advertising, tracking, microphone, camera, contacts, or
   location permission is added without a concrete product requirement. (P1)
 
@@ -259,8 +256,8 @@ exists before optimization.
 - No runtime downloaded executable code or original x86 execution on iOS. (P0)
 - No path traversal, writes outside app containers, or format-driven unbounded
   allocation. (P0)
-- Fuzz parsers and test malformed packages/saves before public data import is
-  offered. (P1)
+- Fuzz parsers and test malformed packages/saves before any user-selected data
+  import is offered, even in a private build. (P1)
 - Avoid embedding private source paths, developer credentials, signing secrets,
   or original analysis dumps in builds. (P0)
 - Dependency inventory, licenses, security advisories, and update policy are part
@@ -282,7 +279,7 @@ exists before optimization.
 - Support document covers known limitations, controller setup, save recovery,
   content version, and diagnostic export. (P1)
 
-## 15. Build, signing, release, and rights
+## 15. Build, signing, and private installation
 
 - Reproducible CMake/native build for the portable core and Xcode build/signing
   on macOS. (P0)
@@ -290,14 +287,15 @@ exists before optimization.
   excludes analysis tools and private fixtures. (P0)
 - Automated check that no original executable, Ghidra database, dump, trace, or
   unauthorized asset is packaged. (P0)
-- Define supported iOS/iPadOS range only after device/performance measurements.
-  (P1)
-- Prepare app metadata, age rating, privacy declarations, support contact,
-  dependency attribution, export/compliance answers, and review notes. (P1)
-- Written authorization/rights evidence for distributed code, name, artwork,
-  video, voice, music, and other game data is a public-release gate. (P0)
-- Private sideload/testing and public App Store release are separate milestones
-  with different packaging and rights acceptance criteria. (P0)
+- Set `IPHONEOS_DEPLOYMENT_TARGET` to 16.4 and guard newer APIs. Use a current
+  suitable Xcode version that still supports that deployment target. (P0)
+- Use the available Apple Developer account to sign/provision the owner's iPhone
+  17 Pro Max. Record device-registration, certificate/profile, install, renew,
+  and recovery steps without committing credentials. (P0)
+- App Store metadata, review, public support, and public distribution artifacts
+  are not produced. (P0)
+- Audit the private package to ensure it is not uploaded to a public CI artifact,
+  repository, package feed, or sharing service. (P0)
 
 ## Cross-cutting acceptance scenarios
 
@@ -316,15 +314,21 @@ exists before optimization.
 | `SCN-IOS-011` | phone/tablet safe areas | no required control or text overlaps system regions |
 | `SCN-IOS-012` | upgrade from prior schema | progress/settings/input migrate or recover safely |
 
+## Confirmed product decisions
+
+- Private signed sideload only; never an App Store product.
+- Minimum deployment target iOS 16.4.
+- Primary device iPhone 17 Pro Max; Apple Developer account available.
+- Version 1.0 excludes House Editor, Paint Room, and multiplayer.
+- Original CD image/audio tracks are unavailable, so original music is absent.
+
 ## Decisions that need owner input later
 
-- Private personal build, public App Store product, or both.
-- Minimum acceptable phone/tablet generations after the device spike.
-- Whether version 1.0 includes House Editor, Paint Room, and multiplayer.
+- Which Mac/Xcode host is available for signing, simulator, and device builds.
+- Whether physical testing on an older iOS-16-compatible device matters beyond
+  deployment-target and simulator/availability validation.
 - Whether faithful 4:3 framing or an expanded widescreen camera is the default.
-- Whether original CD music and videos are available and cleared for packaging.
-- Whether optional Game Center/cloud features matter for the first public release.
+- Whether the available legacy videos are retained in v1.0 after codec testing.
 
 None of these blocks executable analysis, `UDSP` work, or the portable engine
 foundation.
-

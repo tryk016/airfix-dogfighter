@@ -14,6 +14,10 @@
 - Original assets are in custom `UDSP` packages and must be understood before a
   complete vertical slice can load.
 - Fidelity and modernization are separate acceptance dimensions.
+- Version 1.0 is a private signed sideload with deployment target iOS 16.4 and
+  iPhone 17 Pro Max as the primary physical test device.
+- Multiplayer, House Editor, Paint Room, App Store services, and unavailable CD
+  music are outside the v1.0 product boundary.
 
 ## Architecture
 
@@ -128,9 +132,9 @@ private-fixtures/         # original-derived fixtures; ignored by Git
 - Exact desktop graphics API: decide after a small draw-command spike.
 - Runtime intermediate model/level formats: decide after `UDSP` contents are
   inventoried.
-- Multiplayer scope: preserve protocol findings, but schedule implementation
-  only after single-player parity.
-- Minimum supported iOS/device generation: set after the first Metal vertical
-  slice and memory measurements.
+- Post-v1 multiplayer/editor scope: preserve useful shared-interface findings,
+  but do not schedule implementation during v1.0.
+- Old-device physical testing depth: iOS 16.4 is the deployment target, while
+  iPhone 17 Pro Max is the only confirmed device.
 - Whether `GCVirtualController` is useful for the first device spike before the
   final custom touch overlay is ready.

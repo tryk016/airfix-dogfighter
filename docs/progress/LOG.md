@@ -34,3 +34,16 @@ superseded evidence.
   accessibility, localization, security, diagnostics, testing, and release.
 - Recorded ADR-0002; no production implementation or original-binary execution
   occurred.
+
+## 2026-07-21 — version 1.0 scope decisions
+
+- Owner confirmed private signed sideload only and explicitly excluded App Store
+  distribution.
+- Set minimum deployment target to iOS 16.4.
+- Recorded available Apple Developer account and iPhone 17 Pro Max as the primary
+  physical device; Mac/Xcode host remains unconfirmed.
+- Excluded dogfight/multiplayer, House Editor, and Paint Room from v1.0.
+- Confirmed that neither the original CD image nor audio tracks are available;
+  v1.0 supports absent music and must not source unofficial copies.
+- Added `V1-SCOPE.md` and ADR-0003 and updated plan, requirements, and parity
+  priorities.

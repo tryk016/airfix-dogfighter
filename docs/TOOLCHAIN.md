@@ -51,3 +51,7 @@ and the desktop reference build. Final iOS compilation, signing, simulator use,
 Metal validation, and physical-device testing require macOS with Xcode. This is
 a hardware/tooling gate, not something Ghidra or a Windows cross-compiler removes.
 
+The accepted iOS deployment target is 16.4. The available Apple Developer
+account and iPhone 17 Pro Max provide the primary signed device path; the
+Mac/Xcode host remains to be confirmed. At implementation time, pin a current
+Xcode release whose supported deployment-target table still includes iOS 16.4.

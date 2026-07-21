@@ -1,8 +1,8 @@
 # Detailed project plan
 
 **Baseline:** Airfix Dogfighter v1.01  
-**Target:** behavior-compatible desktop reconstruction followed by native iOS
-ARM64 port  
+**Target:** behavior-compatible desktop reconstruction followed by a private,
+native iOS ARM64 sideload
 **Plan date:** 2026-07-21
 
 ## Definition of the outcome
@@ -21,9 +21,9 @@ The first complete release candidate must:
    budget.
 7. Keep visual modernization optional and independently testable.
 
-House Editor, Paint Room, dogfight multiplayer, and exact playback of legacy
-intro videos are parity goals after the single-player path. Their ordering will
-be confirmed once module and asset dependencies are known.
+Dogfight/multiplayer, House Editor, Paint Room, App Store distribution, and
+original CD music are excluded from version 1.0. Exact legacy intro playback is
+P2. See `docs/design/V1-SCOPE.md` and ADR-0003.
 
 ## Critical path
 
@@ -58,8 +58,8 @@ Tasks:
 - Record edition/version, language packs, patches, disc contents, and whether CD
   audio tracks are available.
 - Keep original files and original-derived private fixtures outside Git.
-- Establish rights gates for private use, redistribution of engine code,
-  redistribution of assets, trademarks, music, and App Store submission.
+- Record that the output is a private signed build and prevent redistribution of
+  the application, original assets, or converted packages.
 
 Exit gate:
 
@@ -222,8 +222,8 @@ Order:
 3. Ground/water units, pickups, interactive objects, and effects.
 4. AI perception, navigation, targeting, and difficulty.
 5. Mission rules, triggers, objectives, failure/success, and campaign flow.
-6. Dogfight mode and networking feasibility.
-7. House Editor and Paint Room data flows.
+6. Record shared interfaces encountered in dogfight/editor modules without
+   implementing those out-of-scope v1.0 features.
 
 For each subsystem: evidence note -> contract -> headless tests -> implementation
 -> reference scenario -> parity sign-off.
@@ -242,8 +242,9 @@ Tasks:
 - Menus, HUD, mission briefing/status, settings, pause, errors, and credits.
 - Saves, rosters, screenshots/stickers, settings migration, and corruption
   handling.
-- Sound effects, voice/localization selection, music strategy, and video
-  replacement/transcoding where rights permit.
+- Sound effects and voice/localization selection. Music is an optional absent
+  content set in v1.0 because the original CD/audio tracks are unavailable.
+  Video replacement/transcoding remains P2.
 - English first, followed by Dansk, Norsk, and Svenska with layout tests.
 - Accessibility pass for remapping, readable scaling, subtitles where source
   material permits, contrast, motion, and touch target sizes.
@@ -260,6 +261,12 @@ Exit gate:
 Tasks:
 
 - Add Xcode project generation/build on macOS and ARM64 device tests.
+- Set the deployment target to iOS 16.4 and use availability guards for any
+  newer API.
+- Register and use the available Apple Developer account and iPhone 17 Pro Max
+  for the primary physical-device path. Use simulator/availability testing for
+  the iOS 16.4 boundary; identify an older physical device only if genuine
+  old-hardware support becomes important.
 - Integrate SDL3 xcframework or the result of its technical spike.
 - Implement Metal surface/backend, shader compilation, resource residency, and
   device-loss/lifecycle handling.
@@ -309,7 +316,7 @@ Exit gate:
 - Reference mode remains within parity tolerances; enhanced mode meets visual
   and sustained device budgets.
 
-## Phase 11 — verification and release readiness
+## Phase 11 — verification and private sideload readiness
 
 **Goal:** prove completeness, ownership readiness, and reproducibility.
 
@@ -319,15 +326,15 @@ Tasks:
   localization sweeps, controller matrix, lifecycle torture tests, and device
   performance matrix.
 - Rebuild from a clean checkout plus separately supplied legal asset input.
-- Produce dependency licenses, attribution, privacy declarations, support and
-  crash-diagnostic plan.
-- Obtain written rights clearance for every distributed asset, trademark, video,
-  voice, and music item; be ready to provide authorization during review.
+- Produce dependency licenses, local diagnostic instructions, provisioning
+  notes, and a reproducible private installation procedure.
+- Verify that the signed application and converted assets are not placed in any
+  public artifact, repository, package feed, or distribution channel.
 
 Exit gate:
 
-- Release checklist is fully evidenced; a clean device build passes acceptance;
-  distribution rights are documented.
+- Private-release checklist is fully evidenced and a clean signed build installs
+  and passes acceptance on the owner's iPhone 17 Pro Max.
 
 ## Verification strategy
 
@@ -348,21 +355,22 @@ contract, evidence, implementation, tests, parity result, and documentation agre
 
 | Risk | Impact | Mitigation / early test |
 |---|---|---|
-| Missing CD audio or disc-only content | Incomplete release | Inventory the original disc/image in Phase 0 |
+| Original CD music unavailable | Missing soundtrack | Treat music as an optional absent content set; do not source unofficial copies |
 | Copy protection obscures effective executable | Delays dynamic work | Separate launcher from engine modules; prioritize unprotected DLL interfaces |
 | Unknown `UDSP` compression | Blocks assets | Analyze small `UdsPack.dll` first; compare all five archives |
 | Compiler optimizations erase types | Slower recovery | RTTI/vtable/string clustering plus runtime object traces |
 | Physics changes across CPU/compiler | Gameplay drift | Preserve float precision/update order; deterministic curves and tolerances |
 | Transparent/lightmapped legacy rendering | Visual mismatch | Record render states and create a faithful fixed-function shader path first |
-| Windows-only development environment | Delays iOS proof | Secure Mac/device by the end of the vertical-slice phase, not at project end |
-| Rights cover ownership but not redistribution | Blocks App Store | Treat rights as a release gate; do not publish original assets by default |
+| Mac/Xcode host not yet confirmed | Delays iOS proof | Secure the Mac before the first device spike; developer account/device are available |
+| Private artifacts are accidentally shared | Unauthorized redistribution | Ignore originals/converted assets and audit every packaged/staged artifact |
 | Scope expansion into enhancements | Delays playability | Lock faithful vertical slice before modern rendering work |
 
 ## Immediate ordered backlog
 
 1. **Completed:** initialize Git and commit planning baseline (`59828ed`).
 2. Classify mutable versus immutable source files and regenerate the manifest.
-3. Confirm availability of the original CD/disc image and audio tracks.
+3. **Completed:** original CD/disc image and audio tracks are unavailable; test
+   the no-music configuration.
 4. Install pinned JDK, Ghidra, Python, compiler, CMake, and Ninja.
 5. Generate import/export/section/string reports for all 16 PE modules.
 6. Determine launcher/ICD relationship without executing on the host.

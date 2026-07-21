@@ -1,14 +1,13 @@
 # Airfix Dogfighter — reconstruction and iOS port
 
 This repository is the engineering notebook and future source tree for a
-behavior-compatible reconstruction of **Airfix Dogfighter v1.01** and a native
-iOS port.
+behavior-compatible reconstruction of **Airfix Dogfighter v1.01** and a native,
+privately sideloaded iOS port.
 
 The original installation at `E:\roms\Airfix Dogfighter` is treated as a
 read-only reference. Original executables and assets are not copied into this
-repository. A physical/original copy is useful for analysis, but it does not by
-itself grant redistribution rights; public distribution will require a separate
-rights check.
+repository. Version 1.0 is for private signed installation only; App Store and
+other public distribution are explicitly out of scope.
 
 ## Current status
 
@@ -37,8 +36,10 @@ rights check.
 - [Target architecture](docs/ARCHITECTURE.md)
 - [Reverse-engineering workflow](docs/RE-WORKFLOW.md)
 - [Complete iOS port requirements](docs/design/IOS-PORT-REQUIREMENTS.md)
+- [Accepted version 1.0 scope](docs/design/V1-SCOPE.md)
 - [Input, touch, controller, and haptics specification](docs/systems/INPUT.md)
 - [Initial source inventory](docs/evidence/SOURCE-INVENTORY.md)
 - [Current status](docs/progress/STATUS.md)
 - [ADR-0001: reconstruction strategy](docs/adr/0001-port-strategy.md)
 - [ADR-0002: input architecture](docs/adr/0002-input-architecture.md)
+- [ADR-0003: private single-player scope](docs/adr/0003-v1-scope.md)

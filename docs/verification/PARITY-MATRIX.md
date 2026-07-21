@@ -17,13 +17,13 @@ Statuses: `not-investigated`, `observed`, `specified`, `implemented`, `verified`
 | Mission triggers and progression | P0 | not-investigated | SCN-MISSION-001 | |
 | HUD and mission status | P1 | not-investigated | SCN-HUD-001 | |
 | Sound effects and voices | P1 | not-investigated | SCN-AUDIO-001 | |
-| Music | P1 | not-investigated | SCN-AUDIO-002 | CD audio may be missing |
+| Music subsystem with content absent | P1 | specified | SCN-AUDIO-002 | Original CD/audio unavailable |
 | Save/load and rosters | P1 | not-investigated | SCN-SAVE-001 | |
 | Localization | P1 | observed | SCN-LOC-001 | EN/DA/NO/SV packages found |
 | Intro videos | P2 | observed | SCN-VIDEO-001 | Two AVI files found |
-| Dogfight/multiplayer | P2 | not-investigated | SCN-DOGFIGHT-001 | Scope decision deferred |
-| House Editor | P2 | not-investigated | SCN-EDITOR-001 | Scope decision deferred |
-| Paint Room | P2 | not-investigated | SCN-PAINT-001 | Scope decision deferred |
+| Dogfight/multiplayer | P3 | deferred | SCN-DOGFIGHT-001 | Out of v1.0 scope |
+| House Editor | P3 | deferred | SCN-EDITOR-001 | Out of v1.0 scope |
+| Paint Room | P3 | deferred | SCN-PAINT-001 | Out of v1.0 scope |
 | Semantic actions and deterministic input frames | P0 | specified | SCN-INPUT-001 | ADR-0002 |
 | iOS touch flight controls | P0 | specified | SCN-IOS-002 | Stick, throttle, fire, camera |
 | Touch layout profiles/editor | P1 | specified | SCN-INPUT-004 | Phone/tablet/handedness |
