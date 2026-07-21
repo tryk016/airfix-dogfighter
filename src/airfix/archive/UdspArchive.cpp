@@ -83,6 +83,67 @@ void requireRange(
     return output.str();
 }
 
+[[nodiscard]] Header readHeader(const std::span<const std::uint8_t> bytes) {
+    if (bytes.size() < kHeaderSize) {
+        throw ParseError("archive is shorter than the UDSP header");
+    }
+    if (bytes[0] != 'U' || bytes[1] != 'D' || bytes[2] != 'S' || bytes[3] != 'P') {
+        throw ParseError("invalid UDSP magic");
+    }
+
+    return {
+        .version = readU32(bytes, 4U, "version"),
+        .directoryBytes = readU32(bytes, 8U, "directoryBytes"),
+        .directoryOffset = readU32(bytes, 12U, "directoryOffset"),
+        .stringBytes = readU32(bytes, 16U, "stringBytes"),
+        .stringOffset = readU32(bytes, 20U, "stringOffset"),
+        .fileBytes = readU32(bytes, 24U, "fileBytes"),
+        .fileOffset = readU32(bytes, 28U, "fileOffset"),
+    };
+}
+
+void validateLayout(const Header& header, const std::uint64_t archiveSize) {
+    if (header.version != kVersion) {
+        throw ParseError("unsupported UDSP version");
+    }
+    if (header.directoryBytes % kRecordSize != 0U || header.fileBytes % kRecordSize != 0U) {
+        throw ParseError("UDSP record table size is not a multiple of 24");
+    }
+    if (header.directoryOffset < kHeaderSize) {
+        throw ParseError("UDSP payload overlaps the header");
+    }
+
+    const auto directoryEnd = checkedAdd(
+        header.directoryOffset, header.directoryBytes, "directory table");
+    const auto fileEnd = checkedAdd(header.fileOffset, header.fileBytes, "file table");
+    const auto stringEnd = checkedAdd(header.stringOffset, header.stringBytes, "string table");
+    if (directoryEnd != header.fileOffset || fileEnd != header.stringOffset ||
+        stringEnd != archiveSize) {
+        throw ParseError("UDSP metadata tables are not contiguous at end of archive");
+    }
+
+    requireRange(header.directoryOffset, header.directoryBytes, archiveSize, "directory table");
+    requireRange(header.fileOffset, header.fileBytes, archiveSize, "file table");
+    requireRange(header.stringOffset, header.stringBytes, archiveSize, "string table");
+}
+
+void readExact(
+    std::ifstream& input,
+    const std::uint64_t offset,
+    const std::span<std::uint8_t> output,
+    const std::filesystem::path& path) {
+    if (offset > static_cast<std::uint64_t>(std::numeric_limits<std::streamoff>::max()) ||
+        output.size() > static_cast<std::size_t>(std::numeric_limits<std::streamsize>::max())) {
+        throw ParseError("archive range exceeds stream limits: " + path.string());
+    }
+    input.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
+    if (!input || (!output.empty() && !input.read(
+            reinterpret_cast<char*>(output.data()),
+            static_cast<std::streamsize>(output.size())))) {
+        throw ParseError("cannot read archive: " + path.string());
+    }
+}
+
 } // namespace
 
 std::uint32_t nameHash(const std::string_view name) noexcept {
@@ -99,51 +160,25 @@ std::uint32_t nameHash(const std::string_view name) noexcept {
 }
 
 Archive Archive::parse(const std::span<const std::uint8_t> bytes) {
-    if (bytes.size() < kHeaderSize) {
-        throw ParseError("archive is shorter than the UDSP header");
-    }
-    if (bytes[0] != 'U' || bytes[1] != 'D' || bytes[2] != 'S' || bytes[3] != 'P') {
-        throw ParseError("invalid UDSP magic");
-    }
+    const auto header = readHeader(bytes);
+    validateLayout(header, bytes.size());
+    return parseMetadata(
+        header,
+        bytes.size(),
+        bytes.subspan(header.directoryOffset, header.directoryBytes),
+        bytes.subspan(header.fileOffset, header.fileBytes),
+        bytes.subspan(header.stringOffset, header.stringBytes));
+}
 
+Archive Archive::parseMetadata(
+    Header header,
+    const std::uint64_t archiveSize,
+    const std::span<const std::uint8_t> directoryTable,
+    const std::span<const std::uint8_t> fileTable,
+    const std::span<const std::uint8_t> stringTable) {
     Archive archive;
-    archive.archiveSize_ = bytes.size();
-    archive.header_ = {
-        .version = readU32(bytes, 4U, "version"),
-        .directoryBytes = readU32(bytes, 8U, "directoryBytes"),
-        .directoryOffset = readU32(bytes, 12U, "directoryOffset"),
-        .stringBytes = readU32(bytes, 16U, "stringBytes"),
-        .stringOffset = readU32(bytes, 20U, "stringOffset"),
-        .fileBytes = readU32(bytes, 24U, "fileBytes"),
-        .fileOffset = readU32(bytes, 28U, "fileOffset"),
-    };
-
-    const Header& header = archive.header_;
-    if (header.version != kVersion) {
-        throw ParseError("unsupported UDSP version");
-    }
-    if (header.directoryBytes % kRecordSize != 0U || header.fileBytes % kRecordSize != 0U) {
-        throw ParseError("UDSP record table size is not a multiple of 24");
-    }
-    if (header.directoryOffset < kHeaderSize) {
-        throw ParseError("UDSP payload overlaps the header");
-    }
-
-    const auto directoryEnd = checkedAdd(
-        header.directoryOffset, header.directoryBytes, "directory table");
-    const auto fileEnd = checkedAdd(header.fileOffset, header.fileBytes, "file table");
-    const auto stringEnd = checkedAdd(header.stringOffset, header.stringBytes, "string table");
-
-    if (directoryEnd != header.fileOffset || fileEnd != header.stringOffset ||
-        stringEnd != bytes.size()) {
-        throw ParseError("UDSP metadata tables are not contiguous at end of archive");
-    }
-
-    requireRange(header.directoryOffset, header.directoryBytes, bytes.size(), "directory table");
-    requireRange(header.fileOffset, header.fileBytes, bytes.size(), "file table");
-    requireRange(header.stringOffset, header.stringBytes, bytes.size(), "string table");
-
-    const auto strings = bytes.subspan(header.stringOffset, header.stringBytes);
+    archive.archiveSize_ = archiveSize;
+    archive.header_ = header;
     const auto directoryCount = header.directoryBytes / kRecordSize;
     const auto fileCount = header.fileBytes / kRecordSize;
     archive.directories_.reserve(directoryCount);
@@ -151,19 +186,19 @@ Archive Archive::parse(const std::span<const std::uint8_t> bytes) {
 
     std::uint32_t previousHash = 0U;
     for (std::size_t index = 0; index < directoryCount; ++index) {
-        const auto offset = static_cast<std::size_t>(header.directoryOffset) + index * kRecordSize;
+        const auto offset = index * kRecordSize;
         const auto field = indexedField("directory", index);
         DirectoryEntry entry{
-            .hash = readU32(bytes, offset, field),
-            .nameOffset = readU32(bytes, offset + 4U, field),
-            .unknown08 = readU32(bytes, offset + 8U, field),
-            .unknown0C = readU32(bytes, offset + 12U, field),
-            .fileCount = readU32(bytes, offset + 16U, field),
-            .fileTableByteOffset = readU32(bytes, offset + 20U, field),
+            .hash = readU32(directoryTable, offset, field),
+            .nameOffset = readU32(directoryTable, offset + 4U, field),
+            .unknown08 = readU32(directoryTable, offset + 8U, field),
+            .unknown0C = readU32(directoryTable, offset + 12U, field),
+            .fileCount = readU32(directoryTable, offset + 16U, field),
+            .fileTableByteOffset = readU32(directoryTable, offset + 20U, field),
             .firstFileIndex = 0U,
             .path = {},
         };
-        entry.path = readName(strings, entry.nameOffset, field);
+        entry.path = readName(stringTable, entry.nameOffset, field);
         if (entry.hash != nameHash(entry.path)) {
             throw ParseError(field + " has an invalid name hash");
         }
@@ -181,18 +216,18 @@ Archive Archive::parse(const std::span<const std::uint8_t> bytes) {
     }
 
     for (std::size_t index = 0; index < fileCount; ++index) {
-        const auto offset = static_cast<std::size_t>(header.fileOffset) + index * kRecordSize;
+        const auto offset = index * kRecordSize;
         const auto field = indexedField("file", index);
         FileEntry entry{
-            .hash = readU32(bytes, offset, field),
-            .nameOffset = readU32(bytes, offset + 4U, field),
-            .flags = readU32(bytes, offset + 8U, field),
-            .unpackedSize = readU32(bytes, offset + 12U, field),
-            .storedSize = readU32(bytes, offset + 16U, field),
-            .dataOffset = readU32(bytes, offset + 20U, field),
+            .hash = readU32(fileTable, offset, field),
+            .nameOffset = readU32(fileTable, offset + 4U, field),
+            .flags = readU32(fileTable, offset + 8U, field),
+            .unpackedSize = readU32(fileTable, offset + 12U, field),
+            .storedSize = readU32(fileTable, offset + 16U, field),
+            .dataOffset = readU32(fileTable, offset + 20U, field),
             .name = {},
         };
-        entry.name = readName(strings, entry.nameOffset, field);
+        entry.name = readName(stringTable, entry.nameOffset, field);
         if (entry.hash != nameHash(entry.name)) {
             throw ParseError(field + " has an invalid name hash");
         }
@@ -238,17 +273,29 @@ Archive Archive::open(const std::filesystem::path& path) {
         throw ParseError("cannot determine archive size: " + path.string());
     }
     const auto size = static_cast<std::uint64_t>(end);
-    if (size > std::numeric_limits<std::size_t>::max()) {
-        throw ParseError("archive is too large for this process");
-    }
 
-    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
-    input.seekg(0, std::ios::beg);
-    if (!bytes.empty() && !input.read(
-            reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()))) {
-        throw ParseError("cannot read archive: " + path.string());
+    std::array<std::uint8_t, kHeaderSize> headerBytes{};
+    readExact(input, 0U, headerBytes, path);
+    const auto header = readHeader(headerBytes);
+    validateLayout(header, size);
+
+    const auto metadataSize = size - header.directoryOffset;
+    if (metadataSize > std::numeric_limits<std::size_t>::max()) {
+        throw ParseError("UDSP metadata is too large for this process");
     }
-    return parse(bytes);
+    std::vector<std::uint8_t> metadata(static_cast<std::size_t>(metadataSize));
+    readExact(input, header.directoryOffset, metadata, path);
+
+    const auto directoryStart = std::size_t{0};
+    const auto fileStart = static_cast<std::size_t>(header.fileOffset - header.directoryOffset);
+    const auto stringStart = static_cast<std::size_t>(header.stringOffset - header.directoryOffset);
+    const auto metadataView = std::span<const std::uint8_t>(metadata);
+    return parseMetadata(
+        header,
+        size,
+        metadataView.subspan(directoryStart, header.directoryBytes),
+        metadataView.subspan(fileStart, header.fileBytes),
+        metadataView.subspan(stringStart, header.stringBytes));
 }
 
 std::vector<std::uint8_t> decompress(

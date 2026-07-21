@@ -27,6 +27,10 @@
 - Added three-platform portable CI including native ARM64 `macos-26`.
 - Generated reproducible LLVM sections/imports/exports reports for all 16 PE
   modules and confirmed the plugin factory ABI names.
+- Changed normal UDSP file opening to read only the header and metadata tail;
+  `Resource.up` metadata buffering fell from 170,642,453 to 130,961 bytes.
+- Draft PR #1 is published; portable CI passes on Ubuntu, Windows, and ARM64
+  macOS 26.
 
 ## Confirmed
 
@@ -54,9 +58,9 @@
 
 ## Next
 
-1. Convert `UDSP` parsing from full-file buffering to bounded random-access I/O.
-2. Analyze the executable/bootstrap and dynamic plugin loading contract.
-3. Define and implement the private `.afpack` conversion boundary.
+1. Analyze the executable/bootstrap and dynamic plugin loading contract.
+2. Define and implement the private `.afpack` conversion boundary.
+3. Add bounded file-payload reads for the local converter/runtime importer.
 4. Add a tested no-music asset configuration because the original CD/audio is
    unavailable.
 5. Create the initial iOS 16.4 application shell and unsigned Actions build.

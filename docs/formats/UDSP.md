@@ -143,9 +143,12 @@ every file record is referenced once, with no gaps or overlaps.
 - Read-only CLI: `udsp-list [--summary|--verify] <archive.up>`
 - Synthetic tests: `tests/UdspArchiveTests.cpp`
 
-The implementation currently reads an archive into memory. Before runtime iOS
-integration, parsing will move to bounded random-access I/O so the 170 MB main
-package does not require a second full-size allocation on the iPhone SE.
+`Archive::open` performs bounded random-access I/O: it reads the 32-byte header,
+validates offsets against the physical file length, and then loads only the
+metadata tail. For `Resource.up` that is 130,961 bytes instead of 170,642,453
+bytes (about 1/1,303 of the previous allocation). Diagnostic `--verify` mode
+deliberately buffers the full archive so it can validate every payload stream;
+that mode is tooling, not the iOS runtime path.
 
 ## Security requirements
 

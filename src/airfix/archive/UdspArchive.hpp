@@ -69,6 +69,13 @@ public:
     [[nodiscard]] std::uint64_t archiveSize() const noexcept { return archiveSize_; }
 
 private:
+    [[nodiscard]] static Archive parseMetadata(
+        Header header,
+        std::uint64_t archiveSize,
+        std::span<const std::uint8_t> directoryTable,
+        std::span<const std::uint8_t> fileTable,
+        std::span<const std::uint8_t> stringTable);
+
     Header header_;
     std::vector<DirectoryEntry> directories_;
     std::vector<FileEntry> files_;

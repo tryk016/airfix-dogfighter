@@ -41,8 +41,11 @@ int main(const int argc, const char* const* argv) {
 
     try {
         const auto pathIndex = summaryOnly || verifyPayloads ? 2 : 1;
-        const auto bytes = readArchive(argv[pathIndex]);
-        const auto archive = airfix::udsp::Archive::parse(bytes);
+        const std::string archivePath = argv[pathIndex];
+        const auto bytes = verifyPayloads ? readArchive(archivePath) : std::vector<std::uint8_t>{};
+        const auto archive = verifyPayloads
+            ? airfix::udsp::Archive::parse(bytes)
+            : airfix::udsp::Archive::open(archivePath);
         std::uint64_t storedBytes = 0U;
         std::uint64_t unpackedBytes = 0U;
         std::size_t compressedFiles = 0U;

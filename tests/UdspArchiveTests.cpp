@@ -1,6 +1,9 @@
 #include "airfix/archive/UdspArchive.hpp"
 
+#include <chrono>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <span>
@@ -11,6 +14,32 @@
 namespace {
 
 using Bytes = std::vector<std::uint8_t>;
+
+class TempFile final {
+public:
+    explicit TempFile(const Bytes& bytes) {
+        const auto suffix = std::chrono::steady_clock::now().time_since_epoch().count();
+        path_ = std::filesystem::temp_directory_path() /
+            ("airfix-udsp-test-" + std::to_string(suffix) + ".up");
+        std::ofstream output(path_, std::ios::binary);
+        output.write(
+            reinterpret_cast<const char*>(bytes.data()),
+            static_cast<std::streamsize>(bytes.size()));
+        if (!output) {
+            throw std::runtime_error("failed to create synthetic archive");
+        }
+    }
+
+    ~TempFile() {
+        std::error_code error;
+        std::filesystem::remove(path_, error);
+    }
+
+    [[nodiscard]] const std::filesystem::path& path() const noexcept { return path_; }
+
+private:
+    std::filesystem::path path_;
+};
 
 void appendU32(Bytes& bytes, const std::uint32_t value) {
     bytes.push_back(static_cast<std::uint8_t>(value));
@@ -125,6 +154,15 @@ void testValidArchive() {
     require(archive.files()[0].unpackedSize == 3U, "file size mismatch");
 }
 
+void testFileBackedArchive() {
+    const auto bytes = makeArchive();
+    const TempFile file(bytes);
+    const auto archive = airfix::udsp::Archive::open(file.path());
+    require(archive.archiveSize() == bytes.size(), "file-backed archive size mismatch");
+    require(archive.directories().size() == 1U, "file-backed directory count mismatch");
+    require(archive.files().size() == 1U, "file-backed file count mismatch");
+}
+
 void testMalformedArchives() {
     {
         auto bytes = makeArchive();
@@ -186,6 +224,7 @@ int main() {
     try {
         testHash();
         testValidArchive();
+        testFileBackedArchive();
         testMalformedArchives();
         testDecompression();
         std::cout << "all UDSP tests passed\n";

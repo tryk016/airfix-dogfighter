@@ -117,3 +117,15 @@ superseded evidence.
   factory seams plus version/name/multiplayer metadata.
 - Raw reports remain under ignored `artifacts/pe/`; only reproducible tooling and
   durable conclusions are committed.
+
+## 2026-07-21 — portable CI and bounded metadata I/O
+
+- Draft PR #1 passed CMake/CTest on Ubuntu 24.04, Windows Server 2025, and native
+  ARM64 macOS 26 GitHub-hosted runners.
+- `EV-20260721-012`: refactored `Archive::open` to read only the 32-byte header
+  and validated metadata tail. `Resource.up` now needs 130,961 bytes of metadata
+  buffering rather than a full 170,642,453-byte copy.
+- Kept full-file buffering isolated to the explicit tooling-only `--verify`
+  path, which validates stored compression streams.
+- Added a synthetic filesystem-backed test in addition to in-memory and
+  malformed-input tests.
