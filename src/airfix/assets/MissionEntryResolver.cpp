@@ -1,6 +1,7 @@
 #include "airfix/assets/MissionEntryResolver.hpp"
 
 #include <string_view>
+#include <utility>
 
 namespace airfix::assets {
 namespace {
@@ -78,26 +79,26 @@ MissionEntryResolution resolveMissionEntries(
     result.placements.reserve(level.objects.size());
     for (std::size_t index = 0U; index < level.objects.size(); ++index) {
         const auto& placement = level.objects[index];
-        result.placements.push_back({
-            .placementIndex = index,
-            .placement = placement,
-            .objectEntry = resolveEntry(
-                placement.objectPath,
-                archive,
-                limits.maximumLogicalPathBytes),
-        });
+        ResolvedMissionPlacement resolved;
+        resolved.placementIndex = index;
+        resolved.placement = placement;
+        resolved.objectEntry = resolveEntry(
+            placement.objectPath,
+            archive,
+            limits.maximumLogicalPathBytes);
+        result.placements.push_back(std::move(resolved));
     }
     result.models.reserve(level.models.size());
     for (std::size_t index = 0U; index < level.models.size(); ++index) {
         const auto& model = level.models[index];
-        result.models.push_back({
-            .modelIndex = index,
-            .model = model,
-            .objectEntry = resolveEntry(
-                model.placement.objectPath,
-                archive,
-                limits.maximumLogicalPathBytes),
-        });
+        ResolvedMissionModelPlacement resolved;
+        resolved.modelIndex = index;
+        resolved.model = model;
+        resolved.objectEntry = resolveEntry(
+            model.placement.objectPath,
+            archive,
+            limits.maximumLogicalPathBytes);
+        result.models.push_back(std::move(resolved));
     }
     return result;
 }
