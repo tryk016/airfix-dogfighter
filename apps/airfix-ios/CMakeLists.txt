@@ -30,6 +30,7 @@ target_compile_options(airfix_ios PRIVATE
     -Werror=unguarded-availability-new
 )
 target_link_libraries(airfix_ios PRIVATE
+    airfix::afpack
     airfix::render
     airfix::runtime
     "-framework UIKit"

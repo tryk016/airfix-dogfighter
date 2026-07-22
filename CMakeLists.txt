@@ -147,6 +147,7 @@ endif()
 add_library(airfix_afpack
     src/airfix/package/AfPack.cpp
     src/airfix/package/AfPackActiveRecord.cpp
+    src/airfix/package/AfPackInstaller.cpp
     src/airfix/package/AfPackManifest.cpp
     src/airfix/package/AfPackValidation.cpp
     src/airfix/package/AfPackWriter.cpp
@@ -158,7 +159,7 @@ target_include_directories(airfix_afpack
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
 )
 target_compile_features(airfix_afpack PUBLIC cxx_std_20)
-target_link_libraries(airfix_afpack PUBLIC airfix::crypto airfix::udsp)
+target_link_libraries(airfix_afpack PUBLIC airfix::crypto airfix::io airfix::udsp)
 
 if(MSVC)
     target_compile_options(airfix_afpack PRIVATE /W4 /permissive-)
@@ -214,6 +215,10 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_afpack_active_record_tests tests/AfPackActiveRecordTests.cpp)
     target_link_libraries(airfix_afpack_active_record_tests PRIVATE airfix::afpack)
     add_test(NAME airfix_afpack_active_record_tests COMMAND airfix_afpack_active_record_tests)
+
+    add_executable(airfix_afpack_installer_tests tests/AfPackInstallerTests.cpp)
+    target_link_libraries(airfix_afpack_installer_tests PRIVATE airfix::afpack)
+    add_test(NAME airfix_afpack_installer_tests COMMAND airfix_afpack_installer_tests)
 
     add_executable(airfix_crypto_tests tests/Sha256Tests.cpp)
     target_link_libraries(airfix_crypto_tests PRIVATE airfix::crypto)

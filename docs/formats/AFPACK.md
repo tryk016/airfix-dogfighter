@@ -2,7 +2,8 @@
 
 **State:** version 1 container, parser, verifier, local writer, strict
 semantic manifest validation, active-record format, and durable publication
-primitives implemented; iOS importer pending
+primitives plus portable installer implemented; native iOS import UI and
+startup recovery pending
 
 **Confidence:** design contract (not an original Airfix format)
 
@@ -221,6 +222,7 @@ Diagnostics may log logical paths, sizes, and digests, but never payload bytes.
 - strict manifest parser/validator: `src/airfix/package/AfPackManifest.*`;
 - stable-source validation gate: `src/airfix/package/AfPackValidation.*`;
 - canonical active pointer: `src/airfix/package/AfPackActiveRecord.*`;
+- composed installer: `src/airfix/package/AfPackInstaller.*`;
 - platform durability operations: `src/airfix/io/DurableFile*`;
 - deterministic writer: `src/airfix/package/AfPackWriter.*`;
 - allowlisted local CLI: `afpack-create`;
@@ -230,7 +232,9 @@ Diagnostics may log logical paths, sizes, and digests, but never payload bytes.
 - strict semantic/JSON tests: `tests/AfPackManifestTests.cpp`;
 - validation, AFAC, and publication tests: `tests/AfPackValidationTests.cpp`,
   `tests/AfPackActiveRecordTests.cpp`, and `tests/DurableFileTests.cpp`;
-- iOS streaming verifier/importer: pending.
+- complete installer transaction tests: `tests/AfPackInstallerTests.cpp`;
+- native iOS document picker/progress UI and startup recovery: pending; see
+  `docs/systems/CONTENT-INSTALL.md`.
 
 `Pack::open` reads the fixed header plus metadata through `dataOffset`; it does
 not buffer payloads. `Pack::parse` exists for synthetic tests and small trusted
