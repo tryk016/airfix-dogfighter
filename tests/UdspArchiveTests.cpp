@@ -220,8 +220,23 @@ void testLogicalLookup() {
             (void)airfix::udsp::normalizeLogicalPath(unsafe);
         });
     }
-    require(!airfix::udsp::isLogicalPathValid("Game/file.bin", 8U),
-        "path limit was ignored by non-throwing validation");
+    const std::array forbiddenPaths{
+        std::string{"Game"} + static_cast<char>(0x01) + "file.bin",
+        std::string{"Game"} + static_cast<char>(0x7F) + "file.bin",
+    };
+    for (const auto& forbidden : forbiddenPaths) {
+        require(!airfix::udsp::isLogicalPathValid(forbidden),
+            "control character passed non-throwing path validation");
+        requireParseError([&] {
+            (void)airfix::udsp::normalizeLogicalPath(forbidden);
+        });
+    }
+    constexpr std::string_view exactLimitPath = "Game/file.bin";
+    require(airfix::udsp::isLogicalPathValid(
+                exactLimitPath, exactLimitPath.size()) &&
+            !airfix::udsp::isLogicalPathValid(
+                exactLimitPath, exactLimitPath.size() - 1U),
+        "non-throwing path validation mishandled its exact size boundary");
     requireParseError([&] {
         (void)archive.lookup("Game\\Objects\\plane.bin", 8U);
     });

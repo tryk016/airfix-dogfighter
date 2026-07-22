@@ -187,9 +187,7 @@ void require(const bool condition, const std::string& message) {
 }
 
 void testStatusesMetadataAndStablePlacements() {
-    std::cerr << "mission-resolver checkpoint: statuses begin\n";
     const auto archive = testArchive();
-    std::cerr << "mission-resolver checkpoint: archive built\n";
     airfix::assets::LevelDefinition level;
     level.worldPath = "worlds/house.FHOU";
     level.objects = {
@@ -203,13 +201,10 @@ void testStatusesMetadataAndStablePlacements() {
         modelPlacement("objects/PLANE.obje", 60.0F),
         modelPlacement("Missing/model.object", 70.0F),
     };
-    std::cerr << "mission-resolver checkpoint: level built\n";
 
     const auto result = airfix::assets::resolveMissionEntries(level, archive);
-    std::cerr << "mission-resolver checkpoint: resolved\n";
     using Status = airfix::assets::MissionEntryStatus;
     require(result.issues.empty(), "valid-size resolution reported an issue");
-    std::cerr << "mission-resolver checkpoint: issues assertion complete\n";
     require(result.worldEntry.status == Status::unique &&
             result.worldEntry.logicalPath == "worlds\\house.FHOU" &&
             result.worldEntry.archiveDirectoryIndex.has_value() &&
@@ -217,10 +212,8 @@ void testStatusesMetadataAndStablePlacements() {
             result.worldEntry.archiveLogicalPath ==
                 std::optional<std::string>{"Worlds\\House.fhou"},
         "world separator/case lookup metadata mismatch");
-    std::cerr << "mission-resolver checkpoint: world assertion complete\n";
     require(result.placements.size() == level.objects.size(),
         "placement count or stable processing was lost");
-    std::cerr << "mission-resolver checkpoint: placement-count assertion complete\n";
     require(result.models.size() == level.models.size() &&
             result.models[0].modelIndex == 0U &&
             result.models[1].modelIndex == 1U &&
@@ -233,7 +226,6 @@ void testStatusesMetadataAndStablePlacements() {
             result.models[0].objectEntry.status == Status::unique &&
             result.models[1].objectEntry.status == Status::notFound,
         "model placement metadata, order, or lookup status mismatch");
-    std::cerr << "mission-resolver checkpoint: model assertions complete\n";
 
     const std::array expectedStatuses{
         Status::unique,
@@ -254,7 +246,6 @@ void testStatusesMetadataAndStablePlacements() {
         require(resolved.objectEntry.status == expectedStatuses[index],
             "placement lookup status mismatch");
     }
-    std::cerr << "mission-resolver checkpoint: placement assertions complete\n";
     require(result.placements[0].objectEntry.logicalPath ==
             "objects\\PLANE.obje" &&
             result.placements[0].objectEntry.archiveLogicalPath ==
@@ -269,28 +260,20 @@ void testStatusesMetadataAndStablePlacements() {
                 !result.placements[index].objectEntry.archiveLogicalPath.has_value(),
             "non-unique lookup exposed archive indices");
     }
-    std::cerr << "mission-resolver checkpoint: statuses end\n";
 }
 
 void testMissingAndInvalidWorld() {
-    std::cerr << "mission-resolver checkpoint: missing begin\n";
     const auto archive = testArchive();
-    std::cerr << "mission-resolver checkpoint: missing archive built\n";
     const auto missing = airfix::assets::resolveMissionEntries({}, archive);
-    std::cerr << "mission-resolver checkpoint: missing resolved\n";
     require(missing.worldEntry.status == airfix::assets::MissionEntryStatus::missing &&
             missing.worldEntry.logicalPath.empty(),
         "absent world path was not reported as missing");
-    std::cerr << "mission-resolver checkpoint: missing assertion complete\n";
 
     airfix::assets::LevelDefinition level;
     level.worldPath = "";
-    std::cerr << "mission-resolver checkpoint: invalid level built\n";
     const auto invalid = airfix::assets::resolveMissionEntries(level, archive);
-    std::cerr << "mission-resolver checkpoint: invalid resolved\n";
     require(invalid.worldEntry.status == airfix::assets::MissionEntryStatus::invalid,
         "present empty world path was not reported as invalid");
-    std::cerr << "mission-resolver checkpoint: missing end\n";
 }
 
 void testLimitsFailClosed() {
@@ -350,13 +333,9 @@ void testLimitsFailClosed() {
 
 int main() {
     try {
-        std::cerr << "mission-resolver checkpoint: main begin\n";
         testStatusesMetadataAndStablePlacements();
-        std::cerr << "mission-resolver checkpoint: statuses returned\n";
         testMissingAndInvalidWorld();
-        std::cerr << "mission-resolver checkpoint: missing returned\n";
         testLimitsFailClosed();
-        std::cerr << "mission-resolver checkpoint: limits returned\n";
         std::cout << "all mission entry resolver tests passed\n";
         return 0;
     }
