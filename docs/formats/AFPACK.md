@@ -1,7 +1,7 @@
 # FMT-AFPACK — private iOS content container
 
-**State:** version 1 container, parser, verifier, and local writer implemented;
-iOS importer pending
+**State:** version 1 container, parser, verifier, local writer, and strict
+semantic manifest validation implemented; iOS importer pending
 
 **Confidence:** design contract (not an original Airfix format)
 
@@ -185,11 +185,13 @@ Diagnostics may log logical paths, sizes, and digests, but never payload bytes.
 ## Portable implementation
 
 - metadata parser: `src/airfix/package/AfPack.*`;
+- strict manifest parser/validator: `src/airfix/package/AfPackManifest.*`;
 - deterministic writer: `src/airfix/package/AfPackWriter.*`;
 - allowlisted local CLI: `afpack-create`;
 - portable streaming SHA-256: `src/airfix/crypto/Sha256.*`;
 - synthetic valid/malformed and limit tests: `tests/AfPackTests.cpp` and
   `tests/AfPackLimitsTests.cpp`;
+- strict semantic/JSON tests: `tests/AfPackManifestTests.cpp`;
 - iOS streaming verifier/importer: pending.
 
 `Pack::open` reads the fixed header plus metadata through `dataOffset`; it does
@@ -204,6 +206,15 @@ allocation or payload reads. `Pack::readEntry` additionally requires a caller
 byte limit and verifies the returned bytes against the entry SHA-256, so a
 same-size file replacement cannot silently return data belonging to different
 metadata.
+
+`parseManifest` is a bounded JSON and schema validator rather than a permissive
+configuration reader. It rejects duplicate/unknown/missing fields, malformed
+UTF-8 and Unicode escapes, non-integer or overflowing numbers, trailing data,
+and configured input/string/item/depth/entry limits. Version 1 requires the
+exact game/source identity, one supported locale, all unsupported capabilities
+set false, and a one-to-one path/kind/size/SHA-256 match between the manifest
+audit and the three-entry AFPACK table. Its runtime allowlist is exactly
+`manifest.json`, `source/Resource.up`, and the locale-matched archive.
 
 The initial CLI accepts only an installation root, one of the four observed
 language names, and an output path. It constructs the two-entry allowlist

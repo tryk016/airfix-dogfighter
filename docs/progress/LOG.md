@@ -506,3 +506,34 @@ superseded evidence.
   otherwise unknown extension in Xcode's source phase. The build now invokes a
   bounded CMake helper after link and reads Xcode's real `TARGET_BUILD_DIR` and
   `WRAPPER_NAME`; bundle verification remains fail-closed.
+- Commit `1b055fa` passed portable CI run `29918440818` on Ubuntu, Windows, and
+  ARM64 macOS plus unsigned iOS run `29918440831` for `iphoneos` and
+  `iphonesimulator`; both application bundles contain non-empty
+  `default.metallib` output from Xcode 26.6.
+
+## 2026-07-21 — strict AFPACK manifest semantics
+
+- Added a bounded portable JSON parser and typed manifest v1 model. It validates
+  UTF-8 and surrogate pairs, integer overflow, duplicate keys, exact known
+  fields, and configurable input/string/item/depth/entry ceilings.
+- Semantic validation now requires Airfix Dogfighter 1.01, one of the four
+  supported locales, no music/multiplayer/editors, and exactly Resource plus the
+  matching localization archive. Path, kind, size, and lowercase SHA-256 must
+  agree one-to-one with the already validated AFPACK entry table.
+- Synthetic tests cover the canonical writer shape, all four locales, schema,
+  version, game, capabilities, allowlist/table disagreements, digest spelling,
+  malformed Unicode/JSON, trailing bytes, numeric overflow, and parser limits.
+
+## 2026-07-21 — bounded nested UDSP metadata
+
+- Added one shared `ParseLimits` policy to `Archive::parse`, `open`, and
+  `openRegion`. Archive/metadata sizes, directory/file counts, string/name
+  bytes, per-entry stored/unpacked sizes, and checked aggregate unpacked size
+  are validated before the related read, reserve, or string allocation.
+- Exact/+1 synthetic cases cover all ten ceilings, including aliasing records
+  that repeatedly reference the same decoded name, a 1 MiB file-backed metadata
+  tail, a two-entry aggregate wider than 32 bits, and a bounded region inside a
+  containing file. Existing UDSP behavior remains source-compatible.
+- The read-only real `Resource.up` passes the default policy: 170,642,453 bytes,
+  130,961 metadata bytes, 478 directories, 2,628 files, and 191,873,346 total
+  declared unpacked bytes. No source payload entered the repository.

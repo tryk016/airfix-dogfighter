@@ -45,21 +45,46 @@ void requireRange(
         (static_cast<std::uint32_t>(bytes[offset + 3U]) << 24U);
 }
 
-[[nodiscard]] std::string readName(
+[[nodiscard]] std::string_view readName(
     const std::span<const std::uint8_t> strings,
     const std::uint32_t offset,
-    const std::string_view kind) {
+    const std::string_view kind,
+    const std::uint64_t maxNameSize) {
     if (offset >= strings.size()) {
         throw ParseError(std::string(kind) + " name offset is outside the string table");
     }
 
     const auto begin = strings.begin() + static_cast<std::ptrdiff_t>(offset);
-    const auto end = std::find(begin, strings.end(), std::uint8_t{0});
+    auto end = begin;
+    std::uint64_t nameSize = 0U;
+    while (end != strings.end() && *end != std::uint8_t{0}) {
+        if (nameSize == maxNameSize) {
+            throw ParseError(std::string(kind) + " name exceeds the configured limit");
+        }
+        ++end;
+        ++nameSize;
+    }
     if (end == strings.end()) {
         throw ParseError(std::string(kind) + " name is not NUL terminated");
     }
 
     return {reinterpret_cast<const char*>(&*begin), static_cast<std::size_t>(end - begin)};
+}
+
+[[nodiscard]] std::string decodeName(
+    const std::span<const std::uint8_t> strings,
+    const std::uint32_t offset,
+    const std::string_view kind,
+    const ParseLimits& limits,
+    std::uint64_t& totalDecodedNameBytes) {
+    const auto name = readName(strings, offset, kind, limits.maxNameSize);
+    const auto nextTotal = checkedAdd(
+        totalDecodedNameBytes, name.size(), "UDSP total decoded name bytes");
+    if (nextTotal > limits.maxTotalDecodedNameBytes) {
+        throw ParseError("UDSP total decoded name bytes exceeds the configured limit");
+    }
+    totalDecodedNameBytes = nextTotal;
+    return std::string(name);
 }
 
 [[nodiscard]] std::int32_t legacyLower(const std::uint8_t value) noexcept {
@@ -140,6 +165,32 @@ void validateLayout(const Header& header, const std::uint64_t archiveSize) {
     requireRange(header.directoryOffset, header.directoryBytes, archiveSize, "directory table");
     requireRange(header.fileOffset, header.fileBytes, archiveSize, "file table");
     requireRange(header.stringOffset, header.stringBytes, archiveSize, "string table");
+}
+
+void validateLimits(
+    const Header& header,
+    const std::uint64_t archiveSize,
+    const ParseLimits& limits) {
+    if (archiveSize > limits.maxArchiveSize) {
+        throw ParseError("UDSP archive exceeds the configured size limit");
+    }
+
+    const auto metadataSize = archiveSize - header.directoryOffset;
+    if (metadataSize > limits.maxMetadataSize) {
+        throw ParseError("UDSP metadata exceeds the configured size limit");
+    }
+
+    const auto directoryCount = header.directoryBytes / kRecordSize;
+    if (directoryCount > limits.maxDirectoryCount) {
+        throw ParseError("UDSP directory count exceeds the configured limit");
+    }
+    const auto fileCount = header.fileBytes / kRecordSize;
+    if (fileCount > limits.maxFileCount) {
+        throw ParseError("UDSP file count exceeds the configured limit");
+    }
+    if (header.stringBytes > limits.maxStringTableSize) {
+        throw ParseError("UDSP string table exceeds the configured size limit");
+    }
 }
 
 void readExact(
@@ -272,15 +323,22 @@ FileLookupResult Archive::lookup(
     return result;
 }
 
-Archive Archive::parse(const std::span<const std::uint8_t> bytes) {
+Archive Archive::parse(
+    const std::span<const std::uint8_t> bytes,
+    const ParseLimits& limits) {
+    if (bytes.size() > limits.maxArchiveSize) {
+        throw ParseError("UDSP archive exceeds the configured size limit");
+    }
     const auto header = readHeader(bytes);
     validateLayout(header, bytes.size());
+    validateLimits(header, bytes.size(), limits);
     return parseMetadata(
         header,
         bytes.size(),
         bytes.subspan(header.directoryOffset, header.directoryBytes),
         bytes.subspan(header.fileOffset, header.fileBytes),
-        bytes.subspan(header.stringOffset, header.stringBytes));
+        bytes.subspan(header.stringOffset, header.stringBytes),
+        limits);
 }
 
 Archive Archive::parseMetadata(
@@ -288,7 +346,8 @@ Archive Archive::parseMetadata(
     const std::uint64_t archiveSize,
     const std::span<const std::uint8_t> directoryTable,
     const std::span<const std::uint8_t> fileTable,
-    const std::span<const std::uint8_t> stringTable) {
+    const std::span<const std::uint8_t> stringTable,
+    const ParseLimits& limits) {
     Archive archive;
     archive.archiveSize_ = archiveSize;
     archive.header_ = header;
@@ -297,6 +356,7 @@ Archive Archive::parseMetadata(
     archive.directories_.reserve(directoryCount);
     archive.files_.reserve(fileCount);
 
+    std::uint64_t totalDecodedNameBytes = 0U;
     std::uint32_t previousHash = 0U;
     for (std::size_t index = 0; index < directoryCount; ++index) {
         const auto offset = index * kRecordSize;
@@ -311,7 +371,8 @@ Archive Archive::parseMetadata(
             .firstFileIndex = 0U,
             .path = {},
         };
-        entry.path = readName(stringTable, entry.nameOffset, field);
+        entry.path = decodeName(
+            stringTable, entry.nameOffset, field, limits, totalDecodedNameBytes);
         if (entry.hash != nameHash(entry.path)) {
             throw ParseError(field + " has an invalid name hash");
         }
@@ -328,6 +389,7 @@ Archive Archive::parseMetadata(
         archive.directories_.push_back(std::move(entry));
     }
 
+    std::uint64_t totalUnpackedSize = 0U;
     for (std::size_t index = 0; index < fileCount; ++index) {
         const auto offset = index * kRecordSize;
         const auto field = indexedField("file", index);
@@ -340,7 +402,19 @@ Archive Archive::parseMetadata(
             .dataOffset = readU32(fileTable, offset + 20U, field),
             .name = {},
         };
-        entry.name = readName(stringTable, entry.nameOffset, field);
+        if (entry.storedSize > limits.maxStoredEntrySize) {
+            throw ParseError(field + " stored size exceeds the configured limit");
+        }
+        if (entry.unpackedSize > limits.maxUnpackedEntrySize) {
+            throw ParseError(field + " unpacked size exceeds the configured limit");
+        }
+        totalUnpackedSize = checkedAdd(
+            totalUnpackedSize, entry.unpackedSize, "UDSP total unpacked size");
+        if (totalUnpackedSize > limits.maxTotalUnpackedSize) {
+            throw ParseError("UDSP total unpacked size exceeds the configured limit");
+        }
+        entry.name = decodeName(
+            stringTable, entry.nameOffset, field, limits, totalDecodedNameBytes);
         if (entry.hash != nameHash(entry.name)) {
             throw ParseError(field + " has an invalid name hash");
         }
@@ -375,19 +449,22 @@ Archive Archive::parseMetadata(
     return archive;
 }
 
-Archive Archive::open(const std::filesystem::path& path) {
+Archive Archive::open(
+    const std::filesystem::path& path,
+    const ParseLimits& limits) {
     std::error_code sizeError;
     const auto size = std::filesystem::file_size(path, sizeError);
     if (sizeError) {
         throw ParseError("cannot determine archive size: " + path.string());
     }
-    return openRegion(path, 0U, size);
+    return openRegion(path, 0U, size, limits);
 }
 
 Archive Archive::openRegion(
     const std::filesystem::path& path,
     const std::uint64_t offset,
-    const std::uint64_t size) {
+    const std::uint64_t size,
+    const ParseLimits& limits) {
     std::ifstream input(path, std::ios::binary | std::ios::ate);
     if (!input) {
         throw ParseError("cannot open archive: " + path.string());
@@ -399,6 +476,9 @@ Archive Archive::openRegion(
     }
     const auto physicalSize = static_cast<std::uint64_t>(end);
     requireRange(offset, size, physicalSize, "UDSP containing-file region");
+    if (size > limits.maxArchiveSize) {
+        throw ParseError("UDSP archive exceeds the configured size limit");
+    }
     if (size < kHeaderSize) {
         throw ParseError("archive region is shorter than the UDSP header");
     }
@@ -407,6 +487,7 @@ Archive Archive::openRegion(
     readExact(input, offset, headerBytes, path);
     const auto header = readHeader(headerBytes);
     validateLayout(header, size);
+    validateLimits(header, size, limits);
 
     const auto metadataSize = size - header.directoryOffset;
     if (metadataSize > std::numeric_limits<std::size_t>::max()) {
@@ -428,7 +509,8 @@ Archive Archive::openRegion(
         size,
         metadataView.subspan(directoryStart, header.directoryBytes),
         metadataView.subspan(fileStart, header.fileBytes),
-        metadataView.subspan(stringStart, header.stringBytes));
+        metadataView.subspan(stringStart, header.stringBytes),
+        limits);
     archive.backingOffset_ = offset;
     return archive;
 }

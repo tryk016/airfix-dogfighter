@@ -164,7 +164,7 @@ every file record is referenced once, with no gaps or overlaps.
 - Library: `src/airfix/archive/UdspArchive.*`
 - Read-only CLI:
   `udsp-list [--summary|--verify|--inventory|--resolve-objects] <archive.up>`
-- Synthetic tests: `tests/UdspArchiveTests.cpp`
+- Synthetic tests: `tests/UdspArchiveTests.cpp` and `tests/UdspLimitsTests.cpp`
 
 `Archive::open` performs bounded random-access I/O: it reads the 32-byte header,
 validates offsets against the physical file length, and then loads only the
@@ -177,6 +177,16 @@ that mode is tooling, not the iOS runtime path.
 a `[baseOffset, size)` region of a containing file. AFPACK validation therefore
 opens nested `Resource.up` and localization archives directly in place without
 copying their 192 MB combined payload to another buffer or temporary file.
+
+`Archive::parse`, `open`, and `openRegion` accept the same explicit
+`ParseLimits`. Archive and metadata size, directory/file counts, string-table
+and individual/aggregate decoded-name bytes, stored/unpacked entry sizes, and
+checked aggregate unpacked size are rejected before their corresponding
+metadata read, reserve, or string construction. The default policy accepts the
+measured v1.01
+`Resource.up` (170,642,453 archive bytes, 130,961 metadata bytes, 478
+directories, 2,628 files, and 191,873,346 declared unpacked bytes) with bounded
+headroom. Callers can tighten the policy further without changing the parser.
 
 `readFilePrefix` decodes only the requested logical prefix for signature
 classification. `readFile` applies a caller-provided decoded-size limit and is

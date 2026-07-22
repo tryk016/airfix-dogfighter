@@ -406,8 +406,9 @@ contract, evidence, implementation, tests, parity result, and documentation agre
    authored-chain/anomaly-fallback Metal upload contract.
 6. **Completed:** produce a private first-model diagnostic using resolved mesh,
    material, and texture edges without committing derived asset data.
-7. Complete AFPACK semantic manifest checks and an atomic iOS
-   import/replacement service; the no-music package configuration is tested.
+7. **In progress:** strict AFPACK semantic manifest checks and the no-music
+   package configuration are tested; implement the atomic iOS
+   import/replacement service.
 8. Establish the isolated reference runtime and record the first deterministic
    flight/control/render scenarios; this remains independent of host static
    analysis until the isolated environment is available.

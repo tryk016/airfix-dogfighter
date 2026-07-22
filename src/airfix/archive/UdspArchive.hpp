@@ -68,14 +68,32 @@ struct FileLookupResult {
     std::size_t fileIndex{};
 };
 
+struct ParseLimits {
+    std::uint64_t maxArchiveSize{512ULL * 1024ULL * 1024ULL};
+    std::uint64_t maxMetadataSize{8ULL * 1024ULL * 1024ULL};
+    std::uint64_t maxDirectoryCount{16'384ULL};
+    std::uint64_t maxFileCount{65'536ULL};
+    std::uint64_t maxStringTableSize{4ULL * 1024ULL * 1024ULL};
+    std::uint64_t maxNameSize{1'024ULL};
+    std::uint64_t maxTotalDecodedNameBytes{16ULL * 1024ULL * 1024ULL};
+    std::uint64_t maxStoredEntrySize{256ULL * 1024ULL * 1024ULL};
+    std::uint64_t maxUnpackedEntrySize{512ULL * 1024ULL * 1024ULL};
+    std::uint64_t maxTotalUnpackedSize{1ULL * 1024ULL * 1024ULL * 1024ULL};
+};
+
 class Archive final {
 public:
-    [[nodiscard]] static Archive parse(std::span<const std::uint8_t> bytes);
-    [[nodiscard]] static Archive open(const std::filesystem::path& path);
+    [[nodiscard]] static Archive parse(
+        std::span<const std::uint8_t> bytes,
+        const ParseLimits& limits = {});
+    [[nodiscard]] static Archive open(
+        const std::filesystem::path& path,
+        const ParseLimits& limits = {});
     [[nodiscard]] static Archive openRegion(
         const std::filesystem::path& path,
         std::uint64_t offset,
-        std::uint64_t size);
+        std::uint64_t size,
+        const ParseLimits& limits = {});
 
     [[nodiscard]] const Header& header() const noexcept { return header_; }
     [[nodiscard]] const std::vector<DirectoryEntry>& directories() const noexcept {
@@ -94,7 +112,8 @@ private:
         std::uint64_t archiveSize,
         std::span<const std::uint8_t> directoryTable,
         std::span<const std::uint8_t> fileTable,
-        std::span<const std::uint8_t> stringTable);
+        std::span<const std::uint8_t> stringTable,
+        const ParseLimits& limits);
 
     Header header_;
     std::vector<DirectoryEntry> directories_;

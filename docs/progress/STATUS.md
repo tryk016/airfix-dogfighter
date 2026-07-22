@@ -48,6 +48,12 @@
 - Added explicit archive/metadata/entry/path/string-table/payload ceilings before
   allocation or reads. Bounded file-backed entry reads verify SHA-256 and reject
   both changed file size and same-size payload replacement.
+- Implemented strict bounded JSON and semantic validation for AFPACK manifest
+  v1, including exact game/source/capability compatibility, locale allowlisting,
+  and a one-to-one audit against the container entry table.
+- Added parser limits for nested UDSP archive/metadata/tables/names and declared
+  stored, per-entry unpacked, and aggregate unpacked sizes. Checks precede
+  metadata allocation and the real Resource archive passes the default policy.
 - Added bounded UDSP-in-container reads and completed a real English content
   pack round trip (192,755,765 bytes, 3 entries) outside Git; the temporary pack
   was removed after verification.
@@ -137,8 +143,8 @@
 1. Decode the independent `0x4000` placed graph needed for a faithful first
    room; static grouped-aircraft rendering and parent-relative local math are
    complete.
-2. Implement AFPACK manifest semantic checks and the transactional iOS import
-   service; the converter's no-music configuration is now tested.
+2. Implement the transactional AFPACK activation/replacement service; strict
+   manifest semantics and the converter's no-music configuration are tested.
 3. Connect the draw payload and texture upload policy to the Metal shell, first
    with unlit/no-cull diagnostics and then with evidence-backed render states.
 4. Implement native UIKit and Game Controller adapters over the deterministic
