@@ -19,10 +19,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-24.04
-          - windows-2025
-          - macos-26
+        include:
+          - os: ubuntu-24.04
+            cxx-flags: ""
+            linker-flags: ""
+          - os: windows-2025
+            cxx-flags: "/fsanitize=address /Zi"
+            linker-flags: "/INCREMENTAL:NO /DEBUG"
+          - os: macos-26
+            cxx-flags: ""
+            linker-flags: ""
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
@@ -35,7 +41,12 @@ jobs:
         run: cmake --version
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DAIRFIX_BUILD_TESTS=ON
+        run: >-
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DAIRFIX_BUILD_TESTS=ON
+          -DCMAKE_CXX_FLAGS="${{ matrix.cxx-flags }}"
+          -DCMAKE_EXE_LINKER_FLAGS="${{ matrix.linker-flags }}"
 
       - name: Build
         run: cmake --build build --config Release --parallel
