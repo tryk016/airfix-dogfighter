@@ -33,6 +33,9 @@
   macOS 26, including the post-fix AFPACK streaming tests on Windows.
 - Added a data-less UIKit/Metal iPhone shell generated through CMake, a portable
   lifecycle/content state machine, and a public-source boundary scanner.
+- Added a public-data Metal smoke renderer that consumes the exported
+  `DrawModelPayload`, renders shared mesh instances and ordered ranges, and
+  packages an offline-compiled shader library; private content is not bundled.
 - Unsigned ARM64 `iphoneos` and `iphonesimulator` builds pass on Xcode 26.6 with
   verified minimum iOS 16.4 and no private files in either bundle.
 - Recovered package-chain startup and the type/mode/graphics plugin discovery,

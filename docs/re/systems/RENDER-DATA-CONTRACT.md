@@ -1,8 +1,9 @@
 # Backend-neutral render data and first-model diagnostic
 
-**State:** mesh/model payload and private CPU diagnostic implemented; Metal backend pending
+**State:** mesh/model payload, private CPU diagnostic, and public synthetic
+Metal smoke path implemented; private asset-backed Metal path pending
 
-**Evidence:** `EV-20260721-030` through `EV-20260721-032`
+**Evidence:** `EV-20260721-030` through `EV-20260721-034`
 
 ## Texture lookup
 
@@ -71,9 +72,16 @@ hashes remain ignored and uncommitted.
 
 ## Metal handoff
 
-The Metal backend can upload `DrawMeshPayload` without repeating asset-format
-logic. Remaining backend decisions are buffer ownership/cache handles, shader
-layout, projection/depth convention, final front-face/culling state,
-alpha/blending behavior, sampler choice, and authored/generated mip upload.
-The first Metal pass stays unlit/reference-oriented and keeps culling disabled
-until parity diagnostics establish final viewport parity.
+The data-less iOS shell now proves the first complete handoff with public
+synthetic data. `AirfixMetalRenderer` consumes the exported `DrawModelPayload`,
+explicitly repacks vertices and column-vector transforms into a documented
+CPU/GPU ABI, uploads one shared mesh and RGBA8 texture, then draws two instances
+and their ranges in source order. The offline `.metal` source is compiled into
+the application `default.metallib`; bundle verification requires it to exist.
+
+This smoke pipeline uses BGRA8 color, Depth32Float with less/write, nearest
+clamp sampling, no blending, and no culling. It does not yet load AFPACK or
+private textures. Remaining backend work is resource ownership/cache handles,
+the authored/generated mip upload policy, final projection/front-face and
+blending decisions, then the asset-backed room path. The reference-oriented
+pass keeps culling disabled until parity diagnostics establish viewport parity.

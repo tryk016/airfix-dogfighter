@@ -1,13 +1,15 @@
 #import "AirfixGameViewController.h"
 
+#import "AirfixMetalRenderer.h"
+
 #import <MetalKit/MetalKit.h>
 
 #include "airfix/runtime/AppSession.hpp"
 
-@interface AirfixGameViewController () <MTKViewDelegate> {
+@interface AirfixGameViewController () {
     airfix::runtime::AppSession _session;
 }
-@property(nonatomic, strong) id<MTLCommandQueue> commandQueue;
+@property(nonatomic, strong) AirfixMetalRenderer* renderer;
 @property(nonatomic, strong) UILabel* statusLabel;
 @end
 
@@ -19,11 +21,18 @@
     metalView.autoresizingMask = UIViewAutoresizingFlexibleWidth |
         UIViewAutoresizingFlexibleHeight;
     metalView.colorPixelFormat = MTLPixelFormatBGRA8Unorm;
+    metalView.depthStencilPixelFormat = MTLPixelFormatDepth32Float;
     metalView.clearColor = MTLClearColorMake(0.035, 0.055, 0.085, 1.0);
-    metalView.delegate = self;
+    metalView.clearDepth = 1.0;
     metalView.preferredFramesPerSecond = 60;
-    self.commandQueue = [device newCommandQueue];
+    metalView.paused = YES;
+    metalView.enableSetNeedsDisplay = NO;
     self.view = metalView;
+
+    NSError* rendererError = nil;
+    self.renderer = [[AirfixMetalRenderer alloc] initWithMetalView:metalView
+                                                            error:&rendererError];
+    metalView.delegate = self.renderer;
 
     UILabel* label = [[UILabel alloc] initWithFrame:CGRectZero];
     label.translatesAutoresizingMaskIntoConstraints = NO;
@@ -31,8 +40,15 @@
     label.textAlignment = NSTextAlignmentCenter;
     label.textColor = UIColor.whiteColor;
     label.font = [UIFont preferredFontForTextStyle:UIFontTextStyleTitle2];
-    label.text = @"Game data not installed\nThe private AFPACK importer is not enabled yet.";
-    label.accessibilityLabel = @"Game data not installed";
+    if (self.renderer == nil) {
+        NSString* reason = rendererError.localizedDescription ?: @"Unknown Metal initialization error.";
+        label.text = [@"Metal renderer unavailable\n" stringByAppendingString:reason];
+        label.accessibilityLabel = @"Metal renderer unavailable";
+    }
+    else {
+        label.text = @"Public Metal smoke test\nGame data not installed";
+        label.accessibilityLabel = @"Public Metal smoke test; game data not installed";
+    }
     self.statusLabel = label;
     [metalView addSubview:label];
 
@@ -67,27 +83,18 @@
 
 - (void)applicationWillEnterForeground {
     _session.enterForeground();
-    ((MTKView*)self.view).paused = NO;
+    ((MTKView*)self.view).paused = YES;
 }
 
-- (void)mtkView:(MTKView*)view drawableSizeWillChange:(CGSize)size {
-    (void)view;
-    (void)size;
-}
-
-- (void)drawInMTKView:(MTKView*)view {
-    MTLRenderPassDescriptor* descriptor = view.currentRenderPassDescriptor;
-    id<CAMetalDrawable> drawable = view.currentDrawable;
-    if (descriptor == nil || drawable == nil || self.commandQueue == nil) {
-        return;
+- (void)applicationDidBecomeActive {
+    if (_session.lifecycleState() !=
+        airfix::runtime::LifecycleState::foregroundPaused) {
+        _session.enterForeground();
     }
-
-    id<MTLCommandBuffer> commandBuffer = [self.commandQueue commandBuffer];
-    id<MTLRenderCommandEncoder> encoder =
-        [commandBuffer renderCommandEncoderWithDescriptor:descriptor];
-    [encoder endEncoding];
-    [commandBuffer presentDrawable:drawable];
-    [commandBuffer commit];
+    (void)_session.resume();
+    if (self.renderer != nil) {
+        ((MTKView*)self.view).paused = NO;
+    }
 }
 
 @end

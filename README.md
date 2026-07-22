@@ -25,6 +25,9 @@ other public distribution are explicitly out of scope.
   A seam-safe draw/model payload and deterministic private CPU preview validate
   a complete 46-node grouped aircraft while corpus diagnostics emit aggregate
   facts only.
+- The data-less iOS shell now exercises that public draw-model contract through
+  a real offline-compiled Metal pipeline using synthetic geometry and texture
+  data. Private AFPACK loading remains deliberately disconnected.
 - A deterministic portable input router now defines stable semantic actions,
   touch/controller/test bindings, multi-source arbitration, context/lifecycle
   releases, and controller reconnect neutral gating. Native iOS adapters and the

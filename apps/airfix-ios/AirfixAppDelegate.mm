@@ -35,4 +35,9 @@
     [self.gameViewController applicationWillEnterForeground];
 }
 
+- (void)applicationDidBecomeActive:(UIApplication*)application {
+    (void)application;
+    [self.gameViewController applicationDidBecomeActive];
+}
+
 @end

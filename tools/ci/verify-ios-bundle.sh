@@ -43,6 +43,12 @@ if [[ ! -f "$executable" ]]; then
     exit 1
 fi
 
+shader_library="$bundle/default.metallib"
+if [[ ! -s "$shader_library" ]]; then
+    echo "offline Metal shader library is missing or empty: $shader_library" >&2
+    exit 1
+fi
+
 architectures="$(lipo -archs "$executable")"
 if [[ " $architectures " != *" arm64 "* ]]; then
     echo "bundle has no ARM64 slice: $architectures" >&2

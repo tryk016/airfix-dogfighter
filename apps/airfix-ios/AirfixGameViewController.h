@@ -4,4 +4,5 @@
 - (void)applicationWillResignActive;
 - (void)applicationDidEnterBackground;
 - (void)applicationWillEnterForeground;
+- (void)applicationDidBecomeActive;
 @end

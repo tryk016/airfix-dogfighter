@@ -487,3 +487,16 @@ superseded evidence.
 - Synthetic boundary tests cover every exact ceiling and one-byte/count-beyond
   rejection, pre-read metadata rejection, bounded reads, changed source size,
   and same-size payload mutation. Full portable GCC tests pass 13/13.
+
+## 2026-07-21 — public DrawModel Metal smoke path
+
+- `EV-20260721-034`: added an Objective-C++ `MTKView` renderer that consumes the
+  exported `airfix::render::DrawModelPayload` rather than a backend-local model.
+  The public fixture has one shared mesh, two instances, two ordered ranges, and
+  a generated 2×2 RGBA8 texture; no original or derived game data is present.
+- Vertices and transforms are explicitly repacked into a fixed Metal ABI. The
+  smoke pipeline uses BGRA8 color, Depth32Float less/write, UInt32 indices,
+  nearest/clamp sampling, no blending, and no culling.
+- CMake compiles `AirfixShaders.metal` offline into `default.metallib`, and the
+  iOS bundle verifier now requires a non-empty library. Independent source
+  review found no P1/P2; Xcode 26.6 Actions remains the authoritative compiler.
