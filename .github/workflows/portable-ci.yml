@@ -52,4 +52,12 @@ jobs:
         run: cmake --build build --config Release --parallel
 
       - name: Test
+        if: matrix.os != 'windows-2025'
         run: ctest --test-dir build --build-config Release --output-on-failure
+
+      - name: Test resolver under Windows ASan
+        if: matrix.os == 'windows-2025'
+        run: >-
+          ctest --test-dir build --build-config Release --output-on-failure
+          --tests-regex "^airfix_mission_entry_resolver_tests$"
+          --timeout 120
