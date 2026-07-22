@@ -25,6 +25,7 @@ target_compile_options(airfix_ios PRIVATE
 target_link_libraries(airfix_ios PRIVATE
     airfix::runtime
     "-framework UIKit"
+    "-framework CoreGraphics"
     "-framework Metal"
     "-framework MetalKit"
 )
