@@ -1,5 +1,6 @@
 #include "airfix/archive/UdspArchive.hpp"
 
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
