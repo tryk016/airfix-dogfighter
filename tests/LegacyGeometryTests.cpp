@@ -14,6 +14,7 @@ using airfix::assets::CcfMeshMetadata;
 using airfix::assets::CcfMeshTriangleMetadata;
 using airfix::assets::CcfMeshVertexMetadata;
 using airfix::render::BasisTransform;
+using airfix::render::ConvertedNodeTransform;
 using airfix::render::GeometryError;
 using airfix::render::GeometryErrorCode;
 using airfix::render::GeometryLimits;
@@ -97,6 +98,185 @@ void requireGeometryError(
     };
     mesh.triangles.push_back(triangle);
     return mesh;
+}
+
+[[nodiscard]] airfix::assets::CcfSrtMetadata sampleTransform() {
+    airfix::assets::CcfSrtMetadata transform;
+    transform.position = {2.0F, 3.0F, 4.0F};
+    transform.rawScalar = 19.0F;
+    // Legacy row-vector encoding of a runtime +90-degree X rotation.
+    transform.orientation = {
+        airfix::assets::CcfVector3{1.0F, 0.0F, 0.0F},
+        airfix::assets::CcfVector3{0.0F, 0.0F, -1.0F},
+        airfix::assets::CcfVector3{0.0F, 1.0F, 0.0F},
+    };
+    return transform;
+}
+
+void testLegacyNodeTransformConversion() {
+    const Mat3 basis{{
+        Vec3{0.0F, 1.0F, 0.0F},
+        Vec3{-1.0F, 0.0F, 0.0F},
+        Vec3{0.0F, 0.0F, 1.0F},
+    }};
+    const auto source = sampleTransform();
+    const auto converted = airfix::render::convertLegacyTransform(
+        source, BasisTransform{basis, 2.0F});
+
+    requireVec(converted.translation, Vec3{-6.0F, 4.0F, 8.0F},
+               "node transform did not convert translation and units");
+    const Mat3 raw{{
+        Vec3{1.0F, 0.0F, 0.0F},
+        Vec3{0.0F, 0.0F, -1.0F},
+        Vec3{0.0F, 1.0F, 0.0F},
+    }};
+    const auto basisInverse = airfix::render::inverse(basis);
+    require(basisInverse.has_value(), "node conversion test basis is singular");
+    const Mat3 expectedLinear = airfix::render::multiply(
+        airfix::render::multiply(basis, airfix::render::transpose(raw)),
+        *basisInverse);
+    requireMatrix(converted.linear, expectedLinear,
+                  "node transform did not conjugate the legacy orientation");
+    require(converted.rawScalar == 19.0F,
+            "node transform interpreted or discarded raw scalar metadata");
+}
+
+void testParentRelativeRoundTripAndOrder() {
+    const Mat3 parentLinear{{
+        Vec3{0.0F, 1.0F, 0.0F},
+        Vec3{-1.0F, 0.0F, 0.0F},
+        Vec3{0.0F, 0.0F, 1.0F},
+    }};
+    const Mat3 localLinear{{
+        Vec3{1.0F, 0.0F, 0.0F},
+        Vec3{0.0F, 0.0F, 1.0F},
+        Vec3{0.0F, -1.0F, 0.0F},
+    }};
+    const ConvertedNodeTransform parent{
+        .linear = parentLinear,
+        .translation = Vec3{10.0F, -2.0F, 5.0F},
+        .rawScalar = 101.0F,
+    };
+    const ConvertedNodeTransform local{
+        .linear = localLinear,
+        .translation = Vec3{2.0F, 1.0F, -3.0F},
+        .rawScalar = 7.0F,
+    };
+
+    const auto childWorld = airfix::render::composeNodeTransforms(parent, local);
+    const Mat3 expectedChildLinear{{
+        Vec3{0.0F, 1.0F, 0.0F},
+        Vec3{0.0F, 0.0F, 1.0F},
+        Vec3{1.0F, 0.0F, 0.0F},
+    }};
+    requireMatrix(childWorld.linear, expectedChildLinear,
+                  "node composition used the wrong non-commutative order");
+    requireVec(childWorld.translation, Vec3{9.0F, 0.0F, 2.0F},
+               "node composition used the wrong translation order");
+    require(childWorld.rawScalar == local.rawScalar,
+            "parent raw scalar leaked into child world transform");
+    require(childWorld.linear != airfix::render::multiply(localLinear, parentLinear),
+            "test rotations unexpectedly commute");
+
+    const auto derived = airfix::render::deriveLocalTransform(parent, childWorld);
+    requireMatrix(derived.linear, local.linear,
+                  "parent-relative rotation did not round-trip");
+    requireVec(derived.translation, local.translation,
+               "parent-relative translation did not round-trip");
+    require(derived.rawScalar == local.rawScalar,
+            "parent-relative derivation changed raw scalar metadata");
+
+    const auto recomposed = airfix::render::composeNodeTransforms(parent, derived);
+    requireMatrix(recomposed.linear, childWorld.linear,
+                  "derived local rotation did not recompose to authored world");
+    requireVec(recomposed.translation, childWorld.translation,
+               "derived local translation did not recompose to authored world");
+}
+
+void testGeneralInverseAndTranslationOnly() {
+    const ConvertedNodeTransform parent{
+        .linear = Mat3{{
+            Vec3{2.0F, 0.0F, 0.0F},
+            Vec3{1.0F, 1.0F, 0.0F},
+            Vec3{0.0F, 0.0F, 1.0F},
+        }},
+        .translation = Vec3{4.0F, -5.0F, 6.0F},
+        .rawScalar = 50.0F,
+    };
+    const ConvertedNodeTransform child{
+        .linear = Mat3{},
+        .translation = Vec3{11.0F, -3.0F, 2.0F},
+        .rawScalar = 3.0F,
+    };
+    const auto local = airfix::render::deriveLocalTransform(parent, child);
+    const auto roundTrip = airfix::render::composeNodeTransforms(parent, local);
+    requireMatrix(roundTrip.linear, child.linear,
+                  "general parent inverse did not round-trip linear transform");
+    requireVec(roundTrip.translation, child.translation,
+               "general parent inverse did not round-trip translation");
+
+    const ConvertedNodeTransform translatedParent{
+        .translation = Vec3{7.0F, 8.0F, 9.0F},
+        .rawScalar = 1.0F,
+    };
+    const ConvertedNodeTransform translatedChild{
+        .translation = Vec3{10.0F, 14.0F, 18.0F},
+        .rawScalar = 2.0F,
+    };
+    const auto translatedLocal = airfix::render::deriveLocalTransform(
+        translatedParent, translatedChild);
+    requireVec(translatedLocal.translation, Vec3{3.0F, 6.0F, 9.0F},
+               "translation-only local transform is incorrect");
+}
+
+void testNodeTransformValidationFailures() {
+    auto source = sampleTransform();
+    const Mat3 singular{{
+        Vec3{1.0F, 0.0F, 0.0F},
+        Vec3{2.0F, 0.0F, 0.0F},
+        Vec3{0.0F, 0.0F, 1.0F},
+    }};
+    requireGeometryError(GeometryErrorCode::singularBasis, [&] {
+        (void)airfix::render::convertLegacyTransform(
+            source, BasisTransform{singular, 1.0F});
+    }, "node transform accepted a singular conversion basis");
+    requireGeometryError(GeometryErrorCode::invalidScale, [&] {
+        (void)airfix::render::convertLegacyTransform(
+            source, BasisTransform{Mat3{}, -1.0F});
+    }, "node transform accepted a negative unit scale");
+
+    source.rawScalar = std::numeric_limits<float>::infinity();
+    requireGeometryError(GeometryErrorCode::nonFiniteValue, [&] {
+        (void)airfix::render::convertLegacyTransform(source);
+    }, "node transform accepted a non-finite raw scalar");
+    source = sampleTransform();
+    source.orientation = {
+        airfix::assets::CcfVector3{1.0F, 0.0F, 0.0F},
+        airfix::assets::CcfVector3{2.0F, 0.0F, 0.0F},
+        airfix::assets::CcfVector3{0.0F, 0.0F, 1.0F},
+    };
+    requireGeometryError(GeometryErrorCode::singularTransform, [&] {
+        (void)airfix::render::convertLegacyTransform(source);
+    }, "node transform accepted a singular authored orientation");
+
+    const ConvertedNodeTransform singularParent{
+        .linear = singular,
+        .rawScalar = 1.0F,
+    };
+    const ConvertedNodeTransform identityChild{
+        .rawScalar = 2.0F,
+    };
+    requireGeometryError(GeometryErrorCode::singularTransform, [&] {
+        (void)airfix::render::deriveLocalTransform(singularParent, identityChild);
+    }, "local derivation accepted a singular parent transform");
+
+    ConvertedNodeTransform nonFiniteLocal{
+        .rawScalar = 3.0F,
+    };
+    nonFiniteLocal.translation.x = std::numeric_limits<float>::quiet_NaN();
+    requireGeometryError(GeometryErrorCode::nonFiniteValue, [&] {
+        (void)airfix::render::composeNodeTransforms(identityChild, nonFiniteLocal);
+    }, "node composition accepted a non-finite local transform");
 }
 
 void testAsymmetricDefaultIdentity() {
@@ -325,6 +505,10 @@ int main() {
         testReflectedBasisSwapsExactlyOnce();
         testUvPolicies();
         testBasisConjugationAndScaling();
+        testLegacyNodeTransformConversion();
+        testParentRelativeRoundTripAndOrder();
+        testGeneralInverseAndTranslationOnly();
+        testNodeTransformValidationFailures();
         testValidationFailures();
         std::cout << "Legacy geometry tests passed\n";
         return 0;

@@ -413,8 +413,8 @@ contract, evidence, implementation, tests, parity result, and documentation agre
    analysis until the isolated environment is available.
 9. **In progress:** the bounded blueprint graph, seam-safe draw-model payload,
    and multi-instance diagnostic have assembled and rendered a complete grouped
-   aircraft. Derive parent-relative locals for animation, decode placed-room
-   nodes, build the first-room renderer, and connect the payload to Metal
-   through the existing data-less shell.
+   aircraft. Parent-relative local derivation is implemented; decode placed-room
+   nodes, build the first-room renderer, and connect the payload to Metal through
+   the existing data-less shell.
 10. Implement native UIKit touch capture and Apple Game Controller adapters,
     followed by the configurable visual overlay and on-device usability tests.

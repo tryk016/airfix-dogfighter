@@ -97,6 +97,9 @@
   grouped aircraft containing 46 nodes, 25 mesh instances, 21 null groups, 663
   triangles, and maximum depth 3. Raw V preserves its markings; explicit V flip
   does not. Private outputs remain ignored and outside Git.
+- Implemented finite, invertible parent-relative local transform derivation and
+  composition in runtime column-vector order. Round-trip tests include
+  non-commutative rotations and shear; `rawScalar` is not treated as scale.
 
 ## Confirmed
 
@@ -125,9 +128,9 @@
 
 ## Next
 
-1. Derive parent-relative local transforms for animation and decode the
-   independent `0x4000` placed graph needed for a faithful first room; static
-   grouped-aircraft rendering from authored world transforms is complete.
+1. Decode the independent `0x4000` placed graph needed for a faithful first
+   room; static grouped-aircraft rendering and parent-relative local math are
+   complete.
 2. Implement AFPACK manifest semantic checks and the transactional iOS import
    service; the converter's no-music configuration is now tested.
 3. Connect the draw payload and texture upload policy to the Metal shell, first

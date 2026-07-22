@@ -348,5 +348,6 @@ alternate roots nor treats an existing extension specially.
 
 The backend-neutral seam-safe draw-model payload, bounded blueprint graph, and
 multi-instance diagnostic render a complete grouped aircraft from authored
-world transforms. Parent-relative local derivation for animation and placed
-room decoding remain pending. No proprietary geometry or preview is committed.
+world transforms. Portable parent-relative local derivation now round-trips the
+recovered parent-first composition; placed-room decoding remains pending. No
+proprietary geometry or preview is committed.

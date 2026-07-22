@@ -1,7 +1,7 @@
 # Coordinate, matrix, and winding contract
 
-**State:** static geometry and hierarchy contracts confirmed; geometry
-conversion implemented and graph/local-transform integration in progress
+**State:** static geometry and hierarchy contracts confirmed; geometry,
+authored-world, and parent-relative local conversions implemented
 
 **Evidence:** `EV-20260721-030`, `EV-20260721-033`
 
@@ -82,9 +82,10 @@ The object path selects one `0x3000` blueprint by name and
 `CcBlueprint::MakeInstance(..., true)` at RVA `0x000244F0` clones that node and
 its descendants. Clone/mesh setup first materializes each prototype's world
 transform; parenting the new instances then re-derives the same descendant
-locals. The current portable contract may therefore derive F050 child locals
-directly from authored world transforms before applying the selected root's
-external placement. It must not apply the raw scalar as a universal scale:
+locals. The portable `convertLegacyTransform`, `deriveLocalTransform`, and
+`composeNodeTransforms` paths derive F050 child locals directly from authored
+world transforms and verify round-trip composition before applying a selected
+root's external placement. They do not apply the raw scalar as a universal scale:
 F050 matrices retain that value separately, and the alternate loader-supported
 F040 axis representation still needs independent fixtures.
 

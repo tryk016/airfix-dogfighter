@@ -50,6 +50,7 @@ struct GeometryLimits {
 enum class GeometryErrorCode : std::uint8_t {
     nonFiniteValue,
     singularBasis,
+    singularTransform,
     invalidScale,
     limitExceeded,
     vertexIndexOutOfRange,
@@ -91,6 +92,12 @@ struct ConvertedMeshGeometry {
     std::vector<ConvertedMeshTriangle> triangles;
 };
 
+struct ConvertedNodeTransform {
+    Mat3 linear{};
+    Vec3 translation{};
+    float rawScalar{};
+};
+
 // Legacy source space is right-handed: +X right, +Y up, +Z forward.
 // Raw CCF orientation columns were consumed by legacy row vectors.
 [[nodiscard]] Vec3 applyLegacyRow(const Mat3& rawLegacyMatrix, const Vec3& vector) noexcept;
@@ -100,6 +107,23 @@ struct ConvertedMeshGeometry {
 [[nodiscard]] float determinant(const Mat3& matrix) noexcept;
 [[nodiscard]] std::optional<Mat3> inverse(const Mat3& matrix) noexcept;
 [[nodiscard]] bool reversesOrientation(const Mat3& sourceToRuntime) noexcept;
+
+// Converts an authored legacy/world SRT into the runtime column-vector
+// convention. rawScalar is retained as metadata and is never applied to the
+// linear transform or translation.
+[[nodiscard]] ConvertedNodeTransform convertLegacyTransform(
+    const assets::CcfSrtMetadata& source,
+    const BasisTransform& basis = {});
+
+// The blueprint loader stores authored world transforms. These helpers derive
+// the parent-relative transform used by the runtime scene graph and compose it
+// back using column-vector order.
+[[nodiscard]] ConvertedNodeTransform deriveLocalTransform(
+    const ConvertedNodeTransform& parentWorld,
+    const ConvertedNodeTransform& childWorld);
+[[nodiscard]] ConvertedNodeTransform composeNodeTransforms(
+    const ConvertedNodeTransform& parentWorld,
+    const ConvertedNodeTransform& local);
 
 // Converts raw row-vector orientation to the runtime column-vector convention:
 // B * transpose(raw) * inverse(B).

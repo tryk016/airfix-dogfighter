@@ -460,3 +460,15 @@ superseded evidence.
 - Visual comparison locks raw V as the current CCF/GTI mapping policy for this
   path: the explicit flipped-V variant corrupts aircraft markings. Both private
   variants remain ignored and outside Git.
+- Commit `9776d1c` passed portable CI run `29913419442` on Ubuntu, Windows, and
+  ARM64 macOS plus unsigned iOS run `29913419463` for `iphoneos` and
+  `iphonesimulator` on Xcode 26.6.
+
+## 2026-07-21 — parent-relative transform math
+
+- Implemented conversion of authored CCF SRT values into the runtime
+  column-vector convention plus exact parent-world/child-world to local
+  derivation and parent/local recomposition.
+- Synthetic non-commutative rotation, translation, shear, basis conversion,
+  singular, non-finite, and round-trip tests pass. `rawScalar` remains preserved
+  metadata and is never applied as an inferred scale.

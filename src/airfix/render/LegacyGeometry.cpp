@@ -119,6 +119,49 @@ void requireFinite(const Mat3& value, const std::string_view label) {
     return converted;
 }
 
+void requireValidBasis(const BasisTransform& basis) {
+    requireFinite(basis.sourceToRuntime, "basis");
+    const float basisDeterminant = determinant(basis.sourceToRuntime);
+    if (!finite(basisDeterminant)) {
+        fail(GeometryErrorCode::nonFiniteValue, "basis determinant is non-finite");
+    }
+    if (basisDeterminant == 0.0F) {
+        fail(GeometryErrorCode::singularBasis, "basis is singular");
+    }
+    if (!finite(basis.runtimeUnitsPerSourceUnit) ||
+        basis.runtimeUnitsPerSourceUnit <= 0.0F) {
+        fail(GeometryErrorCode::invalidScale, "runtime scale must be positive and finite");
+    }
+}
+
+void requireValidNodeTransform(
+    const ConvertedNodeTransform& transform,
+    const std::string_view label) {
+    requireFinite(transform.linear, std::string(label) + " linear transform");
+    requireFinite(transform.translation, std::string(label) + " translation");
+    if (!finite(transform.rawScalar)) {
+        fail(GeometryErrorCode::nonFiniteValue,
+             std::string(label) + " raw scalar is non-finite");
+    }
+    const float linearDeterminant = determinant(transform.linear);
+    if (!finite(linearDeterminant)) {
+        fail(GeometryErrorCode::nonFiniteValue,
+             std::string(label) + " determinant is non-finite");
+    }
+    if (linearDeterminant == 0.0F) {
+        fail(GeometryErrorCode::singularTransform,
+             std::string(label) + " linear transform is singular");
+    }
+}
+
+[[nodiscard]] constexpr Vec3 subtract(const Vec3 left, const Vec3 right) noexcept {
+    return Vec3{left.x - right.x, left.y - right.y, left.z - right.z};
+}
+
+[[nodiscard]] constexpr Vec3 add(const Vec3 left, const Vec3 right) noexcept {
+    return Vec3{left.x + right.x, left.y + right.y, left.z + right.z};
+}
+
 } // namespace
 
 GeometryError::GeometryError(const GeometryErrorCode code, const std::string& message)
@@ -196,6 +239,65 @@ bool reversesOrientation(const Mat3& sourceToRuntime) noexcept {
     return determinant(sourceToRuntime) < 0.0F;
 }
 
+ConvertedNodeTransform convertLegacyTransform(
+    const assets::CcfSrtMetadata& source,
+    const BasisTransform& basis) {
+    requireValidBasis(basis);
+    if (!finite(source.rawScalar)) {
+        fail(GeometryErrorCode::nonFiniteValue, "raw scalar is non-finite");
+    }
+
+    ConvertedNodeTransform result{
+        .linear = toRuntimeColumnMatrix(fromCcf(source.orientation), basis.sourceToRuntime),
+        .translation = transformPosition(
+            basis.sourceToRuntime,
+            basis.runtimeUnitsPerSourceUnit,
+            fromCcf(source.position)),
+        .rawScalar = source.rawScalar,
+    };
+    requireValidNodeTransform(result, "converted node");
+    return result;
+}
+
+ConvertedNodeTransform deriveLocalTransform(
+    const ConvertedNodeTransform& parentWorld,
+    const ConvertedNodeTransform& childWorld) {
+    requireValidNodeTransform(parentWorld, "parent world");
+    requireValidNodeTransform(childWorld, "child world");
+    const auto parentInverse = inverse(parentWorld.linear);
+    if (!parentInverse.has_value()) {
+        fail(GeometryErrorCode::singularTransform,
+             "parent world linear transform is singular");
+    }
+
+    ConvertedNodeTransform result{
+        .linear = multiply(*parentInverse, childWorld.linear),
+        .translation = applyRuntimeColumn(
+            *parentInverse,
+            subtract(childWorld.translation, parentWorld.translation)),
+        .rawScalar = childWorld.rawScalar,
+    };
+    requireValidNodeTransform(result, "derived local");
+    return result;
+}
+
+ConvertedNodeTransform composeNodeTransforms(
+    const ConvertedNodeTransform& parentWorld,
+    const ConvertedNodeTransform& local) {
+    requireValidNodeTransform(parentWorld, "parent world");
+    requireValidNodeTransform(local, "local");
+
+    ConvertedNodeTransform result{
+        .linear = multiply(parentWorld.linear, local.linear),
+        .translation = add(
+            applyRuntimeColumn(parentWorld.linear, local.translation),
+            parentWorld.translation),
+        .rawScalar = local.rawScalar,
+    };
+    requireValidNodeTransform(result, "composed world");
+    return result;
+}
+
 Mat3 toRuntimeColumnMatrix(
     const Mat3& rawLegacyMatrix,
     const Mat3& sourceToRuntime) {
@@ -226,18 +328,8 @@ ConvertedMeshGeometry convertLegacyGeometry(
     const BasisTransform& basis,
     const UvPolicy uvPolicy,
     const GeometryLimits& limits) {
-    requireFinite(basis.sourceToRuntime, "basis");
+    requireValidBasis(basis);
     const float basisDeterminant = determinant(basis.sourceToRuntime);
-    if (!finite(basisDeterminant)) {
-        fail(GeometryErrorCode::nonFiniteValue, "basis determinant is non-finite");
-    }
-    if (basisDeterminant == 0.0F) {
-        fail(GeometryErrorCode::singularBasis, "basis is singular");
-    }
-    if (!finite(basis.runtimeUnitsPerSourceUnit) ||
-        basis.runtimeUnitsPerSourceUnit <= 0.0F) {
-        fail(GeometryErrorCode::invalidScale, "runtime scale must be positive and finite");
-    }
     if (source.vertices.size() > limits.maxVertices ||
         source.triangles.size() > limits.maxTriangles) {
         fail(GeometryErrorCode::limitExceeded, "mesh exceeds conversion limits");
