@@ -187,7 +187,9 @@ void require(const bool condition, const std::string& message) {
 }
 
 void testStatusesMetadataAndStablePlacements() {
+    std::cerr << "mission-resolver checkpoint: statuses begin\n";
     const auto archive = testArchive();
+    std::cerr << "mission-resolver checkpoint: archive built\n";
     airfix::assets::LevelDefinition level;
     level.worldPath = "worlds/house.FHOU";
     level.objects = {
@@ -201,8 +203,10 @@ void testStatusesMetadataAndStablePlacements() {
         modelPlacement("objects/PLANE.obje", 60.0F),
         modelPlacement("Missing/model.object", 70.0F),
     };
+    std::cerr << "mission-resolver checkpoint: level built\n";
 
     const auto result = airfix::assets::resolveMissionEntries(level, archive);
+    std::cerr << "mission-resolver checkpoint: resolved\n";
     using Status = airfix::assets::MissionEntryStatus;
     require(result.issues.empty(), "valid-size resolution reported an issue");
     require(result.worldEntry.status == Status::unique &&
@@ -226,6 +230,7 @@ void testStatusesMetadataAndStablePlacements() {
             result.models[0].objectEntry.status == Status::unique &&
             result.models[1].objectEntry.status == Status::notFound,
         "model placement metadata, order, or lookup status mismatch");
+    std::cerr << "mission-resolver checkpoint: model assertions complete\n";
 
     const std::array expectedStatuses{
         Status::unique,
@@ -246,6 +251,7 @@ void testStatusesMetadataAndStablePlacements() {
         require(resolved.objectEntry.status == expectedStatuses[index],
             "placement lookup status mismatch");
     }
+    std::cerr << "mission-resolver checkpoint: placement assertions complete\n";
     require(result.placements[0].objectEntry.logicalPath ==
             "objects\\PLANE.obje" &&
             result.placements[0].objectEntry.archiveLogicalPath ==
@@ -260,6 +266,7 @@ void testStatusesMetadataAndStablePlacements() {
                 !result.placements[index].objectEntry.archiveLogicalPath.has_value(),
             "non-unique lookup exposed archive indices");
     }
+    std::cerr << "mission-resolver checkpoint: statuses end\n";
 }
 
 void testMissingAndInvalidWorld() {
@@ -333,9 +340,13 @@ void testLimitsFailClosed() {
 
 int main() {
     try {
+        std::cerr << "mission-resolver checkpoint: main begin\n";
         testStatusesMetadataAndStablePlacements();
+        std::cerr << "mission-resolver checkpoint: statuses returned\n";
         testMissingAndInvalidWorld();
+        std::cerr << "mission-resolver checkpoint: missing returned\n";
         testLimitsFailClosed();
+        std::cerr << "mission-resolver checkpoint: limits returned\n";
         std::cout << "all mission entry resolver tests passed\n";
         return 0;
     }
