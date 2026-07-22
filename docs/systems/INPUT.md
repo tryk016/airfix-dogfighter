@@ -283,9 +283,10 @@ destruction all synthesize releases.
   available, and controller profile changes.
 - Bluetooth pairing remains system-managed; the game shows instructions and
   connection state but does not implement its own pairing stack.
-- Prefer SDL3's normalized gamepad layer for common inputs. Use a small Apple
-  Game Controller bridge only for capabilities SDL cannot expose adequately,
-  such as richer haptics, platform glyph metadata, or future-specific features.
+- Use a narrow Apple Game Controller adapter for the first iOS vertical slice,
+  including connection state, normalized controls, capability discovery, and
+  platform glyph metadata. A later SDL3 desktop/common adapter must emit the
+  same portable physical-event contract rather than changing simulation input.
 - Poll stable analog/button state at the game update boundary; use connection
   events and explicit edges to manage device lifecycle.
 

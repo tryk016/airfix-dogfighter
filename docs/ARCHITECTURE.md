@@ -89,9 +89,11 @@ layers with independent toggles and performance budgets.
 ### `platform`
 
 Narrow interfaces for input, game controllers, touch, audio, timing, files,
-localization, lifecycle, and video. SDL3 is the proposed portability layer for
-window/event/controller/audio plumbing. A small Objective-C++ bridge handles
-iOS-specific lifecycle, storage, safe-area, audio-session, and Metal integration.
+localization, lifecycle, and video. The first iOS vertical slice uses native
+UIKit and Game Controller adapters behind a small Objective-C++ bridge, which
+also owns lifecycle, storage, safe-area, audio-session, and Metal integration.
+SDL3 remains an optional later desktop/common adapter, not an iOS prerequisite;
+ADR-0002 records the staged decision.
 
 Input is a distinct subsystem: platform adapters produce normalized physical
 events, a context/binding router resolves semantic actions, and the simulation

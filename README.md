@@ -20,6 +20,13 @@ other public distribution are explicitly out of scope.
 - A portable C++20 `UDSP` library, read-only listing/verifier CLI, and synthetic
   tests are implemented. All five supplied archives pass structural and payload
   validation without being copied into the repository.
+- Bounded GTI/CCF/FourCC parsers recover texture metadata/base pixels, mesh and
+  material metadata, blueprints, and object-to-texture dependency edges; corpus
+  diagnostics emit aggregate facts only.
+- A deterministic portable input router now defines stable semantic actions,
+  touch/controller/test bindings, multi-source arbitration, context/lifecycle
+  releases, and controller reconnect neutral gating. Native iOS adapters and the
+  visual touch overlay are the next platform layer.
 - Portable CI builds/tests on Ubuntu 24.04, Windows Server 2025, and native
   ARM64 macOS 26 runners.
 - iOS builds/signing will run on GitHub Actions; runtime tests target iPhone 17
@@ -61,6 +68,6 @@ cmake --build build --config Release --parallel
 ctest --test-dir build --build-config Release --output-on-failure
 ```
 
-The local read-only inspector accepts `udsp-list [--summary|--verify]
-<archive.up>`. Never add original archives or generated asset packages to this
-repository.
+The local read-only inspector accepts
+`udsp-list [--summary|--verify|--inventory|--resolve-objects] <archive.up>`.
+Never add original archives or generated asset packages to this repository.

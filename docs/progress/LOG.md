@@ -352,3 +352,14 @@ superseded evidence.
   and discrete weapon selection.
 - The iOS shell remains data-less and platform adapters are not claimed here;
   UIKit touch capture and Apple Game Controller integration are the next layer.
+- Commit `0a62a92` passed portable CI run `29904638685` and unsigned iOS run
+  `29904638715`, including compilation of the portable input target for iOS.
+
+## 2026-07-21 — explicit no-music package configuration
+
+- `EV-20260721-029`: the deterministic AFPACK test now opens and verifies a
+  generated package, reads its manifest payload, and requires
+  `capabilities.music` to be `false` with no contradictory `true` declaration.
+- This makes the accepted missing-CD configuration executable evidence at the
+  converter/package boundary. Runtime audio fallback remains future audio work;
+  no replacement soundtrack is sourced or bundled.

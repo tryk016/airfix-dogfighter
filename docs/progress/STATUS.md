@@ -108,9 +108,10 @@
 1. Define a coordinate/winding conversion contract for the Metal vertex path.
 2. Emit a private first-model diagnostic with resolved textures.
 3. Extend GTI RGBA conversion across every mip level and define Metal upload.
-4. Add a tested no-music asset configuration because the original CD/audio is
-   unavailable.
-5. Implement manifest semantic checks and the transactional iOS import service.
+4. Implement AFPACK manifest semantic checks and the transactional iOS import
+   service; the converter's no-music configuration is now tested.
+5. Recover placed-node/room transform semantics required to assemble a complete
+   first scene after the single-model diagnostic.
 
 ## Open questions
 

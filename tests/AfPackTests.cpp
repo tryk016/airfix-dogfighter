@@ -343,6 +343,22 @@ void testDeterministicWriter() {
     require(pack.entries()[1].path == "manifest.json", "writer manifest sort mismatch");
     require(pack.entries()[2].path == "source/Resource.up", "writer source sort mismatch");
 
+    const auto packBytes = readFile(firstPath);
+    const auto manifest = std::find_if(
+        pack.entries().begin(), pack.entries().end(),
+        [](const airfix::afpack::Entry& entry) {
+            return entry.kind == airfix::afpack::EntryKind::manifest;
+        });
+    require(manifest != pack.entries().end(), "writer manifest entry missing");
+    const std::string manifestText(
+        reinterpret_cast<const char*>(packBytes.data() +
+            static_cast<std::size_t>(manifest->dataOffset)),
+        static_cast<std::size_t>(manifest->storedSize));
+    require(manifestText.find("\"music\": false") != std::string::npos,
+        "accepted no-CD package did not declare music absent");
+    require(manifestText.find("\"music\": true") == std::string::npos,
+        "accepted no-CD package incorrectly declared music available");
+
     requireError([&] { (void)airfix::afpack::writePack(makeRequest(firstPath)); });
     auto traversalRequest = makeRequest(directory.path() / "traversal.afpack");
     traversalRequest.entries[0].logicalPath = "../Resource.up";

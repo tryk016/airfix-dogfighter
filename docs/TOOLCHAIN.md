@@ -29,13 +29,14 @@ be on `PATH`.
 | Build | CMake plus Ninja |
 | Windows compiler | MSVC or clang-cl, selected after warning/sanitizer spike |
 | Tests | lightweight C++ test runner selected with the skeleton |
-| Platform/input/controller/audio | SDL3 technical spike |
+| iOS platform/input/controller | UIKit and Game Controller behind Objective-C++ adapters |
+| Optional desktop common layer | SDL3 technical spike when a desktop shell needs it |
 | iOS graphics | Metal with MetalKit/Objective-C++ bridge as needed |
 | iOS build/signing | Pinned Xcode on explicit GitHub-hosted macOS runner |
 
-SDL3's official iOS guide recommends its xcframework distribution. This is a
-starting choice, not permission to let SDL types leak into the portable game
-core.
+The native iOS adapters are the first implementation path. SDL3 remains a later
+desktop/common-layer option; neither Apple nor SDL types may leak into the
+portable game core.
 
 ## Installation policy
 

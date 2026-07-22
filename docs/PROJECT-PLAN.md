@@ -282,7 +282,9 @@ Tasks:
   for a hard local-Xcode/LLDB/Metal/Instruments gate or a documented >=20%
   reduction in the remaining affected work, following
   `docs/process/MACBOOK-GATE.md`.
-- Integrate SDL3 xcframework or the result of its technical spike.
+- Implement native UIKit/Game Controller adapters first. Add an SDL3 desktop or
+  common adapter later only if the cross-platform shell makes it materially
+  useful, as staged in ADR-0002.
 - Implement Metal surface/backend, shader compilation, resource residency, and
   device-loss/lifecycle handling.
 - Design touch controls rather than merely overlaying the keyboard: configurable
@@ -391,22 +393,25 @@ contract, evidence, implementation, tests, parity result, and documentation agre
 
 ## Immediate ordered backlog
 
-1. **Completed:** initialize Git and commit planning baseline (`59828ed`).
-2. Classify mutable versus immutable source files and regenerate the manifest.
-3. **Completed:** original CD/disc image and audio tracks are unavailable; test
-   the no-music configuration.
-4. Install pinned JDK, Ghidra, Python, compiler, CMake, and Ninja.
-5. Generate import/export/section/string reports for all 16 PE modules.
-6. Determine launcher/ICD relationship without executing on the host.
-7. Create Ghidra projects and stable module/RVA symbol naming.
-8. Fully analyze exports and callers in `UdsPack.dll`.
-9. Write a read-only `UDSP list` prototype.
-10. Inventory entry names/types in `Resource.up` and `English.up`.
-11. Establish the isolated reference runtime and record boot/module-load traces.
-12. Define the first deterministic flight scenario and its measurements.
-13. Create the C++20/CMake test skeleton.
-14. Build a viewer for the first decoded model/room format.
-15. Re-estimate remaining work after archive inventory and first vertical-slice
-    dependencies are known.
-16. Connect a private GitHub repository and implement CI after the portable CMake
-    skeleton exists.
+1. **Completed:** immutable inventory, pinned toolchain, module reports, portable
+   C++/CMake skeleton, public GitHub boundary, and portable/unsigned-iOS CI.
+2. **Completed:** bounded UDSP listing/verification/decompression, AFPACK v1,
+   GTI base conversion, CCF materials/meshes/blueprints, FourCC object parsing,
+   and object-to-texture dependency resolution.
+3. **Completed:** deterministic portable semantic input router with touch and
+   controller binding defaults; native adapters remain separate.
+4. Define and test the CCF coordinate, matrix, UV-origin, and triangle-winding
+   conversion contract for an API-neutral/Metal vertex path.
+5. Decode every GTI mip level to canonical RGBA8 and define the Metal texture
+   upload/cache contract.
+6. Produce a private first-model diagnostic using the resolved mesh, material,
+   and texture edges without committing derived asset data.
+7. Complete AFPACK semantic manifest checks and an atomic iOS
+   import/replacement service; the no-music package configuration is tested.
+8. Establish the isolated reference runtime and record the first deterministic
+   flight/control/render scenarios; this remains independent of host static
+   analysis until the isolated environment is available.
+9. Build the API-neutral draw-command path and faithful first-room renderer,
+   then connect it to Metal through the existing data-less shell.
+10. Implement native UIKit touch capture and Apple Game Controller adapters,
+    followed by the configurable visual overlay and on-device usability tests.
