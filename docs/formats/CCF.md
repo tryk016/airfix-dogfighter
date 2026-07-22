@@ -164,14 +164,14 @@ all 6,995 mesh records. The fixed prefix is:
   float32 scalar
   0xF070 orientation
     0xF050 matrix
-      3 × 0xF040                 // three vec3 rows/columns; semantics pending
+      3 × 0xF040                 // three stored matrix columns
   child chunks
 ```
 
 The fixed part after `CcName` is exactly 98 bytes. The corpus has 6,991/4
 values `0/1` for flag A and 6,841/154 for flag B. `linkReference` is zero in
-1,150 records. Those names describe storage and observed use only; transform,
-flag, and coordinate-system semantics are not guessed yet.
+1,150 records. Coordinate and matrix application are now established below;
+flag and `scalar` semantics remain deliberately raw.
 
 ### Vertices (`0x3110`)
 
@@ -207,6 +207,22 @@ three (95,116 records). The loader also supports type 4 with three vec3 values,
 but the corpus does not use it. Every triangle index is validated after the
 final vertex table is known; all shipped indices are in range and the maximum
 is 263. Indices remain u32 in the portable model.
+
+### Coordinate, matrix, winding, and UV contract
+
+`EV-20260721-030` establishes a right-handed `+X` right, `+Y` up, `+Z` forward
+source basis. The three stored orientation vectors are matrix columns used by
+legacy row-vector algebra; a conventional runtime column-vector matrix uses
+their mathematical transpose. The exact recovered face normal is normalized
+`cross(p2-p0, p1-p0)`, with `+Y` for a degenerate face. Under a general basis,
+normal directions use its inverse transpose. Identity conversion preserves
+positions, index order, UVs, translation, and the raw `scalar`; a reflected
+basis swaps indices 1 and 2 once to preserve facing.
+
+No UV V flip or physical unit scale is inferred. Projection, Metal clip depth,
+viewport parity, and final `MTLWinding` are render/camera decisions rather than
+asset conversion. Exact RVAs, formulas, unresolved fields, and synthetic
+fixtures are recorded in `docs/re/systems/COORDINATE-CONTRACT.md`.
 
 ### Mesh control leaves
 
@@ -268,6 +284,5 @@ roles remain separate.
   `tests/LegacyFormatsTests.cpp`;
 - ignored decompilation evidence: `artifacts/ghidra/Cc.dll.*`.
 
-The next step is a coordinate/winding contract and private first-model
-diagnostic that emits positions, indices, UVs, and resolved texture paths for a
-Metal or desktop fixture without committing proprietary data.
+The next step is the private first-model diagnostic using this conversion
+contract and resolved texture paths, without committing proprietary data.

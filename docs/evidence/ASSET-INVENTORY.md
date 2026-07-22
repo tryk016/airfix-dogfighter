@@ -78,6 +78,13 @@ The semantic mesh pass validates all 6,995 `0x3100` records: 136,363 vertices,
 optional range/control records. Every triangle index is in range. Aggregate
 facts only are retained; no geometry or asset-name list is written.
 
+The same read-only inventory validates the runtime conversion boundary for all
+6,995 meshes. GTI inspection covers 3,990 variants and 9,617 declared mip
+levels: 3,974 variants/9,523 levels form exact authored chains; 16 variants use
+their base level plus generated mips because legacy quarter-area byte counts do
+not match modern clamped dimensions. In total, 9,539 RGBA8 levels are decoded
+without writing derived textures.
+
 The complete `0x3000` blueprint index contains those 6,995 meshes plus 2,130
 null and 203 light records. A read-only aggregate resolver validates all 215
 object `CCFF` paths and selectors: 90 mesh, 124 null, one no-selector, and 14

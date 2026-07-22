@@ -2,6 +2,7 @@
 #include "airfix/assets/AfChunkContainer.hpp"
 #include "airfix/assets/AssetResolver.hpp"
 #include "airfix/assets/LegacyFormats.hpp"
+#include "airfix/render/LegacyGeometry.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -231,8 +232,31 @@ int main(const int argc, const char* const* argv) {
                                        << ":terminalOverrun="
                                        << (metadata.terminalDeclaredOverrun ? 1 : 0);
                                 for (const auto& variant : metadata.variants) {
-                                    const auto rgba = airfix::assets::decodeGtiBaseRgba(
-                                        data, variant, 4U * 1024U * 1024U);
+                                    const auto layouts =
+                                        airfix::assets::describeGtiMipLevels(variant);
+                                    const auto exactMipChain = std::all_of(
+                                        layouts.begin(), layouts.end(),
+                                        [](const auto& layout) {
+                                            return layout.exactTexelLayout;
+                                        });
+                                    std::size_t rgbaBytes = 0U;
+                                    std::size_t decodedMipLevels = 0U;
+                                    if (exactMipChain) {
+                                        const auto chain =
+                                            airfix::assets::decodeGtiMipChainRgba(
+                                                data, variant, 4U * 1024U * 1024U);
+                                        decodedMipLevels = chain.levels.size();
+                                        for (const auto& level : chain.levels) {
+                                            rgbaBytes += level.pixels.size();
+                                        }
+                                    }
+                                    else {
+                                        const auto base =
+                                            airfix::assets::decodeGtiBaseRgba(
+                                                data, variant, 4U * 1024U * 1024U);
+                                        decodedMipLevels = 1U;
+                                        rgbaBytes = base.pixels.size();
+                                    }
                                     detail << ":fmt=" << variant.format
                                            << ',' << variant.width << 'x' << variant.height
                                            << ",pal=" << variant.paletteEntries
@@ -240,7 +264,10 @@ int main(const int argc, const char* const* argv) {
                                            << ",pixels=" << variant.pixelDataSize
                                            << ",expected=" << variant.expectedPixelDataSize
                                            << ",trailing=" << variant.trailingBytes
-                                           << ",rgba=" << rgba.pixels.size();
+                                           << ",mipUpload="
+                                           << (exactMipChain ? "authored" : "generate")
+                                           << ",decodedMips=" << decodedMipLevels
+                                           << ",rgba=" << rgbaBytes;
                                 }
                             }
                             else if (magic == airfix::assets::kCcfMagic) {
@@ -278,7 +305,16 @@ int main(const int argc, const char* const* argv) {
                                 std::size_t paintCount = 0U;
                                 std::size_t optionalVertexVectorCount = 0U;
                                 std::size_t rangeCount = 0U;
+                                std::size_t convertedMeshCount = 0U;
                                 for (const auto& mesh : metadata.meshes) {
+                                    const auto converted =
+                                        airfix::render::convertLegacyGeometry(mesh);
+                                    if (converted.vertices.size() != mesh.vertices.size() ||
+                                        converted.triangles.size() != mesh.triangles.size()) {
+                                        throw std::runtime_error(
+                                            "CCF geometry conversion changed record counts");
+                                    }
+                                    ++convertedMeshCount;
                                     vertexCount += mesh.vertices.size();
                                     triangleCount += mesh.triangles.size();
                                     rangeCount += mesh.range.has_value() ? 1U : 0U;
@@ -317,6 +353,7 @@ int main(const int argc, const char* const* argv) {
                                        << ",emptyNames=" << emptyNames
                                        << ",emptyPrefixes=" << emptyPrefixes
                                        << ":meshes=" << metadata.meshes.size()
+                                       << ",converted=" << convertedMeshCount
                                        << ",vertices=" << vertexCount
                                        << ",optionalVertexVectors="
                                        << optionalVertexVectorCount

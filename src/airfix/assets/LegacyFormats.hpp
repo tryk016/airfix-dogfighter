@@ -140,6 +140,20 @@ struct RgbaImage {
     std::vector<std::uint8_t> pixels;
 };
 
+struct GtiMipLevelLayout {
+    std::uint32_t level{};
+    std::uint32_t width{};
+    std::uint32_t height{};
+    std::uint64_t sourceOffset{};
+    std::uint64_t sourceSize{};
+    std::uint64_t requiredTexelBytes{};
+    bool exactTexelLayout{};
+};
+
+struct RgbaMipChain {
+    std::vector<RgbaImage> levels;
+};
+
 [[nodiscard]] GtiMetadata parseGti(std::span<const std::uint8_t> bytes);
 [[nodiscard]] CcfMetadata parseCcf(std::span<const std::uint8_t> bytes);
 [[nodiscard]] std::uint32_t gtiBitsPerPixel(std::uint32_t format) noexcept;
@@ -148,6 +162,17 @@ struct RgbaImage {
     std::uint32_t width,
     std::uint32_t height,
     std::uint32_t mipmapLevels);
+[[nodiscard]] std::vector<GtiMipLevelLayout> describeGtiMipLevels(
+    const GtiVariant& variant);
+[[nodiscard]] RgbaImage decodeGtiMipLevelRgba(
+    std::span<const std::uint8_t> bytes,
+    const GtiVariant& variant,
+    std::uint32_t level,
+    std::size_t outputLimit);
+[[nodiscard]] RgbaMipChain decodeGtiMipChainRgba(
+    std::span<const std::uint8_t> bytes,
+    const GtiVariant& variant,
+    std::size_t outputLimit);
 [[nodiscard]] RgbaImage decodeGtiBaseRgba(
     std::span<const std::uint8_t> bytes,
     const GtiVariant& variant,

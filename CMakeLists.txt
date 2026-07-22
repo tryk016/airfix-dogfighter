@@ -103,6 +103,24 @@ else()
     target_compile_options(airfix_assets PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+add_library(airfix_render
+    src/airfix/render/LegacyGeometry.cpp
+)
+add_library(airfix::render ALIAS airfix_render)
+
+target_include_directories(airfix_render
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+)
+target_compile_features(airfix_render PUBLIC cxx_std_20)
+target_link_libraries(airfix_render PUBLIC airfix::assets)
+
+if(MSVC)
+    target_compile_options(airfix_render PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(airfix_render PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
 add_library(airfix_afpack
     src/airfix/package/AfPack.cpp
     src/airfix/package/AfPackWriter.cpp
@@ -124,7 +142,7 @@ endif()
 
 if(AIRFIX_BUILD_TOOLS)
     add_executable(udsp-list tools/udsp/main.cpp)
-    target_link_libraries(udsp-list PRIVATE airfix::udsp airfix::assets)
+    target_link_libraries(udsp-list PRIVATE airfix::udsp airfix::assets airfix::render)
 
     add_executable(afpack-create tools/afpack/main.cpp)
     target_link_libraries(afpack-create PRIVATE airfix::afpack airfix::udsp)
@@ -170,4 +188,8 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_input_tests tests/InputRouterTests.cpp)
     target_link_libraries(airfix_input_tests PRIVATE airfix::input)
     add_test(NAME airfix_input_tests COMMAND airfix_input_tests)
+
+    add_executable(airfix_render_tests tests/LegacyGeometryTests.cpp)
+    target_link_libraries(airfix_render_tests PRIVATE airfix::render)
+    add_test(NAME airfix_render_tests COMMAND airfix_render_tests)
 endif()

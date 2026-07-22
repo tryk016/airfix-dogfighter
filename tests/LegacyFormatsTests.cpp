@@ -500,6 +500,29 @@ void testCcf() {
     };
 }
 
+[[nodiscard]] airfix::assets::GtiVariant mipVariant(
+    const std::uint32_t format,
+    const std::uint32_t width,
+    const std::uint32_t height,
+    const std::uint32_t paletteEntries,
+    const std::uint32_t mipmapLevels,
+    const std::uint64_t pixelOffset,
+    const std::uint32_t pixelBytes) {
+    return {
+        .format = format,
+        .width = width,
+        .height = height,
+        .paletteEntries = paletteEntries,
+        .mipmapLevels = mipmapLevels,
+        .pixelDataOffset = pixelOffset,
+        .pixelDataSize = pixelBytes,
+        .expectedPixelDataSize = airfix::assets::expectedGtiPixelBytes(
+            format, width, height, mipmapLevels),
+        .trailingBytes = pixelBytes - airfix::assets::expectedGtiPixelBytes(
+            format, width, height, mipmapLevels),
+    };
+}
+
 void testGtiBaseDecoding() {
     {
         const Bytes data{0x03U, 0x02U, 0x01U, 0x99U, 0x00U};
@@ -545,6 +568,198 @@ void testGtiBaseDecoding() {
     }
 }
 
+void testGtiMipLayouts() {
+    const auto variant = mipVariant(8U, 4U, 4U, 0U, 3U, 100U, 84U);
+    const auto layouts = airfix::assets::describeGtiMipLevels(variant);
+    require(layouts.size() == 3U, "GTI mip layout count mismatch");
+    require(layouts[0].level == 0U && layouts[0].width == 4U &&
+        layouts[0].height == 4U && layouts[0].sourceOffset == 100U &&
+        layouts[0].sourceSize == 64U && layouts[0].requiredTexelBytes == 64U &&
+        layouts[0].exactTexelLayout,
+        "GTI base mip layout mismatch");
+    require(layouts[1].level == 1U && layouts[1].width == 2U &&
+        layouts[1].height == 2U && layouts[1].sourceOffset == 164U &&
+        layouts[1].sourceSize == 16U && layouts[1].requiredTexelBytes == 16U &&
+        layouts[1].exactTexelLayout,
+        "GTI second mip layout mismatch");
+    require(layouts[2].level == 2U && layouts[2].width == 1U &&
+        layouts[2].height == 1U && layouts[2].sourceOffset == 180U &&
+        layouts[2].sourceSize == 4U && layouts[2].requiredTexelBytes == 4U &&
+        layouts[2].exactTexelLayout,
+        "GTI final mip layout mismatch");
+
+    const auto uneven = mipVariant(8U, 1U, 4U, 0U, 4U, 0U, 21U);
+    const auto unevenLayouts = airfix::assets::describeGtiMipLevels(uneven);
+    require(unevenLayouts.size() == 4U && unevenLayouts[0].exactTexelLayout,
+        "GTI uneven base layout mismatch");
+    require(unevenLayouts[1].width == 1U && unevenLayouts[1].height == 2U &&
+        unevenLayouts[1].sourceSize == 4U &&
+        unevenLayouts[1].requiredTexelBytes == 8U &&
+        !unevenLayouts[1].exactTexelLayout,
+        "GTI uneven mip mismatch was not described");
+    require(unevenLayouts[3].width == 1U && unevenLayouts[3].height == 1U &&
+        unevenLayouts[3].sourceOffset == 21U && unevenLayouts[3].sourceSize == 0U &&
+        unevenLayouts[3].requiredTexelBytes == 4U &&
+        !unevenLayouts[3].exactTexelLayout,
+        "GTI zero-byte tail mip mismatch");
+
+    const Bytes data(21U, 0U);
+    const auto base = airfix::assets::decodeGtiBaseRgba(data, uneven, 16U);
+    require(base.width == 1U && base.height == 4U && base.pixels.size() == 16U,
+        "GTI uneven image base level did not decode independently");
+    requireParseError([&] {
+        (void)airfix::assets::decodeGtiMipLevelRgba(data, uneven, 1U, 8U);
+    });
+    requireParseError([&] {
+        (void)airfix::assets::decodeGtiMipChainRgba(data, uneven, 64U);
+    });
+}
+
+void testGtiMipDecoding() {
+    {
+        const Bytes data{
+            0x03U, 0x02U, 0x01U, 0xAAU,
+            0x30U, 0x20U, 0x10U, 0xBBU,
+            0U, 1U, 0U, 1U,
+            1U,
+        };
+        const auto variant = mipVariant(3U, 2U, 2U, 2U, 2U, 8U, 5U);
+        const auto chain = airfix::assets::decodeGtiMipChainRgba(data, variant, 20U);
+        require(chain.levels.size() == 2U &&
+            chain.levels[1].pixels == Bytes{0x10U, 0x20U, 0x30U, 0xFFU},
+            "GTI P8 mip conversion mismatch");
+    }
+    {
+        const Bytes data{
+            0x03U, 0x02U, 0x01U, 0xAAU,
+            0x30U, 0x20U, 0x10U, 0xBBU,
+            0U, 0x10U, 1U, 0x20U, 0U, 0x30U, 1U, 0x40U,
+            1U, 0x80U,
+        };
+        const auto variant = mipVariant(4U, 2U, 2U, 2U, 2U, 8U, 10U);
+        const auto chain = airfix::assets::decodeGtiMipChainRgba(data, variant, 20U);
+        require(chain.levels.size() == 2U &&
+            chain.levels[1].pixels == Bytes{0x10U, 0x20U, 0x30U, 0x80U},
+            "GTI P8A8 shared-palette mip conversion mismatch");
+    }
+    {
+        const Bytes data{
+            0x23U, 0xF1U, 0x23U, 0xF1U, 0x23U, 0xF1U, 0x23U, 0xF1U,
+            0x56U, 0xA4U,
+        };
+        const auto variant = mipVariant(6U, 2U, 2U, 0U, 2U, 0U, 10U);
+        const auto mip = airfix::assets::decodeGtiMipLevelRgba(data, variant, 1U, 4U);
+        require(mip.pixels == Bytes{0x40U, 0x50U, 0x60U, 0xA0U},
+            "GTI ARGB4444 mip conversion mismatch");
+    }
+    {
+        const Bytes data{
+            1U, 2U, 3U, 1U, 2U, 3U, 1U, 2U, 3U, 1U, 2U, 3U,
+            0x11U, 0x22U, 0x33U,
+        };
+        const auto variant = mipVariant(7U, 2U, 2U, 0U, 2U, 0U, 15U);
+        const auto mip = airfix::assets::decodeGtiMipLevelRgba(data, variant, 1U, 4U);
+        require(mip.pixels == Bytes{0x11U, 0x22U, 0x33U, 0xFFU},
+            "GTI RGB888 mip conversion mismatch");
+    }
+    {
+        Bytes data{
+            3U, 2U, 1U, 4U, 3U, 2U, 1U, 4U,
+            3U, 2U, 1U, 4U, 3U, 2U, 1U, 4U,
+            0x33U, 0x22U, 0x11U, 0x44U,
+        };
+        data.insert(data.end(), {0xDEU, 0xADU, 0xBEU});
+        const auto variant = mipVariant(8U, 2U, 2U, 0U, 2U, 0U, 23U);
+        const auto chain = airfix::assets::decodeGtiMipChainRgba(data, variant, 20U);
+        require(chain.levels.size() == 2U &&
+            chain.levels[1].pixels == Bytes{0x11U, 0x22U, 0x33U, 0x44U},
+            "GTI ARGB8888 mip conversion or trailing-byte handling mismatch");
+    }
+}
+
+void testGtiMipDecodeFailures() {
+    {
+        const Bytes truncated(19U, 0U);
+        const auto variant = mipVariant(8U, 2U, 2U, 0U, 2U, 0U, 20U);
+        const auto base = airfix::assets::decodeGtiBaseRgba(truncated, variant, 16U);
+        require(base.pixels.size() == 16U,
+            "GTI truncated later mip affected base decode");
+        requireParseError([&] {
+            (void)airfix::assets::decodeGtiMipLevelRgba(
+                truncated, variant, 1U, 4U);
+        });
+        requireParseError([&] {
+            (void)airfix::assets::decodeGtiMipChainRgba(truncated, variant, 20U);
+        });
+    }
+    {
+        const Bytes data{
+            3U, 2U, 1U, 0U,
+            0x30U, 0x20U, 0x10U, 0U,
+            0U, 1U, 0U, 1U,
+            2U,
+        };
+        const auto variant = mipVariant(3U, 2U, 2U, 2U, 2U, 8U, 5U);
+        const auto base = airfix::assets::decodeGtiBaseRgba(data, variant, 16U);
+        require(base.pixels.size() == 16U,
+            "GTI invalid later palette index affected base decode");
+        requireParseError([&] {
+            (void)airfix::assets::decodeGtiMipLevelRgba(data, variant, 1U, 4U);
+        });
+    }
+    {
+        const Bytes data(20U, 0U);
+        const auto variant = mipVariant(8U, 2U, 2U, 0U, 2U, 0U, 20U);
+        requireParseError([&] {
+            (void)airfix::assets::decodeGtiMipLevelRgba(data, variant, 1U, 3U);
+        });
+        requireParseError([&] {
+            (void)airfix::assets::decodeGtiMipChainRgba(data, variant, 19U);
+        });
+        requireParseError([&] {
+            (void)airfix::assets::decodeGtiMipLevelRgba(data, variant, 2U, 20U);
+        });
+    }
+    requireParseError([] {
+        const auto invalid = mipVariant(3U, 1U, 1U, 0U, 1U, 0U, 1U);
+        (void)airfix::assets::describeGtiMipLevels(invalid);
+    });
+    requireParseError([] {
+        const auto invalid = mipVariant(3U, 1U, 1U, 257U, 1U, 1028U, 1U);
+        (void)airfix::assets::describeGtiMipLevels(invalid);
+    });
+    requireParseError([] {
+        const auto invalid = mipVariant(8U, 1U, 1U, 1U, 1U, 4U, 4U);
+        (void)airfix::assets::describeGtiMipLevels(invalid);
+    });
+    requireParseError([] {
+        airfix::assets::GtiVariant invalid{
+            .format = 8U,
+            .width = std::numeric_limits<std::uint32_t>::max(),
+            .height = std::numeric_limits<std::uint32_t>::max(),
+            .paletteEntries = 0U,
+            .mipmapLevels = 1U,
+        };
+        (void)airfix::assets::describeGtiMipLevels(invalid);
+    });
+    requireParseError([] {
+        const Bytes physicallyLargeEnough(16U, 0U);
+        const airfix::assets::GtiVariant declaredTooSmall{
+            .format = 8U,
+            .width = 2U,
+            .height = 2U,
+            .paletteEntries = 0U,
+            .mipmapLevels = 1U,
+            .pixelDataOffset = 0U,
+            .pixelDataSize = 15U,
+            .expectedPixelDataSize = 16U,
+            .trailingBytes = 0U,
+        };
+        (void)airfix::assets::decodeGtiBaseRgba(
+            physicallyLargeEnough, declaredTooSmall, 16U);
+    });
+}
+
 } // namespace
 
 int main() {
@@ -552,6 +767,9 @@ int main() {
         testGti();
         testCcf();
         testGtiBaseDecoding();
+        testGtiMipLayouts();
+        testGtiMipDecoding();
+        testGtiMipDecodeFailures();
         std::cout << "all legacy asset tests passed\n";
         return 0;
     }

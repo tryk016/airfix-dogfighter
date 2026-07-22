@@ -400,10 +400,10 @@ contract, evidence, implementation, tests, parity result, and documentation agre
    and object-to-texture dependency resolution.
 3. **Completed:** deterministic portable semantic input router with touch and
    controller binding defaults; native adapters remain separate.
-4. Define and test the CCF coordinate, matrix, UV-origin, and triangle-winding
-   conversion contract for an API-neutral/Metal vertex path.
-5. Decode every GTI mip level to canonical RGBA8 and define the Metal texture
-   upload/cache contract.
+4. **Completed:** define and test the CCF coordinate, matrix, UV policy, and
+   triangle-winding conversion contract for an API-neutral/Metal vertex path.
+5. **Completed:** decode exact GTI mip chains to canonical RGBA8 and define the
+   authored-chain/anomaly-fallback Metal upload contract.
 6. Produce a private first-model diagnostic using the resolved mesh, material,
    and texture edges without committing derived asset data.
 7. Complete AFPACK semantic manifest checks and an atomic iOS

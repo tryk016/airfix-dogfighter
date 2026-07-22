@@ -839,46 +839,84 @@ std::uint64_t expectedGtiPixelBytes(
     return total;
 }
 
-RgbaImage decodeGtiBaseRgba(
+namespace {
+
+[[nodiscard]] std::uint32_t decodableGtiBitsPerPixel(
+    const GtiVariant& variant) {
+    std::uint32_t bits = 0U;
+    switch (variant.format) {
+    case 3U: bits = 8U; break;
+    case 4U:
+    case 6U: bits = 16U; break;
+    case 7U: bits = 24U; break;
+    case 8U: bits = 32U; break;
+    default:
+        throw ParseError("GTI RGBA decoder does not implement this format");
+    }
+
+    if (variant.width == 0U || variant.height == 0U ||
+        variant.mipmapLevels == 0U || variant.mipmapLevels > 16U) {
+        throw ParseError("GTI image metadata is outside supported decode bounds");
+    }
+    if ((variant.format == 3U || variant.format == 4U) &&
+        (variant.paletteEntries == 0U || variant.paletteEntries > 256U)) {
+        throw ParseError("GTI paletted format has an invalid palette size");
+    }
+    if (variant.format != 3U && variant.format != 4U &&
+        variant.paletteEntries != 0U) {
+        throw ParseError("GTI direct-color format must not contain a palette");
+    }
+    return bits;
+}
+
+void requireGtiMipSource(
     const std::span<const std::uint8_t> bytes,
     const GtiVariant& variant,
+    const GtiMipLevelLayout& layout) {
+    const auto pixelDataEnd = checkedAdd(
+        variant.pixelDataOffset, variant.pixelDataSize, "GTI pixel data extent");
+    requireRange(
+        layout.sourceOffset, layout.sourceSize, pixelDataEnd, "GTI mip pixels");
+    requireRange(layout.sourceOffset, layout.sourceSize, bytes.size(), "GTI mip pixels");
+}
+
+[[nodiscard]] RgbaImage decodeGtiMipLayoutRgba(
+    const std::span<const std::uint8_t> bytes,
+    const GtiVariant& variant,
+    const GtiMipLevelLayout& layout,
     const std::size_t outputLimit) {
-    const auto bits = gtiBitsPerPixel(variant.format);
-    if (bits == 0U || variant.width == 0U || variant.height == 0U) {
-        throw ParseError("cannot decode unsupported GTI base image");
+    if (!layout.exactTexelLayout) {
+        throw ParseError("GTI legacy mip size does not match its nominal texel layout");
     }
+    requireGtiMipSource(bytes, variant, layout);
+
     const auto pixelCount = checkedMultiply(
-        variant.width, variant.height, "GTI base pixel count");
-    const auto outputBytes = checkedMultiply(pixelCount, 4U, "GTI RGBA output");
+        layout.width, layout.height, "GTI mip pixel count");
+    const auto outputBytes = checkedMultiply(pixelCount, 4U, "GTI mip RGBA output");
     if (outputBytes > outputLimit ||
         outputBytes > std::numeric_limits<std::size_t>::max()) {
         throw ParseError("GTI RGBA output exceeds the configured limit");
     }
-    const auto sourceBits = checkedMultiply(pixelCount, bits, "GTI base source bits");
-    const auto sourceBytes = checkedAdd(sourceBits, 7U, "GTI rounded source bits") / 8U;
-    requireRange(variant.pixelDataOffset, sourceBytes, bytes.size(), "GTI base pixels");
-    if (variant.paletteEntries != 0U) {
-        const auto paletteBytes = static_cast<std::uint64_t>(variant.paletteEntries) * 4U;
-        if (variant.pixelDataOffset < paletteBytes) {
-            throw ParseError("GTI palette offset underflows");
-        }
-        requireRange(
-            variant.pixelDataOffset - paletteBytes,
-            paletteBytes,
-            bytes.size(),
-            "GTI palette");
+
+    const auto paletteBytes = checkedMultiply(
+        variant.paletteEntries, 4U, "GTI palette bytes");
+    if (variant.pixelDataOffset < paletteBytes) {
+        throw ParseError("GTI palette offset underflows");
     }
+    const auto paletteOffset = variant.pixelDataOffset - paletteBytes;
+    requireRange(paletteOffset, paletteBytes, bytes.size(), "GTI palette");
 
     RgbaImage image{
-        .width = variant.width,
-        .height = variant.height,
+        .width = layout.width,
+        .height = layout.height,
         .pixels = std::vector<std::uint8_t>(static_cast<std::size_t>(outputBytes)),
     };
-    const auto source = bytes.subspan(static_cast<std::size_t>(variant.pixelDataOffset));
-    const auto paletteOffset = static_cast<std::size_t>(
-        variant.pixelDataOffset - static_cast<std::uint64_t>(variant.paletteEntries) * 4U);
+    const auto source = bytes.subspan(
+        static_cast<std::size_t>(layout.sourceOffset),
+        static_cast<std::size_t>(layout.sourceSize));
+    const auto palette = static_cast<std::size_t>(paletteOffset);
 
-    const auto writePixel = [&](
+    const auto writePixel = [&image](
         const std::size_t index,
         const std::uint8_t red,
         const std::uint8_t green,
@@ -890,18 +928,21 @@ RgbaImage decodeGtiBaseRgba(
         image.pixels[output + 2U] = blue;
         image.pixels[output + 3U] = alpha;
     };
-    const auto palettePixel = [&](const std::size_t outputIndex, const std::uint8_t index,
-                                  const std::uint8_t alpha) {
+    const auto palettePixel = [&](
+        const std::size_t outputIndex,
+        const std::uint8_t index,
+        const std::uint8_t alpha) {
         if (index >= variant.paletteEntries) {
             throw ParseError("GTI palette index is outside the palette");
         }
-        const auto palette = paletteOffset + static_cast<std::size_t>(index) * 4U;
-        // CcColorInt/ARGB8888 is little-endian B,G,R,A in memory.
+        const auto entry = palette + static_cast<std::size_t>(index) * 4U;
+        // CcColorInt/ARGB8888 is little-endian B,G,R,A in memory. The stored
+        // palette alpha is not used by either paletted texture format.
         writePixel(
             outputIndex,
-            bytes[palette + 2U],
-            bytes[palette + 1U],
-            bytes[palette],
+            bytes[entry + 2U],
+            bytes[entry + 1U],
+            bytes[entry],
             alpha);
     };
 
@@ -944,10 +985,97 @@ RgbaImage decodeGtiBaseRgba(
                 source[index * 4U + 3U]);
             break;
         default:
-            throw ParseError("GTI base decoder does not implement this format");
+            throw ParseError("GTI RGBA decoder does not implement this format");
         }
     }
     return image;
+}
+
+} // namespace
+
+std::vector<GtiMipLevelLayout> describeGtiMipLevels(
+    const GtiVariant& variant) {
+    const auto bits = decodableGtiBitsPerPixel(variant);
+    const auto basePixelCount = checkedMultiply(
+        variant.width, variant.height, "GTI base pixel count");
+    const auto baseBytes = checkedMultiply(
+        basePixelCount, bits, "GTI base bits") / 8U;
+
+    std::vector<GtiMipLevelLayout> layouts;
+    layouts.reserve(variant.mipmapLevels);
+    auto sourceOffset = variant.pixelDataOffset;
+    for (std::uint32_t level = 0U; level < variant.mipmapLevels; ++level) {
+        const auto width = std::max(1U, variant.width >> level);
+        const auto height = std::max(1U, variant.height >> level);
+        const auto sourceSize = baseBytes >> (level * 2U);
+        const auto requiredPixels = checkedMultiply(
+            width, height, "GTI mip pixel count");
+        const auto requiredTexelBytes = checkedMultiply(
+            requiredPixels, bits, "GTI mip texel bits") / 8U;
+        layouts.push_back({
+            .level = level,
+            .width = width,
+            .height = height,
+            .sourceOffset = sourceOffset,
+            .sourceSize = sourceSize,
+            .requiredTexelBytes = requiredTexelBytes,
+            .exactTexelLayout = sourceSize == requiredTexelBytes,
+        });
+        sourceOffset = checkedAdd(sourceOffset, sourceSize, "GTI mip source offset");
+    }
+    return layouts;
+}
+
+RgbaImage decodeGtiMipLevelRgba(
+    const std::span<const std::uint8_t> bytes,
+    const GtiVariant& variant,
+    const std::uint32_t level,
+    const std::size_t outputLimit) {
+    const auto layouts = describeGtiMipLevels(variant);
+    if (level >= layouts.size()) {
+        throw ParseError("GTI mip level index is outside the image");
+    }
+    return decodeGtiMipLayoutRgba(bytes, variant, layouts[level], outputLimit);
+}
+
+RgbaMipChain decodeGtiMipChainRgba(
+    const std::span<const std::uint8_t> bytes,
+    const GtiVariant& variant,
+    const std::size_t outputLimit) {
+    const auto layouts = describeGtiMipLevels(variant);
+    std::uint64_t totalOutputBytes = 0U;
+    for (const auto& layout : layouts) {
+        if (!layout.exactTexelLayout) {
+            throw ParseError("GTI legacy mip size does not match its nominal texel layout");
+        }
+        requireGtiMipSource(bytes, variant, layout);
+        const auto levelOutputBytes = checkedMultiply(
+            checkedMultiply(layout.width, layout.height, "GTI mip pixel count"),
+            4U,
+            "GTI mip RGBA output");
+        totalOutputBytes = checkedAdd(
+            totalOutputBytes, levelOutputBytes, "GTI mip-chain RGBA output");
+        if (levelOutputBytes > outputLimit || totalOutputBytes > outputLimit ||
+            levelOutputBytes > std::numeric_limits<std::size_t>::max() ||
+            totalOutputBytes > std::numeric_limits<std::size_t>::max()) {
+            throw ParseError("GTI RGBA output exceeds the configured limit");
+        }
+    }
+
+    RgbaMipChain chain;
+    chain.levels.reserve(layouts.size());
+    for (const auto& layout : layouts) {
+        chain.levels.push_back(
+            decodeGtiMipLayoutRgba(bytes, variant, layout, outputLimit));
+    }
+    return chain;
+}
+
+RgbaImage decodeGtiBaseRgba(
+    const std::span<const std::uint8_t> bytes,
+    const GtiVariant& variant,
+    const std::size_t outputLimit) {
+    return decodeGtiMipLevelRgba(bytes, variant, 0U, outputLimit);
 }
 
 GtiMetadata parseGti(const std::span<const std::uint8_t> bytes) {

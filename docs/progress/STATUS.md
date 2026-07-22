@@ -77,6 +77,12 @@
   axes, bounded sequence ordering, multi-source arbitration, context releases,
   cancellation, lifecycle neutral gating, and default touch/controller/test
   bindings. Native iOS adapters and the visual touch overlay remain pending.
+- Established the recovered right-handed CCF basis, row-vector matrix
+  convention, reverse-cross winding, degenerate `+Y` normal, and raw UV policy;
+  the bounded API-neutral converter validates all 6,995 corpus meshes.
+- Implemented owned RGBA8 decoding for complete GTI mip chains. Corpus policy
+  uploads all authored levels for 3,974 variants and uses base-plus-Metal
+  generation for 16 legacy dimension anomalies, decoding 9,539 levels safely.
 
 ## Confirmed
 
@@ -105,13 +111,14 @@
 
 ## Next
 
-1. Define a coordinate/winding conversion contract for the Metal vertex path.
-2. Emit a private first-model diagnostic with resolved textures.
-3. Extend GTI RGBA conversion across every mip level and define Metal upload.
-4. Implement AFPACK manifest semantic checks and the transactional iOS import
+1. Emit a private first-model diagnostic with resolved textures using the new
+   API-neutral geometry and mip-chain contracts.
+2. Implement AFPACK manifest semantic checks and the transactional iOS import
    service; the converter's no-music configuration is now tested.
-5. Recover placed-node/room transform semantics required to assemble a complete
+3. Recover placed-node/room transform semantics required to assemble a complete
    first scene after the single-model diagnostic.
+4. Implement native UIKit and Game Controller adapters over the deterministic
+   input router, then add the configurable safe-area-aware touch overlay.
 
 ## Open questions
 

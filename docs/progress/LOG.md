@@ -363,3 +363,38 @@ superseded evidence.
 - This makes the accepted missing-CD configuration executable evidence at the
   converter/package boundary. Runtime audio fallback remains future audio work;
   no replacement soundtrack is sourced or bundled.
+- Commit `4483bd8` passed portable CI run `29905345959` and unsigned iOS run
+  `29905345976` on the public, data-less build boundary.
+
+## 2026-07-21 — coordinate and winding conversion contract
+
+- `EV-20260721-030`: recovered a right-handed `+X` right, `+Y` up, `+Z`
+  forward source basis, legacy row-vector matrix application, the reverse-cross
+  face-normal order, degenerate `+Y` fallback, and index-swap behavior from
+  independent `Cc.dll` functions.
+- Added the API-neutral `airfix::render` conversion layer. It applies
+  `B * transpose(raw) * inverse(B)`, transforms positions with an explicit
+  unit scale, preserves raw UVs by default, swaps winding exactly once under a
+  reflected basis, and recomputes normalized legacy-compatible face normals.
+- Synthetic tests include asymmetric/noncommuting matrices, the independent
+  property `runtime(B*v) = B*legacy(v)`, non-unit and degenerate triangles,
+  reflection with corner-attached UVs, inverse-transpose fallback under shear,
+  explicit V flip, and malformed inputs.
+- Read-only inventory converted all 6,995 meshes and retained only aggregate
+  counts; no proprietary geometry was exported or committed.
+
+## 2026-07-21 — complete GTI mip chains and Metal upload policy
+
+- `EV-20260721-031`: added bounded per-level layout/decoding and strict owned
+  RGBA8 chains for formats 3/4/6/7/8, retaining the original quarter-area byte
+  offsets and validating palette, source, output, and aggregate limits.
+- Across 3,990 variants, 3,974 exact authored chains provide 9,523 uploadable
+  levels. Sixteen legacy dimension anomalies safely decode level zero and use
+  runtime generation; inventory decoded 9,539 levels in total.
+- The first Metal contract is straight-alpha `MTLPixelFormatRGBA8Unorm` with no
+  implicit row/V flip. Exact levels are copied individually; anomalous chains
+  allocate the natural level count and use `generateMipmaps(for:)` after the
+  base upload. sRGB selection remains evidence-gated.
+- Full GCC `-Werror` build and all nine test targets pass. The corpus validator
+  also converted every CCF mesh and selected an explicit mip policy for every
+  GTI variant without writing original or derived assets.
