@@ -502,5 +502,7 @@ superseded evidence.
   review found no P1/P2; Xcode 26.6 Actions remains the authoritative compiler.
 - Initial iOS run `29915449239` compiled and linked Objective-C++ for both SDKs,
   then exposed a multi-configuration path expansion bug in the custom shader
-  post-build command. The fix lets Xcode's native `CompileMetalFile`/`MetalLink`
-  phases build `default.metallib`; bundle verification remains fail-closed.
+  post-build command. Run `29918090023` then proved CMake did not place the
+  otherwise unknown extension in Xcode's source phase. The build now invokes a
+  bounded CMake helper after link and reads Xcode's real `TARGET_BUILD_DIR` and
+  `WRAPPER_NAME`; bundle verification remains fail-closed.

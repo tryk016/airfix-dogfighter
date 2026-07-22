@@ -18,8 +18,9 @@ add_executable(airfix_ios MACOSX_BUNDLE
     AirfixShaders.metal
 )
 
-# Xcode recognizes .metal target sources and performs the offline metal/air/
-# metallib build steps, placing default.metallib in the application bundle.
+# CMake does not place an otherwise unknown .metal extension in Xcode's Sources
+# phase. Keep it visible in the project and compile it explicitly below.
+set_source_files_properties(AirfixShaders.metal PROPERTIES HEADER_FILE_ONLY YES)
 
 target_compile_features(airfix_ios PRIVATE cxx_std_20)
 target_compile_options(airfix_ios PRIVATE
@@ -35,6 +36,18 @@ target_link_libraries(airfix_ios PRIVATE
     "-framework CoreGraphics"
     "-framework Metal"
     "-framework MetalKit"
+)
+
+find_program(AIRFIX_XCRUN_EXECUTABLE xcrun REQUIRED)
+add_custom_command(TARGET airfix_ios POST_BUILD
+    COMMAND "${CMAKE_COMMAND}"
+        "-DAIRFIX_XCRUN_EXECUTABLE:FILEPATH=${AIRFIX_XCRUN_EXECUTABLE}"
+        "-DAIRFIX_METAL_SDK:STRING=${CMAKE_OSX_SYSROOT}"
+        "-DAIRFIX_METAL_SOURCE:FILEPATH=${CMAKE_CURRENT_SOURCE_DIR}/AirfixShaders.metal"
+        "-DAIRFIX_METAL_WORK_BASE:PATH=${CMAKE_CURRENT_BINARY_DIR}/metal"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/CompileMetal.cmake"
+    COMMENT "Compiling offline Metal shader library"
+    VERBATIM
 )
 
 set_target_properties(airfix_ios PROPERTIES
