@@ -73,6 +73,11 @@ The semantic material pass validates all 10,385 `0x2100` records. It exposes
 secondary texture field is absent from the selected corpus. The special
 zero-byte empty-string form occurs in 5,043 material prefixes and in no names.
 
+The semantic mesh pass validates all 6,995 `0x3100` records: 136,363 vertices,
+170,039 indexed triangles, 168,419 UV records, 95,424 paint records, and 3,428
+optional range/control records. Every triangle index is in range. Aggregate
+facts only are retained; no geometry or asset-name list is written.
+
 All 299 selected `AfChunkContainer` files also pass exact root/child framing:
 7,376 chunks total. The semantic layer validates all 215 object definitions,
 including the observed optional category/nationality/mesh fields and exact

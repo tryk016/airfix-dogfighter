@@ -2,6 +2,7 @@
 
 #include "airfix/assets/AssetPrimitives.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -61,11 +62,60 @@ struct CcfMaterialMetadata {
     std::uint64_t offset{};
 };
 
+using CcfVector3 = std::array<float, 3>;
+
+struct CcfMeshVertexMetadata {
+    CcfVector3 position{};
+    std::optional<CcfVector3> optionalVector;
+    std::optional<CcfVector3> loaderVector;
+    std::optional<std::uint32_t> value4500;
+    std::uint64_t offset{};
+};
+
+struct CcfMeshPaintMetadata {
+    std::uint32_t type{};
+    std::vector<CcfVector3> colors;
+};
+
+struct CcfMeshTriangleMetadata {
+    std::array<std::uint32_t, 3> vertexIndices{};
+    std::uint32_t materialReference{};
+    std::optional<std::array<float, 6>> textureCoordinates;
+    std::optional<CcfMeshPaintMetadata> paint;
+    std::uint64_t offset{};
+};
+
+struct CcfMeshRangeMetadata {
+    std::uint32_t enabled{};
+    float first{};
+    float second{};
+};
+
+struct CcfMeshMetadata {
+    std::string name;
+    std::string prefix;
+    std::uint32_t reference{};
+    std::uint8_t selectionFlagA{};
+    std::uint8_t selectionFlagB{};
+    std::uint32_t linkReference{};
+    CcfVector3 position{};
+    float scalar{};
+    std::array<CcfVector3, 3> orientation{};
+    std::vector<CcfMeshVertexMetadata> vertices;
+    std::vector<CcfMeshTriangleMetadata> triangles;
+    std::optional<std::uint32_t> vampireMode;
+    std::optional<std::uint32_t> value4501;
+    std::optional<std::uint8_t> propertyF0B2;
+    std::optional<CcfMeshRangeMetadata> range;
+    std::uint64_t offset{};
+};
+
 struct CcfMetadata {
     std::uint16_t rootId{};
     std::uint32_t rootSize{};
     std::vector<CcfChunk> topLevelChunks;
     std::vector<CcfMaterialMetadata> materials;
+    std::vector<CcfMeshMetadata> meshes;
 };
 
 struct RgbaImage {

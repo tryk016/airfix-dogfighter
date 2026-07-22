@@ -267,6 +267,8 @@ superseded evidence.
 - The public repository records only parser code and aggregate facts. No CCF,
   GTI, extracted name list, or derived proprietary asset was written or
   uploaded.
+- Commit `e28bcf8` passed portable CI run `29900887675` and unsigned iOS run
+  `29900887609` on the existing public, data-less build boundary.
 
 ## 2026-07-21 — external `cc-tools` audit
 
@@ -284,3 +286,21 @@ superseded evidence.
   `prefix` interpretation. It also identifies unobserved material `0x2153` and
   mesh helper IDs as candidates that remain unknown until Airfix evidence
   confirms them.
+
+## 2026-07-21 — CCF mesh geometry
+
+- `EV-20260721-025`: implemented the loader-confirmed `0x3100` fixed prefix,
+  nested transform shape, vertex/triangle tables, UVs, paint metadata, and mesh
+  control leaves with checked bounds, exact known sizes, count limits, and
+  forward-compatible unknown-chunk retention.
+- Revalidated all 286 CCF files directly inside `Resource.up`: 6,995 meshes,
+  136,363 vertices, 170,039 triangles, 168,419 UV records, 95,424 paint records,
+  and 3,428 optional range/control records all pass. Every triangle index is in
+  the final vertex-table range.
+- Synthetic fixtures cover the fixed transform, optional vertex vector,
+  material reference, three-color paint, UV coordinates, control leaves,
+  opaque/extended paint, unknown mesh extensions, an out-of-range index
+  failure, and a nested descriptor-allocation bomb stopped by the shared global
+  budget.
+- Diagnostic inventory output contains counts only. It neither extracts nor
+  writes mesh names, positions, indices, textures, or other proprietary data.

@@ -1,12 +1,12 @@
 # FMT-CCF — chunked scene/model container
 
-**State:** file/root/top-level, direct-child, and material metadata implemented;
-mesh payload decoding in progress
+**State:** file/root/top-level, material, and mesh geometry metadata implemented;
+rooms and placed-node payload decoding in progress
 
 **Confidence:** 3/3 for framing, 2/3 for section semantics
 
 **Evidence:** `EV-20260721-017`, `EV-20260721-018`, `EV-20260721-023`,
-`EV-20260721-024`
+`EV-20260721-024`, `EV-20260721-025`
 
 ## Evidence
 
@@ -148,14 +148,94 @@ exposed as metadata; uninterpreted numeric material values are not yet promoted
 to runtime semantics. `cc-tools` also maps an unobserved `0x2153` shape, which
 remains preserved as unknown until an Airfix sample or loader path confirms it.
 
+## Mesh records (`0x3100`)
+
+`EV-20260721-025` implements the complete geometry-bearing shape observed in
+all 6,995 mesh records. The fixed prefix is:
+
+```text
+0x3100 mesh:
+  0xF010 CcName(name, prefix)
+  u32 meshReference
+  u8 selectionFlagA
+  u8 selectionFlagB
+  u32 linkReference
+  0xF040 position                 // 3 × float32
+  float32 scalar
+  0xF070 orientation
+    0xF050 matrix
+      3 × 0xF040                 // three vec3 rows/columns; semantics pending
+  child chunks
+```
+
+The fixed part after `CcName` is exactly 98 bytes. The corpus has 6,991/4
+values `0/1` for flag A and 6,841/154 for flag B. `linkReference` is zero in
+1,150 records. Those names describe storage and observed use only; transform,
+flag, and coordinate-system semantics are not guessed yet.
+
+### Vertices (`0x3110`)
+
+Every vertex begins with one 18-byte `0xF040` position. Its schema-driven
+children are an optional second `0xF040`, loader-supported but unobserved
+`0xF030`, and `0x4500` containing one u32.
+
+| Observed vertex shape | Count |
+|---|---:|
+| position, `0x4500` | 65,395 |
+| position, optional `0xF040`, `0x4500` | 70,968 |
+| **Total** | **136,363** |
+
+Every observed `0x4500` value is zero. Meshes contain 3-264 vertices. The
+portable representation keeps both optional vectors and the raw `0x4500`
+value without assigning normal/tangent semantics.
+
+### Triangles (`0x3120`)
+
+Each triangle begins with three u32 vertex indices and one u32 material
+reference. Optional children are paint metadata followed by texture coordinates:
+
+| Observed triangle shape | Count |
+|---|---:|
+| indices/material only | 96 |
+| `0xF090` paint only | 1,524 |
+| `0xF060` six-float UV only | 74,519 |
+| paint plus UV | 93,900 |
+| **Total** | **170,039** |
+
+`0xF090` type 1 contains one `0xF030` vec3 (308 records); type 3 contains
+three (95,116 records). The loader also supports type 4 with three vec3 values,
+but the corpus does not use it. Every triangle index is validated after the
+final vertex table is known; all shipped indices are in range and the maximum
+is 263. Indices remain u32 in the portable model.
+
+### Mesh control leaves
+
+- `0xF0A0`: one u32, present in all 6,995 records and always zero in this
+  corpus; the loader passes it to `SetVampireMode`, so other values remain
+  format-valid;
+- `0xF0B2`: one byte, present in all records (6,985 ones and 10 zeroes);
+- `0xF0D0`: optional u32 plus two float32 values in 3,428 records; finite large
+  sentinel values are preserved bit-faithfully;
+- `0x4501`: loader-supported u32 with zero corpus occurrences.
+
+The two observed mesh child sequences differ only by optional `0xF0D0`.
+Compatibility parsing does not require corpus order or completeness: bounded
+unknown children are retained, known singleton duplicates and invalid exact
+sizes are rejected, and per-mesh geometry plus a shared 250,000-descriptor
+budget prevent nested allocation amplification. Unknown paint types remain
+opaque; known types require their loader-read color prefix and tolerate a
+`CloseChunk`-skipped extension tail.
+
 ## Portable implementation and next step
 
-- file/root/top-level/direct-child/material parser:
+- file/root/top-level/direct-child/material/mesh parser:
   `src/airfix/assets/LegacyFormats.*`;
-- synthetic bounds/length/string/property tests: `tests/LegacyFormatsTests.cpp`;
+- synthetic bounds, strings, geometry, index, UV, opaque/extended paint,
+  unknown-extension, and global descriptor-budget tests:
+  `tests/LegacyFormatsTests.cpp`;
 - ignored decompilation evidence: `artifacts/ghidra/Cc.dll.*`.
 
-The next parser layer will decode `0x3100` meshes without constructing a runtime
-scene. A diagnostic converter can then emit one model's positions, indices,
-UVs, material names, and GTI dependencies for a first Metal or desktop
-renderable fixture.
+The next step is a diagnostic resolver that joins an object definition's
+`CCFF`/`MESH` to this mesh table and its material/GTI dependencies. It can then
+emit one model's positions, indices, UVs, and dependency summary for the first
+Metal or desktop renderable fixture without committing proprietary data.

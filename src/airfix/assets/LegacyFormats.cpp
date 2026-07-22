@@ -1,9 +1,12 @@
 #include "airfix/assets/LegacyFormats.hpp"
 
+#include <algorithm>
+#include <bit>
 #include <limits>
 #include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace airfix::assets {
 namespace {
@@ -60,11 +63,32 @@ void requireRange(
         (static_cast<std::uint32_t>(bytes[offset + 3U]) << 24U);
 }
 
+[[nodiscard]] float readFloat(
+    const std::span<const std::uint8_t> bytes,
+    const std::size_t offset,
+    const std::string_view field) {
+    static_assert(sizeof(float) == sizeof(std::uint32_t));
+    static_assert(std::numeric_limits<float>::is_iec559);
+    return std::bit_cast<float>(readU32(bytes, offset, field));
+}
+
+struct CcfParseBudget {
+    std::size_t remainingDescriptors{};
+
+    void consume(const std::string_view field) {
+        if (remainingDescriptors == 0U) {
+            throw ParseError(std::string(field) + " exceeds the global CCF chunk limit");
+        }
+        --remainingDescriptors;
+    }
+};
+
 [[nodiscard]] std::vector<CcfChunk> parseCcfChunkSequence(
     const std::span<const std::uint8_t> bytes,
     const std::size_t begin,
     const std::size_t end,
-    const std::string_view field) {
+    const std::string_view field,
+    CcfParseBudget& budget) {
     if (begin > end || end > bytes.size()) {
         throw ParseError(std::string(field) + " has an invalid containing range");
     }
@@ -79,6 +103,7 @@ void requireRange(
             throw ParseError(std::string(field) + " chunk is shorter than its header");
         }
         requireRange(cursor, totalSize, end, std::string(field) + " chunk");
+        budget.consume(field);
         chunks.push_back({
             .id = id,
             .totalSize = totalSize,
@@ -137,7 +162,8 @@ struct CcfName {
 [[nodiscard]] CcfName parseCcfName(
     const std::span<const std::uint8_t> bytes,
     const CcfChunk& chunk,
-    const std::string_view field) {
+    const std::string_view field,
+    CcfParseBudget& budget) {
     constexpr std::uint16_t kNameChunk = 0xF010U;
     constexpr std::uint16_t kStringChunk = 0xF020U;
     if (chunk.id != kNameChunk) {
@@ -149,7 +175,8 @@ struct CcfName {
         bytes,
         static_cast<std::size_t>(begin),
         static_cast<std::size_t>(end),
-        field);
+        field,
+        budget);
     if (children.size() != 2U || children[0].id != kStringChunk ||
         children[1].id != kStringChunk) {
         throw ParseError(std::string(field) + " must contain name and prefix strings");
@@ -163,7 +190,8 @@ struct CcfName {
 [[nodiscard]] std::string parseCcfWrappedString(
     const std::span<const std::uint8_t> bytes,
     const CcfChunk& chunk,
-    const std::string_view field) {
+    const std::string_view field,
+    CcfParseBudget& budget) {
     constexpr std::uint16_t kStringChunk = 0xF020U;
     const auto begin = checkedAdd(chunk.offset, 6U, field);
     const auto end = checkedAdd(chunk.offset, chunk.totalSize, field);
@@ -171,7 +199,8 @@ struct CcfName {
         bytes,
         static_cast<std::size_t>(begin),
         static_cast<std::size_t>(end),
-        field);
+        field,
+        budget);
     if (children.size() != 1U || children[0].id != kStringChunk) {
         throw ParseError(std::string(field) + " must contain exactly one CCF string");
     }
@@ -196,7 +225,8 @@ void validateCcfMaterialVectors(
 
 [[nodiscard]] CcfMaterialMetadata parseCcfMaterial(
     const std::span<const std::uint8_t> bytes,
-    CcfChunk& material) {
+    CcfChunk& material,
+    CcfParseBudget& budget) {
     constexpr std::uint16_t kMaterialChunk = 0x2100U;
     if (material.id != kMaterialChunk) {
         throw ParseError("CCF material section contains a non-material chunk");
@@ -215,7 +245,7 @@ void validateCcfMaterialVectors(
         throw ParseError("CCF material name is shorter than its header");
     }
     requireRange(nameChunk.offset, nameChunk.totalSize, materialEnd, "CCF material name");
-    const auto name = parseCcfName(bytes, nameChunk, "CCF material name");
+    const auto name = parseCcfName(bytes, nameChunk, "CCF material name", budget);
     auto cursor = checkedAdd(nameChunk.offset, nameChunk.totalSize, "CCF material reference");
     requireRange(cursor, 4U, materialEnd, "CCF material reference");
     const auto reference = readU32(
@@ -225,7 +255,8 @@ void validateCcfMaterialVectors(
         bytes,
         static_cast<std::size_t>(cursor),
         static_cast<std::size_t>(materialEnd),
-        "CCF material property");
+        "CCF material property",
+        budget);
 
     CcfMaterialMetadata metadata{
         .name = name.name,
@@ -247,21 +278,21 @@ void validateCcfMaterialVectors(
                 throw ParseError("CCF material has duplicate primary textures");
             }
             metadata.primaryTexture = parseCcfWrappedString(
-                bytes, property, "CCF material primary texture");
+                bytes, property, "CCF material primary texture", budget);
             break;
         case 0x2111U:
             if (metadata.secondaryTexture.has_value()) {
                 throw ParseError("CCF material has duplicate secondary textures");
             }
             metadata.secondaryTexture = parseCcfWrappedString(
-                bytes, property, "CCF material secondary texture");
+                bytes, property, "CCF material secondary texture", budget);
             break;
         case 0x2120U:
             if (metadata.environmentTexture.has_value()) {
                 throw ParseError("CCF material has duplicate environment textures");
             }
             metadata.environmentTexture = parseCcfWrappedString(
-                bytes, property, "CCF material environment texture");
+                bytes, property, "CCF material environment texture", budget);
             break;
         case 0x2140U:
             if (hasVectors) {
@@ -292,6 +323,379 @@ void validateCcfMaterialVectors(
             // LoadSceneCcf closes unknown chunks and continues. Retain them in
             // directChildren so later schema versions remain inspectable.
             break;
+        }
+    }
+    return metadata;
+}
+
+[[nodiscard]] CcfVector3 parseCcfVector3(
+    const std::span<const std::uint8_t> bytes,
+    const CcfChunk& chunk,
+    const std::uint16_t expectedId,
+    const std::string_view field) {
+    if (chunk.id != expectedId || chunk.totalSize != 18U) {
+        throw ParseError(std::string(field) + " has an invalid vec3 chunk");
+    }
+    const auto payload = checkedAdd(chunk.offset, 6U, field);
+    return {
+        readFloat(bytes, static_cast<std::size_t>(payload), field),
+        readFloat(bytes, static_cast<std::size_t>(payload + 4U), field),
+        readFloat(bytes, static_cast<std::size_t>(payload + 8U), field),
+    };
+}
+
+[[nodiscard]] std::array<CcfVector3, 3> parseCcfOrientation(
+    const std::span<const std::uint8_t> bytes,
+    const CcfChunk& chunk,
+    CcfParseBudget& budget) {
+    if (chunk.id != 0xF070U || chunk.totalSize != 66U) {
+        throw ParseError("CCF mesh orientation has an invalid outer chunk");
+    }
+    const auto matrixOffset = checkedAdd(chunk.offset, 6U, "CCF mesh orientation");
+    CcfChunk matrix{
+        .id = readU16(bytes, static_cast<std::size_t>(matrixOffset),
+            "CCF mesh orientation matrix id"),
+        .totalSize = readU32(bytes, static_cast<std::size_t>(matrixOffset + 2U),
+            "CCF mesh orientation matrix size"),
+        .offset = matrixOffset,
+        .directChildren = {},
+    };
+    if (matrix.id != 0xF050U || matrix.totalSize != 60U) {
+        throw ParseError("CCF mesh orientation has an invalid matrix chunk");
+    }
+    const auto begin = checkedAdd(matrix.offset, 6U, "CCF mesh orientation vectors");
+    const auto end = checkedAdd(matrix.offset, matrix.totalSize, "CCF mesh orientation end");
+    const auto vectors = parseCcfChunkSequence(
+        bytes,
+        static_cast<std::size_t>(begin),
+        static_cast<std::size_t>(end),
+        "CCF mesh orientation vector",
+        budget);
+    if (vectors.size() != 3U) {
+        throw ParseError("CCF mesh orientation must contain three vectors");
+    }
+    return {
+        parseCcfVector3(bytes, vectors[0], 0xF040U, "CCF mesh orientation X"),
+        parseCcfVector3(bytes, vectors[1], 0xF040U, "CCF mesh orientation Y"),
+        parseCcfVector3(bytes, vectors[2], 0xF040U, "CCF mesh orientation Z"),
+    };
+}
+
+[[nodiscard]] CcfMeshPaintMetadata parseCcfMeshPaint(
+    const std::span<const std::uint8_t> bytes,
+    const CcfChunk& chunk,
+    CcfParseBudget& budget) {
+    if (chunk.id != 0xF090U || chunk.totalSize < 10U) {
+        throw ParseError("CCF mesh paint has an invalid chunk");
+    }
+    const auto payload = checkedAdd(chunk.offset, 6U, "CCF mesh paint");
+    CcfMeshPaintMetadata paint{
+        .type = readU32(bytes, static_cast<std::size_t>(payload), "CCF mesh paint type"),
+        .colors = {},
+    };
+    const auto expectedColors = paint.type == 1U
+        ? 1U
+        : (paint.type == 3U || paint.type == 4U ? 3U : 0U);
+    if (expectedColors == 0U) {
+        // The original dispatch ignores paint modes it does not understand.
+        // Preserve the raw type without interpreting the remaining payload.
+        return paint;
+    }
+    auto cursor = checkedAdd(payload, 4U, "CCF mesh paint colors");
+    const auto paintEnd = checkedAdd(chunk.offset, chunk.totalSize, "CCF mesh paint end");
+    for (std::size_t index = 0U; index < expectedColors; ++index) {
+        requireRange(cursor, 6U, paintEnd, "CCF mesh paint color header");
+        CcfChunk color{
+            .id = readU16(bytes, static_cast<std::size_t>(cursor),
+                "CCF mesh paint color id"),
+            .totalSize = readU32(bytes, static_cast<std::size_t>(cursor + 2U),
+                "CCF mesh paint color size"),
+            .offset = cursor,
+            .directChildren = {},
+        };
+        requireRange(color.offset, color.totalSize, paintEnd, "CCF mesh paint color");
+        budget.consume("CCF mesh paint color");
+        paint.colors.push_back(parseCcfVector3(
+            bytes, color, 0xF030U, "CCF mesh paint color"));
+        cursor = checkedAdd(cursor, color.totalSize, "CCF mesh next paint color");
+    }
+    // CloseChunk skips any loader-compatible extension tail after the required
+    // color prefix. It may be opaque rather than another nested chunk.
+    return paint;
+}
+
+[[nodiscard]] CcfMeshVertexMetadata parseCcfMeshVertex(
+    const std::span<const std::uint8_t> bytes,
+    CcfChunk& vertex,
+    CcfParseBudget& budget) {
+    if (vertex.id != 0x3110U || vertex.totalSize < 24U) {
+        throw ParseError("CCF mesh vertex has an invalid chunk");
+    }
+    const auto positionOffset = checkedAdd(vertex.offset, 6U, "CCF mesh vertex position");
+    CcfChunk positionChunk{
+        .id = readU16(bytes, static_cast<std::size_t>(positionOffset),
+            "CCF mesh vertex position id"),
+        .totalSize = readU32(bytes, static_cast<std::size_t>(positionOffset + 2U),
+            "CCF mesh vertex position size"),
+        .offset = positionOffset,
+        .directChildren = {},
+    };
+    const auto position = parseCcfVector3(
+        bytes, positionChunk, 0xF040U, "CCF mesh vertex position");
+    const auto childBegin = checkedAdd(
+        positionChunk.offset, positionChunk.totalSize, "CCF mesh vertex properties");
+    const auto vertexEnd = checkedAdd(vertex.offset, vertex.totalSize, "CCF mesh vertex end");
+    vertex.directChildren = parseCcfChunkSequence(
+        bytes,
+        static_cast<std::size_t>(childBegin),
+        static_cast<std::size_t>(vertexEnd),
+        "CCF mesh vertex property",
+        budget);
+    CcfMeshVertexMetadata metadata{
+        .position = position,
+        .optionalVector = std::nullopt,
+        .loaderVector = std::nullopt,
+        .value4500 = std::nullopt,
+        .offset = vertex.offset,
+    };
+    for (const auto& property : vertex.directChildren) {
+        switch (property.id) {
+        case 0xF040U:
+            if (metadata.optionalVector.has_value()) {
+                throw ParseError("CCF mesh vertex repeats its optional vector");
+            }
+            metadata.optionalVector = parseCcfVector3(
+                bytes, property, 0xF040U, "CCF mesh vertex optional vector");
+            break;
+        case 0xF030U:
+            if (metadata.loaderVector.has_value()) {
+                throw ParseError("CCF mesh vertex repeats its loader vector");
+            }
+            metadata.loaderVector = parseCcfVector3(
+                bytes, property, 0xF030U, "CCF mesh vertex loader vector");
+            break;
+        case 0x4500U:
+            if (metadata.value4500.has_value() || property.totalSize != 10U) {
+                throw ParseError("CCF mesh vertex has an invalid 0x4500 property");
+            }
+            metadata.value4500 = readU32(
+                bytes, static_cast<std::size_t>(property.offset + 6U),
+                "CCF mesh vertex 0x4500 value");
+            break;
+        default:
+            // Unknown properties remain available in vertex.directChildren.
+            break;
+        }
+    }
+    return metadata;
+}
+
+[[nodiscard]] CcfMeshTriangleMetadata parseCcfMeshTriangle(
+    const std::span<const std::uint8_t> bytes,
+    CcfChunk& triangle,
+    CcfParseBudget& budget) {
+    if (triangle.id != 0x3120U || triangle.totalSize < 22U) {
+        throw ParseError("CCF mesh triangle has an invalid chunk");
+    }
+    const auto payload = checkedAdd(triangle.offset, 6U, "CCF mesh triangle payload");
+    CcfMeshTriangleMetadata metadata{
+        .vertexIndices = {
+            readU32(bytes, static_cast<std::size_t>(payload), "CCF triangle index 0"),
+            readU32(bytes, static_cast<std::size_t>(payload + 4U), "CCF triangle index 1"),
+            readU32(bytes, static_cast<std::size_t>(payload + 8U), "CCF triangle index 2"),
+        },
+        .materialReference = readU32(
+            bytes, static_cast<std::size_t>(payload + 12U), "CCF triangle material"),
+        .textureCoordinates = std::nullopt,
+        .paint = std::nullopt,
+        .offset = triangle.offset,
+    };
+    const auto childBegin = checkedAdd(payload, 16U, "CCF mesh triangle properties");
+    const auto triangleEnd = checkedAdd(
+        triangle.offset, triangle.totalSize, "CCF mesh triangle end");
+    triangle.directChildren = parseCcfChunkSequence(
+        bytes,
+        static_cast<std::size_t>(childBegin),
+        static_cast<std::size_t>(triangleEnd),
+        "CCF mesh triangle property",
+        budget);
+    for (const auto& property : triangle.directChildren) {
+        switch (property.id) {
+        case 0xF060U: {
+            if (metadata.textureCoordinates.has_value() || property.totalSize != 30U) {
+                throw ParseError("CCF mesh triangle has invalid texture coordinates");
+            }
+            const auto coordinates = checkedAdd(
+                property.offset, 6U, "CCF mesh texture coordinates");
+            std::array<float, 6> values{};
+            for (std::size_t index = 0U; index < values.size(); ++index) {
+                values[index] = readFloat(
+                    bytes,
+                    static_cast<std::size_t>(coordinates + index * 4U),
+                    "CCF mesh texture coordinate");
+            }
+            metadata.textureCoordinates = values;
+            break;
+        }
+        case 0xF090U:
+            if (metadata.paint.has_value()) {
+                throw ParseError("CCF mesh triangle repeats its paint property");
+            }
+            metadata.paint = parseCcfMeshPaint(bytes, property, budget);
+            break;
+        default:
+            // Unknown properties remain available in triangle.directChildren.
+            break;
+        }
+    }
+    return metadata;
+}
+
+[[nodiscard]] CcfMeshMetadata parseCcfMesh(
+    const std::span<const std::uint8_t> bytes,
+    CcfChunk& mesh,
+    CcfParseBudget& budget) {
+    constexpr std::size_t kVertexLimit = 65'536U;
+    constexpr std::size_t kTriangleLimit = 131'072U;
+    if (mesh.id != 0x3100U) {
+        throw ParseError("CCF mesh parser received a non-mesh chunk");
+    }
+    const auto payloadBegin = checkedAdd(mesh.offset, 6U, "CCF mesh payload");
+    const auto meshEnd = checkedAdd(mesh.offset, mesh.totalSize, "CCF mesh end");
+    requireRange(payloadBegin, 6U, meshEnd, "CCF mesh name header");
+    CcfChunk nameChunk{
+        .id = readU16(bytes, static_cast<std::size_t>(payloadBegin), "CCF mesh name id"),
+        .totalSize = readU32(
+            bytes, static_cast<std::size_t>(payloadBegin + 2U), "CCF mesh name size"),
+        .offset = payloadBegin,
+        .directChildren = {},
+    };
+    if (nameChunk.totalSize < 6U) {
+        throw ParseError("CCF mesh name is shorter than its header");
+    }
+    requireRange(nameChunk.offset, nameChunk.totalSize, meshEnd, "CCF mesh name");
+    const auto name = parseCcfName(bytes, nameChunk, "CCF mesh name", budget);
+    auto cursor = checkedAdd(nameChunk.offset, nameChunk.totalSize, "CCF mesh fields");
+    requireRange(cursor, 10U, meshEnd, "CCF mesh references and flags");
+    const auto reference = readU32(bytes, static_cast<std::size_t>(cursor),
+        "CCF mesh reference");
+    const auto selectionFlagA = bytes[static_cast<std::size_t>(cursor + 4U)];
+    const auto selectionFlagB = bytes[static_cast<std::size_t>(cursor + 5U)];
+    const auto linkReference = readU32(bytes, static_cast<std::size_t>(cursor + 6U),
+        "CCF mesh link reference");
+    cursor = checkedAdd(cursor, 10U, "CCF mesh position");
+
+    requireRange(cursor, 18U, meshEnd, "CCF mesh position");
+    CcfChunk positionChunk{
+        .id = readU16(bytes, static_cast<std::size_t>(cursor), "CCF mesh position id"),
+        .totalSize = readU32(bytes, static_cast<std::size_t>(cursor + 2U),
+            "CCF mesh position size"),
+        .offset = cursor,
+        .directChildren = {},
+    };
+    const auto position = parseCcfVector3(
+        bytes, positionChunk, 0xF040U, "CCF mesh position");
+    cursor = checkedAdd(cursor, positionChunk.totalSize, "CCF mesh scalar");
+    requireRange(cursor, 4U, meshEnd, "CCF mesh scalar");
+    const auto scalar = readFloat(bytes, static_cast<std::size_t>(cursor), "CCF mesh scalar");
+    cursor = checkedAdd(cursor, 4U, "CCF mesh orientation");
+
+    requireRange(cursor, 66U, meshEnd, "CCF mesh orientation");
+    CcfChunk orientationChunk{
+        .id = readU16(bytes, static_cast<std::size_t>(cursor), "CCF mesh orientation id"),
+        .totalSize = readU32(bytes, static_cast<std::size_t>(cursor + 2U),
+            "CCF mesh orientation size"),
+        .offset = cursor,
+        .directChildren = {},
+    };
+    const auto orientation = parseCcfOrientation(bytes, orientationChunk, budget);
+    cursor = checkedAdd(cursor, orientationChunk.totalSize, "CCF mesh children");
+    mesh.directChildren = parseCcfChunkSequence(
+        bytes,
+        static_cast<std::size_t>(cursor),
+        static_cast<std::size_t>(meshEnd),
+        "CCF mesh child",
+        budget);
+
+    CcfMeshMetadata metadata{
+        .name = name.name,
+        .prefix = name.prefix,
+        .reference = reference,
+        .selectionFlagA = selectionFlagA,
+        .selectionFlagB = selectionFlagB,
+        .linkReference = linkReference,
+        .position = position,
+        .scalar = scalar,
+        .orientation = orientation,
+        .vertices = {},
+        .triangles = {},
+        .vampireMode = std::nullopt,
+        .value4501 = std::nullopt,
+        .propertyF0B2 = std::nullopt,
+        .range = std::nullopt,
+        .offset = mesh.offset,
+    };
+    for (auto& child : mesh.directChildren) {
+        switch (child.id) {
+        case 0x3110U:
+            if (metadata.vertices.size() >= kVertexLimit) {
+                throw ParseError("CCF mesh exceeds the vertex limit");
+            }
+            metadata.vertices.push_back(parseCcfMeshVertex(bytes, child, budget));
+            break;
+        case 0x3120U:
+            if (metadata.triangles.size() >= kTriangleLimit) {
+                throw ParseError("CCF mesh exceeds the triangle limit");
+            }
+            metadata.triangles.push_back(parseCcfMeshTriangle(bytes, child, budget));
+            break;
+        case 0xF0A0U:
+            if (metadata.vampireMode.has_value() || child.totalSize != 10U) {
+                throw ParseError("CCF mesh has an invalid 0xF0A0 property");
+            }
+            metadata.vampireMode = readU32(
+                bytes, static_cast<std::size_t>(child.offset + 6U),
+                "CCF mesh vampire mode");
+            break;
+        case 0x4501U:
+            if (metadata.value4501.has_value() || child.totalSize != 10U) {
+                throw ParseError("CCF mesh has an invalid 0x4501 property");
+            }
+            metadata.value4501 = readU32(
+                bytes, static_cast<std::size_t>(child.offset + 6U),
+                "CCF mesh 0x4501 value");
+            break;
+        case 0xF0B2U:
+            if (metadata.propertyF0B2.has_value() || child.totalSize != 7U) {
+                throw ParseError("CCF mesh has an invalid 0xF0B2 property");
+            }
+            metadata.propertyF0B2 = bytes[static_cast<std::size_t>(child.offset + 6U)];
+            break;
+        case 0xF0D0U: {
+            if (metadata.range.has_value() || child.totalSize != 18U) {
+                throw ParseError("CCF mesh has an invalid 0xF0D0 property");
+            }
+            const auto payload = checkedAdd(child.offset, 6U, "CCF mesh range");
+            metadata.range = CcfMeshRangeMetadata{
+                .enabled = readU32(bytes, static_cast<std::size_t>(payload),
+                    "CCF mesh range enabled"),
+                .first = readFloat(bytes, static_cast<std::size_t>(payload + 4U),
+                    "CCF mesh range first"),
+                .second = readFloat(bytes, static_cast<std::size_t>(payload + 8U),
+                    "CCF mesh range second"),
+            };
+            break;
+        }
+        default:
+            // Unknown children remain available in mesh.directChildren.
+            break;
+        }
+    }
+    for (const auto& triangle : metadata.triangles) {
+        for (const auto index : triangle.vertexIndices) {
+            if (index >= metadata.vertices.size()) {
+                throw ParseError("CCF mesh triangle index exceeds the vertex table");
+            }
         }
     }
     return metadata;
@@ -579,8 +983,19 @@ CcfMetadata parseCcf(const std::span<const std::uint8_t> bytes) {
         .rootSize = rootSize,
         .topLevelChunks = {},
         .materials = {},
+        .meshes = {},
     };
-    metadata.topLevelChunks = parseCcfChunkSequence(bytes, 14U, bytes.size(), "CCF root");
+    constexpr std::size_t kCcfDescriptorLimit = 250'000U;
+    CcfParseBudget budget{
+        .remainingDescriptors = std::min(kCcfDescriptorLimit, bytes.size() / 6U),
+    };
+    metadata.topLevelChunks = parseCcfChunkSequence(
+        bytes, 14U, bytes.size(), "CCF root", budget);
+    constexpr std::size_t kCcfMeshLimit = 100'000U;
+    constexpr std::size_t kCcfVertexLimit = 2'000'000U;
+    constexpr std::size_t kCcfTriangleLimit = 4'000'000U;
+    std::size_t vertexCount = 0U;
+    std::size_t triangleCount = 0U;
     for (auto& section : metadata.topLevelChunks) {
         const auto childBegin = checkedAdd(section.offset, 6U, "CCF section payload");
         const auto childEnd = checkedAdd(section.offset, section.totalSize, "CCF section end");
@@ -588,11 +1003,29 @@ CcfMetadata parseCcf(const std::span<const std::uint8_t> bytes) {
             bytes,
             static_cast<std::size_t>(childBegin),
             static_cast<std::size_t>(childEnd),
-            "CCF section");
+            "CCF section",
+            budget);
         if (section.id == 0x2000U) {
             for (auto& material : section.directChildren) {
                 if (material.id == 0x2100U) {
-                    metadata.materials.push_back(parseCcfMaterial(bytes, material));
+                    metadata.materials.push_back(parseCcfMaterial(bytes, material, budget));
+                }
+            }
+        }
+        else if (section.id == 0x3000U) {
+            for (auto& mesh : section.directChildren) {
+                if (mesh.id == 0x3100U) {
+                    if (metadata.meshes.size() >= kCcfMeshLimit) {
+                        throw ParseError("CCF exceeds the mesh limit");
+                    }
+                    auto parsed = parseCcfMesh(bytes, mesh, budget);
+                    if (parsed.vertices.size() > kCcfVertexLimit - vertexCount ||
+                        parsed.triangles.size() > kCcfTriangleLimit - triangleCount) {
+                        throw ParseError("CCF exceeds the geometry descriptor limit");
+                    }
+                    vertexCount += parsed.vertices.size();
+                    triangleCount += parsed.triangles.size();
+                    metadata.meshes.push_back(std::move(parsed));
                 }
             }
         }

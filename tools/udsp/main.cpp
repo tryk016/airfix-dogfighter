@@ -189,12 +189,46 @@ int main(const int argc, const char* const* argv) {
                                     [](const auto& material) {
                                         return material.prefix.empty();
                                     });
+                                std::size_t vertexCount = 0U;
+                                std::size_t triangleCount = 0U;
+                                std::size_t textureCoordinateCount = 0U;
+                                std::size_t paintCount = 0U;
+                                std::size_t optionalVertexVectorCount = 0U;
+                                std::size_t rangeCount = 0U;
+                                for (const auto& mesh : metadata.meshes) {
+                                    vertexCount += mesh.vertices.size();
+                                    triangleCount += mesh.triangles.size();
+                                    rangeCount += mesh.range.has_value() ? 1U : 0U;
+                                    optionalVertexVectorCount += std::count_if(
+                                        mesh.vertices.begin(), mesh.vertices.end(),
+                                        [](const auto& vertex) {
+                                            return vertex.optionalVector.has_value();
+                                        });
+                                    textureCoordinateCount += std::count_if(
+                                        mesh.triangles.begin(), mesh.triangles.end(),
+                                        [](const auto& triangle) {
+                                            return triangle.textureCoordinates.has_value();
+                                        });
+                                    paintCount += std::count_if(
+                                        mesh.triangles.begin(), mesh.triangles.end(),
+                                        [](const auto& triangle) {
+                                            return triangle.paint.has_value();
+                                        });
+                                }
                                 detail << "CCF:materials=" << metadata.materials.size()
                                        << ",primary=" << primaryTextures
                                        << ",secondary=" << secondaryTextures
                                        << ",environment=" << environmentTextures
                                        << ",emptyNames=" << emptyNames
                                        << ",emptyPrefixes=" << emptyPrefixes
+                                       << ":meshes=" << metadata.meshes.size()
+                                       << ",vertices=" << vertexCount
+                                       << ",optionalVertexVectors="
+                                       << optionalVertexVectorCount
+                                       << ",triangles=" << triangleCount
+                                       << ",uv=" << textureCoordinateCount
+                                       << ",paint=" << paintCount
+                                       << ",ranges=" << rangeCount
                                        << ":top=";
                                 for (std::size_t child = 0U;
                                      child < metadata.topLevelChunks.size();

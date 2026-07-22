@@ -1,5 +1,7 @@
 #include "airfix/assets/LegacyFormats.hpp"
 
+#include <array>
+#include <bit>
 #include <cstdint>
 #include <functional>
 #include <iostream>
@@ -23,6 +25,11 @@ void appendU32(Bytes& bytes, const std::uint32_t value) {
     }
 }
 
+void appendFloat(Bytes& bytes, const float value) {
+    static_assert(sizeof(float) == sizeof(std::uint32_t));
+    appendU32(bytes, std::bit_cast<std::uint32_t>(value));
+}
+
 void appendBytes(Bytes& destination, const Bytes& source) {
     destination.insert(destination.end(), source.begin(), source.end());
 }
@@ -32,6 +39,28 @@ void appendBytes(Bytes& destination, const Bytes& source) {
     appendU16(bytes, id);
     appendU32(bytes, static_cast<std::uint32_t>(6U + payload.size()));
     appendBytes(bytes, payload);
+    return bytes;
+}
+
+[[nodiscard]] Bytes ccfVector3(
+    const std::uint16_t id,
+    const float x,
+    const float y,
+    const float z) {
+    Bytes payload;
+    appendFloat(payload, x);
+    appendFloat(payload, y);
+    appendFloat(payload, z);
+    return ccfChunk(id, payload);
+}
+
+[[nodiscard]] Bytes ccfDocument(const Bytes& section) {
+    Bytes bytes;
+    appendU32(bytes, airfix::assets::kCcfMagic);
+    appendU32(bytes, airfix::assets::kCcfVersion);
+    appendU16(bytes, 1U);
+    appendU32(bytes, static_cast<std::uint32_t>(6U + section.size()));
+    appendBytes(bytes, section);
     return bytes;
 }
 
@@ -107,13 +136,90 @@ struct MaterialCcfOptions {
         appendBytes(sectionPayload, ccfChunk(0x2200U, {}));
     }
     const auto section = ccfChunk(0x2000U, sectionPayload);
-    Bytes bytes;
-    appendU32(bytes, airfix::assets::kCcfMagic);
-    appendU32(bytes, airfix::assets::kCcfVersion);
-    appendU16(bytes, 1U);
-    appendU32(bytes, static_cast<std::uint32_t>(6U + section.size()));
-    appendBytes(bytes, section);
-    return bytes;
+    return ccfDocument(section);
+}
+
+[[nodiscard]] Bytes makeMeshVertex(
+    const float x,
+    const float y,
+    const float z,
+    const bool includeOptionalVector) {
+    Bytes payload = ccfVector3(0xF040U, x, y, z);
+    if (includeOptionalVector) {
+        appendBytes(payload, ccfVector3(0xF040U, 0.0F, 1.0F, 0.0F));
+    }
+    Bytes value;
+    appendU32(value, 0U);
+    appendBytes(payload, ccfChunk(0x4500U, value));
+    return ccfChunk(0x3110U, payload);
+}
+
+struct MeshCcfOptions {
+    bool invalidTriangleIndex{};
+    bool includeUnknownChild{};
+    bool unknownPaintType{};
+    bool includePaintExtensionTail{};
+};
+
+[[nodiscard]] Bytes makeMeshCcf(const MeshCcfOptions& options = {}) {
+    Bytes namePayload = ccfString("Mesh");
+    appendBytes(namePayload, ccfString("House"));
+    Bytes meshPayload = ccfChunk(0xF010U, namePayload);
+    appendU32(meshPayload, 7U);
+    meshPayload.push_back(1U);
+    meshPayload.push_back(0U);
+    appendU32(meshPayload, 9U);
+    appendBytes(meshPayload, ccfVector3(0xF040U, 1.0F, 2.0F, 3.0F));
+    appendFloat(meshPayload, 2.0F);
+
+    Bytes matrixPayload = ccfVector3(0xF040U, 1.0F, 0.0F, 0.0F);
+    appendBytes(matrixPayload, ccfVector3(0xF040U, 0.0F, 1.0F, 0.0F));
+    appendBytes(matrixPayload, ccfVector3(0xF040U, 0.0F, 0.0F, 1.0F));
+    appendBytes(meshPayload, ccfChunk(0xF070U, ccfChunk(0xF050U, matrixPayload)));
+
+    appendBytes(meshPayload, makeMeshVertex(0.0F, 0.0F, 0.0F, true));
+    appendBytes(meshPayload, makeMeshVertex(1.0F, 0.0F, 0.0F, false));
+    appendBytes(meshPayload, makeMeshVertex(0.0F, 1.0F, 0.0F, false));
+
+    Bytes trianglePayload;
+    appendU32(trianglePayload, 0U);
+    appendU32(trianglePayload, 1U);
+    appendU32(trianglePayload, options.invalidTriangleIndex ? 3U : 2U);
+    appendU32(trianglePayload, 42U);
+    Bytes paintPayload;
+    appendU32(paintPayload, options.unknownPaintType ? 99U : 3U);
+    if (options.unknownPaintType) {
+        paintPayload.insert(paintPayload.end(), {0xDEU, 0xADU, 0xBEU, 0xEFU});
+    }
+    else {
+        appendBytes(paintPayload, ccfVector3(0xF030U, 1.0F, 0.0F, 0.0F));
+        appendBytes(paintPayload, ccfVector3(0xF030U, 0.0F, 1.0F, 0.0F));
+        appendBytes(paintPayload, ccfVector3(0xF030U, 0.0F, 0.0F, 1.0F));
+    }
+    if (options.includePaintExtensionTail) {
+        paintPayload.insert(paintPayload.end(), {0xAAU, 0x55U});
+    }
+    appendBytes(trianglePayload, ccfChunk(0xF090U, paintPayload));
+    Bytes textureCoordinates;
+    for (const auto value : {0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 1.0F}) {
+        appendFloat(textureCoordinates, value);
+    }
+    appendBytes(trianglePayload, ccfChunk(0xF060U, textureCoordinates));
+    appendBytes(meshPayload, ccfChunk(0x3120U, trianglePayload));
+
+    Bytes vampireMode;
+    appendU32(vampireMode, 0U);
+    appendBytes(meshPayload, ccfChunk(0xF0A0U, vampireMode));
+    Bytes range;
+    appendU32(range, 1U);
+    appendFloat(range, -1.0F);
+    appendFloat(range, 1.0F);
+    appendBytes(meshPayload, ccfChunk(0xF0D0U, range));
+    appendBytes(meshPayload, ccfChunk(0xF0B2U, Bytes{1U}));
+    if (options.includeUnknownChild) {
+        appendBytes(meshPayload, ccfChunk(0x4999U, {}));
+    }
+    return ccfDocument(ccfChunk(0x3000U, ccfChunk(0x3100U, meshPayload)));
 }
 
 void require(const bool condition, const std::string& message) {
@@ -151,16 +257,7 @@ void requireParseError(const std::function<void()>& action) {
 }
 
 [[nodiscard]] Bytes makeCcf() {
-    Bytes bytes;
-    appendU32(bytes, airfix::assets::kCcfMagic);
-    appendU32(bytes, airfix::assets::kCcfVersion);
-    appendU16(bytes, 1U);
-    appendU32(bytes, 18U);
-    appendU16(bytes, 0x3000U);
-    appendU32(bytes, 12U);
-    appendU16(bytes, 0x3100U);
-    appendU32(bytes, 6U);
-    return bytes;
+    return ccfDocument(ccfChunk(0x1000U, ccfChunk(0x1100U, {})));
 }
 
 void testGti() {
@@ -218,10 +315,10 @@ void testCcf() {
     const auto metadata = airfix::assets::parseCcf(bytes);
     require(metadata.rootId == 1U, "CCF root id mismatch");
     require(metadata.topLevelChunks.size() == 1U, "CCF top-level count mismatch");
-    require(metadata.topLevelChunks[0].id == 0x3000U, "CCF child id mismatch");
+    require(metadata.topLevelChunks[0].id == 0x1000U, "CCF child id mismatch");
     require(metadata.topLevelChunks[0].directChildren.size() == 1U,
         "CCF direct child count mismatch");
-    require(metadata.topLevelChunks[0].directChildren[0].id == 0x3100U,
+    require(metadata.topLevelChunks[0].directChildren[0].id == 0x1100U,
         "CCF direct child id mismatch");
 
     auto invalid = bytes;
@@ -276,6 +373,63 @@ void testCcf() {
         "CCF unknown material extension changed material count");
     require(forwardMetadata.topLevelChunks[0].directChildren.size() == 2U,
         "CCF unknown section child was not preserved");
+
+    const auto meshBytes = makeMeshCcf({.includeUnknownChild = true});
+    const auto meshMetadata = airfix::assets::parseCcf(meshBytes);
+    require(meshMetadata.meshes.size() == 1U, "CCF mesh count mismatch");
+    const auto& mesh = meshMetadata.meshes[0];
+    require(mesh.name == "Mesh" && mesh.prefix == "House", "CCF mesh name mismatch");
+    require(mesh.reference == 7U && mesh.linkReference == 9U,
+        "CCF mesh references mismatch");
+    require(mesh.selectionFlagA == 1U && mesh.selectionFlagB == 0U,
+        "CCF mesh flags mismatch");
+    require(mesh.position == airfix::assets::CcfVector3{1.0F, 2.0F, 3.0F},
+        "CCF mesh position mismatch");
+    require(mesh.scalar == 2.0F, "CCF mesh scalar mismatch");
+    require(mesh.vertices.size() == 3U, "CCF mesh vertex count mismatch");
+    require(mesh.vertices[0].optionalVector.has_value(),
+        "CCF mesh optional vertex vector missing");
+    require(mesh.vertices[0].value4500 == 0U, "CCF mesh 0x4500 mismatch");
+    require(mesh.triangles.size() == 1U, "CCF mesh triangle count mismatch");
+    require(mesh.triangles[0].vertexIndices == std::array<std::uint32_t, 3>{0U, 1U, 2U},
+        "CCF mesh triangle indices mismatch");
+    require(mesh.triangles[0].materialReference == 42U,
+        "CCF mesh triangle material mismatch");
+    require(mesh.triangles[0].textureCoordinates.has_value(),
+        "CCF mesh texture coordinates missing");
+    require(mesh.triangles[0].paint.has_value() &&
+        mesh.triangles[0].paint->type == 3U &&
+        mesh.triangles[0].paint->colors.size() == 3U,
+        "CCF mesh paint mismatch");
+    require(mesh.vampireMode == 0U && mesh.propertyF0B2 == 1U && mesh.range.has_value(),
+        "CCF mesh control properties mismatch");
+    const auto& indexedMesh = meshMetadata.topLevelChunks[0].directChildren[0];
+    require(!indexedMesh.directChildren.empty() &&
+        indexedMesh.directChildren.back().id == 0x4999U,
+        "CCF mesh unknown child was not preserved in the chunk index");
+
+    const auto invalidTriangle = makeMeshCcf({.invalidTriangleIndex = true});
+    requireParseError([&] { (void)airfix::assets::parseCcf(invalidTriangle); });
+
+    const auto unknownPaint = airfix::assets::parseCcf(
+        makeMeshCcf({.unknownPaintType = true}));
+    require(unknownPaint.meshes[0].triangles[0].paint->type == 99U &&
+        unknownPaint.meshes[0].triangles[0].paint->colors.empty(),
+        "CCF unknown paint payload was not preserved opaquely");
+    const auto extendedPaint = airfix::assets::parseCcf(
+        makeMeshCcf({.includePaintExtensionTail = true}));
+    require(extendedPaint.meshes[0].triangles[0].paint->colors.size() == 3U,
+        "CCF known paint extension tail was rejected");
+
+    Bytes descriptorBombPayload;
+    descriptorBombPayload.reserve(250'000U * 6U);
+    const auto emptyUnknown = ccfChunk(0x1200U, {});
+    for (std::size_t index = 0U; index < 250'000U; ++index) {
+        appendBytes(descriptorBombPayload, emptyUnknown);
+    }
+    const auto descriptorBomb = ccfDocument(
+        ccfChunk(0x1000U, descriptorBombPayload));
+    requireParseError([&] { (void)airfix::assets::parseCcf(descriptorBomb); });
 }
 
 [[nodiscard]] airfix::assets::GtiVariant onePixelVariant(

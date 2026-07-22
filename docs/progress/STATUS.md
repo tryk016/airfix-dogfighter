@@ -64,6 +64,9 @@
 - Audited the CC0 `RonnyReverse/cc-tools` project at a pinned commit; its CCF
   mesh map is useful independent evidence, while the local bounded parser and
   corpus/Ghidra validation remain authoritative.
+- Implemented bounded CCF mesh geometry parsing for all 6,995 records,
+  validating 136,363 vertices and 170,039 indexed triangles plus UV, paint,
+  transform, and control metadata without exporting proprietary geometry.
 
 ## Confirmed
 
@@ -92,8 +95,8 @@
 
 ## Next
 
-1. Decode CCF mesh chunks and emit the first model diagnostic.
-2. Resolve object `CCFF`/`MESH` dependencies into the CCF index.
+1. Resolve object `CCFF`/`MESH` dependencies and emit the first model diagnostic.
+2. Define a coordinate/winding conversion contract for the Metal vertex path.
 3. Extend GTI RGBA conversion across every mip level and define Metal upload.
 4. Add a tested no-music asset configuration because the original CD/audio is
    unavailable.
