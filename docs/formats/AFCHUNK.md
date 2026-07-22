@@ -88,6 +88,12 @@ All 215 definitions pass the semantic parser. `GRAV` occurs in 56 files and
 - `Game\Objects\Units\PuKeyBrown.object` is the sole definition without
   `MESH`, so the field remains optional in the portable model.
 
+`TEXU` is a search root rather than a texture file. For each CCF material
+texture source, `GtTextureGroup::AddTexture` constructs exactly
+`TEXU\source.gti`; the suffix is always appended and no alternate root or
+extension fallback is implied. The portable resolver applies this bounded rule
+and resolves all 210 selected-corpus texture edges uniquely.
+
 Unknown chunks are preserved as bounded descriptors rather than rejected. A
 known singleton duplicate, malformed exact string, non-empty `HIDE`, or
 non-12-byte `GRAV` is rejected.

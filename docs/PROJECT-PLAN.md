@@ -404,14 +404,15 @@ contract, evidence, implementation, tests, parity result, and documentation agre
    triangle-winding conversion contract for an API-neutral/Metal vertex path.
 5. **Completed:** decode exact GTI mip chains to canonical RGBA8 and define the
    authored-chain/anomaly-fallback Metal upload contract.
-6. Produce a private first-model diagnostic using the resolved mesh, material,
-   and texture edges without committing derived asset data.
+6. **Completed:** produce a private first-model diagnostic using resolved mesh,
+   material, and texture edges without committing derived asset data.
 7. Complete AFPACK semantic manifest checks and an atomic iOS
    import/replacement service; the no-music package configuration is tested.
 8. Establish the isolated reference runtime and record the first deterministic
    flight/control/render scenarios; this remains independent of host static
    analysis until the isolated environment is available.
-9. Build the API-neutral draw-command path and faithful first-room renderer,
-   then connect it to Metal through the existing data-less shell.
+9. **In progress:** the seam-safe API-neutral draw-mesh payload is implemented;
+   recover placed-node transforms, build a faithful first-room renderer, and
+   connect the payload to Metal through the existing data-less shell.
 10. Implement native UIKit touch capture and Apple Game Controller adapters,
     followed by the configurable visual overlay and on-device usability tests.

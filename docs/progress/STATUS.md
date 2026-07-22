@@ -83,6 +83,11 @@
 - Implemented owned RGBA8 decoding for complete GTI mip chains. Corpus policy
   uploads all authored levels for 3,974 variants and uses base-plus-Metal
   generation for 16 legacy dimension anomalies, decoding 9,539 levels safely.
+- Recovered the engine's exact `TEXU\\source.gti` lookup rule and resolved all
+  210 selected object texture edges to unique archive entries.
+- Implemented a deterministic seam-safe draw-mesh payload plus bounded CPU
+  rasterizer. A private 111-triangle textured model renders correctly in both
+  explicit V policies; generated PPM/PNG files remain ignored and outside Git.
 
 ## Confirmed
 
@@ -111,12 +116,13 @@
 
 ## Next
 
-1. Emit a private first-model diagnostic with resolved textures using the new
-   API-neutral geometry and mip-chain contracts.
+1. Recover placed-node hierarchy/transform semantics to assemble and render a
+   complete grouped aircraft; its object selector correctly resolves to a null
+   group rather than one arbitrary mesh.
 2. Implement AFPACK manifest semantic checks and the transactional iOS import
    service; the converter's no-music configuration is now tested.
-3. Recover placed-node/room transform semantics required to assemble a complete
-   first scene after the single-model diagnostic.
+3. Connect the draw payload and texture upload policy to the Metal shell, first
+   with unlit/no-cull diagnostics and then with evidence-backed render states.
 4. Implement native UIKit and Game Controller adapters over the deterministic
    input router, then add the configurable safe-area-aware touch overlay.
 

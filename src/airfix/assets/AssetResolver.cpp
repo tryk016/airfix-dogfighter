@@ -37,6 +37,54 @@ void addIssue(
     result.issues.push_back({.kind = kind, .reference = reference});
 }
 
+[[nodiscard]] std::string joinTextureLogicalPath(
+    const std::string_view textureRoot,
+    const std::string_view sourceText,
+    const std::size_t pathLimit) {
+    auto root = textureRoot;
+    while (!root.empty() && (root.back() == '\\' || root.back() == '/')) {
+        root.remove_suffix(1U);
+    }
+    if (root.empty()) {
+        throw udsp::ParseError("texture root is empty");
+    }
+
+    constexpr std::string_view kTextureSuffix = ".gti";
+    const auto normalizedRoot = udsp::normalizeLogicalPath(root, pathLimit);
+    const auto normalizedSource = udsp::normalizeLogicalPath(sourceText, pathLimit);
+    constexpr std::size_t kJoinSeparatorBytes = 1U;
+    constexpr std::size_t kJoinFixedBytes =
+        kJoinSeparatorBytes + kTextureSuffix.size();
+    if (normalizedRoot.size() > pathLimit ||
+        kJoinFixedBytes > pathLimit - normalizedRoot.size() ||
+        normalizedSource.size() >
+            pathLimit - normalizedRoot.size() - kJoinFixedBytes) {
+        throw udsp::ParseError("joined texture path exceeds the configured limit");
+    }
+    return udsp::normalizeLogicalPath(
+        normalizedRoot + '\\' + normalizedSource + std::string(kTextureSuffix),
+        pathLimit);
+}
+
+[[nodiscard]] std::string archiveLogicalPath(
+    const udsp::Archive& archive,
+    const std::size_t directoryIndex,
+    const std::size_t fileIndex) {
+    std::string result = archive.directories().at(directoryIndex).path;
+    if (!result.empty()) {
+        result.push_back('\\');
+    }
+    result += archive.files().at(fileIndex).name;
+    return result;
+}
+
+void addTextureIssue(
+    ObjectTextureEntryResolution& result,
+    const TextureEntryIssueKind kind,
+    const std::optional<std::size_t> dependencyIndex) {
+    result.issues.push_back({.kind = kind, .dependencyIndex = dependencyIndex});
+}
+
 } // namespace
 
 ObjectDependencyResolution resolveObjectDependencies(
@@ -164,6 +212,79 @@ ObjectDependencyResolution resolveObjectDependencies(
                 material.environmentTexture)) {
             return result;
         }
+    }
+    return result;
+}
+
+ObjectTextureEntryResolution resolveObjectTextureEntries(
+    const ObjectDefinition& object,
+    const ObjectDependencyResolution& dependencies,
+    const udsp::Archive& archive,
+    const TextureEntryResolutionLimits& limits) {
+    ObjectTextureEntryResolution result;
+    if (dependencies.textures.size() > limits.maximumDependencies) {
+        addTextureIssue(result, TextureEntryIssueKind::limitExceeded, std::nullopt);
+        return result;
+    }
+
+    result.entries.reserve(dependencies.textures.size());
+    result.issues.reserve(dependencies.textures.size());
+    for (std::size_t index = 0U; index < dependencies.textures.size(); ++index) {
+        const auto& dependency = dependencies.textures[index];
+        ResolvedTextureEntry entry{
+            .role = dependency.role,
+            .materialReference = dependency.materialReference,
+            .materialIndex = dependency.materialIndex,
+            .sourceText = {},
+            .status = TextureEntryStatus::notFound,
+            .logicalPath = {},
+            .archiveDirectoryIndex = std::nullopt,
+            .archiveFileIndex = std::nullopt,
+            .archiveLogicalPath = std::nullopt,
+        };
+
+        if (!object.textureRoot.has_value() || object.textureRoot->empty()) {
+            entry.status = TextureEntryStatus::missingTextureRoot;
+            addTextureIssue(result, TextureEntryIssueKind::missingTextureRoot, index);
+            result.entries.push_back(std::move(entry));
+            continue;
+        }
+
+        try {
+            entry.logicalPath = joinTextureLogicalPath(
+                *object.textureRoot,
+                dependency.sourceText,
+                limits.maximumLogicalPathBytes);
+            entry.sourceText = dependency.sourceText;
+        }
+        catch (const udsp::ParseError&) {
+            entry.status = TextureEntryStatus::invalidLogicalPath;
+            addTextureIssue(result, TextureEntryIssueKind::invalidLogicalPath, index);
+            result.entries.push_back(std::move(entry));
+            continue;
+        }
+
+        const auto lookup = archive.lookup(
+            entry.logicalPath,
+            limits.maximumLogicalPathBytes);
+        switch (lookup.status) {
+        case udsp::LookupStatus::notFound:
+            entry.status = TextureEntryStatus::notFound;
+            addTextureIssue(result, TextureEntryIssueKind::notFound, index);
+            break;
+        case udsp::LookupStatus::unique:
+            entry.status = TextureEntryStatus::unique;
+            entry.archiveDirectoryIndex = lookup.directoryIndex;
+            entry.archiveFileIndex = lookup.fileIndex;
+            entry.archiveLogicalPath = archiveLogicalPath(
+                archive, lookup.directoryIndex, lookup.fileIndex);
+            break;
+        case udsp::LookupStatus::ambiguous:
+            entry.status = TextureEntryStatus::ambiguous;
+            addTextureIssue(result, TextureEntryIssueKind::ambiguous, index);
+            break;
+        }
+        result.entries.push_back(std::move(entry));
     }
     return result;
 }

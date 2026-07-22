@@ -96,6 +96,7 @@ target_include_directories(airfix_assets
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
 )
 target_compile_features(airfix_assets PUBLIC cxx_std_20)
+target_link_libraries(airfix_assets PUBLIC airfix::udsp)
 
 if(MSVC)
     target_compile_options(airfix_assets PRIVATE /W4 /permissive-)
@@ -104,6 +105,8 @@ else()
 endif()
 
 add_library(airfix_render
+    src/airfix/render/DiagnosticRasterizer.cpp
+    src/airfix/render/DrawMesh.cpp
     src/airfix/render/LegacyGeometry.cpp
 )
 add_library(airfix::render ALIAS airfix_render)
@@ -149,6 +152,10 @@ if(AIRFIX_BUILD_TOOLS)
 
     add_executable(gti-preview tools/gti-preview/main.cpp)
     target_link_libraries(gti-preview PRIVATE airfix::assets airfix::udsp)
+
+    add_executable(model-preview tools/model-preview/main.cpp)
+    target_link_libraries(model-preview
+        PRIVATE airfix::udsp airfix::assets airfix::render)
 endif()
 
 if(AIRFIX_BUILD_IOS_APP)
@@ -192,4 +199,14 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_render_tests tests/LegacyGeometryTests.cpp)
     target_link_libraries(airfix_render_tests PRIVATE airfix::render)
     add_test(NAME airfix_render_tests COMMAND airfix_render_tests)
+
+    add_executable(airfix_draw_mesh_tests tests/DrawMeshTests.cpp)
+    target_link_libraries(airfix_draw_mesh_tests PRIVATE airfix::render)
+    add_test(NAME airfix_draw_mesh_tests COMMAND airfix_draw_mesh_tests)
+
+    add_executable(airfix_diagnostic_rasterizer_tests
+        tests/DiagnosticRasterizerTests.cpp)
+    target_link_libraries(airfix_diagnostic_rasterizer_tests PRIVATE airfix::render)
+    add_test(NAME airfix_diagnostic_rasterizer_tests
+        COMMAND airfix_diagnostic_rasterizer_tests)
 endif()

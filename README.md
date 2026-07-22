@@ -20,9 +20,10 @@ other public distribution are explicitly out of scope.
 - A portable C++20 `UDSP` library, read-only listing/verifier CLI, and synthetic
   tests are implemented. All five supplied archives pass structural and payload
   validation without being copied into the repository.
-- Bounded GTI/CCF/FourCC parsers recover texture metadata/base pixels, mesh and
-  material metadata, blueprints, and object-to-texture dependency edges; corpus
-  diagnostics emit aggregate facts only.
+- Bounded GTI/CCF/FourCC parsers recover complete texture mip chains, mesh and
+  material metadata, blueprints, and exact object-to-texture archive entries.
+  A seam-safe draw payload and deterministic private CPU preview validate the
+  first textured model while corpus diagnostics emit aggregate facts only.
 - A deterministic portable input router now defines stable semantic actions,
   touch/controller/test bindings, multi-source arbitration, context/lifecycle
   releases, and controller reconnect neutral gating. Native iOS adapters and the
@@ -70,4 +71,7 @@ ctest --test-dir build --build-config Release --output-on-failure
 
 The local read-only inspector accepts
 `udsp-list [--summary|--verify|--inventory|--resolve-objects] <archive.up>`.
+The private diagnostic tool accepts
+`model-preview <archive.up> <logical\\path.object> <output.ppm> [--flip-v]`;
+its outputs belong only under ignored `artifacts/` paths.
 Never add original archives or generated asset packages to this repository.

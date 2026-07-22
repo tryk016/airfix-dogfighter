@@ -110,6 +110,11 @@ int main(const int argc, const char* const* argv) {
             std::size_t caseFoldMatchCount = 0U;
             std::size_t materialCount = 0U;
             std::size_t textureEdgeCount = 0U;
+            std::size_t resolvedTextureEntryCount = 0U;
+            std::size_t missingTextureRootCount = 0U;
+            std::size_t invalidTexturePathCount = 0U;
+            std::size_t missingTextureEntryCount = 0U;
+            std::size_t ambiguousTextureEntryCount = 0U;
             for (const auto& file : archive.files()) {
                 const auto prefix = airfix::udsp::readFilePrefix(
                     archivePath, archive, file, 4U);
@@ -143,6 +148,32 @@ int main(const int argc, const char* const* argv) {
                 if (!resolution.issues.empty()) {
                     throw std::runtime_error("object resolver found a semantic dependency issue");
                 }
+                const auto textureResolution =
+                    airfix::assets::resolveObjectTextureEntries(
+                        object, resolution, archive);
+                for (const auto& texture : textureResolution.entries) {
+                    switch (texture.status) {
+                    case airfix::assets::TextureEntryStatus::unique:
+                        if (!texture.archiveFileIndex.has_value()) {
+                            throw std::runtime_error(
+                                "unique texture resolution has no archive entry");
+                        }
+                        ++resolvedTextureEntryCount;
+                        break;
+                    case airfix::assets::TextureEntryStatus::missingTextureRoot:
+                        ++missingTextureRootCount;
+                        break;
+                    case airfix::assets::TextureEntryStatus::invalidLogicalPath:
+                        ++invalidTexturePathCount;
+                        break;
+                    case airfix::assets::TextureEntryStatus::notFound:
+                        ++missingTextureEntryCount;
+                        break;
+                    case airfix::assets::TextureEntryStatus::ambiguous:
+                        ++ambiguousTextureEntryCount;
+                        break;
+                    }
+                }
                 ++objectCount;
                 materialCount += resolution.materialIndices.size();
                 textureEdgeCount += resolution.textures.size();
@@ -161,7 +192,9 @@ int main(const int argc, const char* const* argv) {
                     ++caseFoldMatchCount;
                 }
                 switch (blueprint.kind) {
-                case airfix::assets::CcfBlueprintKind::mesh: ++meshCount; break;
+                case airfix::assets::CcfBlueprintKind::mesh:
+                    ++meshCount;
+                    break;
                 case airfix::assets::CcfBlueprintKind::nullNode: ++nullCount; break;
                 case airfix::assets::CcfBlueprintKind::light: ++lightCount; break;
                 }
@@ -173,8 +206,17 @@ int main(const int argc, const char* const* argv) {
                       << " noSelector=" << noSelectorCount
                       << " caseFoldMatches=" << caseFoldMatchCount
                       << " materials=" << materialCount
-                      << " textureEdges=" << textureEdgeCount << '\n';
-            return 0;
+                      << " textureEdges=" << textureEdgeCount
+                      << " resolvedTextures=" << resolvedTextureEntryCount
+                      << " missingTextureRoots=" << missingTextureRootCount
+                      << " invalidTexturePaths=" << invalidTexturePathCount
+                      << " missingTextureEntries=" << missingTextureEntryCount
+                      << " ambiguousTextureEntries=" << ambiguousTextureEntryCount
+                      << '\n';
+            const auto unresolvedTextureCount = missingTextureRootCount +
+                invalidTexturePathCount + missingTextureEntryCount +
+                ambiguousTextureEntryCount;
+            return unresolvedTextureCount == 0U ? 0 : 1;
         }
 
         if (inventory) {

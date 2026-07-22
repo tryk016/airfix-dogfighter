@@ -398,3 +398,28 @@ superseded evidence.
 - Full GCC `-Werror` build and all nine test targets pass. The corpus validator
   also converted every CCF mesh and selected an explicit mip policy for every
   GTI variant without writing original or derived assets.
+- Commit `d931271` passed portable CI run `29907055317` on Ubuntu, Windows, and
+  ARM64 macOS plus unsigned iOS run `29907055262` for `iphoneos` and
+  `iphonesimulator` on Xcode 26.6.
+
+## 2026-07-21 — resolved textures and first private model
+
+- `EV-20260721-032`: decompiled `GtTextureGroup::AddSearchPath` and
+  `GtTextureGroup::AddTexture` at RVAs `0x00046BB0`/`0x00046C30`. Ordinary CCF
+  material textures use exactly `TEXU\\source.gti`; `.tga` is a separate
+  boolean path, not a fallback guessed by the portable resolver.
+- Added typed bounded lookup from all object texture edges to UDSP entries.
+  Read-only validation resolves 210/210 edges uniquely, with zero missing
+  roots, unsafe paths, missing files, or ambiguities.
+- Added deterministic seam splitting for per-corner UVs/flat normals, stable
+  first-use materials, contiguous source-order draw ranges, 32-bit indices,
+  local bounds, and aggregate limits in the backend-neutral draw payload.
+- Added a bounded deterministic CPU rasterizer and private `model-preview`
+  tool. The first mesh-backed object rendered a complete textured silhouette:
+  111 triangles, 291 draw vertices, six ranges, three materials, and two
+  primary textures. Raw-V and explicit flipped-V previews both remain under
+  ignored `artifacts/private-model-preview/`; no private image or hash is in Git.
+- The selected aircraft object resolves to a null group, confirming that a
+  faithful complete aircraft requires the placed-node hierarchy and transforms
+  rather than choosing an arbitrary child mesh. This is the next asset task,
+  not a MacBook blocker.

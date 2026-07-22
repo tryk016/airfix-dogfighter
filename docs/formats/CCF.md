@@ -275,6 +275,12 @@ diagnostic resolves 212 distinct-per-object material uses and 210 texture edges
 with no missing or ambiguous reference. Primary, secondary, and environment
 roles remain separate.
 
+Material texture strings are base names. `GtTextureGroup::AddTexture` at RVA
+`0x00046C30` combines an object's `TEXU` search root with each source as
+`root\\source.gti` before opening it. The bounded portable resolver implements
+that exact rule and resolves all 210 selected-corpus texture edges uniquely;
+it neither guesses alternate roots nor treats an existing extension specially.
+
 ## Portable implementation and next step
 
 - file/root/top-level/direct-child/material/mesh parser:
@@ -284,5 +290,6 @@ roles remain separate.
   `tests/LegacyFormatsTests.cpp`;
 - ignored decompilation evidence: `artifacts/ghidra/Cc.dll.*`.
 
-The next step is the private first-model diagnostic using this conversion
-contract and resolved texture paths, without committing proprietary data.
+The backend-neutral seam-safe draw payload and private first-model diagnostic
+are implemented. Complete grouped models now require placed-node hierarchy and
+transform semantics; no proprietary geometry or preview is committed.
