@@ -102,7 +102,9 @@ codes. See `docs/systems/INPUT.md` and ADR-0002.
 ### `apps`
 
 - `reference-win`: desktop executable used during reconstruction and comparison.
-- `airfix-ios`: iOS application target.
+- `airfix-ios`: CMake-generated Objective-C++/UIKit/Metal application target.
+  The first shell is data-less, iPhone-landscape only, and delegates lifecycle
+  state to portable `airfix::runtime`; see ADR-0006.
 - Optional diagnostic viewers for archives, models, levels, and effects.
 
 ## Dependency direction
