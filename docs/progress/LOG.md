@@ -217,3 +217,23 @@ superseded evidence.
   each of the blueprint and placed-node tables. The latter counts match in
   every file; the parser records this evidence without yet imposing a semantic
   one-to-one invariant.
+
+## 2026-07-21 — first green iOS application builds
+
+- `EV-20260721-021`: added a data-less Objective-C++/UIKit/Metal application
+  shell generated with CMake, plus a portable `AppSession` lifecycle/content
+  state machine and five cross-platform test targets including its lifecycle
+  fixtures.
+- Added a public-source boundary check and an unsigned `macos-26` workflow
+  pinned to Xcode 26.6. It builds separate ARM64 `iphoneos` and
+  `iphonesimulator` bundles and verifies platform, architecture, minimum iOS
+  16.4, and absence of original/private/signing file types without uploading
+  the application.
+- Run `29898694161` passed both Apple jobs (45 seconds device, 66 seconds
+  simulator) alongside the existing Ubuntu, Windows, and ARM64 macOS tests.
+- The first AppleClang passes exposed a delegate property placement error and a
+  missing explicit CoreGraphics link. Both were isolated from logs and fixed in
+  focused commits before the green run.
+- The repository remains public and therefore supports unsigned CI only.
+  Signing credentials, profiles, device identifiers, signed IPA, and AFPACK
+  data remain outside GitHub until a private signing boundary is selected.

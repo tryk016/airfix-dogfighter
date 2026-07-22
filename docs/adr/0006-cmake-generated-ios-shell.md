@@ -105,6 +105,6 @@ formats; only the project-generation layer may need replacement later.
 1. [x] Add a portable application lifecycle/content state machine.
 2. [x] Add the data-less UIKit/Metal shell and iOS 16.4 configuration.
 3. [x] Add unsigned `iphoneos` and `iphonesimulator` Actions jobs.
-4. [ ] Keep both Apple jobs green on the hosted Xcode pin.
+4. [x] Keep both Apple jobs green on the hosted Xcode pin.
 5. [ ] Re-evaluate the generator before adding complex native test/signing
    schemes.

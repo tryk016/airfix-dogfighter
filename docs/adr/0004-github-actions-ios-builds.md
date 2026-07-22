@@ -84,10 +84,11 @@ if hosted-runner/Xcode constraints make a required build impossible.
 
 ## Action items
 
-1. [ ] Create/connect a private GitHub remote.
-2. [ ] Add explicit macOS runner/Xcode preflight workflow.
-3. [ ] Build a signing-free simulator target at deployment target 16.4.
-4. [ ] Define and implement the private `.afpack` import boundary.
+1. [x] Connect the source remote; keep signing disabled while it is public.
+2. [x] Add explicit macOS runner/Xcode preflight workflow.
+3. [x] Build signing-free simulator and device targets at deployment target
+   16.4.
+4. [x] Define and implement the private `.afpack` package boundary.
 5. [ ] Register both device UDIDs and create/export signing materials.
 6. [ ] Configure the protected `ios-private` environment and secrets.
 7. [ ] Build, download, install, and verify the first IPA on both phones.

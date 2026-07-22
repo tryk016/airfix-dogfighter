@@ -31,6 +31,10 @@
   `Resource.up` metadata buffering fell from 170,642,453 to 130,961 bytes.
 - Draft PR #1 is published; portable CI passes on Ubuntu, Windows, and ARM64
   macOS 26, including the post-fix AFPACK streaming tests on Windows.
+- Added a data-less UIKit/Metal iPhone shell generated through CMake, a portable
+  lifecycle/content state machine, and a public-source boundary scanner.
+- Unsigned ARM64 `iphoneos` and `iphonesimulator` builds pass on Xcode 26.6 with
+  verified minimum iOS 16.4 and no private files in either bundle.
 - Recovered package-chain startup and the type/mode/graphics plugin discovery,
   version gates, metadata, factory calls, and unloading behavior.
 - Classified `Dogfighter.exe` as the usable v1.01 bootstrap reference and the
@@ -72,19 +76,20 @@
   Developer account available, single-player only, no editors/multiplayer, and
   no original CD music.
 - GitHub Actions hosted macOS/Xcode is the accepted iOS build/signing host; no
-  local Mac is required. CI produces a signed data-less IPA and private original
-  data remains local in an imported `.afpack`.
+  local Mac is required. CI currently builds unsigned data-less bundles; future
+  private signing produces an IPA while original data remains local in an
+  imported `.afpack`.
 - MacBook policy accepted: request a move only for a clearly reported hard
   blocker or documented >=20% acceleration of the affected remaining work.
 
 ## Next
 
-1. Extend GTI RGBA conversion across every mip level and define Metal upload.
+1. Implement the generic `AfChunkContainer` and semantic object dependencies.
 2. Index CCF material/mesh chunks and emit the first model diagnostic.
-3. Add a tested no-music asset configuration because the original CD/audio is
+3. Extend GTI RGBA conversion across every mip level and define Metal upload.
+4. Add a tested no-music asset configuration because the original CD/audio is
    unavailable.
-4. Implement manifest semantic checks and the transactional iOS import service.
-5. Create the initial iOS 16.4 application shell and unsigned Actions build.
+5. Implement manifest semantic checks and the transactional iOS import service.
 
 ## Open questions
 
