@@ -1,7 +1,7 @@
 # Initial source inventory
 
 **Evidence set:** `EV-20260721-001` through `EV-20260721-005`  
-**Source:** `E:\roms\Airfix Dogfighter`  
+**Source:** owner-provided original game directory (kept outside Git)
 **Method:** read-only directory listing, SHA-256, header inspection, and 7-Zip
 listing attempts; no game binary was executed.
 

@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$SourceRoot = 'E:\roms\Airfix Dogfighter',
+    [Parameter(Mandatory = $true)]
+    [string]$SourceRoot,
 
     [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\artifacts\pe'),
 

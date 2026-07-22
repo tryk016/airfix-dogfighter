@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $false)]
-    [string] $SourceRoot = 'E:\roms\Airfix Dogfighter',
+    [Parameter(Mandatory = $true)]
+    [string] $SourceRoot,
 
     [Parameter(Mandatory = $false)]
     [switch] $AsJson

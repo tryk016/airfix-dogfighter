@@ -79,8 +79,8 @@ if [[ -n "$forbidden" ]]; then
     exit 1
 fi
 
-if grep -R -a -F -q 'E:\roms\Airfix Dogfighter' "$bundle"; then
-    echo "private analysis path leaked into application bundle" >&2
+if grep -R -a -E -q '([A-Za-z]:\\|/Users/|/home/)' "$bundle"; then
+    echo "absolute local path leaked into application bundle" >&2
     exit 1
 fi
 

@@ -9,10 +9,10 @@
 ## Context
 
 The owner does not require a local Mac/Xcode environment and wants iOS builds to
-run through GitHub Actions. Original game data exists only at
-`E:\roms\Airfix Dogfighter` and must not be uploaded. The application is a
-private sideload with deployment target iOS 16.4. Physical tests use iPhone 17
-Pro Max on iOS 26.6 and iPhone SE (3rd generation) on iOS 26.3.
+run through GitHub Actions. Original game data exists only in the owner-provided
+source directory and must not be uploaded. The application is a private sideload
+with deployment target iOS 16.4. Physical tests use iPhone 17 Pro Max on iOS
+26.6 and iPhone SE (3rd generation) on iOS 26.3.
 
 ## Decision
 

@@ -53,8 +53,8 @@ Tasks:
 
 - Record relative paths, sizes, timestamps, SHA-256, magic values, PE metadata,
   and archive signatures.
-- Mark `E:\roms\Airfix Dogfighter` read-only by policy; never run analysis tools
-  in write mode against it.
+- Mark the owner-provided original game directory read-only by policy; never run
+  analysis tools in write mode against it.
 - Record edition/version, language packs, patches, disc contents, and whether CD
   audio tracks are available.
 - Keep original files and original-derived private fixtures outside Git.
