@@ -273,17 +273,24 @@ void testStatusesMetadataAndStablePlacements() {
 }
 
 void testMissingAndInvalidWorld() {
+    std::cerr << "mission-resolver checkpoint: missing begin\n";
     const auto archive = testArchive();
+    std::cerr << "mission-resolver checkpoint: missing archive built\n";
     const auto missing = airfix::assets::resolveMissionEntries({}, archive);
+    std::cerr << "mission-resolver checkpoint: missing resolved\n";
     require(missing.worldEntry.status == airfix::assets::MissionEntryStatus::missing &&
             missing.worldEntry.logicalPath.empty(),
         "absent world path was not reported as missing");
+    std::cerr << "mission-resolver checkpoint: missing assertion complete\n";
 
     airfix::assets::LevelDefinition level;
     level.worldPath = "";
+    std::cerr << "mission-resolver checkpoint: invalid level built\n";
     const auto invalid = airfix::assets::resolveMissionEntries(level, archive);
+    std::cerr << "mission-resolver checkpoint: invalid resolved\n";
     require(invalid.worldEntry.status == airfix::assets::MissionEntryStatus::invalid,
         "present empty world path was not reported as invalid");
+    std::cerr << "mission-resolver checkpoint: missing end\n";
 }
 
 void testLimitsFailClosed() {
