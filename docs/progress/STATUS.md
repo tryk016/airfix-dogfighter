@@ -67,6 +67,10 @@
   installer with content-addressed publication, validated collision reuse,
   idempotent AFAC rotation, and an explicit recovery result for ambiguous
   post-rename durability. The portable implementation is linked into iOS.
+- Implemented bounded startup content inspection and verified rollback. It
+  authenticates only AFAC-derived current/previous packs, distinguishes
+  malformed, unusable, and transient-unavailable states, rechecks stale active
+  state on rollback, and requires exact durable readback after commit.
 - Added bounded UDSP-in-container reads and completed a real English content
   pack round trip (192,755,765 bytes, 3 entries) outside Git; the temporary pack
   was removed after verification.
@@ -84,10 +88,15 @@
   closely.
 - Implemented bounded `AfChunkContainer` framing and object-definition parsing;
   all 299 selected containers/7,376 chunks and all 215 object definitions pass.
-- Implemented bounded HOUS, stable FHOU placement, BRIF, and PATH semantics.
-  Read-only validation covers 29 worlds/493 rooms/47,589 radar-line records,
-  31 levels/2,444 static placements, 23 briefings, and 833 path deltas; uncertain
-  level `MODL`/`IAOB` payloads remain explicitly uninterpreted.
+- Implemented bounded HOUS, complete observed FHOU placement/state, BRIF, and
+  PATH semantics. Read-only validation covers 29 worlds/493 rooms/47,589 radar
+  line records; 31 levels with 2,444 static placements, 1,176 model placements,
+  and 172 runtime-state records/643 words; 23 briefings; and 833 path deltas.
+- Added a metadata-only level dependency resolver for the world and every
+  static/model object definition. It preserves source order/data, reports
+  missing/invalid/not-found/unique/ambiguous paths, applies aggregate limits,
+  and never reads payloads or guesses extensions. All 31 world, 2,444 static,
+  and 1,176 model references resolve uniquely in the selected corpus.
 - Implemented strict CCF material metadata parsing for all 10,385 records,
   exposing material names/references and 10,256 primary plus 263 environment
   texture dependencies without assigning unproven numeric semantics.
@@ -157,11 +166,11 @@
 
 ## Next
 
-1. Decode the independent `0x4000` placed graph needed for a faithful first
+1. Add the native document picker, progress/recovery presentation, and startup
+   content gate over the completed portable AFPACK installer/recovery service.
+2. Decode the independent `0x4000` placed graph needed for a faithful first
    room; static grouped-aircraft rendering and parent-relative local math are
    complete.
-2. Implement the transactional AFPACK activation/replacement service; strict
-   manifest semantics and the converter's no-music configuration are tested.
 3. Connect the draw payload and texture upload policy to the Metal shell, first
    with unlit/no-cull diagnostics and then with evidence-backed render states.
 4. Implement native UIKit and Game Controller adapters over the deterministic

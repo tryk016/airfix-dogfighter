@@ -2,8 +2,8 @@
 
 **State:** version 1 container, parser, verifier, local writer, strict
 semantic manifest validation, active-record format, and durable publication
-primitives plus portable installer implemented; native iOS import UI and
-startup recovery pending
+primitives plus portable installer/recovery implemented; native iOS import and
+recovery UI pending
 
 **Confidence:** design contract (not an original Airfix format)
 
@@ -223,6 +223,7 @@ Diagnostics may log logical paths, sizes, and digests, but never payload bytes.
 - stable-source validation gate: `src/airfix/package/AfPackValidation.*`;
 - canonical active pointer: `src/airfix/package/AfPackActiveRecord.*`;
 - composed installer: `src/airfix/package/AfPackInstaller.*`;
+- startup inspection and verified rollback: `src/airfix/package/AfPackRecovery.*`;
 - platform durability operations: `src/airfix/io/DurableFile*`;
 - deterministic writer: `src/airfix/package/AfPackWriter.*`;
 - allowlisted local CLI: `afpack-create`;
@@ -232,8 +233,9 @@ Diagnostics may log logical paths, sizes, and digests, but never payload bytes.
 - strict semantic/JSON tests: `tests/AfPackManifestTests.cpp`;
 - validation, AFAC, and publication tests: `tests/AfPackValidationTests.cpp`,
   `tests/AfPackActiveRecordTests.cpp`, and `tests/DurableFileTests.cpp`;
-- complete installer transaction tests: `tests/AfPackInstallerTests.cpp`;
-- native iOS document picker/progress UI and startup recovery: pending; see
+- complete installer/recovery transaction tests: `tests/AfPackInstallerTests.cpp`
+  and `tests/AfPackRecoveryTests.cpp`;
+- native iOS document picker/progress/recovery UI: pending; see
   `docs/systems/CONTENT-INSTALL.md`.
 
 `Pack::open` reads the fixed header plus metadata through `dataOffset`; it does

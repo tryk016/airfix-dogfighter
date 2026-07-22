@@ -79,8 +79,10 @@ if [[ -n "$forbidden" ]]; then
     exit 1
 fi
 
-if grep -R -a -E -q '([A-Za-z]:\\|/Users/|/home/)' "$bundle"; then
-    echo "absolute local path leaked into application bundle" >&2
+if grep -R -a -E -i -q \
+    '(([A-Za-z]:[\\/]|/Users/[^/]+/|/home/[^/]+/)[^[:cntrl:]]*roms[\\/]|/roms/)' \
+    "$bundle"; then
+    echo "private source-library path leaked into application bundle" >&2
     exit 1
 fi
 

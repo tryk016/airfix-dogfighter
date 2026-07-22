@@ -112,10 +112,12 @@ including the observed optional category/nationality/mesh fields and exact
 
 The extended semantic pass also validates all 29 worlds, 493 rooms, 522 ordinal
 radar lists containing 47,589 four-float line records, 31 levels with 2,444
-stable `OBJE` placements, 23 briefings across Resource/English, and the one path
-with 833 signed-delta records. One world has a loader-permitted second `BCKD`;
-the first is authoritative and the validated second descriptor is retained.
-Variable level `MODL`/`IAOB` chunks remain bounded but uninterpreted.
+stable `OBJE` placements, 1,176 `MODL` placements, and 172 `IAOB` runtime-state
+records/643 words; 23 briefings across Resource/English; and the one path with
+833 signed-delta records. One world has a loader-permitted second `BCKD`; the
+first is authoritative and the validated second descriptor is retained. All
+observed FHOU chunks now have bounded physical schemas; neutral state slot names
+avoid claiming unproven gameplay meanings.
 
 ## Port priority derived from the corpus
 

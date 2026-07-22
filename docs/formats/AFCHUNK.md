@@ -1,11 +1,12 @@
 # FMT-AFCHUNK — FourCC definition/mission container
 
-**State:** generic framing plus object, world, static level-placement, briefing,
-and recorded-path semantics implemented; level `MODL`/`IAOB` pending
+**State:** generic framing plus object, world, static/model level placement,
+runtime instance-state, briefing, and recorded-path semantics implemented;
+gameplay labels for several model/state slots remain intentionally neutral
 
 **Confidence:** 3/3 for framing and implemented fields listed below
 
-**Evidence:** `EV-20260721-022`, `EV-20260721-035`
+**Evidence:** `EV-20260721-022`, `EV-20260721-035`, `EV-20260721-036`
 
 ## Evidence and source quality
 
@@ -113,11 +114,26 @@ Rejecting every known duplicate as malformed would incorrectly reject the
 original corpus.
 
 `FHOU` exposes singleton `GCCS`, singleton world path `HOUS`, and repeated
-static `OBJE` placements. Each implemented placement is exactly six float32
-values followed by room and object-definition NUL strings with no trailing
-bytes. All 31 levels and 2,444 such placements validate. Variable `MODL` and
-`IAOB` payloads remain bounded descriptors until their complete state schemas
-are established; they are neither guessed nor discarded.
+static `OBJE` placements. Each static placement is exactly six float32 values
+followed by room and object-definition NUL strings with no trailing bytes.
+
+`MODL` begins with the same transform/room/object identity. The game serializer
+then writes three ordered NUL-string/u32 pairs and one compatibility u32; the
+loader accepts the final word as optional for older data. The portable model
+retains neutral state-string/value names until their gameplay meanings are
+independently proven. All 1,176 supplied `MODL` records include the compatibility
+word and pass exact parsing.
+
+`IAOB` is a runtime-state overlay rather than another transform. Its first two
+NUL strings are matched against a runtime type identity and instance identity;
+the selected class then consumes the remaining u32 words. Five serializer paths
+and the complete corpus establish bounded tails of 1, 2, or 8 words. The 172
+supplied records contain 643 words in total: 85 one-word, 23 two-word, and 64
+eight-word records. The generic parser preserves the words without assigning
+unproven class-specific meanings.
+
+Across all 31 levels, bounded parsing validates 2,444 static placements, 1,176
+model placements, and 172 instance-state records with no unknown chunks.
 
 `BRIF` validates the nine known singleton string chunks `NAME`, `OUTL`, `OUT2`,
 `TEXT`, `TXT2`, `PRIM`, `SCND`, `AIRS`, and `SELA`. All 23 briefings across the
@@ -126,15 +142,19 @@ single `PDAT` whose 12-byte records contain six signed little-endian int16
 deltas; the supplied path has 833 records.
 
 The semantic API has explicit limits for chunks, individual strings, rooms,
-line lists, aggregate line records, placements, and path records. It validates
-sizes and counts before allocation, requires exact terminators/trailing extent,
-preserves unknown descriptors, and deliberately retains non-finite float bit
-patterns because the legacy loader does not reject them.
+line lists, aggregate line records, aggregate static/model placements, IAOB
+state words, and path records. It validates sizes and counts before allocation,
+requires exact terminators/trailing extent, preserves unknown descriptors, and
+deliberately retains non-finite float bit patterns because the legacy loader
+does not reject them.
 
-The portable resolver now joins object `CCFF`/`MESH` to CCF-scoped mesh/null/light
-blueprints and material references. The next semantic parser can build on that
-verified identity layer when interpreting the more variable `MODL` and `IAOB`
-placements.
+The portable resolver joins object `CCFF`/`MESH` to CCF-scoped mesh/null/light
+blueprints and material references. A second metadata-only resolver now maps
+the level's world, every static object, and every model definition path to an
+explicit missing/invalid/not-found/unique/ambiguous UDSP result without reading
+payloads or guessing extensions. The complete selected corpus resolves all 31
+world references, 2,444 static-object references, and 1,176 model references
+uniquely with zero dependency issues.
 
 ## Portable implementation
 

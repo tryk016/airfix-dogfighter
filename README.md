@@ -66,7 +66,7 @@ sources.
 | `UDSP` archives | Bounded metadata parser, lookup, decompression, verification, and CLI implemented |
 | Legacy assets | GTI textures, CCF scenes/meshes/materials/blueprints, and major FourCC definitions parsed |
 | Dependency resolution | Object-to-scene, blueprint subtree, material, and texture paths implemented |
-| Private packaging | AFPACK writer, manifest validation, streaming authentication, and transactional installer implemented |
+| Private packaging | AFPACK writer, streaming validation, transactional install, startup inspection, and verified rollback implemented |
 | Rendering | Deterministic CPU diagnostics and a synthetic iOS Metal smoke renderer implemented |
 | Input core | Deterministic semantic router for touch/controller/test sources implemented |
 | Native controls | UIKit touch overlay and Apple Game Controller adapters pending |

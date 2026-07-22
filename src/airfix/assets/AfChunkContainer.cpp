@@ -140,27 +140,95 @@ template <std::size_t Count>
     return room;
 }
 
-[[nodiscard]] LevelObjectPlacement readLevelObject(
+[[nodiscard]] LevelObjectPlacement readLevelPlacementPrefix(
     const std::span<const std::uint8_t> payload,
-    const std::size_t stringLimit) {
+    std::size_t& cursor,
+    const std::size_t stringLimit,
+    const std::string_view field) {
     constexpr std::size_t kTransformBytes = 6U * sizeof(float);
     if (payload.size() < kTransformBytes + 2U) {
-        throw ParseError("level OBJE payload is too short");
+        throw ParseError(std::string(field) + " payload is too short");
     }
     LevelObjectPlacement placement;
     const auto transform = readFloatArray<6U>(
-        payload.first(kTransformBytes), "level OBJE transform");
+        payload.first(kTransformBytes), std::string(field) + " transform");
     std::copy_n(transform.begin(), 3U, placement.position.begin());
     std::copy_n(transform.begin() + 3U, 3U, placement.axisRotation.begin());
-    auto cursor = kTransformBytes;
+    cursor = kTransformBytes;
     placement.room = readEmbeddedString(
-        payload, cursor, stringLimit, "level OBJE room");
+        payload, cursor, stringLimit, std::string(field) + " room");
     placement.objectPath = readEmbeddedString(
-        payload, cursor, stringLimit, "level OBJE object path");
+        payload, cursor, stringLimit, std::string(field) + " object path");
+    return placement;
+}
+
+[[nodiscard]] LevelObjectPlacement readLevelObject(
+    const std::span<const std::uint8_t> payload,
+    const std::size_t stringLimit) {
+    auto cursor = std::size_t{};
+    auto placement = readLevelPlacementPrefix(
+        payload, cursor, stringLimit, "level OBJE");
     if (cursor != payload.size()) {
         throw ParseError("level OBJE payload has trailing bytes");
     }
     return placement;
+}
+
+[[nodiscard]] LevelModelPlacement readLevelModel(
+    const std::span<const std::uint8_t> payload,
+    const std::size_t stringLimit) {
+    auto cursor = std::size_t{};
+    LevelModelPlacement model;
+    model.placement = readLevelPlacementPrefix(
+        payload, cursor, stringLimit, "level MODL");
+    for (std::size_t index = 0U; index < model.stateStrings.size(); ++index) {
+        model.stateStrings[index] = readEmbeddedString(
+            payload, cursor, stringLimit, "level MODL state string");
+        if (payload.size() - cursor < sizeof(std::uint32_t)) {
+            throw ParseError("level MODL is missing a state value");
+        }
+        model.stateValues[index] = readU32(
+            payload, cursor, "level MODL state value");
+        cursor += sizeof(std::uint32_t);
+    }
+    if (cursor == payload.size()) {
+        return model;
+    }
+    if (payload.size() - cursor != sizeof(std::uint32_t)) {
+        throw ParseError("level MODL has invalid trailing state data");
+    }
+    model.compatibilityValue = readU32(
+        payload, cursor, "level MODL compatibility value");
+    return model;
+}
+
+[[nodiscard]] LevelInstanceState readLevelInstanceState(
+    const std::span<const std::uint8_t> payload,
+    const std::size_t stringLimit,
+    const std::size_t wordsBefore,
+    const std::size_t wordLimit) {
+    LevelInstanceState state;
+    auto cursor = std::size_t{};
+    state.typeIdentity = readEmbeddedString(
+        payload, cursor, stringLimit, "level IAOB type identity");
+    state.instanceIdentity = readEmbeddedString(
+        payload, cursor, stringLimit, "level IAOB instance identity");
+    const auto remaining = payload.size() - cursor;
+    if (remaining == 0U || remaining % sizeof(std::uint32_t) != 0U) {
+        throw ParseError("level IAOB state is empty or not a sequence of u32 words");
+    }
+    const auto wordCount = remaining / sizeof(std::uint32_t);
+    if (wordsBefore > wordLimit || wordCount > wordLimit - wordsBefore) {
+        throw ParseError("level definition exceeds the configured IAOB state-word limit");
+    }
+    state.stateWords.reserve(wordCount);
+    for (std::size_t index = 0U; index < wordCount; ++index) {
+        state.stateWords.push_back(readU32(
+            payload,
+            cursor + index * sizeof(std::uint32_t),
+            "level IAOB state word"));
+    }
+    return state;
 }
 
 } // namespace
@@ -405,6 +473,8 @@ LevelDefinition parseLevelDefinition(
     constexpr auto kChecksum = fourCC('G', 'C', 'C', 'S');
     constexpr auto kWorld = fourCC('H', 'O', 'U', 'S');
     constexpr auto kObject = fourCC('O', 'B', 'J', 'E');
+    constexpr auto kModel = fourCC('M', 'O', 'D', 'L');
+    constexpr auto kInstanceState = fourCC('I', 'A', 'O', 'B');
 
     const auto container = parseAfChunkContainer(bytes, limits.maxChunks);
     if (container.rootId != kAfFullHouseRoot) {
@@ -412,6 +482,7 @@ LevelDefinition parseLevelDefinition(
     }
 
     LevelDefinition definition;
+    auto instanceStateWords = std::size_t{};
     for (const auto& chunk : container.chunks) {
         switch (chunk.id) {
         case kChecksum: {
@@ -430,15 +501,34 @@ LevelDefinition parseLevelDefinition(
                 bytes, chunk, limits.maxStringBytes);
             break;
         case kObject:
-            if (definition.objects.size() >= limits.maxPlacements) {
+            if (definition.objects.size() > limits.maxPlacements ||
+                definition.models.size() >=
+                    limits.maxPlacements - definition.objects.size()) {
                 throw ParseError("level definition exceeds the configured placement limit");
             }
             definition.objects.push_back(readLevelObject(
                 afChunkPayload(bytes, chunk), limits.maxStringBytes));
             break;
+        case kModel:
+            if (definition.objects.size() > limits.maxPlacements ||
+                definition.models.size() >=
+                    limits.maxPlacements - definition.objects.size()) {
+                throw ParseError("level definition exceeds the configured placement limit");
+            }
+            definition.models.push_back(readLevelModel(
+                afChunkPayload(bytes, chunk), limits.maxStringBytes));
+            break;
+        case kInstanceState: {
+            auto state = readLevelInstanceState(
+                afChunkPayload(bytes, chunk),
+                limits.maxStringBytes,
+                instanceStateWords,
+                limits.maxInstanceStateWords);
+            instanceStateWords += state.stateWords.size();
+            definition.instanceStates.push_back(std::move(state));
+            break;
+        }
         default:
-            // MODL and IAOB intentionally remain here until their complete
-            // payloads are established independently.
             definition.unknownChunks.push_back(chunk);
             break;
         }

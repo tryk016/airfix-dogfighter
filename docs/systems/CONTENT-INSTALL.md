@@ -1,7 +1,7 @@
 # Private content installation and recovery
 
-**State:** portable installer and transaction contract implemented; native iOS
-document-picker/UI adapter and startup recovery service pending
+**State:** portable installer, startup inspection, and rollback transaction
+implemented; native iOS document-picker/progress/recovery UI pending
 
 **Scope:** private sideload build, AFPACK v1, one serialized importer, no saves
 inside the content transaction
@@ -145,17 +145,18 @@ archive logical paths, complete digests, content bytes, or user document names.
 
 ## Startup recovery
 
-Recovery runs before runtime content opens and while the installer lock is
-held:
+The portable recovery service runs before runtime content opens and while the
+installer lock is held:
 
 1. Parse `active.afac` exactly. Never choose a pack merely because its filename
    sorts newest or is the only file present.
 2. Validate that current filename, size, full digest, AFPACK semantics, and
    nested archives agree. If so, it remains active.
 3. If current is invalid and the AFAC previous reference is valid, expose a
-   typed rollback-needed result. The first implementation performs rollback only
-   through a new atomic AFAC generation, never by editing the old record in
-   place. Whether this is automatic or user-confirmed is an iOS UX decision.
+   typed `rollbackAvailable` result. Rollback commits only that already verified
+   previous pack through a new atomic AFAC generation, never by editing the old
+   record in place. Whether this is automatic or user-confirmed is an iOS UX
+   decision.
 4. If neither reference validates, enter the no-content/error state; do not run
    the game against partially trusted data.
 5. Remove a staging/temp entry only when its name is an exact recognized
@@ -168,6 +169,23 @@ held:
 Missing `active.afac` is a valid first-launch/no-content state. A malformed
 record is not silently treated as missing because doing so would hide a failed
 or corrupted commit.
+
+`inspectActiveContent` captures one stable absolute content root, reads only the
+digest-derived current/previous paths, requires regular non-link files and exact
+sizes, then streams each complete pack through SHA-256. After that full-file
+authentication it opens bounded AFPACK metadata, strictly validates the
+manifest, and opens both required nested UDSP regions without redundantly
+rehashing every payload through the installer gate. Typed results distinguish
+`noContent`, `ready`, `rollbackAvailable`, `unusable`, `malformedActive`, and
+transient `unavailable`; a temporary I/O failure never offers rollback.
+
+`commitRollback` accepts only a `rollbackAvailable` inspection. It verifies the
+previous pack again, compares the exact source AFAC before writing and again
+immediately before commit, rotates current/previous through `makeNextActive`,
+and makes only the final pointer replacement non-cancellable. Exact readback and
+file/directory resynchronization are required after ambiguous post-rename
+errors; otherwise the caller receives the same explicit unknown-commit outcome
+used by installation. Progress phases are monotonic and end at `complete`.
 
 ## Required verification matrix
 
@@ -182,6 +200,9 @@ Synthetic tests contain no game assets and cover:
 - existing valid final reuse and existing corrupt final collision;
 - missing/malformed/overflowing AFAC, active-temp collision, and pointer replace
   failure with old-current preservation;
+- no-content/ready/rollback/unusable/malformed/unavailable inspection, current
+  and previous size/digest/type/link failures, stale AFAC checks, monotonic
+  recovery progress, re-verification before rollback, and ambiguous commit;
 - canonical UUID/path rejection, relative/absolute aliases, hard links,
   source-identity substitution, and wrong-type filesystem entries;
 - crash checkpoints after staging sync, final publication, AFAC temp sync, and
@@ -189,9 +210,9 @@ Synthetic tests contain no game assets and cover:
 - proof that a sentinel under `saves/` remains byte-identical through every
   success, failure, rollback, and cleanup scenario.
 
-Linux, Windows, ARM64 macOS, `iphoneos`, and `iphonesimulator` CI will compile
-the relevant platform paths once the installer is linked into its targets.
-Physical-device tests later add document-provider permissions,
+Linux, Windows, ARM64 macOS, `iphoneos`, and `iphonesimulator` targets compile
+the portable installer and recovery service because AFPACK is linked into the
+iOS application target. Physical-device tests later add document-provider permissions,
 background/foreground interruption, force termination at checkpoints,
 insufficient-space behavior, file protection while locked, and large-package
 duration/thermal measurements.

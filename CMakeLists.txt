@@ -89,6 +89,7 @@ add_library(airfix_assets
     src/airfix/assets/AssetResolver.cpp
     src/airfix/assets/CcfBlueprintGraph.cpp
     src/airfix/assets/LegacyFormats.cpp
+    src/airfix/assets/MissionEntryResolver.cpp
 )
 add_library(airfix::assets ALIAS airfix_assets)
 
@@ -149,6 +150,7 @@ add_library(airfix_afpack
     src/airfix/package/AfPackActiveRecord.cpp
     src/airfix/package/AfPackInstaller.cpp
     src/airfix/package/AfPackManifest.cpp
+    src/airfix/package/AfPackRecovery.cpp
     src/airfix/package/AfPackValidation.cpp
     src/airfix/package/AfPackWriter.cpp
 )
@@ -220,6 +222,10 @@ if(AIRFIX_BUILD_TESTS)
     target_link_libraries(airfix_afpack_installer_tests PRIVATE airfix::afpack)
     add_test(NAME airfix_afpack_installer_tests COMMAND airfix_afpack_installer_tests)
 
+    add_executable(airfix_afpack_recovery_tests tests/AfPackRecoveryTests.cpp)
+    target_link_libraries(airfix_afpack_recovery_tests PRIVATE airfix::afpack)
+    add_test(NAME airfix_afpack_recovery_tests COMMAND airfix_afpack_recovery_tests)
+
     add_executable(airfix_crypto_tests tests/Sha256Tests.cpp)
     target_link_libraries(airfix_crypto_tests PRIVATE airfix::crypto)
     add_test(NAME airfix_crypto_tests COMMAND airfix_crypto_tests)
@@ -239,6 +245,12 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_asset_resolver_tests tests/AssetResolverTests.cpp)
     target_link_libraries(airfix_asset_resolver_tests PRIVATE airfix::assets)
     add_test(NAME airfix_asset_resolver_tests COMMAND airfix_asset_resolver_tests)
+
+    add_executable(airfix_mission_entry_resolver_tests
+        tests/MissionEntryResolverTests.cpp)
+    target_link_libraries(airfix_mission_entry_resolver_tests PRIVATE airfix::assets)
+    add_test(NAME airfix_mission_entry_resolver_tests
+        COMMAND airfix_mission_entry_resolver_tests)
 
     add_executable(airfix_blueprint_graph_tests tests/CcfBlueprintGraphTests.cpp)
     target_link_libraries(airfix_blueprint_graph_tests PRIVATE airfix::assets)

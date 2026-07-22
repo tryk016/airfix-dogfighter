@@ -600,3 +600,51 @@ superseded evidence.
 - Independent review found no production P1/P2 and strengthened tests for
   non-adjacent ordinal LLST/LDAT pairing plus exact preservation of unknown and
   ignored chunk descriptors/payloads.
+
+## 2026-07-21 — public project overview and path hygiene
+
+- Replaced the engineering-notebook README with a first-visit project page
+  covering scope, legal/private-content assumptions, current maturity, device
+  matrix, native reconstruction architecture, touch/controller design, build
+  path, iOS CI boundary, repository map, and contribution rules.
+- Removed the owner workstation's original-data path from every tracked
+  document and tool default. Inspection scripts now require an explicit source
+  root; the iOS bundle check rejects source-library path patterns without
+  embedding one workstation-specific value.
+- Commit `ccd450a` published the documentation/path-hygiene change. Synthetic
+  drive-qualified strings remain only as deliberate traversal/path rejection
+  fixtures.
+
+## 2026-07-21 — portable content recovery and verified rollback
+
+- Added read-only startup inspection that derives candidate names exclusively
+  from AFAC digests and verifies regular-file type, exact size, full pack hash,
+  AFPACK metadata/manifest semantics, and both nested UDSP regions.
+- Typed states distinguish first-launch no-content, ready, rollback available,
+  unusable, malformed active, and transient unavailable. A temporary I/O error
+  never becomes a rollback recommendation.
+- Rollback accepts only a verified prior inspection, re-authenticates the
+  previous pack, performs two exact stale-AFAC checks, rotates through a new
+  generation, and requires exact readback plus durable resynchronization after
+  post-rename ambiguity.
+- Cancellation/progress remain bounded; the commit tail is non-cancellable and
+  phases are monotonic. Synthetic filesystem, corruption, stale-state, fault,
+  and durability tests passed independent P1/P2 review with no remaining issue.
+
+## 2026-07-21 — complete observed FHOU model/state records
+
+- `EV-20260721-036`: targeted Ghidra address exports recovered the `MODL`
+  writer/reader and five `IAOB` serializer variants in `Dogfighter.exe`.
+  `MODL` is the ordinary six-float/room/object prefix followed by three ordered
+  string/u32 pairs and one loader-optional compatibility word.
+- `IAOB` first stores two identity strings used for runtime matching and then a
+  class-specific u32 tail. Read-only corpus validation establishes exactly 85
+  one-word, 23 two-word, and 64 eight-word records: 172 records and 643 words.
+- The bounded parser now validates all 31 levels: 2,444 static placements,
+  1,176 model placements, 172 instance-state records, and zero unknown chunks.
+  State fields remain neutrally named until their gameplay meanings are proven.
+- Added a metadata-only resolver for the level world plus all static and model
+  definition paths. It preserves transforms/state/order, reports explicit
+  lookup outcomes, enforces aggregate placement/path limits, and performs no
+  payload read or extension fallback. All 31 world references, 2,444 static
+  references, and 1,176 model references resolve uniquely with zero issues.

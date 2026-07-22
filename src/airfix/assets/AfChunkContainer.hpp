@@ -57,6 +57,7 @@ struct DefinitionParseLimits {
     std::size_t maxLineLists{4096U};
     std::size_t maxLineRecords{65'536U};
     std::size_t maxPlacements{65'536U};
+    std::size_t maxInstanceStateWords{65'536U};
     std::size_t maxPathRecords{65'536U};
 };
 
@@ -90,10 +91,32 @@ struct LevelObjectPlacement {
     std::string objectPath;
 };
 
+// MODL begins with the same transform/room/object identity as OBJE. The
+// remaining values are serialized by the game as three string/u32 pairs and
+// one optional compatibility word; their gameplay meanings are still being
+// recovered, so the portable representation intentionally keeps neutral names.
+struct LevelModelPlacement {
+    LevelObjectPlacement placement;
+    std::array<std::string, 3> stateStrings;
+    std::array<std::uint32_t, 3> stateValues{};
+    std::optional<std::uint32_t> compatibilityValue;
+};
+
+// IAOB records identify one runtime object using two strings before a
+// class-specific sequence of u32 words. The game dispatches those words to a
+// virtual reader only after matching both strings.
+struct LevelInstanceState {
+    std::string typeIdentity;
+    std::string instanceIdentity;
+    std::vector<std::uint32_t> stateWords;
+};
+
 struct LevelDefinition {
     std::optional<std::uint32_t> geometryChecksum;
     std::optional<std::string> worldPath;
     std::vector<LevelObjectPlacement> objects;
+    std::vector<LevelModelPlacement> models;
+    std::vector<LevelInstanceState> instanceStates;
     std::vector<AfChunk> unknownChunks;
 };
 

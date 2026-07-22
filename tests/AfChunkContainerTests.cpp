@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -438,6 +439,7 @@ void testLevelDefinition() {
     constexpr auto kObje = airfix::assets::fourCC('O', 'B', 'J', 'E');
     constexpr auto kModl = airfix::assets::fourCC('M', 'O', 'D', 'L');
     constexpr auto kIaob = airfix::assets::fourCC('I', 'A', 'O', 'B');
+    constexpr auto kUnknown = airfix::assets::fourCC('U', 'N', 'K', 'N');
 
     Bytes checksum;
     appendU32(checksum, 0x89ABCDEFU);
@@ -449,10 +451,33 @@ void testLevelDefinition() {
     appendChunk(chunks, kObje, placementPayload(
         {-1.0F, -2.0F, -3.0F, 0.0F, 0.0F,
             std::numeric_limits<float>::infinity()}, "", "second.object"));
-    const Bytes modelPayload{1U, 2U, 3U};
-    const Bytes iaobPayload{4U, 5U};
-    const auto model = appendDescribedChunk(chunks, kModl, modelPayload);
-    const auto iaob = appendDescribedChunk(chunks, kIaob, iaobPayload);
+    auto modelPayload = placementPayload(
+        {7.0F, 8.0F, 9.0F, 10.0F, 11.0F, 12.0F},
+        "air",
+        "model.object");
+    for (const auto& [text, value] : std::array{
+             std::pair{std::string_view{"state-a"}, 0x10203040U},
+             std::pair{std::string_view{"state-b"}, 0x50607080U},
+             std::pair{std::string_view{"state-c"}, 0x90A0B0C0U}}) {
+        const auto textBytes = stringPayload(text);
+        modelPayload.insert(modelPayload.end(), textBytes.begin(), textBytes.end());
+        appendU32(modelPayload, value);
+    }
+    appendU32(modelPayload, 0xD0E0F000U);
+    appendChunk(chunks, kModl, modelPayload);
+    auto legacyModelPayload = modelPayload;
+    legacyModelPayload.resize(legacyModelPayload.size() - sizeof(std::uint32_t));
+    appendChunk(chunks, kModl, legacyModelPayload);
+
+    auto iaobPayload = stringPayload("aircraft-type");
+    const auto instance = stringPayload("instance-7");
+    iaobPayload.insert(iaobPayload.end(), instance.begin(), instance.end());
+    appendU32(iaobPayload, 0x01020304U);
+    appendU32(iaobPayload, 0xA0B0C0D0U);
+    appendChunk(chunks, kIaob, iaobPayload);
+
+    const Bytes unknownPayload{1U, 2U, 3U};
+    const auto unknown = appendDescribedChunk(chunks, kUnknown, unknownPayload);
 
     const auto bytes = wrapContainer(airfix::assets::kAfFullHouseRoot, chunks);
     const auto definition = airfix::assets::parseLevelDefinition(bytes);
@@ -466,20 +491,51 @@ void testLevelDefinition() {
             definition.objects[1].axisRotation[2] ==
                 std::numeric_limits<float>::infinity(),
         "level OBJE mismatch or non-finite value was rejected");
-    require(definition.unknownChunks.size() == 2U &&
-            definition.unknownChunks[0].id == kModl &&
-            definition.unknownChunks[1].id == kIaob,
-        "level uncertain placement chunks were interpreted or discarded");
-    requireDescriptor(bytes, definition.unknownChunks[0], model, modelPayload,
-        "level MODL descriptor mismatch");
-    requireDescriptor(bytes, definition.unknownChunks[1], iaob, iaobPayload,
-        "level IAOB descriptor mismatch");
+    require(definition.models.size() == 2U &&
+            definition.models[0].placement.position[1] == 8.0F &&
+            definition.models[0].placement.axisRotation[2] == 12.0F &&
+            definition.models[0].placement.room == "air" &&
+            definition.models[0].placement.objectPath == "model.object" &&
+            definition.models[0].stateStrings ==
+                std::array<std::string, 3>{"state-a", "state-b", "state-c"} &&
+            definition.models[0].stateValues ==
+                std::array<std::uint32_t, 3>{
+                    0x10203040U, 0x50607080U, 0x90A0B0C0U} &&
+            definition.models[0].compatibilityValue == 0xD0E0F000U,
+        "level MODL semantic payload mismatch");
+    require(!definition.models[1].compatibilityValue.has_value() &&
+            definition.models[1].stateStrings == definition.models[0].stateStrings &&
+            definition.models[1].stateValues == definition.models[0].stateValues,
+        "level legacy MODL optional compatibility value mismatch");
+    require(definition.instanceStates.size() == 1U &&
+            definition.instanceStates[0].typeIdentity == "aircraft-type" &&
+            definition.instanceStates[0].instanceIdentity == "instance-7" &&
+            definition.instanceStates[0].stateWords ==
+                std::vector<std::uint32_t>{0x01020304U, 0xA0B0C0D0U},
+        "level IAOB identity or state words mismatch");
+    require(definition.unknownChunks.size() == 1U &&
+            definition.unknownChunks[0].id == kUnknown,
+        "level unknown chunk was interpreted or discarded");
+    requireDescriptor(bytes, definition.unknownChunks[0], unknown, unknownPayload,
+        "level unknown descriptor mismatch");
 }
 
 void testMalformedLevelDefinition() {
     constexpr auto kGccs = airfix::assets::fourCC('G', 'C', 'C', 'S');
     constexpr auto kHous = airfix::assets::fourCC('H', 'O', 'U', 'S');
     constexpr auto kObje = airfix::assets::fourCC('O', 'B', 'J', 'E');
+    constexpr auto kModl = airfix::assets::fourCC('M', 'O', 'D', 'L');
+    constexpr auto kIaob = airfix::assets::fourCC('I', 'A', 'O', 'B');
+    const auto makeModelPayload = [] {
+        auto payload = placementPayload(
+            {0.0F, 1.0F, 2.0F, 3.0F, 4.0F, 5.0F}, "room", "model");
+        for (std::size_t index = 0U; index < 3U; ++index) {
+            const auto text = stringPayload(index == 0U ? "a" : index == 1U ? "b" : "c");
+            payload.insert(payload.end(), text.begin(), text.end());
+            appendU32(payload, static_cast<std::uint32_t>(index + 1U));
+        }
+        return payload;
+    };
     Bytes chunks;
     appendChunk(chunks, kGccs, Bytes(4U));
     appendChunk(chunks, kGccs, Bytes(4U));
@@ -516,10 +572,62 @@ void testMalformedLevelDefinition() {
             wrapContainer(airfix::assets::kAfFullHouseRoot, chunks));
     });
     chunks.clear();
+    appendChunk(chunks, kModl, placementPayload(
+        {0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F}, "room", "model"));
+    requireParseError([&] {
+        (void)airfix::assets::parseLevelDefinition(
+            wrapContainer(airfix::assets::kAfFullHouseRoot, chunks));
+    });
+    chunks.clear();
+    auto invalidModel = makeModelPayload();
+    invalidModel.push_back(0xffU);
+    appendChunk(chunks, kModl, invalidModel);
+    requireParseError([&] {
+        (void)airfix::assets::parseLevelDefinition(
+            wrapContainer(airfix::assets::kAfFullHouseRoot, chunks));
+    });
+    chunks.clear();
+    auto emptyState = stringPayload("type");
+    const auto identity = stringPayload("instance");
+    emptyState.insert(emptyState.end(), identity.begin(), identity.end());
+    appendChunk(chunks, kIaob, emptyState);
+    requireParseError([&] {
+        (void)airfix::assets::parseLevelDefinition(
+            wrapContainer(airfix::assets::kAfFullHouseRoot, chunks));
+    });
+    chunks.clear();
+    auto unalignedState = emptyState;
+    unalignedState.push_back(1U);
+    appendChunk(chunks, kIaob, unalignedState);
+    requireParseError([&] {
+        (void)airfix::assets::parseLevelDefinition(
+            wrapContainer(airfix::assets::kAfFullHouseRoot, chunks));
+    });
+    chunks.clear();
     appendChunk(chunks, kObje, placementPayload(
         {0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F}, "room", "object"));
     auto limits = airfix::assets::DefinitionParseLimits{};
     limits.maxPlacements = 0U;
+    requireParseError([&] {
+        (void)airfix::assets::parseLevelDefinition(
+            wrapContainer(airfix::assets::kAfFullHouseRoot, chunks), limits);
+    });
+    chunks.clear();
+    appendChunk(chunks, kObje, placementPayload(
+        {0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F}, "room", "object"));
+    appendChunk(chunks, kModl, makeModelPayload());
+    limits = {};
+    limits.maxPlacements = 1U;
+    requireParseError([&] {
+        (void)airfix::assets::parseLevelDefinition(
+            wrapContainer(airfix::assets::kAfFullHouseRoot, chunks), limits);
+    });
+    chunks.clear();
+    auto oneWordState = emptyState;
+    appendU32(oneWordState, 7U);
+    appendChunk(chunks, kIaob, oneWordState);
+    limits = {};
+    limits.maxInstanceStateWords = 0U;
     requireParseError([&] {
         (void)airfix::assets::parseLevelDefinition(
             wrapContainer(airfix::assets::kAfFullHouseRoot, chunks), limits);

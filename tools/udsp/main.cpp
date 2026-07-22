@@ -2,6 +2,7 @@
 #include "airfix/assets/AfChunkContainer.hpp"
 #include "airfix/assets/AssetResolver.hpp"
 #include "airfix/assets/LegacyFormats.hpp"
+#include "airfix/assets/MissionEntryResolver.hpp"
 #include "airfix/render/LegacyGeometry.hpp"
 
 #include <algorithm>
@@ -11,6 +12,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <set>
 #include <sstream>
 #include <string>
@@ -499,13 +501,66 @@ int main(const int argc, const char* const* argv) {
                                 else if (magic == airfix::assets::kAfFullHouseRoot) {
                                     const auto definition =
                                         airfix::assets::parseLevelDefinition(data);
+                                    const auto entries =
+                                        airfix::assets::resolveMissionEntries(
+                                            definition, archive);
+                                    std::size_t instanceStateWords = 0U;
+                                    std::map<std::size_t, std::size_t>
+                                        instanceStateWordWidths;
+                                    for (const auto& state : definition.instanceStates) {
+                                        instanceStateWords += state.stateWords.size();
+                                        ++instanceStateWordWidths[state.stateWords.size()];
+                                    }
+                                    const auto compatibilityValues = std::count_if(
+                                        definition.models.begin(), definition.models.end(),
+                                        [](const auto& model) {
+                                            return model.compatibilityValue.has_value();
+                                        });
+                                    const auto resolvedObjects = std::count_if(
+                                        entries.placements.begin(),
+                                        entries.placements.end(),
+                                        [](const auto& placement) {
+                                            return placement.objectEntry.status ==
+                                                airfix::assets::MissionEntryStatus::unique;
+                                        });
+                                    const auto resolvedModels = std::count_if(
+                                        entries.models.begin(), entries.models.end(),
+                                        [](const auto& model) {
+                                            return model.objectEntry.status ==
+                                                airfix::assets::MissionEntryStatus::unique;
+                                        });
                                     detail << ":level:checksum="
                                            << definition.geometryChecksum.has_value()
                                            << ",world="
                                            << definition.worldPath.has_value()
                                            << ",objects=" << definition.objects.size()
-                                           << ",unparsed="
-                                           << definition.unknownChunks.size();
+                                           << ",models=" << definition.models.size()
+                                           << ",modelCompatibility="
+                                           << compatibilityValues
+                                           << ",instanceStates="
+                                           << definition.instanceStates.size()
+                                           << ",instanceStateWords="
+                                           << instanceStateWords
+                                           << ",instanceStateWordWidths=";
+                                    auto firstWidth = true;
+                                    for (const auto [width, count] :
+                                         instanceStateWordWidths) {
+                                        if (!firstWidth) {
+                                            detail << '+';
+                                        }
+                                        detail << width << 'x' << count;
+                                        firstWidth = false;
+                                    }
+                                    detail
+                                           << ",unknown="
+                                           << definition.unknownChunks.size()
+                                           << ",worldResolved="
+                                           << (entries.worldEntry.status ==
+                                               airfix::assets::MissionEntryStatus::unique)
+                                           << ",objectsResolved=" << resolvedObjects
+                                           << ",modelsResolved=" << resolvedModels
+                                           << ",dependencyIssues="
+                                           << entries.issues.size();
                                 }
                                 else if (magic == airfix::assets::kAfBriefingRoot) {
                                     const auto definition =
