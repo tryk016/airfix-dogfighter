@@ -115,6 +115,47 @@ void requireRange(
     return true;
 }
 
+enum class LogicalPathError : std::uint8_t {
+    none,
+    size,
+    forbiddenCharacter,
+    boundarySeparator,
+    unsafeComponent,
+};
+
+[[nodiscard]] LogicalPathError inspectLogicalPath(
+    const std::string_view logicalPath,
+    const std::size_t pathLimit) noexcept {
+    if (logicalPath.empty() || logicalPath.size() > pathLimit) {
+        return LogicalPathError::size;
+    }
+    for (const auto character : logicalPath) {
+        const auto value = static_cast<std::uint8_t>(character);
+        if (value < 0x20U || value == 0x7FU || character == ':') {
+            return LogicalPathError::forbiddenCharacter;
+        }
+    }
+    const auto isSeparator = [](const char character) noexcept {
+        return character == '\\' || character == '/';
+    };
+    if (isSeparator(logicalPath.front()) || isSeparator(logicalPath.back())) {
+        return LogicalPathError::boundarySeparator;
+    }
+    std::size_t componentBegin = 0U;
+    for (std::size_t index = 0U; index <= logicalPath.size(); ++index) {
+        if (index != logicalPath.size() && !isSeparator(logicalPath[index])) {
+            continue;
+        }
+        const auto component = logicalPath.substr(
+            componentBegin, index - componentBegin);
+        if (component.empty() || component == "." || component == "..") {
+            return LogicalPathError::unsafeComponent;
+        }
+        componentBegin = index + 1U;
+    }
+    return LogicalPathError::none;
+}
+
 [[nodiscard]] std::string indexedField(
     const std::string_view kind,
     const std::size_t index) {
@@ -226,40 +267,29 @@ std::uint32_t nameHash(const std::string_view name) noexcept {
     return hash;
 }
 
+bool isLogicalPathValid(
+    const std::string_view logicalPath,
+    const std::size_t pathLimit) noexcept {
+    return inspectLogicalPath(logicalPath, pathLimit) == LogicalPathError::none;
+}
+
 std::string normalizeLogicalPath(
     const std::string_view logicalPath,
     const std::size_t pathLimit) {
-    if (logicalPath.empty() || logicalPath.size() > pathLimit) {
+    switch (inspectLogicalPath(logicalPath, pathLimit)) {
+    case LogicalPathError::size:
         throw ParseError("logical archive path is empty or exceeds its configured limit");
-    }
-    std::string normalized;
-    normalized.reserve(logicalPath.size());
-    for (const auto character : logicalPath) {
-        const auto value = static_cast<std::uint8_t>(character);
-        if (value < 0x20U || value == 0x7FU || character == ':') {
-            throw ParseError("logical archive path contains a forbidden character");
-        }
-        normalized.push_back(character == '/' ? '\\' : character);
-    }
-    if (normalized.front() == '\\' || normalized.back() == '\\') {
+    case LogicalPathError::forbiddenCharacter:
+        throw ParseError("logical archive path contains a forbidden character");
+    case LogicalPathError::boundarySeparator:
         throw ParseError("logical archive path must be relative and name a file");
+    case LogicalPathError::unsafeComponent:
+        throw ParseError("logical archive path contains an unsafe component");
+    case LogicalPathError::none:
+        break;
     }
-    auto componentBegin = std::size_t{0U};
-    while (componentBegin < normalized.size()) {
-        const auto separator = normalized.find('\\', componentBegin);
-        const auto componentEnd = separator == std::string::npos
-            ? normalized.size()
-            : separator;
-        const auto component = std::string_view(normalized).substr(
-            componentBegin, componentEnd - componentBegin);
-        if (component.empty() || component == "." || component == "..") {
-            throw ParseError("logical archive path contains an unsafe component");
-        }
-        if (separator == std::string::npos) {
-            break;
-        }
-        componentBegin = separator + 1U;
-    }
+    std::string normalized(logicalPath);
+    std::replace(normalized.begin(), normalized.end(), '/', '\\');
     return normalized;
 }
 

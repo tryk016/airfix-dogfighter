@@ -131,6 +131,9 @@ private:
 };
 
 [[nodiscard]] std::uint32_t nameHash(std::string_view name) noexcept;
+[[nodiscard]] bool isLogicalPathValid(
+    std::string_view logicalPath,
+    std::size_t pathLimit = 4096U) noexcept;
 [[nodiscard]] std::string normalizeLogicalPath(
     std::string_view logicalPath,
     std::size_t pathLimit = 4096U);

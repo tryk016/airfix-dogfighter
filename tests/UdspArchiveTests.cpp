@@ -207,14 +207,21 @@ void testLogicalLookup() {
     require(airfix::udsp::normalizeLogicalPath("Game/Objects/plane.bin") ==
         "Game\\Objects\\plane.bin",
         "logical path separator normalization mismatch");
+    require(airfix::udsp::isLogicalPathValid("Game/Objects/plane.bin") &&
+            airfix::udsp::isLogicalPathValid("plane.bin"),
+        "valid logical path was rejected by non-throwing validation");
 
     for (const auto unsafe : {
              "", "\\absolute.bin", "C:\\drive.bin", "Game\\\\file.bin",
              "Game\\.\\file.bin", "Game\\..\\file.bin", "Game\\file.bin\\"}) {
+        require(!airfix::udsp::isLogicalPathValid(unsafe),
+            "unsafe logical path passed non-throwing validation");
         requireParseError([&] {
             (void)airfix::udsp::normalizeLogicalPath(unsafe);
         });
     }
+    require(!airfix::udsp::isLogicalPathValid("Game/file.bin", 8U),
+        "path limit was ignored by non-throwing validation");
     requireParseError([&] {
         (void)archive.lookup("Game\\Objects\\plane.bin", 8U);
     });

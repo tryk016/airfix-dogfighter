@@ -30,6 +30,11 @@ namespace {
         .archiveLogicalPath = std::nullopt,
     };
 
+    if (!udsp::isLogicalPathValid(sourcePath, pathLimit)) {
+        result.status = MissionEntryStatus::invalid;
+        return result;
+    }
+
     try {
         result.logicalPath = udsp::normalizeLogicalPath(sourcePath, pathLimit);
     }
