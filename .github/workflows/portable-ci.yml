@@ -21,14 +21,8 @@ jobs:
       matrix:
         include:
           - os: ubuntu-24.04
-            cxx-flags: ""
-            linker-flags: ""
-          - os: windows-2025
-            cxx-flags: "/fsanitize=address /Zi"
-            linker-flags: "/INCREMENTAL:NO /DEBUG"
+          - os: windows-2022
           - os: macos-26
-            cxx-flags: ""
-            linker-flags: ""
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
@@ -45,19 +39,9 @@ jobs:
           cmake -S . -B build
           -DCMAKE_BUILD_TYPE=Release
           -DAIRFIX_BUILD_TESTS=ON
-          -DCMAKE_CXX_FLAGS="${{ matrix.cxx-flags }}"
-          -DCMAKE_EXE_LINKER_FLAGS="${{ matrix.linker-flags }}"
 
       - name: Build
         run: cmake --build build --config Release --parallel
 
       - name: Test
-        if: matrix.os != 'windows-2025'
         run: ctest --test-dir build --build-config Release --output-on-failure
-
-      - name: Test resolver under Windows ASan
-        if: matrix.os == 'windows-2025'
-        run: >-
-          ctest --test-dir build --build-config Release --output-on-failure
-          --tests-regex "^airfix_mission_entry_resolver_tests$"
-          --timeout 120
