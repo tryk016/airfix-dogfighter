@@ -473,6 +473,67 @@ int main(const int argc, const char* const* argv) {
                                            << ",unknown="
                                            << definition.unknownChunks.size();
                                 }
+                                else if (magic == airfix::assets::kAfHouseRoot) {
+                                    const auto definition =
+                                        airfix::assets::parseWorldDefinition(data);
+                                    std::size_t lineCount = 0U;
+                                    for (const auto& list : definition.lineLists) {
+                                        lineCount += list.lines.size();
+                                    }
+                                    detail << ":world:texture="
+                                           << definition.textureRoot.has_value()
+                                           << ",ccf=" << definition.ccfPath.has_value()
+                                           << ",backdrop="
+                                           << definition.backdrop.has_value()
+                                           << ",floorY="
+                                           << definition.floorYLevels.has_value()
+                                           << ",rooms=" << definition.rooms.size()
+                                           << ",lineLists="
+                                           << definition.lineLists.size()
+                                           << ",lines=" << lineCount
+                                           << ",ignoredDuplicates="
+                                           << definition.ignoredDuplicateChunks.size()
+                                           << ",unknown="
+                                           << definition.unknownChunks.size();
+                                }
+                                else if (magic == airfix::assets::kAfFullHouseRoot) {
+                                    const auto definition =
+                                        airfix::assets::parseLevelDefinition(data);
+                                    detail << ":level:checksum="
+                                           << definition.geometryChecksum.has_value()
+                                           << ",world="
+                                           << definition.worldPath.has_value()
+                                           << ",objects=" << definition.objects.size()
+                                           << ",unparsed="
+                                           << definition.unknownChunks.size();
+                                }
+                                else if (magic == airfix::assets::kAfBriefingRoot) {
+                                    const auto definition =
+                                        airfix::assets::parseBriefing(data);
+                                    const auto knownStrings =
+                                        static_cast<std::size_t>(definition.name.has_value()) +
+                                        static_cast<std::size_t>(definition.outline.has_value()) +
+                                        static_cast<std::size_t>(definition.outline2.has_value()) +
+                                        static_cast<std::size_t>(definition.text.has_value()) +
+                                        static_cast<std::size_t>(definition.text2.has_value()) +
+                                        static_cast<std::size_t>(definition.primary.has_value()) +
+                                        static_cast<std::size_t>(definition.secondary.has_value()) +
+                                        static_cast<std::size_t>(definition.aircraft.has_value()) +
+                                        static_cast<std::size_t>(
+                                            definition.selectedAircraft.has_value());
+                                    detail << ":briefing:known=" << knownStrings
+                                           << ",unknown="
+                                           << definition.unknownChunks.size();
+                                }
+                                else if (magic == airfix::assets::kAfPathRoot) {
+                                    const auto definition =
+                                        airfix::assets::parsePathDefinition(data);
+                                    detail << ":path:pose="
+                                           << definition.pose.has_value()
+                                           << ",records=" << definition.records.size()
+                                           << ",unknown="
+                                           << definition.unknownChunks.size();
+                                }
                             }
                         }
                     }

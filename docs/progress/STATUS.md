@@ -63,6 +63,10 @@
 - Added cross-platform durable file primitives for exclusive creation, atomic
   replacement, and no-replace publication, including source-identity and path
   alias checks for the private installer transaction boundary.
+- Composed those primitives into a bounded, cancellable private AFPACK
+  installer with content-addressed publication, validated collision reuse,
+  idempotent AFAC rotation, and an explicit recovery result for ambiguous
+  post-rename durability. The portable implementation is linked into iOS.
 - Added bounded UDSP-in-container reads and completed a real English content
   pack round trip (192,755,765 bytes, 3 entries) outside Git; the temporary pack
   was removed after verification.
@@ -80,6 +84,10 @@
   closely.
 - Implemented bounded `AfChunkContainer` framing and object-definition parsing;
   all 299 selected containers/7,376 chunks and all 215 object definitions pass.
+- Implemented bounded HOUS, stable FHOU placement, BRIF, and PATH semantics.
+  Read-only validation covers 29 worlds/493 rooms/47,589 radar-line records,
+  31 levels/2,444 static placements, 23 briefings, and 833 path deltas; uncertain
+  level `MODL`/`IAOB` payloads remain explicitly uninterpreted.
 - Implemented strict CCF material metadata parsing for all 10,385 records,
   exposing material names/references and 10,256 primary plus 263 environment
   texture dependencies without assigning unproven numeric semantics.

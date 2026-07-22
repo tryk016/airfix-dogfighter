@@ -1,11 +1,11 @@
 # FMT-AFCHUNK — FourCC definition/mission container
 
-**State:** generic framing and object-definition semantics implemented;
-world/level/briefing/path payload semantics in progress
+**State:** generic framing plus object, world, static level-placement, briefing,
+and recorded-path semantics implemented; level `MODL`/`IAOB` pending
 
-**Confidence:** 3/3 for framing and object fields listed below
+**Confidence:** 3/3 for framing and implemented fields listed below
 
-**Evidence:** `EV-20260721-022`
+**Evidence:** `EV-20260721-022`, `EV-20260721-035`
 
 ## Evidence and source quality
 
@@ -98,16 +98,38 @@ Unknown chunks are preserved as bounded descriptors rather than rejected. A
 known singleton duplicate, malformed exact string, non-empty `HIDE`, or
 non-12-byte `GRAV` is rejected.
 
-## Confirmed next layers
+## World, level, briefing, and path semantics
 
-- `HOUS`: `TEXU`, `CCFF`, optional `BCKD`, three-float `FLRY`, and paired room
-  `LLST`/`LDAT` records.
-- `FHOU`: checksum `GCCS`, world path `HOUS`, and repeated placements. The
-  confirmed `OBJE` placement prefix is six float32 values followed by room and
-  object-definition NUL strings.
-- `BRIF`: string chunks including optional `OUT2` and loader-supported `TXT2`.
-- `PATH`: `PPOS` is six float32 values; `PDAT` contains 12-byte records of six
-  signed 16-bit deltas.
+`HOUS` exposes singleton `TEXU`, `CCFF`, optional `BCKD`, exactly three float32
+floor-Y values in `FLRY`, repeated `ROOM` records, and ordinal `LLST`/`LDAT`
+pairs. A room is one byte of ID, two exact NUL strings, and one floor byte.
+Each `LDAT` payload is a sequence of four-float line records. Across 29 worlds,
+the parser validates 493 rooms, 522 line lists, and 47,589 line records.
+
+One shipped world contains two different valid `BCKD` chunks. The loader asks
+`GetChunkByID` for only the first match, so the portable model uses the first,
+validates the later string, and retains its descriptor as an ignored duplicate.
+Rejecting every known duplicate as malformed would incorrectly reject the
+original corpus.
+
+`FHOU` exposes singleton `GCCS`, singleton world path `HOUS`, and repeated
+static `OBJE` placements. Each implemented placement is exactly six float32
+values followed by room and object-definition NUL strings with no trailing
+bytes. All 31 levels and 2,444 such placements validate. Variable `MODL` and
+`IAOB` payloads remain bounded descriptors until their complete state schemas
+are established; they are neither guessed nor discarded.
+
+`BRIF` validates the nine known singleton string chunks `NAME`, `OUTL`, `OUT2`,
+`TEXT`, `TXT2`, `PRIM`, `SCND`, `AIRS`, and `SELA`. All 23 briefings across the
+Resource/English pair validate. `PATH` requires an exact six-float `PPOS` and a
+single `PDAT` whose 12-byte records contain six signed little-endian int16
+deltas; the supplied path has 833 records.
+
+The semantic API has explicit limits for chunks, individual strings, rooms,
+line lists, aggregate line records, placements, and path records. It validates
+sizes and counts before allocation, requires exact terminators/trailing extent,
+preserves unknown descriptors, and deliberately retains non-finite float bit
+patterns because the legacy loader does not reject them.
 
 The portable resolver now joins object `CCFF`/`MESH` to CCF-scoped mesh/null/light
 blueprints and material references. The next semantic parser can build on that
@@ -117,6 +139,8 @@ placements.
 ## Portable implementation
 
 - framing/object parser: `src/airfix/assets/AfChunkContainer.*`;
-- malformed, duplicate, odd-sized, string, gravity, and unknown-chunk fixtures:
+- malformed, duplicate, odd-sized, string, gravity, world, level, briefing,
+  path, limit, signed-delta, and unknown-descriptor fixtures:
   `tests/AfChunkContainerTests.cpp`;
-- bounded corpus path: `udsp-list --inventory`.
+- bounded corpus path: `udsp-list --inventory`, which now invokes the matching
+  semantic parser and reports only local per-file counts/flags.

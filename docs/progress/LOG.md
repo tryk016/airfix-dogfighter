@@ -560,3 +560,43 @@ superseded evidence.
   Independent reviews found and closed the initial handle/path TOCTOU and unsafe
   cleanup cases. The full local GCC suite passes 18/18 and the public-boundary
   scanner passes 121 files.
+- Commit `a539389` passed portable CI run `29921712751` on Ubuntu, Windows, and
+  ARM64 macOS plus unsigned iOS run `29921712749` for `iphoneos` and
+  `iphonesimulator` on Xcode 26.6.
+
+## 2026-07-21 — composed private AFPACK installer
+
+- Composed exclusive staging, bounded source copy, copy-vs-disk SHA-256,
+  stable-source AFPACK/manifest/nested-UDSP validation, post-validation digest
+  confirmation, content-addressed no-replace publication, AFAC rotation, and
+  idempotent reimport into one portable installer transaction.
+- Existing digest-named packs are reused only after physical size, complete
+  digest, full semantic validation, and a second digest bind all pass. A corrupt
+  collision is preserved for recovery and never overwritten.
+- Cancellation remains effective through copy/validation and immediately before
+  the durable AFAC temp is committed. Commit/complete observers are best-effort
+  and cannot invalidate a completed activation.
+- Post-rename errors require exact AFAC readback plus successful retry of file
+  and directory synchronization. Any unreadable/mismatched or non-durable
+  outcome raises `InstallCommitUnknown` with the requested generation.
+- Synthetic first install, rotation/previous, idempotence, invalid/cancelled
+  preservation, malformed active, limits/UUID, corrupt final collision,
+  progress, callback, post-rename, readback, and durability-retry faults pass.
+  Independent review closed the post-rename durability gap; local suite passes
+  19/19 and the public-boundary scanner passes 125 files.
+
+## 2026-07-21 — world, level, briefing, and path semantics
+
+- `EV-20260721-035`: implemented bounded semantic parsers for `HOUS`, stable `FHOU` `OBJE`
+  placements, all confirmed `BRIF` strings, and signed-int16 `PATH` deltas.
+  Variable level `MODL`/`IAOB` chunks remain preserved descriptors.
+- Read-only corpus validation passes 29 worlds, 493 rooms, 522 ordinal radar
+  lists/47,589 line records, 31 levels/2,444 static placements, 23 briefings,
+  and one path/833 delta records with zero errors.
+- One world contains two different valid `BCKD` chunks. Loader evidence proves
+  first-match behavior, so the parser validates and retains the ignored second
+  descriptor instead of rejecting shipped content under the earlier singleton
+  assumption.
+- Independent review found no production P1/P2 and strengthened tests for
+  non-adjacent ordinal LLST/LDAT pairing plus exact preservation of unknown and
+  ignored chunk descriptors/payloads.

@@ -396,8 +396,9 @@ contract, evidence, implementation, tests, parity result, and documentation agre
 1. **Completed:** immutable inventory, pinned toolchain, module reports, portable
    C++/CMake skeleton, public GitHub boundary, and portable/unsigned-iOS CI.
 2. **Completed:** bounded UDSP listing/verification/decompression, AFPACK v1,
-   GTI base conversion, CCF materials/meshes/blueprints, FourCC object parsing,
-   and object-to-texture dependency resolution.
+   GTI base conversion, CCF materials/meshes/blueprints, FourCC object/world/
+   stable-level/briefing/path parsing, and object-to-texture dependency
+   resolution.
 3. **Completed:** deterministic portable semantic input router with touch and
    controller binding defaults; native adapters remain separate.
 4. **Completed:** define and test the CCF coordinate, matrix, UV policy, and
@@ -406,9 +407,9 @@ contract, evidence, implementation, tests, parity result, and documentation agre
    authored-chain/anomaly-fallback Metal upload contract.
 6. **Completed:** produce a private first-model diagnostic using resolved mesh,
    material, and texture edges without committing derived asset data.
-7. **In progress:** strict AFPACK semantic/nested validation, AFAC activation,
-   and durable publication primitives are tested; compose them into the atomic
-   import/replacement service and recovery pass.
+7. **In progress:** the atomic portable AFPACK import/replacement service is
+   implemented and linked into the iOS target; add startup recovery plus the
+   native document-picker/progress UI.
 8. Establish the isolated reference runtime and record the first deterministic
    flight/control/render scenarios; this remains independent of host static
    analysis until the isolated environment is available.

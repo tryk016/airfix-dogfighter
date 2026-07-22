@@ -110,6 +110,13 @@ All 299 selected `AfChunkContainer` files also pass exact root/child framing:
 including the observed optional category/nationality/mesh fields and exact
 56 `GRAV` plus 10 `HIDE` records; see `FMT-AFCHUNK`.
 
+The extended semantic pass also validates all 29 worlds, 493 rooms, 522 ordinal
+radar lists containing 47,589 four-float line records, 31 levels with 2,444
+stable `OBJE` placements, 23 briefings across Resource/English, and the one path
+with 833 signed-delta records. One world has a loader-permitted second `BCKD`;
+the first is authoritative and the validated second descriptor is retained.
+Variable level `MODL`/`IAOB` chunks remain bounded but uninterpreted.
+
 ## Port priority derived from the corpus
 
 1. GTI metadata and pixel conversion — required for every visible scene/UI.
