@@ -71,6 +71,10 @@
   authenticates only AFAC-derived current/previous packs, distinguishes
   malformed, unusable, and transient-unavailable states, rechecks stale active
   state on rollback, and requires exact durable readback after commit.
+- Added the native iOS private-content coordinator: document picker, bounded
+  security-scoped copy into app-private storage, serialized install/inspection/
+  rollback, lifecycle cancellation, progress and recovery UI, strict orphan
+  temporary cleanup, and `AppSession` readiness gating.
 - Added bounded UDSP-in-container reads and completed a real English content
   pack round trip (192,755,765 bytes, 3 entries) outside Git; the temporary pack
   was removed after verification.
@@ -135,6 +139,10 @@
   grouped aircraft containing 46 nodes, 25 mesh instances, 21 null groups, 663
   triangles, and maximum depth 3. Raw V preserves its markings; explicit V flip
   does not. Private outputs remain ignored and outside Git.
+- Decoded all independent `0x4000` placed object/null/light records, including
+  transforms, references, bounded light properties, zero-copy null payloads,
+  and opaque BSP containers. All 286 CCF scenes parse 9,328 placed records:
+  6,995 objects, 2,130 nulls, and 203 lights, all using the matrix orientation.
 - Implemented finite, invertible parent-relative local transform derivation and
   composition in runtime column-vector order. Round-trip tests include
   non-commutative rotations and shear; `rawScalar` is not treated as scale.
@@ -166,14 +174,12 @@
 
 ## Next
 
-1. Add the native document picker, progress/recovery presentation, and startup
-   content gate over the completed portable AFPACK installer/recovery service.
-2. Decode the independent `0x4000` placed graph needed for a faithful first
-   room; static grouped-aircraft rendering and parent-relative local math are
-   complete.
-3. Connect the draw payload and texture upload policy to the Metal shell, first
+1. Resolve the independent `0x4000` placed parent graph plus mesh/room/portal
+   references needed for a faithful first room; record decoding, static grouped-
+   aircraft rendering, and parent-relative local math are complete.
+2. Connect the draw payload and texture upload policy to the Metal shell, first
    with unlit/no-cull diagnostics and then with evidence-backed render states.
-4. Implement native UIKit and Game Controller adapters over the deterministic
+3. Implement native UIKit and Game Controller adapters over the deterministic
    input router, then add the configurable safe-area-aware touch overlay.
 
 ## Open questions

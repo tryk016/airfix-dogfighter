@@ -648,3 +648,32 @@ superseded evidence.
   lookup outcomes, enforces aggregate placement/path limits, and performs no
   payload read or extension fallback. All 31 world references, 2,444 static
   references, and 1,176 model references resolve uniquely with zero issues.
+
+## 2026-07-21 — native iOS private-content gate
+
+- Added a serial native coordinator over the portable installer and recovery
+  service. It presents the iOS document picker, copies at most 512 MiB through
+  a security-scoped URL into an exclusive app-private file, then releases the
+  external scope before AFPACK validation and activation.
+- Startup inspection, import, verified rollback, lifecycle cancellation, and
+  bounded progress feed one safe-area/Dynamic-Type UI and the portable
+  `AppSession` content gate. Errors contain no source paths, filenames, hashes,
+  or package metadata.
+- Independent review closed loss of rollback UI after picker cancellation,
+  stale readiness after rejected imports, and force-kill orphan retention.
+  Cleanup recognizes only lowercase canonical-UUID temporaries, removes only
+  regular non-link files in three trusted direct directories, and never scans
+  digest-named packs.
+
+## 2026-07-21 — placed CCF scene records
+
+- `EV-20260721-037`: targeted Cc.dll exports confirm the F010 two-string name,
+  nested string, F030/F040 vector, orientation, and opaque BSP helper paths used
+  by `CcRoom::LoadSceneCcf`.
+- Implemented bounded `0x4000` object/null/light record decoding with physical
+  order, exact common transforms and references, strict known singleton shapes,
+  zero-copy `0x4210`, optional light strings, and opaque `0x4101` preservation.
+- Read-only corpus validation parses all 286 CCF scenes and 9,328 placed nodes:
+  6,995 objects, 2,130 nulls, and 203 lights. All shipped records use F050
+  matrices; the loader-supported alternate F040 orientation remains synthetic-
+  tested. Independent review found no P1/P2.

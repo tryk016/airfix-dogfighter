@@ -1,16 +1,18 @@
 #import "AirfixGameViewController.h"
 
+#import "AirfixContentCoordinator.h"
 #import "AirfixMetalRenderer.h"
 
 #import <MetalKit/MetalKit.h>
 
 #include "airfix/runtime/AppSession.hpp"
 
-@interface AirfixGameViewController () {
+@interface AirfixGameViewController () <AirfixContentCoordinatorDelegate> {
     airfix::runtime::AppSession _session;
 }
 @property(nonatomic, strong) AirfixMetalRenderer* renderer;
 @property(nonatomic, strong) UILabel* statusLabel;
+@property(nonatomic, strong) AirfixContentCoordinator* contentCoordinator;
 @end
 
 @implementation AirfixGameViewController
@@ -40,30 +42,57 @@
     label.textAlignment = NSTextAlignmentCenter;
     label.textColor = UIColor.whiteColor;
     label.font = [UIFont preferredFontForTextStyle:UIFontTextStyleTitle2];
+    label.adjustsFontForContentSizeCategory = YES;
     if (self.renderer == nil) {
-        NSString* reason = rendererError.localizedDescription;
-        if (reason == nil) {
-            reason = @"Unknown Metal initialization error.";
-        }
-        label.text = [@"Metal renderer unavailable\n" stringByAppendingString:reason];
+        label.text = @"Metal renderer unavailable\nInitialization failed";
         label.accessibilityLabel = @"Metal renderer unavailable";
     }
     else {
-        label.text = @"Public Metal smoke test\nGame data not installed";
-        label.accessibilityLabel = @"Public Metal smoke test; game data not installed";
+        label.text = @"Airfix Dogfighter reconstruction\nMetal renderer ready";
+        label.accessibilityLabel =
+            @"Airfix Dogfighter reconstruction; Metal renderer ready";
     }
     self.statusLabel = label;
-    [metalView addSubview:label];
+
+    self.contentCoordinator = [[AirfixContentCoordinator alloc]
+        initWithPresentingViewController:self];
+    self.contentCoordinator.delegate = self;
+    UIStackView* stack = [[UIStackView alloc] initWithArrangedSubviews:@[
+        label,
+        self.contentCoordinator.controlsView,
+    ]];
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    stack.axis = UILayoutConstraintAxisVertical;
+    stack.spacing = 28.0;
+    stack.alignment = UIStackViewAlignmentFill;
+    UIScrollView* scrollView = [[UIScrollView alloc] initWithFrame:CGRectZero];
+    scrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    scrollView.alwaysBounceVertical = NO;
+    [metalView addSubview:scrollView];
+    [scrollView addSubview:stack];
 
     UILayoutGuide* safeArea = metalView.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
-        [label.centerXAnchor constraintEqualToAnchor:safeArea.centerXAnchor],
-        [label.centerYAnchor constraintEqualToAnchor:safeArea.centerYAnchor],
-        [label.leadingAnchor constraintGreaterThanOrEqualToAnchor:safeArea.leadingAnchor
-                                                          constant:24.0],
-        [label.trailingAnchor constraintLessThanOrEqualToAnchor:safeArea.trailingAnchor
-                                                        constant:-24.0],
+        [scrollView.topAnchor constraintEqualToAnchor:safeArea.topAnchor],
+        [scrollView.bottomAnchor constraintEqualToAnchor:safeArea.bottomAnchor],
+        [scrollView.leadingAnchor constraintEqualToAnchor:safeArea.leadingAnchor],
+        [scrollView.trailingAnchor constraintEqualToAnchor:safeArea.trailingAnchor],
+        [stack.topAnchor constraintEqualToAnchor:scrollView.contentLayoutGuide.topAnchor
+                                         constant:16.0],
+        [stack.bottomAnchor constraintEqualToAnchor:scrollView.contentLayoutGuide.bottomAnchor
+                                            constant:-16.0],
+        [stack.leadingAnchor constraintEqualToAnchor:scrollView.contentLayoutGuide.leadingAnchor
+                                             constant:24.0],
+        [stack.trailingAnchor constraintEqualToAnchor:scrollView.contentLayoutGuide.trailingAnchor
+                                              constant:-24.0],
+        [stack.widthAnchor constraintEqualToAnchor:scrollView.frameLayoutGuide.widthAnchor
+                                          constant:-48.0],
     ]];
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    [self.contentCoordinator start];
 }
 
 - (BOOL)prefersStatusBarHidden {
@@ -75,16 +104,19 @@
 }
 
 - (void)applicationWillResignActive {
+    [self.contentCoordinator applicationWillResignActive];
     _session.enterInactive();
     ((MTKView*)self.view).paused = YES;
 }
 
 - (void)applicationDidEnterBackground {
+    [self.contentCoordinator applicationDidEnterBackground];
     _session.enterBackground();
     ((MTKView*)self.view).paused = YES;
 }
 
 - (void)applicationWillEnterForeground {
+    [self.contentCoordinator applicationWillEnterForeground];
     _session.enterForeground();
     ((MTKView*)self.view).paused = YES;
 }
@@ -94,9 +126,38 @@
         airfix::runtime::LifecycleState::foregroundPaused) {
         _session.enterForeground();
     }
+    [self.contentCoordinator applicationDidBecomeActive];
     (void)_session.resume();
     if (self.renderer != nil) {
         ((MTKView*)self.view).paused = NO;
+    }
+}
+
+- (void)contentCoordinator:(AirfixContentCoordinator*)coordinator
+        didChangeReadiness:(AirfixContentReadiness)readiness {
+    (void)coordinator;
+    airfix::runtime::ContentState contentState =
+        airfix::runtime::ContentState::missing;
+    switch (readiness) {
+    case AirfixContentReadinessMissing:
+        contentState = airfix::runtime::ContentState::missing;
+        break;
+    case AirfixContentReadinessValidating:
+        contentState = airfix::runtime::ContentState::validating;
+        break;
+    case AirfixContentReadinessReady:
+        contentState = airfix::runtime::ContentState::ready;
+        break;
+    case AirfixContentReadinessRejected:
+        contentState = airfix::runtime::ContentState::rejected;
+        break;
+    }
+    _session.setContentState(contentState);
+    if (contentState == airfix::runtime::ContentState::ready &&
+        UIApplication.sharedApplication.applicationState == UIApplicationStateActive &&
+        _session.lifecycleState() ==
+            airfix::runtime::LifecycleState::foregroundPaused) {
+        (void)_session.resume();
     }
 }
 

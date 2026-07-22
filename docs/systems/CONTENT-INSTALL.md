@@ -1,7 +1,7 @@
 # Private content installation and recovery
 
-**State:** portable installer, startup inspection, and rollback transaction
-implemented; native iOS document-picker/progress/recovery UI pending
+**State:** portable installer, startup inspection, rollback transaction, and
+native iOS document-picker/progress/recovery UI implemented
 
 **Scope:** private sideload build, AFPACK v1, one serialized importer, no saves
 inside the content transaction
@@ -37,21 +37,24 @@ The installer maintains these invariants:
 Application Support/AirfixDogfighter/
   content/
     active.afac
+    active-<canonical UUID>.afac.partial  # crash-only temporary
     packs/
       pack-<64 lowercase SHA-256 hex>.afpack
     staging/
       import-<canonical UUID>.afpack.partial
-      active-<canonical UUID>.afac.partial
   saves/
   settings/
   diagnostics/
 ```
 
-The native iOS adapter supplies the resolved Application Support URL. The
-portable core receives `content/` as its trusted root and creates only the two
-known child directories. It rejects an empty root, wrong-type components, and
-non-canonical transaction IDs. Production code must additionally reject or
-avoid symbolic-link/reparse-point components at the platform boundary.
+The native iOS adapter supplies the resolved Application Support URL, enforces
+private directory permissions, copies a security-scoped document into an
+exclusive `0600` private file, and releases external access before validation.
+The portable core receives `content/` as its trusted root and creates only the
+two known child directories. It rejects an empty root, wrong-type components,
+and non-canonical transaction IDs. Startup cleanup scans only the three trusted
+direct directories and deletes regular non-link files matching the exact
+lowercase canonical-UUID temporary patterns; it never scans `packs/`.
 
 ## Transaction states
 

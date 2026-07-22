@@ -235,7 +235,8 @@ Diagnostics may log logical paths, sizes, and digests, but never payload bytes.
   `tests/AfPackActiveRecordTests.cpp`, and `tests/DurableFileTests.cpp`;
 - complete installer/recovery transaction tests: `tests/AfPackInstallerTests.cpp`
   and `tests/AfPackRecoveryTests.cpp`;
-- native iOS document picker/progress/recovery UI: pending; see
+- native iOS document picker/progress/recovery UI:
+  `apps/airfix-ios/AirfixContentCoordinator.*`; see
   `docs/systems/CONTENT-INSTALL.md`.
 
 `Pack::open` reads the fixed header plus metadata through `dataOffset`; it does

@@ -11,6 +11,8 @@ add_executable(airfix_ios MACOSX_BUNDLE
     main.mm
     AirfixAppDelegate.h
     AirfixAppDelegate.mm
+    AirfixContentCoordinator.h
+    AirfixContentCoordinator.mm
     AirfixGameViewController.h
     AirfixGameViewController.mm
     AirfixMetalRenderer.h
@@ -37,6 +39,7 @@ target_link_libraries(airfix_ios PRIVATE
     "-framework CoreGraphics"
     "-framework Metal"
     "-framework MetalKit"
+    "-framework UniformTypeIdentifiers"
 )
 
 find_program(AIRFIX_XCRUN_EXECUTABLE xcrun REQUIRED)
