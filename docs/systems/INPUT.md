@@ -1,6 +1,6 @@
 # Input, controls, and haptics system
 
-**Status:** proposed specification
+**Status:** portable semantic core implemented; platform adapters pending
 
 **Priority:** P0 for the iOS vertical slice
 
@@ -49,6 +49,28 @@ flowchart LR
 Platform backends emit normalized physical inputs. The binding layer maps them
 to semantic actions. Only an immutable `InputFrame` crosses into a simulation
 tick. Haptics travel in the opposite direction and cannot affect gameplay.
+
+### Implemented portable core
+
+The C++20 `airfix::input` library now fixes action/axis numeric IDs, uses signed
+Q15 values, and turns a bounded sequence-ordered physical event queue into one
+deterministic frame per simulation tick. Platform timestamps are diagnostic
+only. Buttons from multiple sources use logical OR; meaningful analog input
+claims an axis without allowing idle drift to steal it. Device cancellation,
+context changes, and lifecycle reset synthesize releases, and reset requires two
+consecutive neutral ticks before gameplay input is admitted again.
+
+Default semantic bindings cover touch, an extended controller, and minimal
+desktop keyboard testing. UIKit touch capture, Apple Game Controller delivery,
+profile persistence/remapping, glyphs, the visual overlay, and haptic adapters
+remain separate follow-up layers; none of those platform types enter
+`InputFrame`.
+
+`InputRouter` is deliberately single-thread-affine. UIKit and Game Controller
+callbacks must be serialized onto the same input/simulation thread as `tick()`;
+adapters must also submit their complete current state when a device connects.
+After a controller loss, the replacement source is quarantined until two
+consecutive neutral ticks, even if the platform assigns it a new runtime ID.
 
 ## Input contexts
 
@@ -142,6 +164,7 @@ InputFrame {
   pressedBits[]
   releasedBits[]
   heldBits[]
+  weaponSelection
 }
 ```
 

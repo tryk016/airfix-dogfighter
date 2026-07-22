@@ -73,6 +73,10 @@
 - Indexed all 9,328 CCF blueprints and resolved all 215 object `CCFF`/`MESH`
   selectors through 90 meshes, 124 nulls, and one no-selector case; all selected
   material references are complete and unambiguous.
+- Implemented the portable deterministic input core: stable action IDs, Q15
+  axes, bounded sequence ordering, multi-source arbitration, context releases,
+  cancellation, lifecycle neutral gating, and default touch/controller/test
+  bindings. Native iOS adapters and the visual touch overlay remain pending.
 
 ## Confirmed
 

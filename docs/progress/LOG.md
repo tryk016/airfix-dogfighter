@@ -332,3 +332,23 @@ superseded evidence.
   ambiguous material references.
 - The resolver returns typed missing/ambiguous/limit issues, never guesses a
   first blueprint for the no-selector case, and emits aggregate counts only.
+- Commit `8192aa2` passed portable CI run `29903498078` and unsigned iOS run
+  `29903498076` on the public, data-less build boundary.
+
+## 2026-07-21 — deterministic portable input core
+
+- `EV-20260721-028`: implemented stable semantic action and axis IDs, signed
+  Q15 values, a fixed-capacity sequence-ordered event queue, and versioned
+  per-tick `InputFrame` output independent of platform timestamps.
+- Multi-source buttons use logical OR, analog axes use latest-meaningful-source
+  ownership with drift rejection, and touch/controller/keyboard defaults cover
+  the first gameplay and menu action set.
+- Source loss and context changes synthesize only the required releases.
+  Lifecycle reset clears transient state and admits gameplay only after two
+  consecutive neutral ticks, preventing stuck fire or movement on resume.
+- Unit fixtures cover press/hold/release, taps between ticks, event ordering,
+  source handoff/fallback, drift, disconnect/reconnect neutral gating, context
+  blocking, strict queue limits, invalid/unbound inputs, timestamp independence,
+  and discrete weapon selection.
+- The iOS shell remains data-less and platform adapters are not claimed here;
+  UIKit touch capture and Apple Game Controller integration are the next layer.

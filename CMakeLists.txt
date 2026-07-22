@@ -50,6 +50,23 @@ else()
     target_compile_options(airfix_runtime PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+add_library(airfix_input
+    src/airfix/input/InputRouter.cpp
+)
+add_library(airfix::input ALIAS airfix_input)
+
+target_include_directories(airfix_input
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+)
+target_compile_features(airfix_input PUBLIC cxx_std_20)
+
+if(MSVC)
+    target_compile_options(airfix_input PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(airfix_input PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
 add_library(airfix_udsp
     src/airfix/archive/UdspArchive.cpp
 )
@@ -149,4 +166,8 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_runtime_tests tests/AppSessionTests.cpp)
     target_link_libraries(airfix_runtime_tests PRIVATE airfix::runtime)
     add_test(NAME airfix_runtime_tests COMMAND airfix_runtime_tests)
+
+    add_executable(airfix_input_tests tests/InputRouterTests.cpp)
+    target_link_libraries(airfix_input_tests PRIVATE airfix::input)
+    add_test(NAME airfix_input_tests COMMAND airfix_input_tests)
 endif()
