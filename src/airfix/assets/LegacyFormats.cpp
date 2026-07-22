@@ -91,6 +91,212 @@ void requireRange(
     return chunks;
 }
 
+[[nodiscard]] std::string parseCcfString(
+    const std::span<const std::uint8_t> bytes,
+    const CcfChunk& chunk,
+    const std::string_view field) {
+    constexpr std::uint16_t kStringChunk = 0xF020U;
+    constexpr std::uint32_t kMaximumStringBytes = 4097U;
+    if (chunk.id != kStringChunk || chunk.totalSize < 10U) {
+        throw ParseError(std::string(field) + " is not a valid CCF string chunk");
+    }
+    const auto payloadOffset = checkedAdd(chunk.offset, 6U, field);
+    const auto byteCount = readU32(
+        bytes, static_cast<std::size_t>(payloadOffset), field);
+    if (byteCount > kMaximumStringBytes ||
+        checkedAdd(10U, byteCount, field) != chunk.totalSize) {
+        throw ParseError(std::string(field) + " has an invalid byte count");
+    }
+    // The shipped writer uses a special zero-byte representation for an
+    // empty CcString; non-empty strings include their terminal NUL.
+    if (byteCount == 0U) {
+        return {};
+    }
+    const auto textOffset = checkedAdd(payloadOffset, 4U, field);
+    requireRange(textOffset, byteCount, bytes.size(), field);
+    const auto textBegin = static_cast<std::size_t>(textOffset);
+    const auto terminator = checkedAdd(textOffset, byteCount - 1U, field);
+    if (bytes[static_cast<std::size_t>(terminator)] != 0U) {
+        throw ParseError(std::string(field) + " is not NUL terminated");
+    }
+    for (std::uint32_t index = 0U; index + 1U < byteCount; ++index) {
+        if (bytes[textBegin + index] == 0U) {
+            throw ParseError(std::string(field) + " contains an embedded NUL");
+        }
+    }
+    return std::string(
+        reinterpret_cast<const char*>(bytes.data() + textBegin),
+        byteCount - 1U);
+}
+
+struct CcfName {
+    std::string name;
+    std::string prefix;
+};
+
+[[nodiscard]] CcfName parseCcfName(
+    const std::span<const std::uint8_t> bytes,
+    const CcfChunk& chunk,
+    const std::string_view field) {
+    constexpr std::uint16_t kNameChunk = 0xF010U;
+    constexpr std::uint16_t kStringChunk = 0xF020U;
+    if (chunk.id != kNameChunk) {
+        throw ParseError(std::string(field) + " does not begin with a CCF name");
+    }
+    const auto begin = checkedAdd(chunk.offset, 6U, field);
+    const auto end = checkedAdd(chunk.offset, chunk.totalSize, field);
+    const auto children = parseCcfChunkSequence(
+        bytes,
+        static_cast<std::size_t>(begin),
+        static_cast<std::size_t>(end),
+        field);
+    if (children.size() != 2U || children[0].id != kStringChunk ||
+        children[1].id != kStringChunk) {
+        throw ParseError(std::string(field) + " must contain name and prefix strings");
+    }
+    return {
+        .name = parseCcfString(bytes, children[0], std::string(field) + " name"),
+        .prefix = parseCcfString(bytes, children[1], std::string(field) + " prefix"),
+    };
+}
+
+[[nodiscard]] std::string parseCcfWrappedString(
+    const std::span<const std::uint8_t> bytes,
+    const CcfChunk& chunk,
+    const std::string_view field) {
+    constexpr std::uint16_t kStringChunk = 0xF020U;
+    const auto begin = checkedAdd(chunk.offset, 6U, field);
+    const auto end = checkedAdd(chunk.offset, chunk.totalSize, field);
+    const auto children = parseCcfChunkSequence(
+        bytes,
+        static_cast<std::size_t>(begin),
+        static_cast<std::size_t>(end),
+        field);
+    if (children.size() != 1U || children[0].id != kStringChunk) {
+        throw ParseError(std::string(field) + " must contain exactly one CCF string");
+    }
+    return parseCcfString(bytes, children[0], field);
+}
+
+void validateCcfMaterialVectors(
+    const std::span<const std::uint8_t> bytes,
+    const CcfChunk& chunk) {
+    if (chunk.totalSize != 46U) {
+        throw ParseError("CCF material vectors have an invalid size");
+    }
+    const auto first = checkedAdd(chunk.offset, 6U, "CCF material vectors");
+    const auto second = checkedAdd(first, 18U, "CCF material vectors");
+    if (readU16(bytes, static_cast<std::size_t>(first), "CCF material vector") != 0xF030U ||
+        readU32(bytes, static_cast<std::size_t>(first + 2U), "CCF material vector") != 18U ||
+        readU16(bytes, static_cast<std::size_t>(second), "CCF material vector") != 0xF030U ||
+        readU32(bytes, static_cast<std::size_t>(second + 2U), "CCF material vector") != 18U) {
+        throw ParseError("CCF material vectors do not contain two vec3 chunks");
+    }
+}
+
+[[nodiscard]] CcfMaterialMetadata parseCcfMaterial(
+    const std::span<const std::uint8_t> bytes,
+    CcfChunk& material) {
+    constexpr std::uint16_t kMaterialChunk = 0x2100U;
+    if (material.id != kMaterialChunk) {
+        throw ParseError("CCF material section contains a non-material chunk");
+    }
+    const auto payloadBegin = checkedAdd(material.offset, 6U, "CCF material payload");
+    const auto materialEnd = checkedAdd(material.offset, material.totalSize, "CCF material end");
+    requireRange(payloadBegin, 6U, materialEnd, "CCF material name header");
+    CcfChunk nameChunk{
+        .id = readU16(bytes, static_cast<std::size_t>(payloadBegin), "CCF material name id"),
+        .totalSize = readU32(
+            bytes, static_cast<std::size_t>(payloadBegin + 2U), "CCF material name size"),
+        .offset = payloadBegin,
+        .directChildren = {},
+    };
+    if (nameChunk.totalSize < 6U) {
+        throw ParseError("CCF material name is shorter than its header");
+    }
+    requireRange(nameChunk.offset, nameChunk.totalSize, materialEnd, "CCF material name");
+    const auto name = parseCcfName(bytes, nameChunk, "CCF material name");
+    auto cursor = checkedAdd(nameChunk.offset, nameChunk.totalSize, "CCF material reference");
+    requireRange(cursor, 4U, materialEnd, "CCF material reference");
+    const auto reference = readU32(
+        bytes, static_cast<std::size_t>(cursor), "CCF material reference");
+    cursor = checkedAdd(cursor, 4U, "CCF material properties");
+    material.directChildren = parseCcfChunkSequence(
+        bytes,
+        static_cast<std::size_t>(cursor),
+        static_cast<std::size_t>(materialEnd),
+        "CCF material property");
+
+    CcfMaterialMetadata metadata{
+        .name = name.name,
+        .prefix = name.prefix,
+        .reference = reference,
+        .primaryTexture = std::nullopt,
+        .secondaryTexture = std::nullopt,
+        .environmentTexture = std::nullopt,
+        .offset = material.offset,
+    };
+    bool hasVectors = false;
+    bool hasFlags = false;
+    bool hasMode = false;
+    bool hasScalars = false;
+    for (const auto& property : material.directChildren) {
+        switch (property.id) {
+        case 0x2110U:
+            if (metadata.primaryTexture.has_value()) {
+                throw ParseError("CCF material has duplicate primary textures");
+            }
+            metadata.primaryTexture = parseCcfWrappedString(
+                bytes, property, "CCF material primary texture");
+            break;
+        case 0x2111U:
+            if (metadata.secondaryTexture.has_value()) {
+                throw ParseError("CCF material has duplicate secondary textures");
+            }
+            metadata.secondaryTexture = parseCcfWrappedString(
+                bytes, property, "CCF material secondary texture");
+            break;
+        case 0x2120U:
+            if (metadata.environmentTexture.has_value()) {
+                throw ParseError("CCF material has duplicate environment textures");
+            }
+            metadata.environmentTexture = parseCcfWrappedString(
+                bytes, property, "CCF material environment texture");
+            break;
+        case 0x2140U:
+            if (hasVectors) {
+                throw ParseError("CCF material has duplicate vector properties");
+            }
+            validateCcfMaterialVectors(bytes, property);
+            hasVectors = true;
+            break;
+        case 0x2150U:
+            if (hasFlags || property.totalSize != 12U) {
+                throw ParseError("CCF material has invalid flag properties");
+            }
+            hasFlags = true;
+            break;
+        case 0x2151U:
+            if (hasMode || property.totalSize != 7U) {
+                throw ParseError("CCF material has an invalid mode property");
+            }
+            hasMode = true;
+            break;
+        case 0x2152U:
+            if (hasScalars || property.totalSize != 18U) {
+                throw ParseError("CCF material has invalid scalar properties");
+            }
+            hasScalars = true;
+            break;
+        default:
+            // LoadSceneCcf closes unknown chunks and continues. Retain them in
+            // directChildren so later schema versions remain inspectable.
+            break;
+        }
+    }
+    return metadata;
+}
+
 } // namespace
 
 std::uint32_t gtiBitsPerPixel(const std::uint32_t format) noexcept {
@@ -372,6 +578,7 @@ CcfMetadata parseCcf(const std::span<const std::uint8_t> bytes) {
         .rootId = rootId,
         .rootSize = rootSize,
         .topLevelChunks = {},
+        .materials = {},
     };
     metadata.topLevelChunks = parseCcfChunkSequence(bytes, 14U, bytes.size(), "CCF root");
     for (auto& section : metadata.topLevelChunks) {
@@ -382,6 +589,13 @@ CcfMetadata parseCcf(const std::span<const std::uint8_t> bytes) {
             static_cast<std::size_t>(childBegin),
             static_cast<std::size_t>(childEnd),
             "CCF section");
+        if (section.id == 0x2000U) {
+            for (auto& material : section.directChildren) {
+                if (material.id == 0x2100U) {
+                    metadata.materials.push_back(parseCcfMaterial(bytes, material));
+                }
+            }
+        }
     }
     return metadata;
 }

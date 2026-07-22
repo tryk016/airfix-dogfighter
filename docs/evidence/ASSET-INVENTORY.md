@@ -68,6 +68,11 @@ All 286 CCF signatures have ordered root sections `0x1000`, `0x2000`,
 10,385 materials, and two equal 9,328-record blueprint/placed-node tables; see
 `FMT-CCF` for the ID sets and per-file bounds.
 
+The semantic material pass validates all 10,385 `0x2100` records. It exposes
+10,256 primary and 263 environment texture references; the loader-supported
+secondary texture field is absent from the selected corpus. The special
+zero-byte empty-string form occurs in 5,043 material prefixes and in no names.
+
 All 299 selected `AfChunkContainer` files also pass exact root/child framing:
 7,376 chunks total. The semantic layer validates all 215 object definitions,
 including the observed optional category/nationality/mesh fields and exact

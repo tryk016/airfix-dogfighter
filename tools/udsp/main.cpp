@@ -164,7 +164,38 @@ int main(const int argc, const char* const* argv) {
                                 const auto data = airfix::udsp::readFile(
                                     archivePath, archive, file, kAssetReadLimit);
                                 const auto metadata = airfix::assets::parseCcf(data);
-                                detail << "CCF:top=";
+                                const auto primaryTextures = std::count_if(
+                                    metadata.materials.begin(), metadata.materials.end(),
+                                    [](const auto& material) {
+                                        return material.primaryTexture.has_value();
+                                    });
+                                const auto secondaryTextures = std::count_if(
+                                    metadata.materials.begin(), metadata.materials.end(),
+                                    [](const auto& material) {
+                                        return material.secondaryTexture.has_value();
+                                    });
+                                const auto environmentTextures = std::count_if(
+                                    metadata.materials.begin(), metadata.materials.end(),
+                                    [](const auto& material) {
+                                        return material.environmentTexture.has_value();
+                                    });
+                                const auto emptyNames = std::count_if(
+                                    metadata.materials.begin(), metadata.materials.end(),
+                                    [](const auto& material) {
+                                        return material.name.empty();
+                                    });
+                                const auto emptyPrefixes = std::count_if(
+                                    metadata.materials.begin(), metadata.materials.end(),
+                                    [](const auto& material) {
+                                        return material.prefix.empty();
+                                    });
+                                detail << "CCF:materials=" << metadata.materials.size()
+                                       << ",primary=" << primaryTextures
+                                       << ",secondary=" << secondaryTextures
+                                       << ",environment=" << environmentTextures
+                                       << ",emptyNames=" << emptyNames
+                                       << ",emptyPrefixes=" << emptyPrefixes
+                                       << ":top=";
                                 for (std::size_t child = 0U;
                                      child < metadata.topLevelChunks.size();
                                      ++child) {

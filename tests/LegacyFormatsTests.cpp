@@ -23,6 +23,99 @@ void appendU32(Bytes& bytes, const std::uint32_t value) {
     }
 }
 
+void appendBytes(Bytes& destination, const Bytes& source) {
+    destination.insert(destination.end(), source.begin(), source.end());
+}
+
+[[nodiscard]] Bytes ccfChunk(const std::uint16_t id, const Bytes& payload) {
+    Bytes bytes;
+    appendU16(bytes, id);
+    appendU32(bytes, static_cast<std::uint32_t>(6U + payload.size()));
+    appendBytes(bytes, payload);
+    return bytes;
+}
+
+[[nodiscard]] Bytes ccfString(
+    const std::string& value,
+    const bool validTerminator = true) {
+    Bytes payload;
+    appendU32(payload, static_cast<std::uint32_t>(value.size() + 1U));
+    payload.insert(payload.end(), value.begin(), value.end());
+    payload.push_back(validTerminator ? 0U : static_cast<std::uint8_t>('X'));
+    return ccfChunk(0xF020U, payload);
+}
+
+[[nodiscard]] Bytes ccfName(
+    const bool validTerminator = true,
+    const bool zeroLengthPrefix = false) {
+    Bytes payload = ccfString("Material", validTerminator);
+    if (zeroLengthPrefix) {
+        appendBytes(payload, ccfChunk(0xF020U, Bytes(4U, 0U)));
+    }
+    else {
+        appendBytes(payload, ccfString("House"));
+    }
+    return ccfChunk(0xF010U, payload);
+}
+
+struct MaterialCcfOptions {
+    bool includeScalars{true};
+    bool duplicatePrimaryTexture{};
+    bool validNameTerminator{true};
+    bool zeroLengthPrefix{};
+    bool includeSecondaryTexture{};
+    bool includeEnvironmentTexture{};
+    bool includeUnknownProperty{};
+    bool includeUnknownSectionChild{};
+};
+
+[[nodiscard]] Bytes makeMaterialCcf(const MaterialCcfOptions& options = {}) {
+    Bytes materialPayload = ccfName(
+        options.validNameTerminator, options.zeroLengthPrefix);
+    appendU32(materialPayload, 42U);
+
+    Bytes texturePayload = ccfString("Wall.gti");
+    const auto primaryTexture = ccfChunk(0x2110U, texturePayload);
+    appendBytes(materialPayload, primaryTexture);
+    if (options.duplicatePrimaryTexture) {
+        appendBytes(materialPayload, primaryTexture);
+    }
+    if (options.includeSecondaryTexture) {
+        appendBytes(materialPayload, ccfChunk(0x2111U, ccfString("Detail.gti")));
+    }
+    if (options.includeEnvironmentTexture) {
+        appendBytes(materialPayload, ccfChunk(0x2120U, ccfString("Env.gti")));
+    }
+    if (options.includeUnknownProperty) {
+        appendBytes(materialPayload, ccfChunk(0x2153U, Bytes(16U, 0U)));
+    }
+
+    Bytes vectorsPayload;
+    appendBytes(vectorsPayload, ccfChunk(0xF030U, Bytes(12U, 0U)));
+    appendBytes(vectorsPayload, ccfChunk(0xF030U, Bytes(12U, 0U)));
+    appendU32(vectorsPayload, 0U);
+    appendBytes(materialPayload, ccfChunk(0x2140U, vectorsPayload));
+    appendBytes(materialPayload, ccfChunk(0x2150U, Bytes(6U, 0U)));
+    appendBytes(materialPayload, ccfChunk(0x2151U, Bytes(1U, 0U)));
+    if (options.includeScalars) {
+        appendBytes(materialPayload, ccfChunk(0x2152U, Bytes(12U, 0U)));
+    }
+
+    const auto material = ccfChunk(0x2100U, materialPayload);
+    auto sectionPayload = material;
+    if (options.includeUnknownSectionChild) {
+        appendBytes(sectionPayload, ccfChunk(0x2200U, {}));
+    }
+    const auto section = ccfChunk(0x2000U, sectionPayload);
+    Bytes bytes;
+    appendU32(bytes, airfix::assets::kCcfMagic);
+    appendU32(bytes, airfix::assets::kCcfVersion);
+    appendU16(bytes, 1U);
+    appendU32(bytes, static_cast<std::uint32_t>(6U + section.size()));
+    appendBytes(bytes, section);
+    return bytes;
+}
+
 void require(const bool condition, const std::string& message) {
     if (!condition) {
         throw std::runtime_error(message);
@@ -137,6 +230,52 @@ void testCcf() {
     invalid = bytes;
     invalid[16] = 5U;
     requireParseError([&] { (void)airfix::assets::parseCcf(invalid); });
+
+    const auto materialBytes = makeMaterialCcf();
+    const auto materialMetadata = airfix::assets::parseCcf(materialBytes);
+    require(materialMetadata.materials.size() == 1U, "CCF material count mismatch");
+    const auto& material = materialMetadata.materials[0];
+    require(material.name == "Material", "CCF material name mismatch");
+    require(material.prefix == "House", "CCF material prefix mismatch");
+    require(material.reference == 42U, "CCF material reference mismatch");
+    require(material.primaryTexture == "Wall.gti", "CCF primary texture mismatch");
+    require(!material.secondaryTexture.has_value(), "unexpected CCF secondary texture");
+    require(!material.environmentTexture.has_value(), "unexpected CCF environment texture");
+    require(materialMetadata.topLevelChunks[0].directChildren[0].directChildren.size() == 5U,
+        "CCF material property count mismatch");
+
+    const auto missingProperty = makeMaterialCcf({.includeScalars = false});
+    require(airfix::assets::parseCcf(missingProperty).materials.size() == 1U,
+        "CCF loader-compatible missing property was rejected");
+    const auto duplicateTexture = makeMaterialCcf({.duplicatePrimaryTexture = true});
+    requireParseError([&] { (void)airfix::assets::parseCcf(duplicateTexture); });
+    const auto unterminatedName = makeMaterialCcf({.validNameTerminator = false});
+    requireParseError([&] { (void)airfix::assets::parseCcf(unterminatedName); });
+
+    const auto emptyPrefix = makeMaterialCcf({.zeroLengthPrefix = true});
+    const auto emptyPrefixMetadata = airfix::assets::parseCcf(emptyPrefix);
+    require(emptyPrefixMetadata.materials[0].prefix.empty(),
+        "CCF zero-length prefix mismatch");
+
+    const auto allTextures = makeMaterialCcf({
+        .includeSecondaryTexture = true,
+        .includeEnvironmentTexture = true,
+    });
+    const auto allTextureMetadata = airfix::assets::parseCcf(allTextures);
+    require(allTextureMetadata.materials[0].secondaryTexture == "Detail.gti",
+        "CCF secondary texture mismatch");
+    require(allTextureMetadata.materials[0].environmentTexture == "Env.gti",
+        "CCF environment texture mismatch");
+
+    const auto forwardCompatible = makeMaterialCcf({
+        .includeUnknownProperty = true,
+        .includeUnknownSectionChild = true,
+    });
+    const auto forwardMetadata = airfix::assets::parseCcf(forwardCompatible);
+    require(forwardMetadata.materials.size() == 1U,
+        "CCF unknown material extension changed material count");
+    require(forwardMetadata.topLevelChunks[0].directChildren.size() == 2U,
+        "CCF unknown section child was not preserved");
 }
 
 [[nodiscard]] airfix::assets::GtiVariant onePixelVariant(

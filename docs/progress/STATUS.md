@@ -58,6 +58,12 @@
   channel/orientation correctness and the paletted/32-bit paths agree closely.
 - Implemented bounded `AfChunkContainer` framing and object-definition parsing;
   all 299 selected containers/7,376 chunks and all 215 object definitions pass.
+- Implemented strict CCF material metadata parsing for all 10,385 records,
+  exposing material names/references and 10,256 primary plus 263 environment
+  texture dependencies without assigning unproven numeric semantics.
+- Audited the CC0 `RonnyReverse/cc-tools` project at a pinned commit; its CCF
+  mesh map is useful independent evidence, while the local bounded parser and
+  corpus/Ghidra validation remain authoritative.
 
 ## Confirmed
 
@@ -86,7 +92,7 @@
 
 ## Next
 
-1. Index CCF material/mesh chunks and emit the first model diagnostic.
+1. Decode CCF mesh chunks and emit the first model diagnostic.
 2. Resolve object `CCFF`/`MESH` dependencies into the CCF index.
 3. Extend GTI RGBA conversion across every mip level and define Metal upload.
 4. Add a tested no-music asset configuration because the original CD/audio is

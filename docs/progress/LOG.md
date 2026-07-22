@@ -251,3 +251,36 @@ superseded evidence.
   the referenced `CCFF`; only `PuKeyBrown.object` omits it. The community object
   manual's example lengths and counts agree with the corpus, while its claim
   that `OBJE` lacks `CATG` does not (111 of 142 have it).
+
+## 2026-07-21 — CCF material dependencies
+
+- `EV-20260721-023`: recovered the complete observed `0x2100` material layout,
+  implemented strict bounded metadata parsing, and revalidated all 286 CCF
+  files/10,385 materials directly inside `Resource.up`.
+- Materials expose 10,256 primary and 263 environment texture references. The
+  original loader also accepts a secondary texture property, but none occurs in
+  the selected corpus. All records contain the four mandatory fixed-shape
+  property chunks in one of four exact optional-texture sequences.
+- Corpus validation corrected the initial string model: 5,043 empty material
+  prefixes use a zero-byte `CcString` representation, whereas non-empty strings
+  include their terminal NUL. Added an explicit synthetic regression fixture.
+- The public repository records only parser code and aggregate facts. No CCF,
+  GTI, extracted name list, or derived proprietary asset was written or
+  uploaded.
+
+## 2026-07-21 — external `cc-tools` audit
+
+- `EV-20260721-024`: audited the user-supplied CC0-1.0 project
+  [`RonnyReverse/cc-tools`](https://github.com/RonnyReverse/cc-tools/tree/e34efcd858ec4475fa03d3f8668fa4e26f9e780e)
+  at commit `e34efcd858ec4475fa03d3f8668fa4e26f9e780e`.
+- Its Kaitai schemas independently agree with the recovered UDSP, GTI,
+  AfChunk, CCF material, and candidate mesh shapes. They are used as hypotheses,
+  not vendored as a dependency: CCF semantics are incomplete, resource limits
+  are absent, and its generated Python/Pillow stack is old.
+- The repository contains no visible original or derived game assets. CC0
+  covers its code and schemas but grants no rights to Airfix Dogfighter data.
+- The audit exposed one naming discrepancy in `CcName`; a known corpus sample
+  plus loader order confirms the local first-string `name`, second-string
+  `prefix` interpretation. It also identifies unobserved material `0x2153` and
+  mesh helper IDs as candidates that remain unknown until Airfix evidence
+  confirms them.

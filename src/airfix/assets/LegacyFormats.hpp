@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace airfix::assets {
@@ -50,10 +51,21 @@ struct CcfChunk {
     std::vector<CcfChunk> directChildren;
 };
 
+struct CcfMaterialMetadata {
+    std::string name;
+    std::string prefix;
+    std::uint32_t reference{};
+    std::optional<std::string> primaryTexture;
+    std::optional<std::string> secondaryTexture;
+    std::optional<std::string> environmentTexture;
+    std::uint64_t offset{};
+};
+
 struct CcfMetadata {
     std::uint16_t rootId{};
     std::uint32_t rootSize{};
     std::vector<CcfChunk> topLevelChunks;
+    std::vector<CcfMaterialMetadata> materials;
 };
 
 struct RgbaImage {
