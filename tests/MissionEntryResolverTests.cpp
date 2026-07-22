@@ -209,6 +209,7 @@ void testStatusesMetadataAndStablePlacements() {
     std::cerr << "mission-resolver checkpoint: resolved\n";
     using Status = airfix::assets::MissionEntryStatus;
     require(result.issues.empty(), "valid-size resolution reported an issue");
+    std::cerr << "mission-resolver checkpoint: issues assertion complete\n";
     require(result.worldEntry.status == Status::unique &&
             result.worldEntry.logicalPath == "worlds\\house.FHOU" &&
             result.worldEntry.archiveDirectoryIndex.has_value() &&
@@ -216,8 +217,10 @@ void testStatusesMetadataAndStablePlacements() {
             result.worldEntry.archiveLogicalPath ==
                 std::optional<std::string>{"Worlds\\House.fhou"},
         "world separator/case lookup metadata mismatch");
+    std::cerr << "mission-resolver checkpoint: world assertion complete\n";
     require(result.placements.size() == level.objects.size(),
         "placement count or stable processing was lost");
+    std::cerr << "mission-resolver checkpoint: placement-count assertion complete\n";
     require(result.models.size() == level.models.size() &&
             result.models[0].modelIndex == 0U &&
             result.models[1].modelIndex == 1U &&
