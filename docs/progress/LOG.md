@@ -537,3 +537,26 @@ superseded evidence.
 - The read-only real `Resource.up` passes the default policy: 170,642,453 bytes,
   130,961 metadata bytes, 478 directories, 2,628 files, and 191,873,346 total
   declared unpacked bytes. No source payload entered the repository.
+- Commit `b37f7a6` passed portable CI run `29919436812` on Ubuntu, Windows, and
+  ARM64 macOS plus unsigned iOS run `29919436787` for `iphoneos` and
+  `iphonesimulator` on Xcode 26.6.
+
+## 2026-07-21 — AFPACK validation and activation transaction foundation
+
+- Added a bounded validation gate that keeps one staged-file handle for AFPACK
+  metadata, manifest, and nested UDSP parsing. A fresh final binding pass hashes
+  the metadata and every payload again, so same-size pathname replacement or
+  in-place mutation cannot produce a mixed accepted result.
+- Added canonical binary AFAC v1 active records with one rollback reference,
+  checked generation increments, bounded sizes, exact flags/layout, and
+  digest-derived package filenames. No caller-controlled path is persisted.
+- Added Windows and POSIX/iOS durability primitives for exclusive creation,
+  replace, and no-replace publication. They validate regular-file identity,
+  reject path aliases, fail closed on source substitution, and document their
+  app-private, serialized transaction boundary.
+- Synthetic tests cover malformed limits, progress/cancellation, payload
+  mutation during validation, AFAC round trips/overflow, publication collision,
+  source substitution, relative/absolute aliases, and replacement rollback.
+  Independent reviews found and closed the initial handle/path TOCTOU and unsafe
+  cleanup cases. The full local GCC suite passes 18/18 and the public-boundary
+  scanner passes 121 files.

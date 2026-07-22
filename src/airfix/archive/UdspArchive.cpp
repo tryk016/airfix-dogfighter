@@ -194,7 +194,7 @@ void validateLimits(
 }
 
 void readExact(
-    std::ifstream& input,
+    std::istream& input,
     const std::uint64_t offset,
     const std::span<std::uint8_t> output,
     const std::filesystem::path& path) {
@@ -202,6 +202,7 @@ void readExact(
         output.size() > static_cast<std::size_t>(std::numeric_limits<std::streamsize>::max())) {
         throw ParseError("archive range exceeds stream limits: " + path.string());
     }
+    input.clear();
     input.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
     if (!input || (!output.empty() && !input.read(
             reinterpret_cast<char*>(output.data()),
@@ -475,7 +476,17 @@ Archive Archive::openRegion(
         throw ParseError("cannot determine archive size: " + path.string());
     }
     const auto physicalSize = static_cast<std::uint64_t>(end);
-    requireRange(offset, size, physicalSize, "UDSP containing-file region");
+    return openRegion(input, physicalSize, path, offset, size, limits);
+}
+
+Archive Archive::openRegion(
+    std::istream& input,
+    const std::uint64_t containingFileSize,
+    const std::filesystem::path& sourcePath,
+    const std::uint64_t offset,
+    const std::uint64_t size,
+    const ParseLimits& limits) {
+    requireRange(offset, size, containingFileSize, "UDSP containing-file region");
     if (size > limits.maxArchiveSize) {
         throw ParseError("UDSP archive exceeds the configured size limit");
     }
@@ -484,7 +495,7 @@ Archive Archive::openRegion(
     }
 
     std::array<std::uint8_t, kHeaderSize> headerBytes{};
-    readExact(input, offset, headerBytes, path);
+    readExact(input, offset, headerBytes, sourcePath);
     const auto header = readHeader(headerBytes);
     validateLayout(header, size);
     validateLimits(header, size, limits);
@@ -498,7 +509,7 @@ Archive Archive::openRegion(
         input,
         checkedAdd(offset, header.directoryOffset, "UDSP metadata absolute offset"),
         metadata,
-        path);
+        sourcePath);
 
     const auto directoryStart = std::size_t{0};
     const auto fileStart = static_cast<std::size_t>(header.fileOffset - header.directoryOffset);

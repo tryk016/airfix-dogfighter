@@ -125,9 +125,30 @@ else()
     target_compile_options(airfix_render PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+add_library(airfix_io)
+add_library(airfix::io ALIAS airfix_io)
+if(WIN32)
+    target_sources(airfix_io PRIVATE src/airfix/io/DurableFileWin32.cpp)
+else()
+    target_sources(airfix_io PRIVATE src/airfix/io/DurableFilePosix.cpp)
+endif()
+target_include_directories(airfix_io
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+)
+target_compile_features(airfix_io PUBLIC cxx_std_20)
+
+if(MSVC)
+    target_compile_options(airfix_io PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(airfix_io PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+
 add_library(airfix_afpack
     src/airfix/package/AfPack.cpp
+    src/airfix/package/AfPackActiveRecord.cpp
     src/airfix/package/AfPackManifest.cpp
+    src/airfix/package/AfPackValidation.cpp
     src/airfix/package/AfPackWriter.cpp
 )
 add_library(airfix::afpack ALIAS airfix_afpack)
@@ -137,7 +158,7 @@ target_include_directories(airfix_afpack
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
 )
 target_compile_features(airfix_afpack PUBLIC cxx_std_20)
-target_link_libraries(airfix_afpack PUBLIC airfix::crypto)
+target_link_libraries(airfix_afpack PUBLIC airfix::crypto airfix::udsp)
 
 if(MSVC)
     target_compile_options(airfix_afpack PRIVATE /W4 /permissive-)
@@ -186,9 +207,21 @@ if(AIRFIX_BUILD_TESTS)
     target_link_libraries(airfix_afpack_manifest_tests PRIVATE airfix::afpack)
     add_test(NAME airfix_afpack_manifest_tests COMMAND airfix_afpack_manifest_tests)
 
+    add_executable(airfix_afpack_validation_tests tests/AfPackValidationTests.cpp)
+    target_link_libraries(airfix_afpack_validation_tests PRIVATE airfix::afpack)
+    add_test(NAME airfix_afpack_validation_tests COMMAND airfix_afpack_validation_tests)
+
+    add_executable(airfix_afpack_active_record_tests tests/AfPackActiveRecordTests.cpp)
+    target_link_libraries(airfix_afpack_active_record_tests PRIVATE airfix::afpack)
+    add_test(NAME airfix_afpack_active_record_tests COMMAND airfix_afpack_active_record_tests)
+
     add_executable(airfix_crypto_tests tests/Sha256Tests.cpp)
     target_link_libraries(airfix_crypto_tests PRIVATE airfix::crypto)
     add_test(NAME airfix_crypto_tests COMMAND airfix_crypto_tests)
+
+    add_executable(airfix_durable_file_tests tests/DurableFileTests.cpp)
+    target_link_libraries(airfix_durable_file_tests PRIVATE airfix::io)
+    add_test(NAME airfix_durable_file_tests COMMAND airfix_durable_file_tests)
 
     add_executable(airfix_asset_tests tests/LegacyFormatsTests.cpp)
     target_link_libraries(airfix_asset_tests PRIVATE airfix::assets)

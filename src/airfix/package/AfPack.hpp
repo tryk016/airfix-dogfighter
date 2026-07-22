@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <istream>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -77,12 +78,21 @@ public:
     [[nodiscard]] static Pack open(
         const std::filesystem::path& path,
         const ParseLimits& limits = {});
+    [[nodiscard]] static Pack open(
+        std::istream& input,
+        const std::filesystem::path& sourcePath,
+        const ParseLimits& limits = {});
 
     [[nodiscard]] const Header& header() const noexcept { return header_; }
     [[nodiscard]] const std::vector<Entry>& entries() const noexcept { return entries_; }
     [[nodiscard]] std::uint64_t archiveSize() const noexcept { return archiveSize_; }
     [[nodiscard]] std::vector<std::uint8_t> readEntry(
         const std::filesystem::path& path,
+        std::size_t index,
+        std::uint64_t maxBytes) const;
+    [[nodiscard]] std::vector<std::uint8_t> readEntry(
+        std::istream& input,
+        const std::filesystem::path& sourcePath,
         std::size_t index,
         std::uint64_t maxBytes) const;
     void verifyPayloads(const std::filesystem::path& path) const;

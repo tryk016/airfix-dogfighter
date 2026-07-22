@@ -54,6 +54,15 @@
 - Added parser limits for nested UDSP archive/metadata/tables/names and declared
   stored, per-entry unpacked, and aggregate unpacked sizes. Checks precede
   metadata allocation and the real Resource archive passes the default policy.
+- Added one-handle AFPACK validation across metadata, payload, manifest, and
+  nested UDSP regions, followed by a second authentication pass that rejects
+  same-size mutation during semantic validation.
+- Defined and implemented canonical AFAC v1 activation records. Active and
+  rollback package names are derived only from SHA-256, with bounded sizes,
+  exact layouts, strict generation handling, and no stored input paths.
+- Added cross-platform durable file primitives for exclusive creation, atomic
+  replacement, and no-replace publication, including source-identity and path
+  alias checks for the private installer transaction boundary.
 - Added bounded UDSP-in-container reads and completed a real English content
   pack round trip (192,755,765 bytes, 3 entries) outside Git; the temporary pack
   was removed after verification.

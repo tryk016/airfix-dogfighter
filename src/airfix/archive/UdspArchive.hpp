@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <istream>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -91,6 +92,13 @@ public:
         const ParseLimits& limits = {});
     [[nodiscard]] static Archive openRegion(
         const std::filesystem::path& path,
+        std::uint64_t offset,
+        std::uint64_t size,
+        const ParseLimits& limits = {});
+    [[nodiscard]] static Archive openRegion(
+        std::istream& input,
+        std::uint64_t containingFileSize,
+        const std::filesystem::path& sourcePath,
         std::uint64_t offset,
         std::uint64_t size,
         const ParseLimits& limits = {});

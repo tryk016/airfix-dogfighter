@@ -1,7 +1,8 @@
 # FMT-AFPACK — private iOS content container
 
-**State:** version 1 container, parser, verifier, local writer, and strict
-semantic manifest validation implemented; iOS importer pending
+**State:** version 1 container, parser, verifier, local writer, strict
+semantic manifest validation, active-record format, and durable publication
+primitives implemented; iOS importer pending
 
 **Confidence:** design contract (not an original Airfix format)
 
@@ -163,20 +164,52 @@ Because the original CD/audio tracks are unavailable, `music` is always false
 for the accepted v1 source set. Missing music is a supported configuration, not
 an import failure.
 
+## Active record (AFAC v1)
+
+The importer never stores a caller-controlled path in its active pointer. Pack
+filenames are derived only from the lowercase package digest as
+`pack-<64 hex>.afpack`. The canonical `active.afac` record is little-endian:
+
+```text
+base record (64 bytes):
+  char magic[4] = "AFAC"
+  u16 version = 1
+  u16 flags                 // bit 0: previous reference present
+  u32 recordSize            // exactly 64 or 104
+  u32 reserved = 0
+  u64 generation            // starts at 1, strictly incremented
+  u64 currentSize
+  u8  currentSha256[32]
+
+optional previous reference (40 bytes):
+  u64 previousSize
+  u8  previousSha256[32]
+```
+
+Sizes must be nonzero and bounded, digests must not be all zero, unknown flags
+and trailing bytes are rejected, and generation overflow is an error. On each
+successful activation the old current reference becomes the single rollback
+reference; an older previous reference is deliberately dropped.
+
 ## Validation and atomic import
 
 The importer performs these steps without trusting filenames or declared sizes:
 
-1. copy the selected pack into a unique staging file under Application Support;
-2. read only the header and metadata, validate all checked arithmetic, ranges,
+1. exclusively create a unique staging file in an app-private directory, copy
+   the selected pack into it with bounded streaming I/O, then flush and close it;
+2. open that exact staged file once, read only its header and metadata, and
+   validate all checked arithmetic, ranges,
    alignment, path rules, kinds, uniqueness, and non-overlapping payloads;
 3. stream every payload through SHA-256 and compare its entry digest;
 4. parse `manifest.json`, require supported schema/game/converter compatibility,
    and compare its entry audit with the table;
-5. validate nested source archives through bounded readers before activation;
-6. flush/close the staging file, atomically rename it to a versioned final name,
-   and atomically update the active-pack pointer;
-7. delete the previous pack only after the new one has opened successfully.
+5. validate nested source archives through bounded regions of the same open
+   stream, then re-hash all payloads and metadata before accepting the result;
+6. publish the staged file without replacement under its digest-derived name;
+7. exclusively write and flush a temporary AFAC record, then atomically replace
+   `active.afac` as the short, non-cancellable commit step;
+8. retain its one referenced previous pack for rollback; stale unreferenced
+   packs are cleaned only by a separate recovery pass.
 
 Cancellation, backgrounding, insufficient disk, malformed input, or digest
 failure removes staging data and leaves the previous active pack untouched.
@@ -186,12 +219,17 @@ Diagnostics may log logical paths, sizes, and digests, but never payload bytes.
 
 - metadata parser: `src/airfix/package/AfPack.*`;
 - strict manifest parser/validator: `src/airfix/package/AfPackManifest.*`;
+- stable-source validation gate: `src/airfix/package/AfPackValidation.*`;
+- canonical active pointer: `src/airfix/package/AfPackActiveRecord.*`;
+- platform durability operations: `src/airfix/io/DurableFile*`;
 - deterministic writer: `src/airfix/package/AfPackWriter.*`;
 - allowlisted local CLI: `afpack-create`;
 - portable streaming SHA-256: `src/airfix/crypto/Sha256.*`;
 - synthetic valid/malformed and limit tests: `tests/AfPackTests.cpp` and
   `tests/AfPackLimitsTests.cpp`;
 - strict semantic/JSON tests: `tests/AfPackManifestTests.cpp`;
+- validation, AFAC, and publication tests: `tests/AfPackValidationTests.cpp`,
+  `tests/AfPackActiveRecordTests.cpp`, and `tests/DurableFileTests.cpp`;
 - iOS streaming verifier/importer: pending.
 
 `Pack::open` reads the fixed header plus metadata through `dataOffset`; it does
@@ -216,6 +254,23 @@ set false, and a one-to-one path/kind/size/SHA-256 match between the manifest
 audit and the three-entry AFPACK table. Its runtime allowlist is exactly
 `manifest.json`, `source/Resource.up`, and the locale-matched archive.
 
+`validatePack` holds one input stream from initial metadata parsing through the
+manifest and nested-UDSP passes. It performs bounded streaming authentication
+before semantic parsing and repeats payload plus metadata authentication after
+it, rejecting both pathname replacement and same-size in-place mutation. Its
+public precondition is an exclusively created file in an app-private staging
+directory; the future importer, rather than an arbitrary external caller, owns
+that directory and serializes publication transactions.
+
+The durability layer provides exclusive durable creation, atomic replacement,
+and no-replace publication on Windows and POSIX/iOS. These operations accept
+only installer-owned private staging/final directories: they verify regular
+files and source identity around publication, but do not attempt to defend a
+generic world-writable directory against a hostile process racing every path
+operation. POSIX flushes file and directory metadata; Windows uses
+`FlushFileBuffers` and write-through moves, while documenting that Windows has
+no equivalent supported directory flush.
+
 The initial CLI accepts only an installation root, one of the four observed
 language names, and an output path. It constructs the two-entry allowlist
 internally, validates both nested UDSP archives before writing, refuses to
@@ -231,5 +286,6 @@ removed that temporary pack. No original bytes entered Git or GitHub Actions.
 Keep synthetic tests for truncated headers/tables, overflow, impossible archive
 size, invalid UTF-8, traversal, duplicates/sort order, unknown kinds/flags,
 zero digest, payload overlap, unaligned/out-of-range payload, missing/duplicate
-manifest, manifest-table disagreement, digest mismatch, cancellation, disk-full
-rollback, and nested decompression output limits.
+manifest, manifest-table disagreement, digest mismatch, same-size replacement
+and in-place mutation, cancellation, source/destination aliases, publication
+collision, disk-full rollback, and nested decompression output limits.
