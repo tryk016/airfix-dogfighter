@@ -188,13 +188,22 @@ Diagnostics may log logical paths, sizes, and digests, but never payload bytes.
 - deterministic writer: `src/airfix/package/AfPackWriter.*`;
 - allowlisted local CLI: `afpack-create`;
 - portable streaming SHA-256: `src/airfix/crypto/Sha256.*`;
-- synthetic valid/malformed tests: `tests/AfPackTests.cpp`;
+- synthetic valid/malformed and limit tests: `tests/AfPackTests.cpp` and
+  `tests/AfPackLimitsTests.cpp`;
 - iOS streaming verifier/importer: pending.
 
 `Pack::open` reads the fixed header plus metadata through `dataOffset`; it does
 not buffer payloads. `Pack::parse` exists for synthetic tests and small trusted
 buffers. SHA-256 validation is intentionally a separate streaming operation at
 the converter/import boundary.
+
+Both entry points accept explicit `ParseLimits`. The default ceiling is 512 MiB
+per archive, 8 MiB of metadata, 4,096 entries, 1,024 UTF-8 bytes per path, 4 MiB
+for the string table, and 384 MiB per payload. These checks run before metadata
+allocation or payload reads. `Pack::readEntry` additionally requires a caller
+byte limit and verifies the returned bytes against the entry SHA-256, so a
+same-size file replacement cannot silently return data belonging to different
+metadata.
 
 The initial CLI accepts only an installation root, one of the four observed
 language names, and an output path. It constructs the two-entry allowlist

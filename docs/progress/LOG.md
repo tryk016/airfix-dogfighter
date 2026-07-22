@@ -472,3 +472,18 @@ superseded evidence.
 - Synthetic non-commutative rotation, translation, shear, basis conversion,
   singular, non-finite, and round-trip tests pass. `rawScalar` remains preserved
   metadata and is never applied as an inferred scale.
+- Commit `cc0e10f` passed portable CI run `29914087067` on Ubuntu, Windows, and
+  ARM64 macOS plus unsigned iOS run `29914087120` for `iphoneos` and
+  `iphonesimulator` on Xcode 26.6.
+
+## 2026-07-21 — bounded AFPACK reads
+
+- Added configurable limits for total archive size, metadata, entry count,
+  logical-path bytes, string table, and individual payloads. File-backed open
+  rejects oversized declarations before allocating or reading metadata.
+- Added a caller-bounded `Pack::readEntry` path. It verifies both the physical
+  archive size and the selected entry SHA-256 before returning bytes, including
+  rejection of a same-size payload replacement discovered during review.
+- Synthetic boundary tests cover every exact ceiling and one-byte/count-beyond
+  rejection, pre-read metadata rejection, bounded reads, changed source size,
+  and same-size payload mutation. Full portable GCC tests pass 13/13.

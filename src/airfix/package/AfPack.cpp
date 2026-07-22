@@ -123,6 +123,25 @@ void validateLayout(const Header& header, const std::uint64_t physicalSize) {
     requireRange(header.dataOffset, physicalSize - header.dataOffset, physicalSize, "data region");
 }
 
+void validateLimits(
+    const Header& header,
+    const std::uint64_t physicalSize,
+    const ParseLimits& limits) {
+    if (physicalSize > limits.maxArchiveSize) {
+        throw ParseError("AFPK archive exceeds configured size limit");
+    }
+    if (header.entryCount > limits.maxEntryCount) {
+        throw ParseError("AFPK entry count exceeds configured limit");
+    }
+    if (header.stringTableSize > limits.maxStringTableSize) {
+        throw ParseError("AFPK string table exceeds configured size limit");
+    }
+    const auto metadataSize = header.dataOffset - header.entryTableOffset;
+    if (metadataSize > limits.maxMetadataSize) {
+        throw ParseError("AFPK metadata exceeds configured size limit");
+    }
+}
+
 [[nodiscard]] bool isValidUtf8(const std::string_view text) noexcept {
     std::size_t index = 0U;
     while (index < text.size()) {
@@ -226,9 +245,15 @@ void validateLogicalPath(const std::string_view path) {
     validateLogicalPathImpl(path);
 }
 
-Pack Pack::parse(const std::span<const std::uint8_t> bytes) {
+Pack Pack::parse(
+    const std::span<const std::uint8_t> bytes,
+    const ParseLimits& limits) {
+    if (bytes.size() > limits.maxArchiveSize) {
+        throw ParseError("AFPK archive exceeds configured size limit");
+    }
     const auto header = readHeader(bytes);
     validateLayout(header, bytes.size());
+    validateLimits(header, bytes.size(), limits);
     return parseMetadata(
         header,
         bytes.size(),
@@ -237,10 +262,13 @@ Pack Pack::parse(const std::span<const std::uint8_t> bytes) {
             static_cast<std::size_t>(header.entryTableSize)),
         bytes.subspan(
             static_cast<std::size_t>(header.stringTableOffset),
-            static_cast<std::size_t>(header.stringTableSize)));
+            static_cast<std::size_t>(header.stringTableSize)),
+        limits);
 }
 
-Pack Pack::open(const std::filesystem::path& path) {
+Pack Pack::open(
+    const std::filesystem::path& path,
+    const ParseLimits& limits) {
     std::ifstream input(path, std::ios::binary | std::ios::ate);
     if (!input) {
         throw ParseError("cannot open pack: " + path.string());
@@ -250,11 +278,15 @@ Pack Pack::open(const std::filesystem::path& path) {
         throw ParseError("cannot determine pack size: " + path.string());
     }
     const auto physicalSize = static_cast<std::uint64_t>(end);
+    if (physicalSize > limits.maxArchiveSize) {
+        throw ParseError("AFPK archive exceeds configured size limit");
+    }
 
     std::array<std::uint8_t, kHeaderSize> headerBytes{};
     readExact(input, 0U, headerBytes, path);
     const auto header = readHeader(headerBytes);
     validateLayout(header, physicalSize);
+    validateLimits(header, physicalSize, limits);
 
     if (header.dataOffset > std::numeric_limits<std::size_t>::max()) {
         throw ParseError("AFPK metadata is too large for this process");
@@ -272,14 +304,16 @@ Pack Pack::open(const std::filesystem::path& path) {
         header,
         physicalSize,
         metadataView.first(static_cast<std::size_t>(header.entryTableSize)),
-        metadataView.subspan(stringStart, static_cast<std::size_t>(header.stringTableSize)));
+        metadataView.subspan(stringStart, static_cast<std::size_t>(header.stringTableSize)),
+        limits);
 }
 
 Pack Pack::parseMetadata(
     Header header,
     const std::uint64_t archiveSize,
     const std::span<const std::uint8_t> entryTable,
-    const std::span<const std::uint8_t> stringTable) {
+    const std::span<const std::uint8_t> stringTable,
+    const ParseLimits& limits) {
     Pack pack;
     pack.header_ = header;
     pack.archiveSize_ = archiveSize;
@@ -308,6 +342,9 @@ Pack Pack::parseMetadata(
         std::copy_n(entryTable.begin() + static_cast<std::ptrdiff_t>(offset + 40U),
             entry.sha256.size(), entry.sha256.begin());
 
+        if (entry.pathSize > limits.maxPathSize) {
+            throw ParseError("AFPK entry path exceeds configured size limit");
+        }
         requireRange(entry.pathOffset, entry.pathSize, stringTable.size(), "entry path");
         const auto pathBytes = stringTable.subspan(
             static_cast<std::size_t>(entry.pathOffset), entry.pathSize);
@@ -322,6 +359,10 @@ Pack Pack::parseMetadata(
         }
         if (!isKnownKind(entry.kind) || entry.flags != 0U || entry.reserved72 != 0U) {
             throw ParseError("AFPK entry uses unsupported fields");
+        }
+        if (entry.storedSize > limits.maxPayloadSize ||
+            entry.contentSize > limits.maxPayloadSize) {
+            throw ParseError("AFPK entry payload exceeds configured size limit");
         }
         if (entry.storedSize != entry.contentSize) {
             throw ParseError("AFPK v1 entries must be stored without outer compression");
@@ -356,6 +397,45 @@ Pack Pack::parseMetadata(
         }
     }
     return pack;
+}
+
+std::vector<std::uint8_t> Pack::readEntry(
+    const std::filesystem::path& path,
+    const std::size_t index,
+    const std::uint64_t maxBytes) const {
+    if (index >= entries_.size()) {
+        throw ParseError("AFPACK entry index is outside the pack");
+    }
+    const auto& entry = entries_[index];
+    if (entry.storedSize > maxBytes) {
+        throw ParseError("AFPACK entry exceeds requested read limit");
+    }
+    requireRange(entry.dataOffset, entry.storedSize, archiveSize_, "entry data");
+    if (entry.storedSize > std::numeric_limits<std::size_t>::max()) {
+        throw ParseError("AFPACK entry is too large for this process");
+    }
+    if (entry.dataOffset > static_cast<std::uint64_t>(
+            std::numeric_limits<std::streamoff>::max()) ||
+        entry.storedSize > static_cast<std::uint64_t>(
+            std::numeric_limits<std::streamsize>::max())) {
+        throw ParseError("AFPACK entry range exceeds stream limits");
+    }
+
+    std::ifstream input(path, std::ios::binary | std::ios::ate);
+    if (!input) {
+        throw ParseError("cannot open pack: " + path.string());
+    }
+    const auto end = input.tellg();
+    if (end < 0 || static_cast<std::uint64_t>(end) != archiveSize_) {
+        throw ParseError("AFPACK payload source size mismatch: " + path.string());
+    }
+
+    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(entry.storedSize));
+    readExact(input, entry.dataOffset, bytes, path);
+    if (crypto::sha256(bytes) != entry.sha256) {
+        throw ParseError("AFPACK SHA-256 mismatch: " + entry.path);
+    }
+    return bytes;
 }
 
 void Pack::verifyPayloads(const std::filesystem::path& path) const {

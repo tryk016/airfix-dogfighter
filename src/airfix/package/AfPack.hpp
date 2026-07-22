@@ -18,6 +18,15 @@ inline constexpr std::size_t kHeaderSize = 80U;
 inline constexpr std::size_t kEntryRecordSize = 80U;
 inline constexpr std::size_t kDataAlignment = 16U;
 
+struct ParseLimits {
+    std::uint64_t maxArchiveSize{512U * 1024U * 1024U};
+    std::uint64_t maxMetadataSize{8U * 1024U * 1024U};
+    std::uint32_t maxEntryCount{4096U};
+    std::uint32_t maxPathSize{1024U};
+    std::uint64_t maxStringTableSize{4U * 1024U * 1024U};
+    std::uint64_t maxPayloadSize{384U * 1024U * 1024U};
+};
+
 class ParseError final : public std::runtime_error {
 public:
     using std::runtime_error::runtime_error;
@@ -62,12 +71,20 @@ struct Entry {
 
 class Pack final {
 public:
-    [[nodiscard]] static Pack parse(std::span<const std::uint8_t> bytes);
-    [[nodiscard]] static Pack open(const std::filesystem::path& path);
+    [[nodiscard]] static Pack parse(
+        std::span<const std::uint8_t> bytes,
+        const ParseLimits& limits = {});
+    [[nodiscard]] static Pack open(
+        const std::filesystem::path& path,
+        const ParseLimits& limits = {});
 
     [[nodiscard]] const Header& header() const noexcept { return header_; }
     [[nodiscard]] const std::vector<Entry>& entries() const noexcept { return entries_; }
     [[nodiscard]] std::uint64_t archiveSize() const noexcept { return archiveSize_; }
+    [[nodiscard]] std::vector<std::uint8_t> readEntry(
+        const std::filesystem::path& path,
+        std::size_t index,
+        std::uint64_t maxBytes) const;
     void verifyPayloads(const std::filesystem::path& path) const;
 
 private:
@@ -75,7 +92,8 @@ private:
         Header header,
         std::uint64_t archiveSize,
         std::span<const std::uint8_t> entryTable,
-        std::span<const std::uint8_t> stringTable);
+        std::span<const std::uint8_t> stringTable,
+        const ParseLimits& limits);
 
     Header header_;
     std::vector<Entry> entries_;

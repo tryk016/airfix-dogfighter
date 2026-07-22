@@ -173,6 +173,10 @@ if(AIRFIX_BUILD_TESTS)
     target_link_libraries(airfix_afpack_tests PRIVATE airfix::afpack)
     add_test(NAME airfix_afpack_tests COMMAND airfix_afpack_tests)
 
+    add_executable(airfix_afpack_limits_tests tests/AfPackLimitsTests.cpp)
+    target_link_libraries(airfix_afpack_limits_tests PRIVATE airfix::afpack)
+    add_test(NAME airfix_afpack_limits_tests COMMAND airfix_afpack_limits_tests)
+
     add_executable(airfix_crypto_tests tests/Sha256Tests.cpp)
     target_link_libraries(airfix_crypto_tests PRIVATE airfix::crypto)
     add_test(NAME airfix_crypto_tests COMMAND airfix_crypto_tests)

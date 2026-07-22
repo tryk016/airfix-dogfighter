@@ -42,6 +42,9 @@
 - Specified AFPACK v1 and implemented its bounded parser, deterministic local
   writer, streaming SHA-256 verifier, normalized-path checks, and atomic partial
   output behavior.
+- Added explicit archive/metadata/entry/path/string-table/payload ceilings before
+  allocation or reads. Bounded file-backed entry reads verify SHA-256 and reject
+  both changed file size and same-size payload replacement.
 - Added bounded UDSP-in-container reads and completed a real English content
   pack round trip (192,755,765 bytes, 3 entries) outside Git; the temporary pack
   was removed after verification.
