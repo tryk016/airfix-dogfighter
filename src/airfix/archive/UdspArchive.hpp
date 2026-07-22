@@ -95,4 +95,16 @@ private:
     std::size_t expectedSize,
     std::size_t outputLimit);
 
+[[nodiscard]] std::vector<std::uint8_t> readFilePrefix(
+    const std::filesystem::path& path,
+    const Archive& archive,
+    const FileEntry& entry,
+    std::size_t maximumBytes);
+
+[[nodiscard]] std::vector<std::uint8_t> readFile(
+    const std::filesystem::path& path,
+    const Archive& archive,
+    const FileEntry& entry,
+    std::size_t outputLimit);
+
 } // namespace airfix::udsp

@@ -71,10 +71,12 @@ void appendRecord(
     appendU32(bytes, field14);
 }
 
-[[nodiscard]] Bytes makeArchive() {
+[[nodiscard]] Bytes makeArchiveWithPayload(
+    const Bytes& payload,
+    const std::uint32_t flags,
+    const std::uint32_t unpackedSize) {
     constexpr std::string_view directory = "Game\\Objects";
     constexpr std::string_view fileName = "plane.bin";
-    const Bytes payload{0x10U, 0x20U, 0x30U};
 
     Bytes archive(airfix::udsp::kHeaderSize, 0U);
     archive.insert(archive.end(), payload.begin(), payload.end());
@@ -94,8 +96,8 @@ void appendRecord(
         archive,
         airfix::udsp::nameHash(fileName),
         static_cast<std::uint32_t>(directory.size() + 1U),
-        0U,
-        static_cast<std::uint32_t>(payload.size()),
+        flags,
+        unpackedSize,
         static_cast<std::uint32_t>(payload.size()),
         static_cast<std::uint32_t>(airfix::udsp::kHeaderSize));
 
@@ -114,6 +116,10 @@ void appendRecord(
     writeU32(archive, 24U, airfix::udsp::kRecordSize);
     writeU32(archive, 28U, fileOffset);
     return archive;
+}
+
+[[nodiscard]] Bytes makeArchive() {
+    return makeArchiveWithPayload(Bytes{0x10U, 0x20U, 0x30U}, 0U, 3U);
 }
 
 void require(const bool condition, const std::string& message) {
@@ -184,6 +190,40 @@ void testEmbeddedFileBackedArchive() {
     });
 }
 
+void testBoundedFilePrefixes() {
+    const auto bytes = makeArchive();
+    const TempFile file(bytes);
+    const auto archive = airfix::udsp::Archive::open(file.path());
+    require(
+        airfix::udsp::readFilePrefix(file.path(), archive, archive.files()[0], 2U) ==
+            Bytes{0x10U, 0x20U},
+        "uncompressed prefix mismatch");
+    require(
+        airfix::udsp::readFile(file.path(), archive, archive.files()[0], 3U) ==
+            Bytes{0x10U, 0x20U, 0x30U},
+        "uncompressed bounded read mismatch");
+
+    const Bytes encoded{0x66U, 0x03U, 0x10U, 0x20U, 0x30U};
+    const auto compressedBytes = makeArchiveWithPayload(
+        encoded, airfix::udsp::kCompressedFlag, 3U);
+    const TempFile compressedFile(compressedBytes);
+    const auto compressedArchive = airfix::udsp::Archive::open(compressedFile.path());
+    require(
+        airfix::udsp::readFilePrefix(
+            compressedFile.path(), compressedArchive, compressedArchive.files()[0], 2U) ==
+            Bytes{0x10U, 0x20U},
+        "compressed prefix mismatch");
+    require(
+        airfix::udsp::readFile(
+            compressedFile.path(), compressedArchive, compressedArchive.files()[0], 3U) ==
+            Bytes{0x10U, 0x20U, 0x30U},
+        "compressed bounded read mismatch");
+    requireParseError([&] {
+        (void)airfix::udsp::readFile(
+            compressedFile.path(), compressedArchive, compressedArchive.files()[0], 2U);
+    });
+}
+
 void testMalformedArchives() {
     {
         auto bytes = makeArchive();
@@ -247,6 +287,7 @@ int main() {
         testValidArchive();
         testFileBackedArchive();
         testEmbeddedFileBackedArchive();
+        testBoundedFilePrefixes();
         testMalformedArchives();
         testDecompression();
         std::cout << "all UDSP tests passed\n";

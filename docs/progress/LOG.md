@@ -167,3 +167,53 @@ superseded evidence.
   both nested archives (2,628 resource and 218 localization records), and
   confirmed a 192,755,765-byte/3-entry result. The temporary private pack was
   removed after validation and no original data entered Git or CI.
+
+## 2026-07-21 — GTI/CCF asset surface
+
+- `EV-20260721-017`: added bounded full-entry and decoded-prefix reads, then
+  inventoried `Resource.up` plus `English.up` by extension, size, compression,
+  decoded magic, and format metadata without extracting an asset tree.
+- The selected pair contains 1,985 GTI textures (155,924,867 decoded bytes),
+  285 `.ccf` names plus one extension-less CCF scene (53,826,365 bytes total),
+  215 object definitions, 104 WAV effects, 52 mission AFS files, and the
+  world/level/UI support formats recorded in `ASSET-INVENTORY.md`.
+- `EV-20260721-018`: Ghidra recovered `GtImage` v4 chunk selection,
+  bits-per-pixel, mip-size and alpha/palette behavior plus `CcChunkReadStream`'s
+  inclusive 6-byte framing and `CcRoom::LoadSceneCcf` section dispatch.
+- Implemented portable GTI/CCF metadata parsers and malformed-input tests. All
+  1,985 GTI files (3,990 variants) and all 286 CCF signatures pass; 12 GTIs use
+  a documented terminal declared-size overrun while still containing complete
+  computed mip data.
+- All selected CCF roots contain ordered sections `0x1000`, `0x2000`, `0x3000`,
+  `0x4000`, corresponding to rooms/spatial data, materials, meshes/blueprints,
+  and placed scene nodes.
+- A Windows CI-only AFPACK test crash was traced to 1 MiB stack buffers under
+  MSVC's default stack reserve. Reduced both streaming buffers to 64 KiB; local
+  tests pass and commit `c002182` subsequently passed Ubuntu, Windows, and
+  ARM64 macOS CI.
+
+## 2026-07-21 — first decoded texture
+
+- `EV-20260721-019`: implemented base-level RGBA8 conversion for observed GTI
+  formats 3 (P8), 4 (P8+A8), 6 (ARGB4444), 7 (RGB888), and 8 (ARGB8888), with
+  exact synthetic channel/alpha fixtures and palette-index bounds.
+- Inventory decoding exercised all 3,990 GTI variants in Resource/English with
+  caller-bounded per-entry memory and no persistent extraction.
+- Added a private `gti-preview` diagnostic. A 256x128 Spitfire frontend image
+  decoded with correct orientation/colors; the paired format-4 and format-8
+  paths differ by mean absolute RGB 1.70/1.56/1.69, consistent with expected
+  palette quantization.
+- Generated PPM/PNG previews remain under ignored `artifacts/preview/` and are
+  never committed or uploaded.
+
+## 2026-07-21 — CCF direct-child census
+
+- `EV-20260721-020`: extended the bounded CCF parser through each top-level
+  section's complete direct-child sequence and revalidated all 286 scenes.
+- Direct IDs are `0x1100` under rooms and `0x2100` under materials. Blueprint
+  and placed-node sections use primary `0x3100`/`0x4100` IDs plus optional
+  `0x4200` and `0x4300` records.
+- Across the corpus there are 392 room, 10,385 material, and 9,328 records in
+  each of the blueprint and placed-node tables. The latter counts match in
+  every file; the parser records this evidence without yet imposing a semantic
+  one-to-one invariant.

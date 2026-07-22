@@ -382,4 +382,115 @@ std::vector<std::uint8_t> decompress(
     return output;
 }
 
+std::vector<std::uint8_t> readFilePrefix(
+    const std::filesystem::path& path,
+    const Archive& archive,
+    const FileEntry& entry,
+    const std::size_t maximumBytes) {
+    requireRange(
+        entry.dataOffset,
+        entry.storedSize,
+        archive.header().directoryOffset,
+        "UDSP file data");
+    const auto targetSize = std::min<std::uint64_t>(maximumBytes, entry.unpackedSize);
+    std::vector<std::uint8_t> output;
+    output.reserve(static_cast<std::size_t>(targetSize));
+    if (targetSize == 0U) {
+        return output;
+    }
+
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        throw ParseError("cannot open archive: " + path.string());
+    }
+    auto cursor = checkedAdd(
+        archive.backingOffset(), entry.dataOffset, "UDSP file absolute offset");
+    auto inputRemaining = static_cast<std::uint64_t>(entry.storedSize);
+    auto pull = [&](const std::span<std::uint8_t> destination) {
+        if (destination.size() > inputRemaining) {
+            throw ParseError("truncated UDSP file payload");
+        }
+        readExact(input, cursor, destination, path);
+        cursor = checkedAdd(cursor, destination.size(), "UDSP file cursor");
+        inputRemaining -= destination.size();
+    };
+
+    if (!entry.isCompressed()) {
+        output.resize(static_cast<std::size_t>(targetSize));
+        pull(output);
+        return output;
+    }
+
+    std::uint64_t produced = 0U;
+    while (output.size() < targetSize) {
+        std::array<std::uint8_t, 1> opcodeBytes{};
+        pull(opcodeBytes);
+        const auto opcode = opcodeBytes[0];
+        if (opcode == 0x65U) {
+            std::array<std::uint8_t, 5> block{};
+            pull(block);
+            const auto blockSize = ((static_cast<std::uint64_t>(block[0]) + 3U) / 4U) * 4U;
+            if (blockSize > static_cast<std::uint64_t>(entry.unpackedSize) - produced) {
+                throw ParseError("compressed block exceeds the declared output size");
+            }
+            const auto copied = std::min<std::uint64_t>(
+                blockSize, targetSize - output.size());
+            for (std::uint64_t index = 0U; index < copied; ++index) {
+                output.push_back(block[1U + static_cast<std::size_t>(index % 4U)]);
+            }
+            produced += blockSize;
+        }
+        else if (opcode == 0x66U || opcode == 0x67U) {
+            std::array<std::uint8_t, 1> countBytes{};
+            pull(countBytes);
+            const auto blockSize = static_cast<std::uint64_t>(countBytes[0]);
+            if (blockSize > inputRemaining ||
+                blockSize > static_cast<std::uint64_t>(entry.unpackedSize) - produced) {
+                throw ParseError("truncated or oversized UDSP literal block");
+            }
+            const auto copied = static_cast<std::size_t>(std::min<std::uint64_t>(
+                blockSize, targetSize - output.size()));
+            const auto oldSize = output.size();
+            output.resize(oldSize + copied);
+            pull(std::span<std::uint8_t>(output).subspan(oldSize, copied));
+            // If the requested prefix ends inside a literal, the unread suffix
+            // is intentionally left on disk; no caller-visible cursor escapes.
+            produced += blockSize;
+        }
+        else {
+            throw ParseError("unknown UDSP compression opcode");
+        }
+    }
+    return output;
+}
+
+std::vector<std::uint8_t> readFile(
+    const std::filesystem::path& path,
+    const Archive& archive,
+    const FileEntry& entry,
+    const std::size_t outputLimit) {
+    if (entry.unpackedSize > outputLimit) {
+        throw ParseError("UDSP file exceeds the configured output limit");
+    }
+    requireRange(
+        entry.dataOffset,
+        entry.storedSize,
+        archive.header().directoryOffset,
+        "UDSP file data");
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        throw ParseError("cannot open archive: " + path.string());
+    }
+    std::vector<std::uint8_t> stored(entry.storedSize);
+    readExact(
+        input,
+        checkedAdd(archive.backingOffset(), entry.dataOffset, "UDSP file absolute offset"),
+        stored,
+        path);
+    if (entry.isCompressed()) {
+        return decompress(stored, entry.unpackedSize, outputLimit);
+    }
+    return stored;
+}
+
 } // namespace airfix::udsp

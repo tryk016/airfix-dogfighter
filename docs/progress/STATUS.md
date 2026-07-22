@@ -30,7 +30,7 @@
 - Changed normal UDSP file opening to read only the header and metadata tail;
   `Resource.up` metadata buffering fell from 170,642,453 to 130,961 bytes.
 - Draft PR #1 is published; portable CI passes on Ubuntu, Windows, and ARM64
-  macOS 26.
+  macOS 26, including the post-fix AFPACK streaming tests on Windows.
 - Recovered package-chain startup and the type/mode/graphics plugin discovery,
   version gates, metadata, factory calls, and unloading behavior.
 - Classified `Dogfighter.exe` as the usable v1.01 bootstrap reference and the
@@ -41,6 +41,17 @@
 - Added bounded UDSP-in-container reads and completed a real English content
   pack round trip (192,755,765 bytes, 3 entries) outside Git; the temporary pack
   was removed after verification.
+- Inventoried the selected Resource/English payload set and validated portable
+  GTI metadata parsing for 1,985 files/3,990 image variants plus CCF framing for
+  all 286 scene signatures.
+- Recovered GTI pixel-size/alpha/palette semantics and CCF's inclusive
+  six-byte nested chunks plus the four stable top-level scene sections.
+- Indexed every direct child in all 286 CCF scenes; material/room IDs are
+  stable, and the paired blueprint/placed-node tables have equal counts in
+  every file.
+- Implemented faithful base-level RGBA8 conversion for every observed GTI pixel
+  format and decoded all 3,990 variants; a private Spitfire preview confirms
+  channel/orientation correctness and the paletted/32-bit paths agree closely.
 
 ## Confirmed
 
@@ -68,13 +79,12 @@
 
 ## Next
 
-1. Inventory payload formats by extension/magic and prioritize world/object/
-   model/texture contracts.
-2. Add a tested no-music asset configuration because the original CD/audio is
+1. Extend GTI RGBA conversion across every mip level and define Metal upload.
+2. Index CCF material/mesh chunks and emit the first model diagnostic.
+3. Add a tested no-music asset configuration because the original CD/audio is
    unavailable.
-3. Implement manifest semantic checks and the transactional iOS import service.
-4. Create the initial iOS 16.4 application shell and unsigned Actions build.
-5. Recover the first renderable room/model/texture vertical slice.
+4. Implement manifest semantic checks and the transactional iOS import service.
+5. Create the initial iOS 16.4 application shell and unsigned Actions build.
 
 ## Open questions
 

@@ -28,7 +28,7 @@ history.
 | `Dogfighter.exe` | 290,816 | EXE | launcher/bootstrap |
 | `Dogfighter.icd` | 282,669 | EXE | older high-entropy protected/compressed executable artifact |
 | `AfEngine.dll` | 696,320 | DLL | probable engine core |
-| `Cc.dll` | 380,928 | DLL | unknown shared subsystem |
+| `Cc.dll` | 380,928 | DLL | scene graph, CCF loader, GTI image/pixel conversion |
 | `UdsPack.dll` | 24,576 | DLL | probable `UDSP` archive API |
 | `gtDirect3D.dll` | 36,864 | DLL | Direct3D renderer adapter |
 | `gt3DFX.dll` | 36,864 | DLL | Glide renderer adapter |

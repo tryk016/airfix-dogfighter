@@ -38,6 +38,23 @@ else()
     target_compile_options(airfix_udsp PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+add_library(airfix_assets
+    src/airfix/assets/LegacyFormats.cpp
+)
+add_library(airfix::assets ALIAS airfix_assets)
+
+target_include_directories(airfix_assets
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+)
+target_compile_features(airfix_assets PUBLIC cxx_std_20)
+
+if(MSVC)
+    target_compile_options(airfix_assets PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(airfix_assets PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
 add_library(airfix_afpack
     src/airfix/package/AfPack.cpp
     src/airfix/package/AfPackWriter.cpp
@@ -58,10 +75,13 @@ else()
 endif()
 
 add_executable(udsp-list tools/udsp/main.cpp)
-target_link_libraries(udsp-list PRIVATE airfix::udsp)
+target_link_libraries(udsp-list PRIVATE airfix::udsp airfix::assets)
 
 add_executable(afpack-create tools/afpack/main.cpp)
 target_link_libraries(afpack-create PRIVATE airfix::afpack airfix::udsp)
+
+add_executable(gti-preview tools/gti-preview/main.cpp)
+target_link_libraries(gti-preview PRIVATE airfix::assets airfix::udsp)
 
 if(AIRFIX_BUILD_TESTS)
     enable_testing()
@@ -76,4 +96,8 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_crypto_tests tests/Sha256Tests.cpp)
     target_link_libraries(airfix_crypto_tests PRIVATE airfix::crypto)
     add_test(NAME airfix_crypto_tests COMMAND airfix_crypto_tests)
+
+    add_executable(airfix_asset_tests tests/LegacyFormatsTests.cpp)
+    target_link_libraries(airfix_asset_tests PRIVATE airfix::assets)
+    add_test(NAME airfix_asset_tests COMMAND airfix_asset_tests)
 endif()

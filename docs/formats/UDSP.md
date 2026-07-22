@@ -140,7 +140,7 @@ every file record is referenced once, with no gaps or overlaps.
 ## Portable implementation
 
 - Library: `src/airfix/archive/UdspArchive.*`
-- Read-only CLI: `udsp-list [--summary|--verify] <archive.up>`
+- Read-only CLI: `udsp-list [--summary|--verify|--inventory] <archive.up>`
 - Synthetic tests: `tests/UdspArchiveTests.cpp`
 
 `Archive::open` performs bounded random-access I/O: it reads the 32-byte header,
@@ -154,6 +154,11 @@ that mode is tooling, not the iOS runtime path.
 a `[baseOffset, size)` region of a containing file. AFPACK validation therefore
 opens nested `Resource.up` and localization archives directly in place without
 copying their 192 MB combined payload to another buffer or temporary file.
+
+`readFilePrefix` decodes only the requested logical prefix for signature
+classification. `readFile` applies a caller-provided decoded-size limit and is
+used one entry at a time by format tooling. The inventory path therefore never
+holds the full archive or all decoded assets in memory.
 
 ## Security requirements
 
