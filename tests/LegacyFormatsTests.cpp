@@ -8,6 +8,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -295,6 +296,91 @@ struct MeshCcfOptions {
         retainedFixedTailBytes)));
 }
 
+[[nodiscard]] Bytes ccfPlacedOrientation(const bool alternate = false) {
+    if (alternate) {
+        return ccfChunk(0xF070U, ccfVector3(0xF040U, 0.25F, 0.5F, 0.75F));
+    }
+    Bytes matrix = ccfVector3(0xF040U, 1.0F, 0.0F, 0.0F);
+    appendBytes(matrix, ccfVector3(0xF040U, 0.0F, 1.0F, 0.0F));
+    appendBytes(matrix, ccfVector3(0xF040U, 0.0F, 0.0F, 1.0F));
+    return ccfChunk(0xF070U, ccfChunk(0xF050U, matrix));
+}
+
+[[nodiscard]] Bytes makePlacedRecord(
+    const std::uint16_t id,
+    const Bytes& children = {},
+    const bool alternateOrientation = false,
+    const Bytes* orientationOverride = nullptr) {
+    Bytes payload = ccfNamed(
+        id == 0x4100U ? "Object" : (id == 0x4200U ? "Null" : "Light"),
+        "Room");
+    appendU32(payload, 100U);
+    if (id == 0x4100U) {
+        appendU32(payload, 200U);
+        appendU32(payload, 300U);
+        appendU32(payload, 400U);
+        payload.push_back(0x7EU);
+        appendU32(payload, 500U);
+        appendU32(payload, 600U);
+    }
+    else {
+        appendU32(payload, 300U);
+        appendU32(payload, 400U);
+    }
+    appendBytes(payload, ccfVector3(0xF040U, 1.0F, 2.0F, 3.0F));
+    appendFloat(payload, 4.0F);
+    appendBytes(payload, orientationOverride != nullptr
+        ? *orientationOverride
+        : ccfPlacedOrientation(alternateOrientation));
+    appendBytes(payload, children);
+    return ccfChunk(id, payload);
+}
+
+[[nodiscard]] Bytes ccfU32Property(
+    const std::uint16_t id,
+    const std::uint32_t value) {
+    Bytes payload;
+    appendU32(payload, value);
+    return ccfChunk(id, payload);
+}
+
+[[nodiscard]] Bytes ccfPlacedLight4310(const std::optional<std::string>& texture) {
+    Bytes payload;
+    appendFloat(payload, 1.25F);
+    appendBytes(payload, ccfVector3(0xF030U, 0.1F, 0.2F, 0.3F));
+    appendFloat(payload, 2.25F);
+    appendFloat(payload, 3.25F);
+    if (texture.has_value()) {
+        appendBytes(payload, ccfString(*texture));
+    }
+    return ccfChunk(0x4310U, payload);
+}
+
+[[nodiscard]] Bytes ccfPlacedLight4320(
+    const std::optional<std::array<std::string, 2>>& textures) {
+    Bytes payload;
+    appendFloat(payload, 4.25F);
+    appendFloat(payload, 5.25F);
+    appendFloat(payload, 6.25F);
+    appendFloat(payload, 7.25F);
+    if (textures.has_value()) {
+        appendBytes(payload, ccfString((*textures)[0]));
+        appendBytes(payload, ccfString((*textures)[1]));
+    }
+    return ccfChunk(0x4320U, payload);
+}
+
+[[nodiscard]] Bytes ccfPlacedLight4330() {
+    Bytes payload = ccfVector3(0xF040U, 8.25F, 9.25F, 10.25F);
+    appendFloat(payload, 11.25F);
+    appendFloat(payload, 12.25F);
+    return ccfChunk(0x4330U, payload);
+}
+
+[[nodiscard]] Bytes makePlacedCcf(const Bytes& records) {
+    return ccfDocument(ccfChunk(0x4000U, records));
+}
+
 void require(const bool condition, const std::string& message) {
     if (!condition) {
         throw std::runtime_error(message);
@@ -563,6 +649,177 @@ void testCcf() {
     const auto descriptorBomb = ccfDocument(
         ccfChunk(0x1000U, descriptorBombPayload));
     requireParseError([&] { (void)airfix::assets::parseCcf(descriptorBomb); });
+}
+
+void testCcfPlacedNodes() {
+    Bytes objectChildren = ccfU32Property(0xF0B0U, 1U);
+    appendBytes(objectChildren, ccfU32Property(0xF0B1U, 2U));
+    appendBytes(objectChildren, ccfU32Property(0x4501U, 3U));
+    appendBytes(objectChildren, ccfChunk(0x4101U, Bytes{
+        0xFFU, 0xFFU, 0x01U, 0x00U, 0x00U, 0x00U, 0xA5U,
+    }));
+    appendBytes(objectChildren, ccfChunk(0x4999U, Bytes{0xAAU}));
+
+    Bytes nullBlock;
+    appendU32(nullBlock, 3U);
+    nullBlock.insert(nullBlock.end(), {0x10U, 0x20U, 0x30U});
+    Bytes nullChildren = ccfChunk(0x4210U, nullBlock);
+    appendBytes(nullChildren, ccfU32Property(0x4500U, 44U));
+
+    Bytes lightChildren = ccfPlacedLight4310(std::string("lightmap.gti"));
+    appendBytes(lightChildren, ccfPlacedLight4320(
+        std::array<std::string, 2>{"flare.gti", "glow.gti"}));
+    appendBytes(lightChildren, ccfPlacedLight4330());
+    appendBytes(lightChildren, ccfU32Property(0xF0B0U, 55U));
+    appendBytes(lightChildren, ccfChunk(0x43FFU, Bytes{0xBBU, 0xCCU}));
+
+    Bytes records = makePlacedRecord(0x4100U, objectChildren);
+    appendBytes(records, makePlacedRecord(0x4200U, nullChildren, true));
+    appendBytes(records, makePlacedRecord(0x4300U, lightChildren));
+    const auto bytes = makePlacedCcf(records);
+    const auto metadata = airfix::assets::parseCcf(bytes);
+    require(metadata.placedNodes.size() == 3U,
+        "CCF placed-node count mismatch");
+    require(metadata.placedNodes[0].kind == airfix::assets::CcfPlacedNodeKind::object &&
+        metadata.placedNodes[1].kind == airfix::assets::CcfPlacedNodeKind::nullNode &&
+        metadata.placedNodes[2].kind == airfix::assets::CcfPlacedNodeKind::light,
+        "CCF placed-node physical order mismatch");
+
+    const auto& object = metadata.placedNodes[0];
+    require(object.name == "Object" && object.prefix == "Room" &&
+        object.currentReference == 100U && object.roomReference == 300U &&
+        object.parentReference == 400U &&
+        object.transform.position == airfix::assets::CcfVector3{1.0F, 2.0F, 3.0F} &&
+        object.transform.rawScalar == 4.0F &&
+        std::holds_alternative<std::array<airfix::assets::CcfVector3, 3>>(
+            object.transform.orientation),
+        "CCF placed object common fields mismatch");
+    const auto& objectData = std::get<airfix::assets::CcfPlacedObjectMetadata>(
+        object.data);
+    require(objectData.meshReference == 200U && objectData.rawFlag == 0x7EU &&
+        objectData.portalType == 500U && objectData.portalRoomReference == 600U &&
+        objectData.propertyF0B0 == 1U && objectData.propertyF0B1 == 2U &&
+        objectData.value4501 == 3U && objectData.bsp4101.has_value() &&
+        objectData.bsp4101->directChildren.empty(),
+        "CCF placed object variant fields mismatch");
+    require(object.directChildren.size() == 5U &&
+        object.directChildren.back().id == 0x4999U,
+        "CCF placed object unknown child was not retained");
+
+    const auto& nullNode = metadata.placedNodes[1];
+    require(std::holds_alternative<airfix::assets::CcfVector3>(
+        nullNode.transform.orientation) &&
+        std::get<airfix::assets::CcfVector3>(nullNode.transform.orientation) ==
+            airfix::assets::CcfVector3{0.25F, 0.5F, 0.75F},
+        "CCF placed alternate orientation mismatch");
+    const auto& nullData = std::get<airfix::assets::CcfPlacedNullMetadata>(
+        nullNode.data);
+    require(nullData.block4210.has_value() && nullData.block4210->length == 3U &&
+        nullData.value4500 == 44U,
+        "CCF placed null fields mismatch");
+    const auto blockOffset = static_cast<std::size_t>(nullData.block4210->offset);
+    require(blockOffset + 3U <= bytes.size() && bytes[blockOffset] == 0x10U &&
+        bytes[blockOffset + 1U] == 0x20U && bytes[blockOffset + 2U] == 0x30U,
+        "CCF placed null zero-copy block range mismatch");
+
+    const auto& light = metadata.placedNodes[2];
+    const auto& lightData = std::get<airfix::assets::CcfPlacedLightMetadata>(
+        light.data);
+    require(lightData.property4310.has_value() &&
+        lightData.property4310->first == 1.25F &&
+        lightData.property4310->vector ==
+            airfix::assets::CcfVector3{0.1F, 0.2F, 0.3F} &&
+        lightData.property4310->second == 2.25F &&
+        lightData.property4310->third == 3.25F &&
+        lightData.property4310->texture == "lightmap.gti",
+        "CCF placed light 0x4310 mismatch");
+    require(lightData.property4320.has_value() &&
+        lightData.property4320->values == std::array<float, 4>{
+            4.25F, 5.25F, 6.25F, 7.25F} &&
+        lightData.property4320->textures.has_value() &&
+        (*lightData.property4320->textures)[0] == "flare.gti" &&
+        (*lightData.property4320->textures)[1] == "glow.gti",
+        "CCF placed light 0x4320 mismatch");
+    require(lightData.property4330.has_value() &&
+        lightData.property4330->vector ==
+            airfix::assets::CcfVector3{8.25F, 9.25F, 10.25F} &&
+        lightData.property4330->first == 11.25F &&
+        lightData.property4330->second == 12.25F &&
+        lightData.propertyF0B0 == 55U && light.directChildren.back().id == 0x43FFU,
+        "CCF placed light 0x4330 or retained child mismatch");
+
+    Bytes noStringProperties = ccfPlacedLight4310(std::nullopt);
+    appendBytes(noStringProperties, ccfPlacedLight4320(std::nullopt));
+    const auto noStrings = airfix::assets::parseCcf(
+        makePlacedCcf(makePlacedRecord(0x4300U, noStringProperties)));
+    const auto& noStringData = std::get<airfix::assets::CcfPlacedLightMetadata>(
+        noStrings.placedNodes[0].data);
+    require(noStringData.property4310.has_value() &&
+        !noStringData.property4310->texture.has_value() &&
+        noStringData.property4320.has_value() &&
+        !noStringData.property4320->textures.has_value(),
+        "CCF placed light zero-string variants mismatch");
+
+    const auto requirePlacedError = [](const std::uint16_t id, const Bytes& children,
+                                      const bool alternate = false,
+                                      const Bytes* orientation = nullptr) {
+        const auto invalid = makePlacedCcf(
+            makePlacedRecord(id, children, alternate, orientation));
+        requireParseError([&] { (void)airfix::assets::parseCcf(invalid); });
+    };
+
+    for (const auto id : {0x4100U, 0x4200U, 0x4300U}) {
+        auto truncated = makePlacedRecord(static_cast<std::uint16_t>(id));
+        truncated.pop_back();
+        truncated[2] = static_cast<std::uint8_t>(truncated.size());
+        truncated[3] = static_cast<std::uint8_t>(truncated.size() >> 8U);
+        truncated[4] = static_cast<std::uint8_t>(truncated.size() >> 16U);
+        truncated[5] = static_cast<std::uint8_t>(truncated.size() >> 24U);
+        const auto invalid = makePlacedCcf(truncated);
+        requireParseError([&] { (void)airfix::assets::parseCcf(invalid); });
+    }
+
+    Bytes invalidOrientationChild = ccfChunk(
+        0xF070U, ccfVector3(0xF030U, 1.0F, 2.0F, 3.0F));
+    requirePlacedError(0x4200U, {}, false, &invalidOrientationChild);
+    Bytes twoOrientationChildren = ccfVector3(0xF040U, 1.0F, 2.0F, 3.0F);
+    appendBytes(twoOrientationChildren, ccfVector3(0xF040U, 4.0F, 5.0F, 6.0F));
+    auto invalidOrientationCount = ccfChunk(0xF070U, twoOrientationChildren);
+    requirePlacedError(0x4300U, {}, false, &invalidOrientationCount);
+
+    Bytes badObjectU32 = ccfChunk(0xF0B0U, Bytes(3U, 0U));
+    requirePlacedError(0x4100U, badObjectU32);
+    Bytes duplicateObject = ccfU32Property(0xF0B1U, 1U);
+    appendBytes(duplicateObject, ccfU32Property(0xF0B1U, 2U));
+    requirePlacedError(0x4100U, duplicateObject);
+    Bytes duplicateBsp = ccfChunk(0x4101U, {});
+    appendBytes(duplicateBsp, ccfChunk(0x4101U, {}));
+    requirePlacedError(0x4100U, duplicateBsp);
+
+    Bytes shortNullBlock;
+    appendU32(shortNullBlock, 4U);
+    shortNullBlock.insert(shortNullBlock.end(), {1U, 2U, 3U});
+    requirePlacedError(0x4200U, ccfChunk(0x4210U, shortNullBlock));
+    Bytes oversizedNullBlock;
+    appendU32(oversizedNullBlock, std::numeric_limits<std::uint32_t>::max());
+    requirePlacedError(0x4200U, ccfChunk(0x4210U, oversizedNullBlock));
+    Bytes duplicateNull = ccfU32Property(0x4500U, 1U);
+    appendBytes(duplicateNull, ccfU32Property(0x4500U, 2U));
+    requirePlacedError(0x4200U, duplicateNull);
+
+    Bytes oneTexture4320;
+    for (const auto value : {1.0F, 2.0F, 3.0F, 4.0F}) {
+        appendFloat(oneTexture4320, value);
+    }
+    appendBytes(oneTexture4320, ccfString("only-one.gti"));
+    requirePlacedError(0x4300U, ccfChunk(0x4320U, oneTexture4320));
+    requirePlacedError(0x4300U, ccfChunk(0x4310U, Bytes(29U, 0U)));
+    requirePlacedError(0x4300U, ccfChunk(0x4320U, Bytes(15U, 0U)));
+    requirePlacedError(0x4300U, ccfChunk(0x4330U, Bytes(25U, 0U)));
+    requirePlacedError(0x4300U, ccfPlacedLight4310(std::string(4097U, 'X')));
+    Bytes duplicateLight = ccfPlacedLight4310(std::nullopt);
+    appendBytes(duplicateLight, ccfPlacedLight4310(std::string("again.gti")));
+    requirePlacedError(0x4300U, duplicateLight);
 }
 
 [[nodiscard]] airfix::assets::GtiVariant onePixelVariant(
@@ -849,6 +1106,7 @@ int main() {
     try {
         testGti();
         testCcf();
+        testCcfPlacedNodes();
         testGtiBaseDecoding();
         testGtiMipLayouts();
         testGtiMipDecoding();

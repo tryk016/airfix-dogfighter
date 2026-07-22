@@ -80,6 +80,12 @@ The semantic mesh pass validates all 6,995 `0x3100` records: 136,363 vertices,
 optional range/control records. Every triangle index is in range. Aggregate
 facts only are retained; no geometry or asset-name list is written.
 
+The semantic placed-scene pass validates all 9,328 `0x4000` records in physical
+order: 6,995 objects, 2,130 null nodes, and 203 lights. Exact transforms and
+references plus bounded known child shapes are decoded; all shipped records use
+the F050 matrix orientation, while the loader-supported alternate F040 form is
+covered synthetically. Opaque BSP and null blocks are not copied or exported.
+
 The same read-only inventory validates the runtime conversion boundary for all
 6,995 meshes. GTI inspection covers 3,990 variants and 9,617 declared mip
 levels: 3,974 variants/9,523 levels form exact authored chains; 16 variants use

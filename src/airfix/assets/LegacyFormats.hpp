@@ -8,6 +8,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace airfix::assets {
@@ -136,6 +137,90 @@ struct CcfBlueprintMetadata {
     std::uint64_t offset{};
 };
 
+enum class CcfPlacedNodeKind : std::uint8_t {
+    object,
+    nullNode,
+    light,
+};
+
+using CcfPlacedOrientation = std::variant<
+    std::array<CcfVector3, 3>,
+    CcfVector3>;
+
+struct CcfPlacedSrtMetadata {
+    CcfVector3 position{};
+    float rawScalar{};
+    // Most records contain an F050 matrix. The original loader also accepts
+    // a single F040 vector, retained as the second variant without assigning
+    // higher-level rotation semantics to it.
+    CcfPlacedOrientation orientation{std::array<CcfVector3, 3>{}};
+};
+
+struct CcfOpaqueRange {
+    std::uint64_t offset{};
+    std::uint32_t length{};
+};
+
+struct CcfPlacedObjectMetadata {
+    std::uint32_t meshReference{};
+    std::uint8_t rawFlag{};
+    std::uint32_t portalType{};
+    std::uint32_t portalRoomReference{};
+    std::optional<std::uint32_t> propertyF0B0;
+    std::optional<std::uint32_t> propertyF0B1;
+    std::optional<std::uint32_t> value4501;
+    std::optional<CcfChunk> bsp4101;
+};
+
+struct CcfPlacedNullMetadata {
+    std::optional<CcfOpaqueRange> block4210;
+    std::optional<std::uint32_t> value4500;
+};
+
+struct CcfPlacedLight4310Metadata {
+    float first{};
+    CcfVector3 vector{};
+    float second{};
+    float third{};
+    std::optional<std::string> texture;
+};
+
+struct CcfPlacedLight4320Metadata {
+    std::array<float, 4> values{};
+    std::optional<std::array<std::string, 2>> textures;
+};
+
+struct CcfPlacedLight4330Metadata {
+    CcfVector3 vector{};
+    float first{};
+    float second{};
+};
+
+struct CcfPlacedLightMetadata {
+    std::optional<CcfPlacedLight4310Metadata> property4310;
+    std::optional<CcfPlacedLight4320Metadata> property4320;
+    std::optional<CcfPlacedLight4330Metadata> property4330;
+    std::optional<std::uint32_t> propertyF0B0;
+};
+
+using CcfPlacedNodeData = std::variant<
+    CcfPlacedObjectMetadata,
+    CcfPlacedNullMetadata,
+    CcfPlacedLightMetadata>;
+
+struct CcfPlacedNodeMetadata {
+    CcfPlacedNodeKind kind{CcfPlacedNodeKind::object};
+    std::string name;
+    std::string prefix;
+    std::uint32_t currentReference{};
+    std::uint32_t roomReference{};
+    std::uint32_t parentReference{};
+    CcfPlacedSrtMetadata transform;
+    std::vector<CcfChunk> directChildren;
+    CcfPlacedNodeData data{CcfPlacedObjectMetadata{}};
+    std::uint64_t offset{};
+};
+
 struct CcfMetadata {
     std::uint16_t rootId{};
     std::uint32_t rootSize{};
@@ -143,6 +228,8 @@ struct CcfMetadata {
     std::vector<CcfMaterialMetadata> materials;
     std::vector<CcfMeshMetadata> meshes;
     std::vector<CcfBlueprintMetadata> blueprints;
+    // Physical order from the independent 0x4000 placed-scene section.
+    std::vector<CcfPlacedNodeMetadata> placedNodes;
 };
 
 struct RgbaImage {

@@ -1,13 +1,14 @@
 # FMT-CCF — chunked scene/model container
 
-**State:** file/root/top-level, material, mesh geometry, and blueprint graph
-resolution implemented; placed-scene payload decoding in progress
+**State:** file/root/top-level, material, mesh geometry, blueprint graph, and
+placed-scene record decoding implemented; placed-room graph resolution pending
 
 **Confidence:** 3/3 for framing and blueprint hierarchy, 2/3 for remaining
 section semantics
 
 **Evidence:** `EV-20260721-017`, `EV-20260721-018`, `EV-20260721-023`,
-`EV-20260721-024`, `EV-20260721-025`, `EV-20260721-033`
+`EV-20260721-024`, `EV-20260721-025`, `EV-20260721-033`,
+`EV-20260721-037`
 
 ## Evidence
 
@@ -309,8 +310,9 @@ replaced by an arbitrary mesh child.
 When a scene load does include `0x4000`, its object/null/light records form a
 separate placed-node graph. The loader likewise defers nonzero parent links
 until the table is complete and applies the same `SetParent(child, parent)`
-contract. Placed payload decoding remains pending, and no correspondence to the
-same physical index in `0x3000` is inferred.
+contract. The records are decoded below; graph/reference resolution remains a
+separate step, and no correspondence to the same physical index in `0x3000` is
+inferred.
 
 A bounded read-only traversal of all 215 object selections covers 2,687
 selected blueprint nodes and 1,858 mesh instances, resolving 2,842 material
@@ -334,6 +336,39 @@ Material texture strings are base names. `GtTextureGroup::AddTexture` at RVA
 that exact rule for the 2,959 complete-subtree texture edges; it neither guesses
 alternate roots nor treats an existing extension specially.
 
+## Placed scene records (`0x4000`)
+
+`EV-20260721-037` recovers the complete loader-read prefix and observed direct
+children for the independent placed-node table. Every record begins with
+`0xF010 CcName`, a current reference, room reference, parent reference, an
+`0xF040` position, one raw float32 scalar, and `0xF070` orientation. Object
+records (`0x4100`) additionally store a mesh reference, one raw byte, a portal
+type word, and a portal-room reference before the transform.
+
+The orientation loader accepts either an `0xF050` matrix containing three
+`0xF040` vectors or one alternate `0xF040` vector. All 9,328 shipped records use
+the matrix form; the alternate form remains supported and neutrally represented
+because it is present in the original loader but not in the selected corpus.
+
+| Record | Corpus count | Decoded direct children |
+|---:|---:|---|
+| `0x4100` object | 6,995 | `0xF0B0`, `0xF0B1`, `0x4501` u32; opaque `0x4101` BSP container |
+| `0x4200` null | 2,130 | `0x4210` length plus zero-copy opaque bytes; `0x4500` u32 |
+| `0x4300` light | 203 | bounded `0x4310`, `0x4320`, `0x4330`, and `0xF0B0` shapes |
+
+The light values and optional texture strings retain neutral field names until
+their rendering semantics are proven. `0x4101` is deliberately preserved
+without recursively materializing its BSP tree. Known singleton duplicates,
+invalid fixed sizes, string/count mismatches, parent-container overruns, and
+the shared descriptor budget fail closed. A separate 100,000-record ceiling
+precedes placed-node growth.
+
+Read-only validation parses all 286 CCF files, including the extension-less
+scene: 9,328 records in physical order, with zero parse errors. The portable
+model exposes current/mesh/room/parent/portal references but does not yet apply
+legacy room fallback, resolve the placed parent graph, or infer semantic names
+for raw flags and light values.
+
 ## Portable implementation and next step
 
 - file/root/top-level/direct-child/material/mesh parser:
@@ -349,5 +384,6 @@ alternate roots nor treats an existing extension specially.
 The backend-neutral seam-safe draw-model payload, bounded blueprint graph, and
 multi-instance diagnostic render a complete grouped aircraft from authored
 world transforms. Portable parent-relative local derivation now round-trips the
-recovered parent-first composition; placed-room decoding remains pending. No
-proprietary geometry or preview is committed.
+recovered parent-first composition, and placed records are decoded. The next
+scene step is bounded placed-graph and room-reference resolution. No proprietary
+geometry or preview is committed.

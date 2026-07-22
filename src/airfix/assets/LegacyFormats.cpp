@@ -381,6 +381,411 @@ void validateCcfMaterialVectors(
     };
 }
 
+[[nodiscard]] CcfChunk readContainedCcfChunk(
+    const std::span<const std::uint8_t> bytes,
+    const std::uint64_t offset,
+    const std::uint64_t end,
+    const std::string_view field) {
+    requireRange(offset, 6U, end, std::string(field) + " header");
+    CcfChunk chunk{
+        .id = readU16(bytes, static_cast<std::size_t>(offset),
+            std::string(field) + " id"),
+        .totalSize = readU32(bytes, static_cast<std::size_t>(offset + 2U),
+            std::string(field) + " size"),
+        .offset = offset,
+        .directChildren = {},
+    };
+    if (chunk.totalSize < 6U) {
+        throw ParseError(std::string(field) + " is shorter than its header");
+    }
+    requireRange(chunk.offset, chunk.totalSize, end, field);
+    return chunk;
+}
+
+[[nodiscard]] CcfPlacedOrientation parseCcfPlacedOrientation(
+    const std::span<const std::uint8_t> bytes,
+    const CcfChunk& chunk,
+    CcfParseBudget& budget) {
+    if (chunk.id != 0xF070U) {
+        throw ParseError("CCF placed orientation has an invalid outer chunk");
+    }
+    const auto begin = checkedAdd(chunk.offset, 6U, "CCF placed orientation");
+    const auto end = checkedAdd(
+        chunk.offset, chunk.totalSize, "CCF placed orientation end");
+    const auto children = parseCcfChunkSequence(
+        bytes,
+        static_cast<std::size_t>(begin),
+        static_cast<std::size_t>(end),
+        "CCF placed orientation child",
+        budget);
+    if (children.size() != 1U) {
+        throw ParseError("CCF placed orientation must contain exactly one child");
+    }
+    if (children[0].id == 0xF040U) {
+        return parseCcfVector3(
+            bytes, children[0], 0xF040U, "CCF placed alternate orientation");
+    }
+    if (children[0].id != 0xF050U || children[0].totalSize != 60U) {
+        throw ParseError("CCF placed orientation has an invalid child");
+    }
+    const auto matrixBegin = checkedAdd(
+        children[0].offset, 6U, "CCF placed orientation matrix");
+    const auto matrixEnd = checkedAdd(
+        children[0].offset,
+        children[0].totalSize,
+        "CCF placed orientation matrix end");
+    const auto vectors = parseCcfChunkSequence(
+        bytes,
+        static_cast<std::size_t>(matrixBegin),
+        static_cast<std::size_t>(matrixEnd),
+        "CCF placed orientation vector",
+        budget);
+    if (vectors.size() != 3U) {
+        throw ParseError("CCF placed orientation matrix must contain three vectors");
+    }
+    return std::array<CcfVector3, 3>{
+        parseCcfVector3(bytes, vectors[0], 0xF040U,
+            "CCF placed orientation X"),
+        parseCcfVector3(bytes, vectors[1], 0xF040U,
+            "CCF placed orientation Y"),
+        parseCcfVector3(bytes, vectors[2], 0xF040U,
+            "CCF placed orientation Z"),
+    };
+}
+
+[[nodiscard]] CcfPlacedLight4310Metadata parseCcfPlacedLight4310(
+    const std::span<const std::uint8_t> bytes,
+    const CcfChunk& property,
+    CcfParseBudget& budget) {
+    if (property.totalSize < 36U) {
+        throw ParseError("CCF placed light 0x4310 property is truncated");
+    }
+    const auto propertyEnd = checkedAdd(
+        property.offset, property.totalSize, "CCF placed light 0x4310 end");
+    const auto payload = checkedAdd(
+        property.offset, 6U, "CCF placed light 0x4310 payload");
+    const auto vectorChunk = readContainedCcfChunk(
+        bytes, payload + 4U, propertyEnd, "CCF placed light 0x4310 vector");
+    budget.consume("CCF placed light 0x4310 vector");
+    const auto vector = parseCcfVector3(
+        bytes, vectorChunk, 0xF030U, "CCF placed light 0x4310 vector");
+    const auto scalarOffset = checkedAdd(
+        vectorChunk.offset,
+        vectorChunk.totalSize,
+        "CCF placed light 0x4310 scalars");
+    requireRange(scalarOffset, 8U, propertyEnd, "CCF placed light 0x4310 scalars");
+    const auto optionalBegin = checkedAdd(
+        scalarOffset, 8U, "CCF placed light 0x4310 optional texture");
+
+    CcfPlacedLight4310Metadata parsed{
+        .first = readFloat(bytes, static_cast<std::size_t>(payload),
+            "CCF placed light 0x4310 first value"),
+        .vector = vector,
+        .second = readFloat(bytes, static_cast<std::size_t>(scalarOffset),
+            "CCF placed light 0x4310 second value"),
+        .third = readFloat(bytes, static_cast<std::size_t>(scalarOffset + 4U),
+            "CCF placed light 0x4310 third value"),
+        .texture = std::nullopt,
+    };
+    if (optionalBegin == propertyEnd) {
+        return parsed;
+    }
+    const auto strings = parseCcfChunkSequence(
+        bytes,
+        static_cast<std::size_t>(optionalBegin),
+        static_cast<std::size_t>(propertyEnd),
+        "CCF placed light 0x4310 texture",
+        budget);
+    if (strings.size() != 1U || strings[0].id != 0xF020U) {
+        throw ParseError("CCF placed light 0x4310 must contain zero or one texture string");
+    }
+    parsed.texture = parseCcfString(
+        bytes, strings[0], "CCF placed light 0x4310 texture");
+    return parsed;
+}
+
+[[nodiscard]] CcfPlacedLight4320Metadata parseCcfPlacedLight4320(
+    const std::span<const std::uint8_t> bytes,
+    const CcfChunk& property,
+    CcfParseBudget& budget) {
+    if (property.totalSize < 22U) {
+        throw ParseError("CCF placed light 0x4320 property is truncated");
+    }
+    const auto payload = checkedAdd(
+        property.offset, 6U, "CCF placed light 0x4320 payload");
+    const auto propertyEnd = checkedAdd(
+        property.offset, property.totalSize, "CCF placed light 0x4320 end");
+    CcfPlacedLight4320Metadata parsed{
+        .values = {
+            readFloat(bytes, static_cast<std::size_t>(payload),
+                "CCF placed light 0x4320 value 0"),
+            readFloat(bytes, static_cast<std::size_t>(payload + 4U),
+                "CCF placed light 0x4320 value 1"),
+            readFloat(bytes, static_cast<std::size_t>(payload + 8U),
+                "CCF placed light 0x4320 value 2"),
+            readFloat(bytes, static_cast<std::size_t>(payload + 12U),
+                "CCF placed light 0x4320 value 3"),
+        },
+        .textures = std::nullopt,
+    };
+    const auto optionalBegin = checkedAdd(
+        payload, 16U, "CCF placed light 0x4320 optional textures");
+    if (optionalBegin == propertyEnd) {
+        return parsed;
+    }
+    const auto strings = parseCcfChunkSequence(
+        bytes,
+        static_cast<std::size_t>(optionalBegin),
+        static_cast<std::size_t>(propertyEnd),
+        "CCF placed light 0x4320 textures",
+        budget);
+    if (strings.size() != 2U || strings[0].id != 0xF020U ||
+        strings[1].id != 0xF020U) {
+        throw ParseError("CCF placed light 0x4320 must contain zero or two texture strings");
+    }
+    parsed.textures = std::array<std::string, 2>{
+        parseCcfString(bytes, strings[0], "CCF placed light 0x4320 texture 0"),
+        parseCcfString(bytes, strings[1], "CCF placed light 0x4320 texture 1"),
+    };
+    return parsed;
+}
+
+[[nodiscard]] CcfPlacedLight4330Metadata parseCcfPlacedLight4330(
+    const std::span<const std::uint8_t> bytes,
+    const CcfChunk& property,
+    CcfParseBudget& budget) {
+    if (property.totalSize != 32U) {
+        throw ParseError("CCF placed light 0x4330 property has an invalid size");
+    }
+    const auto payload = checkedAdd(
+        property.offset, 6U, "CCF placed light 0x4330 payload");
+    const auto propertyEnd = checkedAdd(
+        property.offset, property.totalSize, "CCF placed light 0x4330 end");
+    const auto vectorChunk = readContainedCcfChunk(
+        bytes, payload, propertyEnd, "CCF placed light 0x4330 vector");
+    budget.consume("CCF placed light 0x4330 vector");
+    return {
+        .vector = parseCcfVector3(
+            bytes, vectorChunk, 0xF040U, "CCF placed light 0x4330 vector"),
+        .first = readFloat(bytes, static_cast<std::size_t>(payload + 18U),
+            "CCF placed light 0x4330 first value"),
+        .second = readFloat(bytes, static_cast<std::size_t>(payload + 22U),
+            "CCF placed light 0x4330 second value"),
+    };
+}
+
+[[nodiscard]] CcfPlacedNodeMetadata parseCcfPlacedNode(
+    const std::span<const std::uint8_t> bytes,
+    CcfChunk& node,
+    CcfParseBudget& budget) {
+    if (node.id != 0x4100U && node.id != 0x4200U && node.id != 0x4300U) {
+        throw ParseError("CCF placed-node parser received an unsupported chunk");
+    }
+    const auto nodeEnd = checkedAdd(node.offset, node.totalSize, "CCF placed node end");
+    const auto payload = checkedAdd(node.offset, 6U, "CCF placed node payload");
+    const auto nameChunk = readContainedCcfChunk(
+        bytes, payload, nodeEnd, "CCF placed node name");
+    budget.consume("CCF placed node name");
+    const auto name = parseCcfName(bytes, nameChunk, "CCF placed node name", budget);
+    auto cursor = checkedAdd(
+        nameChunk.offset, nameChunk.totalSize, "CCF placed node fields");
+
+    const auto object = node.id == 0x4100U;
+    const auto fixedReferenceBytes = object ? 25U : 12U;
+    requireRange(cursor, fixedReferenceBytes, nodeEnd, "CCF placed node references");
+    const auto reference = readU32(
+        bytes, static_cast<std::size_t>(cursor), "CCF placed node reference");
+    const auto meshReference = object
+        ? readU32(bytes, static_cast<std::size_t>(cursor + 4U),
+            "CCF placed object mesh reference")
+        : 0U;
+    const auto roomOffset = object ? 8U : 4U;
+    const auto parentOffset = object ? 12U : 8U;
+    const auto roomReference = readU32(
+        bytes, static_cast<std::size_t>(cursor + roomOffset),
+        "CCF placed node room reference");
+    const auto parentReference = readU32(
+        bytes, static_cast<std::size_t>(cursor + parentOffset),
+        "CCF placed node parent reference");
+    const auto rawFlag = object
+        ? bytes[static_cast<std::size_t>(cursor + 16U)]
+        : static_cast<std::uint8_t>(0U);
+    const auto portalType = object
+        ? readU32(bytes, static_cast<std::size_t>(cursor + 17U),
+            "CCF placed object portal type")
+        : 0U;
+    const auto portalRoomReference = object
+        ? readU32(bytes, static_cast<std::size_t>(cursor + 21U),
+            "CCF placed object portal room reference")
+        : 0U;
+    cursor = checkedAdd(cursor, fixedReferenceBytes, "CCF placed node position");
+
+    const auto positionChunk = readContainedCcfChunk(
+        bytes, cursor, nodeEnd, "CCF placed node position");
+    budget.consume("CCF placed node position");
+    const auto position = parseCcfVector3(
+        bytes, positionChunk, 0xF040U, "CCF placed node position");
+    cursor = checkedAdd(
+        positionChunk.offset, positionChunk.totalSize, "CCF placed node scalar");
+    requireRange(cursor, 4U, nodeEnd, "CCF placed node scalar");
+    const auto rawScalar = readFloat(
+        bytes, static_cast<std::size_t>(cursor), "CCF placed node scalar");
+    cursor = checkedAdd(cursor, 4U, "CCF placed node orientation");
+    const auto orientationChunk = readContainedCcfChunk(
+        bytes, cursor, nodeEnd, "CCF placed node orientation");
+    budget.consume("CCF placed node orientation");
+    const auto orientation = parseCcfPlacedOrientation(
+        bytes, orientationChunk, budget);
+    cursor = checkedAdd(
+        orientationChunk.offset,
+        orientationChunk.totalSize,
+        "CCF placed node children");
+    node.directChildren = parseCcfChunkSequence(
+        bytes,
+        static_cast<std::size_t>(cursor),
+        static_cast<std::size_t>(nodeEnd),
+        "CCF placed node child",
+        budget);
+
+    CcfPlacedNodeMetadata parsed{
+        .kind = object
+            ? CcfPlacedNodeKind::object
+            : (node.id == 0x4200U
+                ? CcfPlacedNodeKind::nullNode
+                : CcfPlacedNodeKind::light),
+        .name = name.name,
+        .prefix = name.prefix,
+        .currentReference = reference,
+        .roomReference = roomReference,
+        .parentReference = parentReference,
+        .transform = {
+            .position = position,
+            .rawScalar = rawScalar,
+            .orientation = orientation,
+        },
+        .directChildren = node.directChildren,
+        .data = object
+            ? CcfPlacedNodeData{CcfPlacedObjectMetadata{
+                .meshReference = meshReference,
+                .rawFlag = rawFlag,
+                .portalType = portalType,
+                .portalRoomReference = portalRoomReference,
+                .propertyF0B0 = std::nullopt,
+                .propertyF0B1 = std::nullopt,
+                .value4501 = std::nullopt,
+                .bsp4101 = std::nullopt,
+            }}
+            : (node.id == 0x4200U
+                ? CcfPlacedNodeData{CcfPlacedNullMetadata{}}
+                : CcfPlacedNodeData{CcfPlacedLightMetadata{}}),
+        .offset = node.offset,
+    };
+
+    for (const auto& property : parsed.directChildren) {
+        if (object) {
+            auto& objectData = std::get<CcfPlacedObjectMetadata>(parsed.data);
+            switch (property.id) {
+            case 0xF0B0U:
+                if (objectData.propertyF0B0.has_value() || property.totalSize != 10U) {
+                    throw ParseError("CCF placed object has an invalid 0xF0B0 property");
+                }
+                objectData.propertyF0B0 = readU32(bytes,
+                    static_cast<std::size_t>(property.offset + 6U),
+                    "CCF placed object 0xF0B0 value");
+                break;
+            case 0xF0B1U:
+                if (objectData.propertyF0B1.has_value() || property.totalSize != 10U) {
+                    throw ParseError("CCF placed object has an invalid 0xF0B1 property");
+                }
+                objectData.propertyF0B1 = readU32(bytes,
+                    static_cast<std::size_t>(property.offset + 6U),
+                    "CCF placed object 0xF0B1 value");
+                break;
+            case 0x4501U:
+                if (objectData.value4501.has_value() || property.totalSize != 10U) {
+                    throw ParseError("CCF placed object has an invalid 0x4501 property");
+                }
+                objectData.value4501 = readU32(bytes,
+                    static_cast<std::size_t>(property.offset + 6U),
+                    "CCF placed object 0x4501 value");
+                break;
+            case 0x4101U:
+                if (objectData.bsp4101.has_value()) {
+                    throw ParseError("CCF placed object repeats its opaque 0x4101 property");
+                }
+                objectData.bsp4101 = property;
+                break;
+            default:
+                break;
+            }
+            continue;
+        }
+
+        if (node.id == 0x4200U) {
+            auto& nullData = std::get<CcfPlacedNullMetadata>(parsed.data);
+            if (property.id == 0x4210U) {
+                if (nullData.block4210.has_value() || property.totalSize < 10U) {
+                    throw ParseError("CCF placed null has an invalid 0x4210 property");
+                }
+                const auto length = readU32(bytes,
+                    static_cast<std::size_t>(property.offset + 6U),
+                    "CCF placed null 0x4210 length");
+                if (checkedAdd(10U, length, "CCF placed null 0x4210 length") !=
+                    property.totalSize) {
+                    throw ParseError("CCF placed null 0x4210 length does not match its chunk");
+                }
+                nullData.block4210 = CcfOpaqueRange{
+                    .offset = checkedAdd(
+                        property.offset, 10U, "CCF placed null 0x4210 block"),
+                    .length = length,
+                };
+            }
+            else if (property.id == 0x4500U) {
+                if (nullData.value4500.has_value() || property.totalSize != 10U) {
+                    throw ParseError("CCF placed null has an invalid 0x4500 property");
+                }
+                nullData.value4500 = readU32(bytes,
+                    static_cast<std::size_t>(property.offset + 6U),
+                    "CCF placed null 0x4500 value");
+            }
+            continue;
+        }
+
+        auto& lightData = std::get<CcfPlacedLightMetadata>(parsed.data);
+        switch (property.id) {
+        case 0x4310U:
+            if (lightData.property4310.has_value()) {
+                throw ParseError("CCF placed light repeats its 0x4310 property");
+            }
+            lightData.property4310 = parseCcfPlacedLight4310(bytes, property, budget);
+            break;
+        case 0x4320U:
+            if (lightData.property4320.has_value()) {
+                throw ParseError("CCF placed light repeats its 0x4320 property");
+            }
+            lightData.property4320 = parseCcfPlacedLight4320(bytes, property, budget);
+            break;
+        case 0x4330U:
+            if (lightData.property4330.has_value()) {
+                throw ParseError("CCF placed light repeats its 0x4330 property");
+            }
+            lightData.property4330 = parseCcfPlacedLight4330(bytes, property, budget);
+            break;
+        case 0xF0B0U:
+            if (lightData.propertyF0B0.has_value() || property.totalSize != 10U) {
+                throw ParseError("CCF placed light has an invalid 0xF0B0 property");
+            }
+            lightData.propertyF0B0 = readU32(bytes,
+                static_cast<std::size_t>(property.offset + 6U),
+                "CCF placed light 0xF0B0 value");
+            break;
+        default:
+            break;
+        }
+    }
+    return parsed;
+}
+
 [[nodiscard]] CcfMeshPaintMetadata parseCcfMeshPaint(
     const std::span<const std::uint8_t> bytes,
     const CcfChunk& chunk,
@@ -1208,6 +1613,7 @@ CcfMetadata parseCcf(const std::span<const std::uint8_t> bytes) {
         .materials = {},
         .meshes = {},
         .blueprints = {},
+        .placedNodes = {},
     };
     constexpr std::size_t kCcfDescriptorLimit = 250'000U;
     CcfParseBudget budget{
@@ -1217,6 +1623,7 @@ CcfMetadata parseCcf(const std::span<const std::uint8_t> bytes) {
         bytes, 14U, bytes.size(), "CCF root", budget);
     constexpr std::size_t kCcfMeshLimit = 100'000U;
     constexpr std::size_t kCcfBlueprintLimit = 100'000U;
+    constexpr std::size_t kCcfPlacedNodeLimit = 100'000U;
     constexpr std::size_t kCcfVertexLimit = 2'000'000U;
     constexpr std::size_t kCcfTriangleLimit = 4'000'000U;
     std::size_t vertexCount = 0U;
@@ -1277,6 +1684,17 @@ CcfMetadata parseCcf(const std::span<const std::uint8_t> bytes) {
                     metadata.blueprints.push_back(
                         parseCcfNonMeshBlueprint(bytes, blueprint, budget));
                 }
+            }
+        }
+        else if (section.id == 0x4000U) {
+            for (auto& node : section.directChildren) {
+                if (node.id != 0x4100U && node.id != 0x4200U && node.id != 0x4300U) {
+                    continue;
+                }
+                if (metadata.placedNodes.size() >= kCcfPlacedNodeLimit) {
+                    throw ParseError("CCF exceeds the placed-node limit");
+                }
+                metadata.placedNodes.push_back(parseCcfPlacedNode(bytes, node, budget));
             }
         }
     }

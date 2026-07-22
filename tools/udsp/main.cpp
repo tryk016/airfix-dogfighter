@@ -403,6 +403,32 @@ int main(const int argc, const char* const* argv) {
                                         return blueprint.kind ==
                                             airfix::assets::CcfBlueprintKind::light;
                                     });
+                                std::size_t placedObjectCount = 0U;
+                                std::size_t placedNullCount = 0U;
+                                std::size_t placedLightCount = 0U;
+                                std::size_t placedMatrixCount = 0U;
+                                std::size_t placedAlternateCount = 0U;
+                                for (const auto& placed : metadata.placedNodes) {
+                                    switch (placed.kind) {
+                                    case airfix::assets::CcfPlacedNodeKind::object:
+                                        ++placedObjectCount;
+                                        break;
+                                    case airfix::assets::CcfPlacedNodeKind::nullNode:
+                                        ++placedNullCount;
+                                        break;
+                                    case airfix::assets::CcfPlacedNodeKind::light:
+                                        ++placedLightCount;
+                                        break;
+                                    }
+                                    if (std::holds_alternative<
+                                            std::array<airfix::assets::CcfVector3, 3>>(
+                                            placed.transform.orientation)) {
+                                        ++placedMatrixCount;
+                                    }
+                                    else {
+                                        ++placedAlternateCount;
+                                    }
+                                }
                                 detail << "CCF:materials=" << metadata.materials.size()
                                        << ",primary=" << primaryTextures
                                        << ",secondary=" << secondaryTextures
@@ -421,6 +447,12 @@ int main(const int argc, const char* const* argv) {
                                        << ":blueprints=" << metadata.blueprints.size()
                                        << ",nulls=" << nullBlueprintCount
                                        << ",lights=" << lightBlueprintCount
+                                       << ":placed=" << metadata.placedNodes.size()
+                                       << ",objects=" << placedObjectCount
+                                       << ",nulls=" << placedNullCount
+                                       << ",lights=" << placedLightCount
+                                       << ",matrices=" << placedMatrixCount
+                                       << ",alternate=" << placedAlternateCount
                                        << ":top=";
                                 for (std::size_t child = 0U;
                                      child < metadata.topLevelChunks.size();
