@@ -108,6 +108,8 @@ int main(const int argc, const char* const* argv) {
             std::size_t lightCount = 0U;
             std::size_t noSelectorCount = 0U;
             std::size_t caseFoldMatchCount = 0U;
+            std::size_t selectedBlueprintNodeCount = 0U;
+            std::size_t selectedMeshInstanceCount = 0U;
             std::size_t materialCount = 0U;
             std::size_t textureEdgeCount = 0U;
             std::size_t resolvedTextureEntryCount = 0U;
@@ -148,9 +150,16 @@ int main(const int argc, const char* const* argv) {
                 if (!resolution.issues.empty()) {
                     throw std::runtime_error("object resolver found a semantic dependency issue");
                 }
+                const auto sceneResolution =
+                    airfix::assets::resolveObjectSceneDependencies(object, ccf);
+                if (!sceneResolution.issues.empty() ||
+                    !sceneResolution.graphIssues.empty()) {
+                    throw std::runtime_error(
+                        "object scene resolver found a semantic graph issue");
+                }
                 const auto textureResolution =
                     airfix::assets::resolveObjectTextureEntries(
-                        object, resolution, archive);
+                        object, sceneResolution, archive);
                 for (const auto& texture : textureResolution.entries) {
                     switch (texture.status) {
                     case airfix::assets::TextureEntryStatus::unique:
@@ -175,8 +184,10 @@ int main(const int argc, const char* const* argv) {
                     }
                 }
                 ++objectCount;
-                materialCount += resolution.materialIndices.size();
-                textureEdgeCount += resolution.textures.size();
+                selectedBlueprintNodeCount += sceneResolution.blueprintIndices.size();
+                selectedMeshInstanceCount += sceneResolution.meshes.size();
+                materialCount += sceneResolution.materialIndices.size();
+                textureEdgeCount += sceneResolution.textures.size();
                 if (resolution.selectorStatus ==
                     airfix::assets::BlueprintSelectorStatus::noSelector) {
                     ++noSelectorCount;
@@ -205,6 +216,8 @@ int main(const int argc, const char* const* argv) {
                       << " light=" << lightCount
                       << " noSelector=" << noSelectorCount
                       << " caseFoldMatches=" << caseFoldMatchCount
+                      << " selectedBlueprintNodes=" << selectedBlueprintNodeCount
+                      << " selectedMeshInstances=" << selectedMeshInstanceCount
                       << " materials=" << materialCount
                       << " textureEdges=" << textureEdgeCount
                       << " resolvedTextures=" << resolvedTextureEntryCount

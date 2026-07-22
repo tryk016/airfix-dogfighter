@@ -1,8 +1,9 @@
 # Coordinate, matrix, and winding contract
 
-**State:** static contract confirmed and portable conversion implemented
+**State:** static geometry and hierarchy contracts confirmed; geometry
+conversion implemented and graph/local-transform integration in progress
 
-**Evidence:** `EV-20260721-030`
+**Evidence:** `EV-20260721-030`, `EV-20260721-033`
 
 ## Source basis
 
@@ -39,6 +40,53 @@ runtimeRotation = B * transpose(legacyMatrix) * inverse(B)
 
 The raw three CCF columns remain preserved as evidence. They are not copied
 directly into a column-vector shader matrix.
+
+## Authored world transforms and parent-relative locals
+
+`EV-20260721-033` confirms that the position and F050 orientation stored on
+each `0x3000` blueprint are authored world transforms. `CcRoom::LoadSceneCcf`
+creates every blueprint node unparented, retains a zero-or-parent reference,
+and resolves links only after the full section has been read. The independent
+`0x4000` placed-node graph uses the same deferred parent-link and transform
+contract when that table is loaded.
+
+`CcSrtNode::SetParent` at RVA `0x0000E0F0` first materializes the child's world
+relation, attaches it to the parent, and derives a local transform that
+preserves the previous world result. In legacy row-vector notation:
+
+```text
+M_world = M_local * M_parent
+t_world = t_local * M_parent + t_parent
+
+M_local = M_child_world * inverse(M_parent_world)
+t_local = (t_child_world - t_parent_world) * inverse(M_parent_world)
+```
+
+For the observed F050 form, the loader fixes matrix scale and inverse-scale
+metadata to 1.0, so the orthogonal parent inverse is its transpose. The runtime
+column-vector equivalent is:
+
+```text
+R_local = transpose(R_parent_world) * R_child_world
+t_local = transpose(R_parent_world) * (t_child_world - t_parent_world)
+
+R_world = R_parent_world * R_local
+t_world = R_parent_world * t_local + t_parent_world
+```
+
+`CcSrtNode::GetWorldRelation` at RVA `0x0000E440` recursively updates the
+parent first and caches the composed relation. Its SRT composition calls
+`CcSRT::InheritParentSRT` at RVA `0x0002BFD0`.
+
+The object path selects one `0x3000` blueprint by name and
+`CcBlueprint::MakeInstance(..., true)` at RVA `0x000244F0` clones that node and
+its descendants. Clone/mesh setup first materializes each prototype's world
+transform; parenting the new instances then re-derives the same descendant
+locals. The current portable contract may therefore derive F050 child locals
+directly from authored world transforms before applying the selected root's
+external placement. It must not apply the raw scalar as a universal scale:
+F050 matrices retain that value separately, and the alternate loader-supported
+F040 axis representation still needs independent fixtures.
 
 ## Triangle winding and normals
 

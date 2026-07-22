@@ -2,6 +2,7 @@
 
 #include "airfix/archive/UdspArchive.hpp"
 #include "airfix/assets/AfChunkContainer.hpp"
+#include "airfix/assets/CcfBlueprintGraph.hpp"
 #include "airfix/assets/LegacyFormats.hpp"
 
 #include <cstddef>
@@ -63,6 +64,27 @@ struct ObjectDependencyResolution {
     std::vector<DependencyIssue> issues;
 };
 
+struct SceneMeshDependency {
+    std::size_t blueprintIndex{};
+    std::size_t meshIndex{};
+};
+
+struct ObjectSceneDependencyLimits {
+    ObjectDependencyLimits dependencies;
+    BlueprintGraphLimits graph;
+};
+
+struct ObjectSceneDependencyResolution {
+    BlueprintSelectorStatus selectorStatus{BlueprintSelectorStatus::noSelector};
+    std::optional<std::size_t> rootBlueprintIndex;
+    std::vector<std::size_t> blueprintIndices;
+    std::vector<SceneMeshDependency> meshes;
+    std::vector<std::size_t> materialIndices;
+    std::vector<TextureDependency> textures;
+    std::vector<DependencyIssue> issues;
+    std::vector<BlueprintGraphIssue> graphIssues;
+};
+
 enum class TextureEntryStatus : std::uint8_t {
     missingTextureRoot,
     invalidLogicalPath,
@@ -111,12 +133,25 @@ struct ObjectTextureEntryResolution {
     const CcfMetadata& ccf,
     const ObjectDependencyLimits& limits = {});
 
+// Resolves the subtree instantiated by CcBlueprint::MakeInstance. Mesh order is
+// stable depth-first preorder; sibling and triangle order remain physical.
+[[nodiscard]] ObjectSceneDependencyResolution resolveObjectSceneDependencies(
+    const ObjectDefinition& object,
+    const CcfMetadata& ccf,
+    const ObjectSceneDependencyLimits& limits = {});
+
 // Resolves the exact legacy TEXU/source-text join as "root\\source.gti".
 // The .gti suffix is always appended; no alternate roots are searched and no
 // payload bytes are read.
 [[nodiscard]] ObjectTextureEntryResolution resolveObjectTextureEntries(
     const ObjectDefinition& object,
     const ObjectDependencyResolution& dependencies,
+    const udsp::Archive& archive,
+    const TextureEntryResolutionLimits& limits = {});
+
+[[nodiscard]] ObjectTextureEntryResolution resolveObjectTextureEntries(
+    const ObjectDefinition& object,
+    const ObjectSceneDependencyResolution& dependencies,
     const udsp::Archive& archive,
     const TextureEntryResolutionLimits& limits = {});
 

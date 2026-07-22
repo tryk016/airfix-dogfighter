@@ -1,12 +1,13 @@
 # FMT-CCF — chunked scene/model container
 
-**State:** file/root/top-level, material, and mesh geometry metadata implemented;
-rooms and placed-node payload decoding in progress
+**State:** file/root/top-level, material, mesh geometry, and blueprint graph
+resolution implemented; placed-scene payload decoding in progress
 
-**Confidence:** 3/3 for framing, 2/3 for section semantics
+**Confidence:** 3/3 for framing and blueprint hierarchy, 2/3 for remaining
+section semantics
 
 **Evidence:** `EV-20260721-017`, `EV-20260721-018`, `EV-20260721-023`,
-`EV-20260721-024`, `EV-20260721-025`
+`EV-20260721-024`, `EV-20260721-025`, `EV-20260721-033`
 
 ## Evidence
 
@@ -91,8 +92,10 @@ future allocation and fixture design.
 The `0x3000` and `0x4000` direct-child counts match in every file. Their ID
 sets occur in the same three corpus-wide groups: 100 files contain only the
 primary mesh/object IDs, 157 also contain `0x4200`, and 29 also contain
-`0x4300`. This is strong structural evidence for paired blueprint/placed-node
-tables, but the parser does not yet assume one-to-one semantic correspondence.
+`0x4300`. Static loader analysis now proves that they have different roles:
+`0x3000` contains prototypes and `0x4000` contains already placed scene nodes.
+Equal counts do not establish, and the portable code does not assume, an index
+mapping between the two tables.
 
 ## Material records (`0x2100`)
 
@@ -261,7 +264,8 @@ effect payload semantics are deferred.
 Blueprint names are not globally unique: 29 CCF files contain exact duplicate
 names, including 18 groups spanning different kinds. The portable index
 therefore preserves physical order and every candidate rather than using a
-single-value map. References are unique within each selected CCF.
+single-value map. The complete graph census finds no duplicate current
+references within any CCF.
 
 Object resolution is CCF-scoped: resolve `CCFF`, then match `MESH` against
 `CcName.name` with bytewise ASCII case folding. Prefix is not a fallback.
@@ -270,16 +274,65 @@ has no `MESH` and deliberately receives no guessed fallback. Fourteen matches
 require case folding. All selected names are unambiguous.
 
 For selected meshes, each triangle's u32 material reference is joined to
-`CcfMaterialMetadata.reference`, never treated as a vector index. The complete
-diagnostic resolves 212 distinct-per-object material uses and 210 texture edges
-with no missing or ambiguous reference. Primary, secondary, and environment
-roles remain separate.
+`CcfMaterialMetadata.reference`, never treated as a vector index. The initial
+direct-mesh-root diagnostic resolved 212 distinct-per-object material uses and
+210 texture edges with no missing or ambiguous reference. Primary, secondary,
+and environment roles remain separate. Complete subtree totals follow below.
+
+### Blueprint hierarchy and object instancing
+
+`EV-20260721-033` establishes that the u32 previously retained as a link is a
+parent reference in every `0x3000` blueprint kind. A zero value denotes a root;
+otherwise it names the parent's `currentReference`. Across all 286 CCF files,
+the 9,328 blueprints form 2,062 roots and 7,266 parent edges with maximum depth
+7. The read-only census found zero missing parents, duplicate references, or
+cycles. Children retain physical file order.
+
+The position and `0xF050` orientation stored in each blueprint are authored
+world transforms. The legacy loader first creates all prototypes unparented,
+then calls `CcSrtNode::SetParent(child, parent)` at RVA `0x0000E0F0`.
+`SetParent` preserves both effective world transforms while deriving the
+child's parent-relative local transform. `GetWorldRelation` at RVA
+`0x0000E440` recursively composes parent first, and the exact SRT composition
+path is `CcSRT::InheritParentSRT` at RVA `0x0002BFD0`. The formulas and the
+F050 scalar limitation are recorded in
+`docs/re/systems/COORDINATE-CONTRACT.md`.
+
+Object definitions do not instantiate the parallel `0x4000` table. The
+mission path loads an object's CCF with flag `0x2000`, which skips placed scene
+records, selects a `0x3000` blueprint by the case-folded `MESH` name, and calls
+`CcBlueprint::MakeInstance(..., true)` at RVA `0x000244F0`. That call creates
+the selected node and its descendants only; it does not include ancestors.
+Consequently a null blueprint is a valid transform-group root and cannot be
+replaced by an arbitrary mesh child.
+
+When a scene load does include `0x4000`, its object/null/light records form a
+separate placed-node graph. The loader likewise defers nonzero parent links
+until the table is complete and applies the same `SetParent(child, parent)`
+contract. Placed payload decoding remains pending, and no correspondence to the
+same physical index in `0x3000` is inferred.
+
+A bounded read-only traversal of all 215 object selections covers 2,687
+selected blueprint nodes and 1,858 mesh instances, resolving 2,842 material
+uses and 2,959 texture edges. All 2,959 texture paths resolve uniquely, with
+zero missing, invalid, or ambiguous graph, material, or texture dependencies.
+The selected roots remain 90 mesh, 124 null, and one object without a selector.
+The earlier 212-material/210-texture result covered only directly selected mesh
+roots and is retained as historical evidence rather than the complete object
+subtree result.
+
+A private grouped-aircraft diagnostic selects and renders all 46 nodes: 25
+meshes and 21 null groups, 663 triangles total, and maximum subtree depth 3.
+The full assembly is visually coherent, and the raw-V policy preserves its
+markings while the explicit flipped-V diagnostic does not. These anonymous
+aggregate/parity facts are the only private-model result recorded publicly; no
+asset name, path, hash, geometry, or image is included.
 
 Material texture strings are base names. `GtTextureGroup::AddTexture` at RVA
 `0x00046C30` combines an object's `TEXU` search root with each source as
 `root\\source.gti` before opening it. The bounded portable resolver implements
-that exact rule and resolves all 210 selected-corpus texture edges uniquely;
-it neither guesses alternate roots nor treats an existing extension specially.
+that exact rule for the 2,959 complete-subtree texture edges; it neither guesses
+alternate roots nor treats an existing extension specially.
 
 ## Portable implementation and next step
 
@@ -288,8 +341,12 @@ it neither guesses alternate roots nor treats an existing extension specially.
 - synthetic bounds, strings, geometry, index, UV, opaque/extended paint,
   unknown-extension, and global descriptor-budget tests:
   `tests/LegacyFormatsTests.cpp`;
+- bounded blueprint graph and subtree dependency resolution:
+  `src/airfix/assets/CcfBlueprintGraph.*` and
+  `src/airfix/assets/AssetResolver.*`;
 - ignored decompilation evidence: `artifacts/ghidra/Cc.dll.*`.
 
-The backend-neutral seam-safe draw payload and private first-model diagnostic
-are implemented. Complete grouped models now require placed-node hierarchy and
-transform semantics; no proprietary geometry or preview is committed.
+The backend-neutral seam-safe draw-model payload, bounded blueprint graph, and
+multi-instance diagnostic render a complete grouped aircraft from authored
+world transforms. Parent-relative local derivation for animation and placed
+room decoding remain pending. No proprietary geometry or preview is committed.

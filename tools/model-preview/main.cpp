@@ -3,6 +3,7 @@
 #include "airfix/assets/AssetResolver.hpp"
 #include "airfix/assets/LegacyFormats.hpp"
 #include "airfix/render/DiagnosticRasterizer.hpp"
+#include "airfix/render/DrawModel.hpp"
 #include "airfix/render/DrawMesh.hpp"
 #include "airfix/render/LegacyGeometry.hpp"
 
@@ -213,9 +214,11 @@ int main(const int argc, const char* const* argv) {
         const auto ccfBytes = airfix::udsp::readFile(
             archivePath, archive, ccfEntry, kAssetReadLimit);
         const auto ccf = airfix::assets::parseCcf(ccfBytes);
-        const auto dependencies = airfix::assets::resolveObjectDependencies(object, ccf);
-        if (!dependencies.issues.empty() || !dependencies.meshIndex.has_value()) {
-            throw std::runtime_error("object did not resolve to one renderable mesh");
+        const auto dependencies =
+            airfix::assets::resolveObjectSceneDependencies(object, ccf);
+        if (!dependencies.issues.empty() || !dependencies.graphIssues.empty() ||
+            !dependencies.rootBlueprintIndex.has_value() || dependencies.meshes.empty()) {
+            throw std::runtime_error("object did not resolve to a renderable model subtree");
         }
         const auto textureEntries = airfix::assets::resolveObjectTextureEntries(
             object, dependencies, archive);
@@ -296,9 +299,40 @@ int main(const int argc, const char* const* argv) {
             }
         }
 
-        const auto converted = airfix::render::convertLegacyGeometry(
-            ccf.meshes.at(*dependencies.meshIndex));
-        const auto drawMesh = airfix::render::buildDrawMesh(converted, materials);
+        airfix::render::DrawModelPayload model;
+        model.meshes.reserve(dependencies.meshes.size());
+        model.instances.reserve(dependencies.meshes.size());
+        std::size_t triangleCount = 0U;
+        std::size_t drawVertexCount = 0U;
+        std::size_t rangeCount = 0U;
+        for (const auto& meshDependency : dependencies.meshes) {
+            const auto converted = airfix::render::convertLegacyGeometry(
+                ccf.meshes.at(meshDependency.meshIndex));
+            const auto meshSlot = model.meshes.size();
+            if (meshSlot > std::numeric_limits<std::uint32_t>::max()) {
+                throw std::runtime_error("model mesh slot exceeds runtime ID range");
+            }
+            model.meshes.push_back(airfix::render::buildDrawMesh(converted, materials));
+            const auto& drawMesh = model.meshes.back();
+            const auto meshTriangles = drawMesh.indices.size() / 3U;
+            if (meshTriangles > std::numeric_limits<std::size_t>::max() - triangleCount ||
+                drawMesh.vertices.size() >
+                    std::numeric_limits<std::size_t>::max() - drawVertexCount ||
+                drawMesh.ranges.size() >
+                    std::numeric_limits<std::size_t>::max() - rangeCount) {
+                throw std::runtime_error("aggregate model diagnostic count overflows");
+            }
+            triangleCount += meshTriangles;
+            drawVertexCount += drawMesh.vertices.size();
+            rangeCount += drawMesh.ranges.size();
+            model.instances.push_back({
+                .meshSlot = static_cast<std::uint32_t>(meshSlot),
+                .sourceNodeReference =
+                    ccf.blueprints.at(meshDependency.blueprintIndex).reference,
+                .modelLinear = converted.orientation,
+                .modelTranslation = converted.translation,
+            });
+        }
         std::vector<airfix::render::DiagnosticTextureView> textureViews;
         textureViews.reserve(loadedTextures.size());
         for (const auto& texture : loadedTextures) {
@@ -308,18 +342,18 @@ int main(const int argc, const char* const* argv) {
         airfix::render::DiagnosticRasterizerOptions options;
         options.width = 1024U;
         options.height = 1024U;
-        options.modelLinear = converted.orientation;
-        options.modelTranslation = converted.translation;
         options.flipV = flipV;
-        const auto image = airfix::render::rasterizeDiagnostic(
-            drawMesh, textureViews, options);
+        const auto image = airfix::render::rasterizeDiagnosticModel(
+            model, textureViews, options);
         writePpm(outputPath, image);
 
         std::cout << "created=" << outputPath.string()
-                  << " triangles=" << drawMesh.indices.size() / 3U
-                  << " drawVertices=" << drawMesh.vertices.size()
-                  << " ranges=" << drawMesh.ranges.size()
-                  << " materials=" << drawMesh.materials.size()
+                  << " nodes=" << dependencies.blueprintIndices.size()
+                  << " meshInstances=" << model.instances.size()
+                  << " triangles=" << triangleCount
+                  << " drawVertices=" << drawVertexCount
+                  << " ranges=" << rangeCount
+                  << " materials=" << dependencies.materialIndices.size()
                   << " primaryTextures=" << loadedTextures.size()
                   << " flipV=" << flipV
                   << " rgbaFnv64=" << fnv1a(image.pixels) << '\n';

@@ -411,8 +411,10 @@ contract, evidence, implementation, tests, parity result, and documentation agre
 8. Establish the isolated reference runtime and record the first deterministic
    flight/control/render scenarios; this remains independent of host static
    analysis until the isolated environment is available.
-9. **In progress:** the seam-safe API-neutral draw-mesh payload is implemented;
-   recover placed-node transforms, build a faithful first-room renderer, and
-   connect the payload to Metal through the existing data-less shell.
+9. **In progress:** the bounded blueprint graph, seam-safe draw-model payload,
+   and multi-instance diagnostic have assembled and rendered a complete grouped
+   aircraft. Derive parent-relative locals for animation, decode placed-room
+   nodes, build the first-room renderer, and connect the payload to Metal
+   through the existing data-less shell.
 10. Implement native UIKit touch capture and Apple Game Controller adapters,
     followed by the configurable visual overlay and on-device usability tests.

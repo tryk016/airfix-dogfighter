@@ -18,6 +18,8 @@ using airfix::render::DiagnosticRasterizerOptions;
 using airfix::render::DiagnosticTextureView;
 using airfix::render::DrawMaterial;
 using airfix::render::DrawMeshPayload;
+using airfix::render::DrawMeshInstance;
+using airfix::render::DrawModelPayload;
 using airfix::render::DrawRange;
 using airfix::render::DrawVertex;
 using airfix::render::TexcoordMode;
@@ -105,6 +107,15 @@ void requireError(
         .minimum = Vec3{-1.0F, -1.0F, 0.0F},
         .maximum = Vec3{1.0F, 1.0F, 0.0F},
     };
+    return mesh;
+}
+
+[[nodiscard]] DrawMeshPayload coloredQuad(
+    const std::uint32_t textureId,
+    const std::uint32_t materialReference) {
+    auto mesh = texturedQuad();
+    mesh.materials[0].sourceReference = materialReference;
+    mesh.materials[0].primary = TextureAssetId{textureId};
     return mesh;
 }
 
@@ -267,6 +278,129 @@ void testValidationAndLimits() {
     }, "non-finite model transform was accepted");
 }
 
+void testModelSharedFitAndDepth() {
+    const auto red = solidTexture({255U, 0U, 0U, 255U});
+    const auto green = solidTexture({0U, 255U, 0U, 255U});
+    const std::array textureViews{
+        DiagnosticTextureView{TextureAssetId{1U}, &red},
+        DiagnosticTextureView{TextureAssetId{2U}, &green},
+    };
+
+    DrawModelPayload separated;
+    separated.meshes = {coloredQuad(1U, 10U), coloredQuad(2U, 20U)};
+    separated.instances = {
+        DrawMeshInstance{
+            .meshSlot = 0U,
+            .sourceNodeReference = 100U,
+            .modelTranslation = Vec3{-2.0F, 0.0F, 0.0F},
+        },
+        DrawMeshInstance{
+            .meshSlot = 1U,
+            .sourceNodeReference = 200U,
+            .modelTranslation = Vec3{2.0F, 0.0F, 0.0F},
+        },
+    };
+    auto options = testOptions();
+    options.width = 20U;
+    options.height = 10U;
+    const auto fitted = airfix::render::rasterizeDiagnosticModel(
+        separated, textureViews, options);
+    require(pixel(fitted, 4U, 5U) ==
+                std::array<std::uint8_t, 4>{255U, 0U, 0U, 255U},
+            "left instance was not placed in the shared model fit");
+    require(pixel(fitted, 16U, 5U) ==
+                std::array<std::uint8_t, 4>{0U, 255U, 0U, 255U},
+            "right instance was not placed in the shared model fit");
+    require(pixel(fitted, 10U, 5U) == options.backgroundColor,
+            "model instances were fitted independently instead of together");
+
+    options.modelLinear.columns = {
+        Vec3{-1.0F, 0.0F, 0.0F},
+        Vec3{0.0F, 1.0F, 0.0F},
+        Vec3{0.0F, 0.0F, -1.0F},
+    };
+    const auto outerRotated = airfix::render::rasterizeDiagnosticModel(
+        separated, textureViews, options);
+    require(pixel(outerRotated, 4U, 5U) ==
+                std::array<std::uint8_t, 4>{0U, 255U, 0U, 255U} &&
+            pixel(outerRotated, 16U, 5U) ==
+                std::array<std::uint8_t, 4>{255U, 0U, 0U, 255U},
+            "global model transform was not applied outside instance transforms");
+
+    DrawModelPayload overlapping;
+    overlapping.meshes = separated.meshes;
+    overlapping.instances = {
+        DrawMeshInstance{
+            .meshSlot = 0U,
+            .sourceNodeReference = 300U,
+            .modelTranslation = Vec3{0.0F, 0.0F, -1.0F},
+        },
+        DrawMeshInstance{
+            .meshSlot = 1U,
+            .sourceNodeReference = 400U,
+            .modelTranslation = Vec3{0.0F, 0.0F, 1.0F},
+        },
+    };
+    const auto first = airfix::render::rasterizeDiagnosticModel(
+        overlapping, textureViews, testOptions());
+    const auto second = airfix::render::rasterizeDiagnosticModel(
+        overlapping, textureViews, testOptions());
+    require(first.pixels == second.pixels,
+            "multi-instance diagnostic output is not deterministic");
+    require(pixel(first, 4U, 4U) ==
+                std::array<std::uint8_t, 4>{0U, 255U, 0U, 255U},
+            "near model instance did not win the shared depth test");
+}
+
+void testModelValidationAndAggregateLimits() {
+    DrawModelPayload model;
+    model.meshes = {coloredQuad(1U, 10U)};
+    model.instances = {DrawMeshInstance{.meshSlot = 1U}};
+    requireError(DiagnosticRasterizerErrorCode::missingMesh, [&] {
+        (void)airfix::render::rasterizeDiagnosticModel(
+            model, {}, testOptions());
+    }, "out-of-range model mesh slot was accepted");
+
+    model.instances[0].meshSlot = 0U;
+    model.instances[0].modelLinear.columns[1].y =
+        std::numeric_limits<float>::quiet_NaN();
+    requireError(DiagnosticRasterizerErrorCode::nonFiniteValue, [&] {
+        (void)airfix::render::rasterizeDiagnosticModel(
+            model, {}, testOptions());
+    }, "non-finite model instance transform was accepted");
+
+    DrawModelPayload aggregate;
+    aggregate.meshes = {coloredQuad(1U, 10U), coloredQuad(2U, 20U)};
+    auto options = testOptions();
+    options.maximumVertices = 7U;
+    requireError(DiagnosticRasterizerErrorCode::limitExceeded, [&] {
+        (void)airfix::render::rasterizeDiagnosticModel(aggregate, {}, options);
+    }, "aggregate mesh vertex limit was not enforced");
+
+    options = testOptions();
+    options.maximumMeshes = 1U;
+    requireError(DiagnosticRasterizerErrorCode::limitExceeded, [&] {
+        (void)airfix::render::rasterizeDiagnosticModel(aggregate, {}, options);
+    }, "mesh count limit was not enforced");
+
+    aggregate.meshes.resize(1U);
+    aggregate.instances = {
+        DrawMeshInstance{.meshSlot = 0U},
+        DrawMeshInstance{.meshSlot = 0U},
+    };
+    options = testOptions();
+    options.maximumInstances = 1U;
+    requireError(DiagnosticRasterizerErrorCode::limitExceeded, [&] {
+        (void)airfix::render::rasterizeDiagnosticModel(aggregate, {}, options);
+    }, "instance count limit was not enforced");
+
+    options = testOptions();
+    options.maximumVertices = 7U;
+    requireError(DiagnosticRasterizerErrorCode::limitExceeded, [&] {
+        (void)airfix::render::rasterizeDiagnosticModel(aggregate, {}, options);
+    }, "expanded instance vertex limit was not enforced");
+}
+
 } // namespace
 
 int main() {
@@ -275,6 +409,8 @@ int main() {
         testDepthAndNoCulling();
         testFallbackAndDeterministicSummary();
         testValidationAndLimits();
+        testModelSharedFitAndDepth();
+        testModelValidationAndAggregateLimits();
         std::cout << "Diagnostic rasterizer tests passed\n";
         return 0;
     }

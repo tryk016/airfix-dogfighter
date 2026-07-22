@@ -126,6 +126,14 @@ void require(const bool condition, const std::string& message) {
         });
 }
 
+[[nodiscard]] bool hasGraphIssue(
+    const airfix::assets::ObjectSceneDependencyResolution& result,
+    const airfix::assets::BlueprintGraphIssueKind kind) {
+    return std::ranges::any_of(
+        result.graphIssues,
+        [kind](const auto& issue) { return issue.kind == kind; });
+}
+
 [[nodiscard]] airfix::assets::ObjectDefinition makeObject() {
     airfix::assets::ObjectDefinition object;
     object.ccfPath = "Graphics\\Model.ccf";
@@ -263,6 +271,100 @@ void testMaterialFailuresAndLimits() {
         makeObject(), invalidMesh);
     require(hasIssue(invalidMeshResult, airfix::assets::DependencyIssueKind::invalidMeshIndex),
         "invalid mesh link issue mismatch");
+}
+
+void testSceneSubtreeResolution() {
+    auto object = makeObject();
+    object.meshName = "GROUP";
+    airfix::assets::CcfMetadata ccf;
+    ccf.meshes.resize(3U);
+    ccf.meshes[0].triangles = {
+        {.materialReference = 7U},
+        {.materialReference = 8U},
+    };
+    ccf.meshes[1].triangles = {{.materialReference = 8U}};
+    ccf.meshes[2].triangles = {{.materialReference = 99U}};
+    ccf.blueprints = {
+        {
+            .kind = airfix::assets::CcfBlueprintKind::nullNode,
+            .name = "group",
+            .reference = 10U,
+            .parentReference = 0U,
+        },
+        {
+            .kind = airfix::assets::CcfBlueprintKind::mesh,
+            .name = "child-a",
+            .reference = 20U,
+            .parentReference = 10U,
+            .meshIndex = 0U,
+        },
+        {
+            .kind = airfix::assets::CcfBlueprintKind::nullNode,
+            .name = "joint",
+            .reference = 30U,
+            .parentReference = 10U,
+        },
+        {
+            .kind = airfix::assets::CcfBlueprintKind::mesh,
+            .name = "child-b",
+            .reference = 40U,
+            .parentReference = 30U,
+            .meshIndex = 1U,
+        },
+        {
+            .kind = airfix::assets::CcfBlueprintKind::mesh,
+            .name = "other-root",
+            .reference = 50U,
+            .parentReference = 0U,
+            .meshIndex = 2U,
+        },
+    };
+    ccf.materials = {
+        {.name = "first", .reference = 7U, .primaryTexture = "first"},
+        {.name = "second", .reference = 8U, .primaryTexture = "second"},
+        {.name = "unreachable", .reference = 99U, .primaryTexture = "other"},
+    };
+
+    const auto result = airfix::assets::resolveObjectSceneDependencies(object, ccf);
+    require(result.selectorStatus == airfix::assets::BlueprintSelectorStatus::unique &&
+            result.rootBlueprintIndex == 0U && result.issues.empty() &&
+            result.graphIssues.empty(),
+        "valid null-root scene selection failed");
+    require(result.blueprintIndices == std::vector<std::size_t>{0U, 1U, 2U, 3U},
+        "selected scene subtree order mismatch");
+    require(result.meshes.size() == 2U &&
+            result.meshes[0].blueprintIndex == 1U &&
+            result.meshes[0].meshIndex == 0U &&
+            result.meshes[1].blueprintIndex == 3U &&
+            result.meshes[1].meshIndex == 1U,
+        "scene mesh preorder mismatch");
+    require(result.materialIndices == std::vector<std::size_t>{0U, 1U} &&
+            result.textures.size() == 2U,
+        "scene materials were not deduplicated in first-use order");
+
+    const auto archive = airfix::udsp::Archive::parse(
+        makeTextureArchive({"first.gti", "second.gti"}));
+    const auto textureEntries = airfix::assets::resolveObjectTextureEntries(
+        object, result, archive);
+    require(textureEntries.entries.size() == 2U && textureEntries.issues.empty(),
+        "scene texture-entry overload did not resolve all dependencies");
+
+    auto malformed = ccf;
+    malformed.blueprints[3].parentReference = 777U;
+    const auto missingParent = airfix::assets::resolveObjectSceneDependencies(
+        object, malformed);
+    require(missingParent.meshes.empty() &&
+            hasGraphIssue(
+                missingParent, airfix::assets::BlueprintGraphIssueKind::missingParent),
+        "malformed scene graph exposed a partial model");
+
+    auto limits = airfix::assets::ObjectSceneDependencyLimits{};
+    limits.graph.maximumSelectedNodes = 3U;
+    const auto limited = airfix::assets::resolveObjectSceneDependencies(
+        object, ccf, limits);
+    require(limited.meshes.empty() &&
+            hasGraphIssue(limited, airfix::assets::BlueprintGraphIssueKind::limitExceeded),
+        "scene subtree limit did not fail closed");
 }
 
 void testTextureEntryResolution() {
@@ -451,6 +553,7 @@ int main() {
         testMeshResolution();
         testSelectorVariants();
         testMaterialFailuresAndLimits();
+        testSceneSubtreeResolution();
         testTextureEntryResolution();
         testTextureEntryFailures();
         testTexturePathValidationAndLimits();

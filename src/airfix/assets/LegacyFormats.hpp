@@ -116,11 +116,22 @@ enum class CcfBlueprintKind : std::uint8_t {
     light,
 };
 
+struct CcfSrtMetadata {
+    // Transform authored in the 0x3000 blueprint record. Parent attachment may
+    // later derive a local transform from this stored/world-space value.
+    CcfVector3 position{};
+    float rawScalar{};
+    std::array<CcfVector3, 3> orientation{};
+};
+
 struct CcfBlueprintMetadata {
     CcfBlueprintKind kind{CcfBlueprintKind::mesh};
     std::string name;
     std::string prefix;
     std::uint32_t reference{};
+    std::optional<std::uint32_t> auxiliaryReference;
+    std::uint32_t parentReference{};
+    CcfSrtMetadata authoredTransform;
     std::optional<std::size_t> meshIndex;
     std::uint64_t offset{};
 };

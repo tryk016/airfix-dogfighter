@@ -22,8 +22,9 @@ other public distribution are explicitly out of scope.
   validation without being copied into the repository.
 - Bounded GTI/CCF/FourCC parsers recover complete texture mip chains, mesh and
   material metadata, blueprints, and exact object-to-texture archive entries.
-  A seam-safe draw payload and deterministic private CPU preview validate the
-  first textured model while corpus diagnostics emit aggregate facts only.
+  A seam-safe draw/model payload and deterministic private CPU preview validate
+  a complete 46-node grouped aircraft while corpus diagnostics emit aggregate
+  facts only.
 - A deterministic portable input router now defines stable semantic actions,
   touch/controller/test bindings, multi-source arbitration, context/lifecycle
   releases, and controller reconnect neutral gating. Native iOS adapters and the

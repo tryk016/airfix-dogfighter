@@ -1,7 +1,7 @@
 #pragma once
 
 #include "airfix/assets/LegacyFormats.hpp"
-#include "airfix/render/DrawMesh.hpp"
+#include "airfix/render/DrawModel.hpp"
 
 #include <array>
 #include <cstddef>
@@ -28,6 +28,8 @@ struct DiagnosticRasterizerOptions {
     std::array<std::uint8_t, 4> backgroundColor{9U, 14U, 22U, 255U};
     std::array<std::uint8_t, 4> fallbackColor{224U, 96U, 160U, 255U};
     std::size_t maximumPixels{16U * 1024U * 1024U};
+    std::size_t maximumMeshes{65'536U};
+    std::size_t maximumInstances{1'000'000U};
     std::size_t maximumVertices{3'000'000U};
     std::size_t maximumIndices{3'000'000U};
     std::size_t maximumMaterials{65'536U};
@@ -42,6 +44,7 @@ enum class DiagnosticRasterizerErrorCode : std::uint8_t {
     nonFiniteValue,
     invalidBounds,
     malformedMesh,
+    missingMesh,
     missingMaterial,
     duplicateMaterial,
     missingTexture,
@@ -68,6 +71,14 @@ private:
 // fallback color when a range has no primary texture/UVs. It performs no I/O.
 [[nodiscard]] assets::RgbaImage rasterizeDiagnostic(
     const DrawMeshPayload& mesh,
+    std::span<const DiagnosticTextureView> textures,
+    const DiagnosticRasterizerOptions& options = {});
+
+// Rasterizes every instance into one shared auto-fit projection and depth
+// buffer. The options' model transform is applied outside each instance
+// transform. rawScalar is intentionally absent from this runtime contract.
+[[nodiscard]] assets::RgbaImage rasterizeDiagnosticModel(
+    const DrawModelPayload& model,
     std::span<const DiagnosticTextureView> textures,
     const DiagnosticRasterizerOptions& options = {});
 

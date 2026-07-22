@@ -66,7 +66,9 @@ signatures; English contributes another 152 GTI files.
 All 286 CCF signatures have ordered root sections `0x1000`, `0x2000`,
 `0x3000`, and `0x4000`. Bounded direct-child indexing found 392 room records,
 10,385 materials, and two equal 9,328-record blueprint/placed-node tables; see
-`FMT-CCF` for the ID sets and per-file bounds.
+`FMT-CCF` for the ID sets and per-file bounds. Static analysis proves that the
+tables have independent prototype/placed-node roles; their equal physical
+counts do not imply an index mapping.
 
 The semantic material pass validates all 10,385 `0x2100` records. It exposes
 10,256 primary and 263 environment texture references; the loader-supported
@@ -88,10 +90,20 @@ without writing derived textures.
 The complete `0x3000` blueprint index contains those 6,995 meshes plus 2,130
 null and 203 light records. A read-only aggregate resolver validates all 215
 object `CCFF` paths and selectors: 90 mesh, 124 null, one no-selector, and 14
-case-folded matches. Selected meshes resolve 212 material uses and 210 texture
-edges without missing or ambiguous references. Applying the recovered
-`TEXU\\source.gti` rule then resolves all 210 edges to unique archive entries:
-zero missing roots, unsafe paths, missing files, or ambiguities.
+case-folded matches. The 9,328 prototypes form 2,062 roots and 7,266 edges with
+maximum depth 7 and zero missing parents, duplicate references, or cycles.
+
+Traversing every selected blueprint subtree covers 2,687 nodes and 1,858 mesh
+instances, resolving 2,842 material uses and 2,959 texture edges. Applying the
+recovered `TEXU\\source.gti` rule resolves all 2,959 edges to unique archive
+entries, with zero missing, invalid, or ambiguous graph, material, or texture
+dependencies. The earlier 212-material/210-texture census measured only
+directly selected mesh roots and remains a historical narrower-scope result.
+
+One private grouped-aircraft selection contains 46 nodes, 25 mesh instances,
+21 null groups, 663 triangles, and maximum subtree depth 3. Only these anonymous
+aggregates and the successful complete-assembly result are retained publicly;
+no asset name, path, hash, geometry, or image is recorded.
 
 All 299 selected `AfChunkContainer` files also pass exact root/child framing:
 7,376 chunks total. The semantic layer validates all 215 object definitions,

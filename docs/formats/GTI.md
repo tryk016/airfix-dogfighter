@@ -102,7 +102,7 @@ The decoder has exact fixtures for formats 3/4/6/7/8, multiple levels, palette
 and alpha behavior, declared and physical bounds, aggregate output limits, and
 trailing data. It preserves the original quarter-area source offsets while
 also reporting the nominal clamped dimensions required by a modern texture
-API. A private format-8 preview of `AcSpitfire.gti` is visually correct. Its
+API. A private format-8 aircraft texture preview is visually correct. Its
 format-4 paletted variant differs from format 8 by only mean absolute RGB
 1.70/1.56/1.69 (expected palette quantization), corroborating palette order and
 channel mapping. Preview files remain ignored because they are derived from

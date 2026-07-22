@@ -1,6 +1,6 @@
 # Backend-neutral render data and first-model diagnostic
 
-**State:** mesh payload and private CPU diagnostic implemented; Metal backend pending
+**State:** mesh/model payload and private CPU diagnostic implemented; Metal backend pending
 
 **Evidence:** `EV-20260721-030` through `EV-20260721-032`
 
@@ -57,9 +57,17 @@ claims a final V-origin decision from this one object. Private PPM/PNG outputs
 remain below ignored `artifacts/private-model-preview/` and are not committed.
 
 The aircraft object selected for the next visual milestone resolves to a null
-group rather than one mesh. Rendering the complete aircraft therefore depends
-on the placed-node hierarchy/transform contract; selecting an arbitrary child
-mesh would not be a faithful shortcut.
+group rather than one mesh. The bounded blueprint resolver now follows the
+exact selected-node-and-descendants `MakeInstance` contract. A multi-instance
+`DrawModelPayload` applies each authored world transform once and shares one
+auto-fit projection and z-buffer across all meshes.
+
+The resulting private aircraft diagnostic contains 46 nodes, 25 mesh
+instances, 663 triangles, 42 materials, and seven primary textures. It renders
+as one coherent assembly and repeats byte-identically. Its markings also
+distinguish the UV policies: preserved raw V is correct for this path, while
+the explicit flipped-V comparison is visibly wrong. The private outputs and
+hashes remain ignored and uncommitted.
 
 ## Metal handoff
 

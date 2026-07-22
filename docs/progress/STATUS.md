@@ -51,11 +51,12 @@
 - Recovered GTI pixel-size/alpha/palette semantics and CCF's inclusive
   six-byte nested chunks plus the four stable top-level scene sections.
 - Indexed every direct child in all 286 CCF scenes; material/room IDs are
-  stable, and the paired blueprint/placed-node tables have equal counts in
-  every file.
+  stable, and the independent blueprint/placed-node tables have equal physical
+  counts in every file but no assumed index mapping.
 - Implemented faithful base-level RGBA8 conversion for every observed GTI pixel
-  format and decoded all 3,990 variants; a private Spitfire preview confirms
-  channel/orientation correctness and the paletted/32-bit paths agree closely.
+  format and decoded all 3,990 variants; a private aircraft texture diagnostic
+  confirms channel/orientation correctness and the paletted/32-bit paths agree
+  closely.
 - Implemented bounded `AfChunkContainer` framing and object-definition parsing;
   all 299 selected containers/7,376 chunks and all 215 object definitions pass.
 - Implemented strict CCF material metadata parsing for all 10,385 records,
@@ -70,9 +71,10 @@
 - Added bounded UDSP logical-path lookup with legacy hash/case behavior, full
   collision comparison, traversal rejection, and explicit ambiguous results as
   the first dependency-resolver primitive.
-- Indexed all 9,328 CCF blueprints and resolved all 215 object `CCFF`/`MESH`
-  selectors through 90 meshes, 124 nulls, and one no-selector case; all selected
-  material references are complete and unambiguous.
+- Indexed all 9,328 CCF blueprints as 2,062 roots and 7,266 ordered edges with
+  maximum depth 7 and zero missing parents, duplicate references, or cycles.
+  Resolved all 215 object `CCFF`/`MESH` selectors through 90 mesh roots, 124 null
+  roots, and one no-selector case.
 - Implemented the portable deterministic input core: stable action IDs, Q15
   axes, bounded sequence ordering, multi-source arbitration, context releases,
   cancellation, lifecycle neutral gating, and default touch/controller/test
@@ -83,11 +85,18 @@
 - Implemented owned RGBA8 decoding for complete GTI mip chains. Corpus policy
   uploads all authored levels for 3,974 variants and uses base-plus-Metal
   generation for 16 legacy dimension anomalies, decoding 9,539 levels safely.
-- Recovered the engine's exact `TEXU\\source.gti` lookup rule and resolved all
-  210 selected object texture edges to unique archive entries.
+- Recovered the engine's exact `TEXU\\source.gti` lookup rule. Full selected
+  subtrees cover 2,687 blueprint nodes, 1,858 mesh instances, 2,842 material
+  uses, and 2,959 uniquely resolved texture edges with no dependency errors.
 - Implemented a deterministic seam-safe draw-mesh payload plus bounded CPU
   rasterizer. A private 111-triangle textured model renders correctly in both
   explicit V policies; generated PPM/PNG files remain ignored and outside Git.
+- Confirmed that object loading skips the independent `0x4000` placed table,
+  selects a `0x3000` blueprint by name, and recursively instances descendants.
+  The bounded graph resolver and multi-instance diagnostic render a private
+  grouped aircraft containing 46 nodes, 25 mesh instances, 21 null groups, 663
+  triangles, and maximum depth 3. Raw V preserves its markings; explicit V flip
+  does not. Private outputs remain ignored and outside Git.
 
 ## Confirmed
 
@@ -116,9 +125,9 @@
 
 ## Next
 
-1. Recover placed-node hierarchy/transform semantics to assemble and render a
-   complete grouped aircraft; its object selector correctly resolves to a null
-   group rather than one arbitrary mesh.
+1. Derive parent-relative local transforms for animation and decode the
+   independent `0x4000` placed graph needed for a faithful first room; static
+   grouped-aircraft rendering from authored world transforms is complete.
 2. Implement AFPACK manifest semantic checks and the transactional iOS import
    service; the converter's no-music configuration is now tested.
 3. Connect the draw payload and texture upload policy to the Metal shell, first

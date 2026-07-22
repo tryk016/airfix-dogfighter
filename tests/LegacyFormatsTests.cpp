@@ -232,24 +232,67 @@ struct MeshCcfOptions {
     const std::uint16_t id,
     const std::string& name,
     const std::string& prefix,
-    const std::uint32_t reference) {
+    const std::uint32_t reference,
+    const std::uint32_t auxiliaryReference,
+    const std::uint32_t parentReference,
+    const airfix::assets::CcfVector3& position,
+    const float rawScalar,
+    const std::array<airfix::assets::CcfVector3, 3>& orientation,
+    const std::size_t retainedFixedTailBytes =
+        std::numeric_limits<std::size_t>::max()) {
     Bytes payload = ccfNamed(name, prefix);
+    const auto nameBytes = payload.size();
     appendU32(payload, reference);
-    appendU32(payload, 0U);
-    appendU32(payload, 0U);
-    appendBytes(payload, ccfVector3(0xF040U, 0.0F, 0.0F, 0.0F));
-    appendFloat(payload, 1.0F);
-    Bytes matrixPayload = ccfVector3(0xF040U, 1.0F, 0.0F, 0.0F);
-    appendBytes(matrixPayload, ccfVector3(0xF040U, 0.0F, 1.0F, 0.0F));
-    appendBytes(matrixPayload, ccfVector3(0xF040U, 0.0F, 0.0F, 1.0F));
+    appendU32(payload, auxiliaryReference);
+    appendU32(payload, parentReference);
+    appendBytes(payload, ccfVector3(
+        0xF040U, position[0], position[1], position[2]));
+    appendFloat(payload, rawScalar);
+    Bytes matrixPayload = ccfVector3(
+        0xF040U, orientation[0][0], orientation[0][1], orientation[0][2]);
+    appendBytes(matrixPayload, ccfVector3(
+        0xF040U, orientation[1][0], orientation[1][1], orientation[1][2]));
+    appendBytes(matrixPayload, ccfVector3(
+        0xF040U, orientation[2][0], orientation[2][1], orientation[2][2]));
     appendBytes(payload, ccfChunk(0xF070U, ccfChunk(0xF050U, matrixPayload)));
+    if (retainedFixedTailBytes < payload.size() - nameBytes) {
+        payload.resize(nameBytes + retainedFixedTailBytes);
+    }
     return ccfChunk(id, payload);
 }
 
 [[nodiscard]] Bytes makeNonMeshBlueprintCcf() {
-    Bytes sectionPayload = makeNonMeshBlueprint(0x4200U, "Null", "House", 11U);
-    appendBytes(sectionPayload, makeNonMeshBlueprint(0x4300U, "Light", "House", 12U));
+    const std::array<airfix::assets::CcfVector3, 3> nullOrientation{{
+        {0.0F, 1.0F, 0.0F},
+        {1.0F, 0.0F, 0.0F},
+        {0.0F, 0.0F, -1.0F},
+    }};
+    const std::array<airfix::assets::CcfVector3, 3> lightOrientation{{
+        {0.5F, 0.0F, 0.0F},
+        {0.0F, 0.5F, 0.0F},
+        {0.0F, 0.0F, 0.5F},
+    }};
+    Bytes sectionPayload = makeNonMeshBlueprint(
+        0x4200U, "Null", "House", 11U, 101U, 201U,
+        {1.0F, 2.0F, 3.0F}, 4.0F, nullOrientation);
+    appendBytes(sectionPayload, makeNonMeshBlueprint(
+        0x4300U, "Light", "House", 12U, 102U, 202U,
+        {-1.0F, -2.0F, -3.0F}, 0.5F, lightOrientation));
     return ccfDocument(ccfChunk(0x3000U, sectionPayload));
+}
+
+[[nodiscard]] Bytes makeTruncatedNonMeshBlueprintCcf(
+    const std::uint16_t id,
+    const std::size_t retainedFixedTailBytes) {
+    const std::array<airfix::assets::CcfVector3, 3> orientation{{
+        {1.0F, 0.0F, 0.0F},
+        {0.0F, 1.0F, 0.0F},
+        {0.0F, 0.0F, 1.0F},
+    }};
+    return ccfDocument(ccfChunk(0x3000U, makeNonMeshBlueprint(
+        id, id == 0x4200U ? "Null" : "Light", "House", 11U, 101U, 201U,
+        {1.0F, 2.0F, 3.0F}, 4.0F, orientation,
+        retainedFixedTailBytes)));
 }
 
 void require(const bool condition, const std::string& message) {
@@ -453,8 +496,13 @@ void testCcf() {
 
     require(meshMetadata.blueprints.size() == 1U &&
         meshMetadata.blueprints[0].kind == airfix::assets::CcfBlueprintKind::mesh &&
-        meshMetadata.blueprints[0].meshIndex == 0U,
-        "CCF mesh blueprint index mismatch");
+        meshMetadata.blueprints[0].meshIndex == 0U &&
+        !meshMetadata.blueprints[0].auxiliaryReference.has_value() &&
+        meshMetadata.blueprints[0].parentReference == mesh.linkReference &&
+        meshMetadata.blueprints[0].authoredTransform.position == mesh.position &&
+        meshMetadata.blueprints[0].authoredTransform.rawScalar == mesh.scalar &&
+        meshMetadata.blueprints[0].authoredTransform.orientation == mesh.orientation,
+        "CCF mesh blueprint metadata mismatch");
     const auto nonMeshMetadata = airfix::assets::parseCcf(makeNonMeshBlueprintCcf());
     require(nonMeshMetadata.meshes.empty(), "unexpected geometry for non-mesh blueprints");
     require(nonMeshMetadata.blueprints.size() == 2U,
@@ -463,13 +511,48 @@ void testCcf() {
         airfix::assets::CcfBlueprintKind::nullNode &&
         nonMeshMetadata.blueprints[0].name == "Null" &&
         nonMeshMetadata.blueprints[0].reference == 11U &&
+        nonMeshMetadata.blueprints[0].auxiliaryReference == 101U &&
+        nonMeshMetadata.blueprints[0].parentReference == 201U &&
+        nonMeshMetadata.blueprints[0].authoredTransform.position ==
+            airfix::assets::CcfVector3{1.0F, 2.0F, 3.0F} &&
+        nonMeshMetadata.blueprints[0].authoredTransform.rawScalar == 4.0F &&
+        nonMeshMetadata.blueprints[0].authoredTransform.orientation ==
+            std::array<airfix::assets::CcfVector3, 3>{{
+                {0.0F, 1.0F, 0.0F},
+                {1.0F, 0.0F, 0.0F},
+                {0.0F, 0.0F, -1.0F},
+            }} &&
         !nonMeshMetadata.blueprints[0].meshIndex.has_value(),
         "CCF null blueprint mismatch");
     require(nonMeshMetadata.blueprints[1].kind ==
         airfix::assets::CcfBlueprintKind::light &&
         nonMeshMetadata.blueprints[1].name == "Light" &&
-        nonMeshMetadata.blueprints[1].reference == 12U,
+        nonMeshMetadata.blueprints[1].reference == 12U &&
+        nonMeshMetadata.blueprints[1].auxiliaryReference == 102U &&
+        nonMeshMetadata.blueprints[1].parentReference == 202U &&
+        nonMeshMetadata.blueprints[1].authoredTransform.position ==
+            airfix::assets::CcfVector3{-1.0F, -2.0F, -3.0F} &&
+        nonMeshMetadata.blueprints[1].authoredTransform.rawScalar == 0.5F &&
+        nonMeshMetadata.blueprints[1].authoredTransform.orientation ==
+            std::array<airfix::assets::CcfVector3, 3>{{
+                {0.5F, 0.0F, 0.0F},
+                {0.0F, 0.5F, 0.0F},
+                {0.0F, 0.0F, 0.5F},
+            }},
         "CCF light blueprint mismatch");
+
+    for (const auto blueprintId : {0x4200U, 0x4300U}) {
+        for (const auto retainedFixedTailBytes : {
+                11U,
+                12U + 17U,
+                12U + 18U + 3U,
+                12U + 18U + 4U + 65U,
+            }) {
+            const auto truncated = makeTruncatedNonMeshBlueprintCcf(
+                static_cast<std::uint16_t>(blueprintId), retainedFixedTailBytes);
+            requireParseError([&] { (void)airfix::assets::parseCcf(truncated); });
+        }
+    }
 
     Bytes descriptorBombPayload;
     descriptorBombPayload.reserve(250'000U * 6U);

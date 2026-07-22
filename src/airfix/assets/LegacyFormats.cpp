@@ -734,8 +734,12 @@ void validateCcfMaterialVectors(
     requireRange(cursor, 12U, blueprintEnd, "CCF non-mesh blueprint references");
     const auto reference = readU32(
         bytes, static_cast<std::size_t>(cursor), "CCF non-mesh blueprint reference");
-    // The next two u32 values are retained in the source chunk. The loader
-    // ignores the first and resolves the second as a parent link later.
+    const auto auxiliaryReference = readU32(
+        bytes, static_cast<std::size_t>(cursor + 4U),
+        "CCF non-mesh blueprint auxiliary reference");
+    const auto parentReference = readU32(
+        bytes, static_cast<std::size_t>(cursor + 8U),
+        "CCF non-mesh blueprint parent reference");
     cursor = checkedAdd(cursor, 12U, "CCF non-mesh blueprint position");
 
     requireRange(cursor, 18U, blueprintEnd, "CCF non-mesh blueprint position");
@@ -747,11 +751,11 @@ void validateCcfMaterialVectors(
         .offset = cursor,
         .directChildren = {},
     };
-    (void)parseCcfVector3(
+    const auto position = parseCcfVector3(
         bytes, positionChunk, 0xF040U, "CCF non-mesh blueprint position");
     cursor = checkedAdd(cursor, positionChunk.totalSize, "CCF non-mesh blueprint scalar");
     requireRange(cursor, 4U, blueprintEnd, "CCF non-mesh blueprint scalar");
-    (void)readFloat(
+    const auto rawScalar = readFloat(
         bytes, static_cast<std::size_t>(cursor), "CCF non-mesh blueprint scalar");
     cursor = checkedAdd(cursor, 4U, "CCF non-mesh blueprint orientation");
 
@@ -764,7 +768,7 @@ void validateCcfMaterialVectors(
         .offset = cursor,
         .directChildren = {},
     };
-    (void)parseCcfOrientation(bytes, orientationChunk, budget);
+    const auto orientation = parseCcfOrientation(bytes, orientationChunk, budget);
     cursor = checkedAdd(
         cursor, orientationChunk.totalSize, "CCF non-mesh blueprint children");
     blueprint.directChildren = parseCcfChunkSequence(
@@ -780,6 +784,13 @@ void validateCcfMaterialVectors(
         .name = name.name,
         .prefix = name.prefix,
         .reference = reference,
+        .auxiliaryReference = auxiliaryReference,
+        .parentReference = parentReference,
+        .authoredTransform = {
+            .position = position,
+            .rawScalar = rawScalar,
+            .orientation = orientation,
+        },
         .meshIndex = std::nullopt,
         .offset = blueprint.offset,
     };
@@ -1247,6 +1258,13 @@ CcfMetadata parseCcf(const std::span<const std::uint8_t> bytes) {
                         .name = parsed.name,
                         .prefix = parsed.prefix,
                         .reference = parsed.reference,
+                        .auxiliaryReference = std::nullopt,
+                        .parentReference = parsed.linkReference,
+                        .authoredTransform = {
+                            .position = parsed.position,
+                            .rawScalar = parsed.scalar,
+                            .orientation = parsed.orientation,
+                        },
                         .meshIndex = metadata.meshes.size(),
                         .offset = parsed.offset,
                     });

@@ -199,7 +199,7 @@ superseded evidence.
   exact synthetic channel/alpha fixtures and palette-index bounds.
 - Inventory decoding exercised all 3,990 GTI variants in Resource/English with
   caller-bounded per-entry memory and no persistent extraction.
-- Added a private `gti-preview` diagnostic. A 256x128 Spitfire frontend image
+- Added a private `gti-preview` diagnostic. A 256x128 aircraft frontend image
   decoded with correct orientation/colors; the paired format-4 and format-8
   paths differ by mean absolute RGB 1.70/1.56/1.69, consistent with expected
   palette quantization.
@@ -408,9 +408,9 @@ superseded evidence.
   `GtTextureGroup::AddTexture` at RVAs `0x00046BB0`/`0x00046C30`. Ordinary CCF
   material textures use exactly `TEXU\\source.gti`; `.tga` is a separate
   boolean path, not a fallback guessed by the portable resolver.
-- Added typed bounded lookup from all object texture edges to UDSP entries.
-  Read-only validation resolves 210/210 edges uniquely, with zero missing
-  roots, unsafe paths, missing files, or ambiguities.
+- Added typed bounded lookup from direct selected-mesh-root texture edges to
+  UDSP entries. Read-only validation resolves 210/210 edges uniquely, with zero
+  missing roots, unsafe paths, missing files, or ambiguities.
 - Added deterministic seam splitting for per-corner UVs/flat normals, stable
   first-use materials, contiguous source-order draw ranges, 32-bit indices,
   local bounds, and aggregate limits in the backend-neutral draw payload.
@@ -420,6 +420,43 @@ superseded evidence.
   primary textures. Raw-V and explicit flipped-V previews both remain under
   ignored `artifacts/private-model-preview/`; no private image or hash is in Git.
 - The selected aircraft object resolves to a null group, confirming that a
-  faithful complete aircraft requires the placed-node hierarchy and transforms
+  faithful complete aircraft requires its blueprint hierarchy and transforms
   rather than choosing an arbitrary child mesh. This is the next asset task,
   not a MacBook blocker.
+- Commit `ee6229f` passed portable CI run `29911160578` on Ubuntu, Windows, and
+  ARM64 macOS plus unsigned iOS run `29911160555` for `iphoneos` and
+  `iphonesimulator` on Xcode 26.6.
+
+## 2026-07-21 — blueprint hierarchy and recursive instancing
+
+- `EV-20260721-033`: static analysis separates the `0x3000` blueprint/prototype
+  graph from the independent `0x4000` already-placed scene graph. Equal table
+  counts do not establish an index mapping between them.
+- The 9,328 blueprint nodes resolve into 2,062 roots and 7,266 ordered parent
+  edges with maximum depth 7. Full-corpus validation finds zero missing parents,
+  duplicate references, or cycles.
+- Blueprint transforms are authored in world space. `CcSrtNode::SetParent` at
+  RVA `0x0000E0F0` preserves the child's world relation while deriving its
+  parent-relative local transform; `GetWorldRelation` at `0x0000E440` composes
+  parent first, using `CcSRT::InheritParentSRT` at `0x0002BFD0`.
+- The object path loads its CCF with flag `0x2000`, suppressing `0x4000`, then
+  selects a `0x3000` blueprint by case-folded `MESH` name and calls
+  `CcBlueprint::MakeInstance(..., true)` at RVA `0x000244F0`. This instances the
+  selected node and descendants only; a null root is a valid transform group.
+- Complete read-only traversal of all 215 selectors covers 2,687 selected
+  blueprint nodes, 1,858 mesh instances, 2,842 material uses, and 2,959 texture
+  edges. All 2,959 texture paths resolve uniquely with zero missing, invalid, or
+  ambiguous graph, material, or texture dependencies. Root selection remains
+  90 mesh, 124 null, and one no-selector case. The prior 212/210 counts covered
+  directly selected mesh roots only.
+- A private grouped-aircraft diagnostic contains 46 nodes, 25 mesh instances,
+  21 null groups, 663 triangles, and maximum subtree depth 3. Only anonymous
+  aggregates are public; no name, path, hash, geometry, or image was retained.
+- Implemented an iterative, depth-bounded graph resolver, complete-subtree
+  material/texture resolution, a multi-instance draw-model payload, and one
+  shared auto-fit/z-buffer diagnostic. The private 46-node aircraft renders as
+  one coherent assembly; a repeat is byte-identical and exclusive output
+  creation refuses overwrite.
+- Visual comparison locks raw V as the current CCF/GTI mapping policy for this
+  path: the explicit flipped-V variant corrupts aircraft markings. Both private
+  variants remain ignored and outside Git.
