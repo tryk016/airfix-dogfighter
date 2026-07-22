@@ -3,7 +3,6 @@
 #import "AirfixGameViewController.h"
 
 @interface AirfixAppDelegate ()
-@property(nonatomic, strong) UIWindow* window;
 @property(nonatomic, strong) AirfixGameViewController* gameViewController;
 @end
 
