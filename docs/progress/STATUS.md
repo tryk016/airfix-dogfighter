@@ -56,6 +56,8 @@
 - Implemented faithful base-level RGBA8 conversion for every observed GTI pixel
   format and decoded all 3,990 variants; a private Spitfire preview confirms
   channel/orientation correctness and the paletted/32-bit paths agree closely.
+- Implemented bounded `AfChunkContainer` framing and object-definition parsing;
+  all 299 selected containers/7,376 chunks and all 215 object definitions pass.
 
 ## Confirmed
 
@@ -84,8 +86,8 @@
 
 ## Next
 
-1. Implement the generic `AfChunkContainer` and semantic object dependencies.
-2. Index CCF material/mesh chunks and emit the first model diagnostic.
+1. Index CCF material/mesh chunks and emit the first model diagnostic.
+2. Resolve object `CCFF`/`MESH` dependencies into the CCF index.
 3. Extend GTI RGBA conversion across every mip level and define Metal upload.
 4. Add a tested no-music asset configuration because the original CD/audio is
    unavailable.

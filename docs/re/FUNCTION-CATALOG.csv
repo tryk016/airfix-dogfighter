@@ -24,3 +24,9 @@ FN-CC-000401B0,CC,000401B0,?IsValid@GtImage@@QAE_NPAD@Z,GtImage::IsValid,image_l
 FN-CC-00040240,CC,00040240,?LoadAs@GtImage@@QAE_NPADW4GT_FMT@@_N2@Z,GtImage::LoadAs,image_loading,in_progress,3,,,EV-20260721-018,,,Selects Imag format reads palette and computed mip bytes with fallback conversion
 FN-CC-00040C40,CC,00040C40,?GetPixelSize@GtImage@@QAEHXZ,GtImage::GetPixelSize,image_loading,implemented,3,,,EV-20260721-018,,,Maps GT_FMT to bits per pixel
 FN-CC-00040CC0,CC,00040CC0,?GetImageSize@GtImage@@QAEHH@Z,GtImage::GetImageSize,image_loading,implemented,3,FN-CC-00040C40,,EV-20260721-018,,,Computes quarter-area mip byte counts
+FN-AFENGINE-00038C30,AFENGINE,00038C30,,AfChunkContainer::GetChunkByID,asset_io,understood,3,,,EV-20260721-022,,,Returns ordered matching chunks and permits duplicate IDs
+FN-AFENGINE-00038C80,AFENGINE,00038C80,,AfChunkContainer::CountChunksByID,asset_io,understood,3,,,EV-20260721-022,,,Counts repeated FourCC child chunks
+FN-AFENGINE-00038CD0,AFENGINE,00038CD0,,AfChunkContainer::Read,asset_io,implemented,3,,,EV-20260721-022,,src/airfix/assets/AfChunkContainer.cpp,Checks root size then consumes exact 8-byte-header children
+FN-AFENGINE-00038ED0,AFENGINE,00038ED0,,AfChunkContainer::GetBuffer,asset_io,understood,3,,,EV-20260721-022,,,Serializes root and child payload sizes excluding headers
+FN-AFENGINE-0002D6F0,AFENGINE,0002D6F0,,NfMission::LoadLevel,mission_loading,in_progress,3,,,EV-20260721-022,,,Resolves world object CCF texture and mesh-blueprint dependencies
+FN-AFENGINE-00039C30,AFENGINE,00039C30,,AfPathRecord::Load,path_loading,understood,3,,,EV-20260721-022,,,Reads PPOS and quantized 12-byte PDAT records

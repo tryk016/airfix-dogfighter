@@ -68,6 +68,11 @@ All 286 CCF signatures have ordered root sections `0x1000`, `0x2000`,
 10,385 materials, and two equal 9,328-record blueprint/placed-node tables; see
 `FMT-CCF` for the ID sets and per-file bounds.
 
+All 299 selected `AfChunkContainer` files also pass exact root/child framing:
+7,376 chunks total. The semantic layer validates all 215 object definitions,
+including the observed optional category/nationality/mesh fields and exact
+56 `GRAV` plus 10 `HIDE` records; see `FMT-AFCHUNK`.
+
 ## Port priority derived from the corpus
 
 1. GTI metadata and pixel conversion — required for every visible scene/UI.

@@ -237,3 +237,17 @@ superseded evidence.
 - The repository remains public and therefore supports unsigned CI only.
   Signing credentials, profiles, device identifiers, signed IPA, and AFPACK
   data remain outside GitHub until a private signing boundary is selected.
+
+## 2026-07-21 — AfChunkContainer and object dependencies
+
+- `EV-20260721-022`: recovered the separate FourCC/u32-size container used by
+  world, level, object, briefing, and path files. Child sizes exclude their
+  eight-byte headers; duplicate IDs, zero payloads, and odd sizes are valid.
+- A bounded portable parser validated all 299 selected files and 7,376 chunks.
+  Added a semantic parser for all 215 `MODL`/`OBJE` definitions, preserving raw
+  localization references and unknown chunks while enforcing exact strings,
+  12-byte `GRAV`, zero-byte `HIDE`, and singleton known fields.
+- Ghidra established that object `MESH` is the blueprint name resolved inside
+  the referenced `CCFF`; only `PuKeyBrown.object` omits it. The community object
+  manual's example lengths and counts agree with the corpus, while its claim
+  that `OBJE` lacks `CATG` does not (111 of 142 have it).

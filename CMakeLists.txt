@@ -68,6 +68,7 @@ else()
 endif()
 
 add_library(airfix_assets
+    src/airfix/assets/AfChunkContainer.cpp
     src/airfix/assets/LegacyFormats.cpp
 )
 add_library(airfix::assets ALIAS airfix_assets)
@@ -135,6 +136,10 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_asset_tests tests/LegacyFormatsTests.cpp)
     target_link_libraries(airfix_asset_tests PRIVATE airfix::assets)
     add_test(NAME airfix_asset_tests COMMAND airfix_asset_tests)
+
+    add_executable(airfix_afchunk_tests tests/AfChunkContainerTests.cpp)
+    target_link_libraries(airfix_afchunk_tests PRIVATE airfix::assets)
+    add_test(NAME airfix_afchunk_tests COMMAND airfix_afchunk_tests)
 
     add_executable(airfix_runtime_tests tests/AppSessionTests.cpp)
     target_link_libraries(airfix_runtime_tests PRIVATE airfix::runtime)

@@ -1,4 +1,5 @@
 #include "airfix/archive/UdspArchive.hpp"
+#include "airfix/assets/AfChunkContainer.hpp"
 #include "airfix/assets/LegacyFormats.hpp"
 
 #include <algorithm>
@@ -31,6 +32,26 @@ namespace {
         throw std::runtime_error("cannot read archive: " + path);
     }
     return bytes;
+}
+
+[[nodiscard]] bool isAfChunkRoot(const std::uint32_t id) noexcept {
+    return id == airfix::assets::kAfObjectRoot ||
+        id == airfix::assets::kAfModelRoot ||
+        id == airfix::assets::kAfHouseRoot ||
+        id == airfix::assets::kAfFullHouseRoot ||
+        id == airfix::assets::kAfBriefingRoot ||
+        id == airfix::assets::kAfPathRoot;
+}
+
+[[nodiscard]] std::string fourCcText(const std::uint32_t id) {
+    std::string text(4U, '?');
+    for (std::size_t index = 0U; index < text.size(); ++index) {
+        const auto value = static_cast<std::uint8_t>(id >> (index * 8U));
+        if (value >= 0x20U && value <= 0x7EU) {
+            text[index] = static_cast<char>(value);
+        }
+    }
+    return text;
 }
 
 } // namespace
@@ -168,6 +189,34 @@ int main(const int argc, const char* const* argv) {
                                         firstId = false;
                                     }
                                     detail << ']';
+                                }
+                            }
+                            else if (isAfChunkRoot(magic)) {
+                                const auto data = airfix::udsp::readFile(
+                                    archivePath, archive, file, kAssetReadLimit);
+                                constexpr std::size_t kAfChunkLimit = 100'000U;
+                                const auto container = airfix::assets::parseAfChunkContainer(
+                                    data, kAfChunkLimit);
+                                detail << "AFCHUNK:root=" << fourCcText(container.rootId)
+                                       << ":chunks=" << container.chunks.size();
+                                if (magic == airfix::assets::kAfObjectRoot ||
+                                    magic == airfix::assets::kAfModelRoot) {
+                                    const auto definition =
+                                        airfix::assets::parseObjectDefinition(data);
+                                    detail << ":object:type=" << definition.type.has_value()
+                                           << ",category="
+                                           << definition.category.has_value()
+                                           << ",name=" << definition.name.has_value()
+                                           << ",nationality="
+                                           << definition.nationality.has_value()
+                                           << ",texture="
+                                           << definition.textureRoot.has_value()
+                                           << ",ccf=" << definition.ccfPath.has_value()
+                                           << ",mesh=" << definition.meshName.has_value()
+                                           << ",gravity=" << definition.gravity.has_value()
+                                           << ",hidden=" << definition.hidden
+                                           << ",unknown="
+                                           << definition.unknownChunks.size();
                                 }
                             }
                         }
