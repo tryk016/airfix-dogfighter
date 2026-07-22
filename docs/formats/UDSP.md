@@ -107,6 +107,28 @@ Arithmetic wraps modulo `2^32`. Examples:
 - `Game` and `GAME` → `0x00000E5E`;
 - Windows-1252 bytes for `Maskinegevær.gti` → `0x0000A7DD`.
 
+## Logical path lookup
+
+`EV-20260721-026` implements the original two-stage lookup without treating an
+archive name as a host-filesystem path:
+
+1. normalize `/` to `\` and split the final filename from its directory;
+2. binary-search the sorted directory table by the legacy hash;
+3. compare every equal-hash candidate with bytewise ASCII-only case folding;
+4. binary-search the selected directory's file range and repeat the full
+   equal-hash comparison for the filename.
+
+Bytes at or above `0x80` are compared as legacy single-byte values; locale and
+Unicode case folding are not used. Hash equality alone never proves a match.
+The result is explicitly `notFound`, `unique`, or `ambiguous`, so duplicate
+archive entries and future layered-package conflicts cannot silently select the
+first record.
+
+Lookup accepts relative logical names only. It rejects empty/oversized names,
+control bytes, drive/colon and leading separators, empty/trailing components,
+and `.`/`..`. It performs no host canonicalization, extension inference, or
+fallback search-root policy; those belong to the higher-level asset resolver.
+
 ## Compression stream
 
 Compressed file payloads are a sequence of blocks with no separate stream
@@ -140,7 +162,8 @@ every file record is referenced once, with no gaps or overlaps.
 ## Portable implementation
 
 - Library: `src/airfix/archive/UdspArchive.*`
-- Read-only CLI: `udsp-list [--summary|--verify|--inventory] <archive.up>`
+- Read-only CLI:
+  `udsp-list [--summary|--verify|--inventory|--resolve-objects] <archive.up>`
 - Synthetic tests: `tests/UdspArchiveTests.cpp`
 
 `Archive::open` performs bounded random-access I/O: it reads the 32-byte header,
@@ -160,6 +183,10 @@ classification. `readFile` applies a caller-provided decoded-size limit and is
 used one entry at a time by format tooling. The inventory path therefore never
 holds the full archive or all decoded assets in memory.
 
+`Archive::lookup` and `normalizeLogicalPath` provide bounded, hash-compatible
+metadata lookup. Synthetic tests cover mixed slash/case input, missing records,
+unsafe components, path limits, and ambiguous duplicate records.
+
 ## Security requirements
 
 - Treat all sizes, offsets, names, terminators, hashes, and ratios as untrusted.
@@ -167,8 +194,9 @@ holds the full archive or all decoded assets in memory.
 - Reject data spans outside `[0x20, directoryOffset)`.
 - Reject unknown flags/opcodes and inconsistent output sizes.
 - Apply a configurable decompressed-output limit before allocation.
-- Listing is read-only. A future extractor must reject absolute paths, drive
-  prefixes, `..`, and output-root escapes.
+- Logical lookup rejects absolute paths, drive prefixes, empty components, and
+  `.`/`..`. A future extractor must additionally enforce the resolved output
+  root before writing.
 - Keep empty, truncated, oversized, bad-hash, bad-range, traversal, and
   decompression-bomb cases in synthetic tests.
 

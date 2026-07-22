@@ -56,6 +56,18 @@ struct FileEntry {
     }
 };
 
+enum class LookupStatus : std::uint8_t {
+    notFound,
+    unique,
+    ambiguous,
+};
+
+struct FileLookupResult {
+    LookupStatus status{LookupStatus::notFound};
+    std::size_t directoryIndex{};
+    std::size_t fileIndex{};
+};
+
 class Archive final {
 public:
     [[nodiscard]] static Archive parse(std::span<const std::uint8_t> bytes);
@@ -72,6 +84,9 @@ public:
     [[nodiscard]] const std::vector<FileEntry>& files() const noexcept { return files_; }
     [[nodiscard]] std::uint64_t archiveSize() const noexcept { return archiveSize_; }
     [[nodiscard]] std::uint64_t backingOffset() const noexcept { return backingOffset_; }
+    [[nodiscard]] FileLookupResult lookup(
+        std::string_view logicalPath,
+        std::size_t pathLimit = 4096U) const;
 
 private:
     [[nodiscard]] static Archive parseMetadata(
@@ -89,6 +104,9 @@ private:
 };
 
 [[nodiscard]] std::uint32_t nameHash(std::string_view name) noexcept;
+[[nodiscard]] std::string normalizeLogicalPath(
+    std::string_view logicalPath,
+    std::size_t pathLimit = 4096U);
 
 [[nodiscard]] std::vector<std::uint8_t> decompress(
     std::span<const std::uint8_t> encoded,

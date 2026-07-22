@@ -87,6 +87,14 @@ void appendBytes(Bytes& destination, const Bytes& source) {
     return ccfChunk(0xF010U, payload);
 }
 
+[[nodiscard]] Bytes ccfNamed(
+    const std::string& name,
+    const std::string& prefix) {
+    Bytes payload = ccfString(name);
+    appendBytes(payload, ccfString(prefix));
+    return ccfChunk(0xF010U, payload);
+}
+
 struct MaterialCcfOptions {
     bool includeScalars{true};
     bool duplicatePrimaryTexture{};
@@ -162,9 +170,7 @@ struct MeshCcfOptions {
 };
 
 [[nodiscard]] Bytes makeMeshCcf(const MeshCcfOptions& options = {}) {
-    Bytes namePayload = ccfString("Mesh");
-    appendBytes(namePayload, ccfString("House"));
-    Bytes meshPayload = ccfChunk(0xF010U, namePayload);
+    Bytes meshPayload = ccfNamed("Mesh", "House");
     appendU32(meshPayload, 7U);
     meshPayload.push_back(1U);
     meshPayload.push_back(0U);
@@ -220,6 +226,30 @@ struct MeshCcfOptions {
         appendBytes(meshPayload, ccfChunk(0x4999U, {}));
     }
     return ccfDocument(ccfChunk(0x3000U, ccfChunk(0x3100U, meshPayload)));
+}
+
+[[nodiscard]] Bytes makeNonMeshBlueprint(
+    const std::uint16_t id,
+    const std::string& name,
+    const std::string& prefix,
+    const std::uint32_t reference) {
+    Bytes payload = ccfNamed(name, prefix);
+    appendU32(payload, reference);
+    appendU32(payload, 0U);
+    appendU32(payload, 0U);
+    appendBytes(payload, ccfVector3(0xF040U, 0.0F, 0.0F, 0.0F));
+    appendFloat(payload, 1.0F);
+    Bytes matrixPayload = ccfVector3(0xF040U, 1.0F, 0.0F, 0.0F);
+    appendBytes(matrixPayload, ccfVector3(0xF040U, 0.0F, 1.0F, 0.0F));
+    appendBytes(matrixPayload, ccfVector3(0xF040U, 0.0F, 0.0F, 1.0F));
+    appendBytes(payload, ccfChunk(0xF070U, ccfChunk(0xF050U, matrixPayload)));
+    return ccfChunk(id, payload);
+}
+
+[[nodiscard]] Bytes makeNonMeshBlueprintCcf() {
+    Bytes sectionPayload = makeNonMeshBlueprint(0x4200U, "Null", "House", 11U);
+    appendBytes(sectionPayload, makeNonMeshBlueprint(0x4300U, "Light", "House", 12U));
+    return ccfDocument(ccfChunk(0x3000U, sectionPayload));
 }
 
 void require(const bool condition, const std::string& message) {
@@ -420,6 +450,26 @@ void testCcf() {
         makeMeshCcf({.includePaintExtensionTail = true}));
     require(extendedPaint.meshes[0].triangles[0].paint->colors.size() == 3U,
         "CCF known paint extension tail was rejected");
+
+    require(meshMetadata.blueprints.size() == 1U &&
+        meshMetadata.blueprints[0].kind == airfix::assets::CcfBlueprintKind::mesh &&
+        meshMetadata.blueprints[0].meshIndex == 0U,
+        "CCF mesh blueprint index mismatch");
+    const auto nonMeshMetadata = airfix::assets::parseCcf(makeNonMeshBlueprintCcf());
+    require(nonMeshMetadata.meshes.empty(), "unexpected geometry for non-mesh blueprints");
+    require(nonMeshMetadata.blueprints.size() == 2U,
+        "CCF non-mesh blueprint count mismatch");
+    require(nonMeshMetadata.blueprints[0].kind ==
+        airfix::assets::CcfBlueprintKind::nullNode &&
+        nonMeshMetadata.blueprints[0].name == "Null" &&
+        nonMeshMetadata.blueprints[0].reference == 11U &&
+        !nonMeshMetadata.blueprints[0].meshIndex.has_value(),
+        "CCF null blueprint mismatch");
+    require(nonMeshMetadata.blueprints[1].kind ==
+        airfix::assets::CcfBlueprintKind::light &&
+        nonMeshMetadata.blueprints[1].name == "Light" &&
+        nonMeshMetadata.blueprints[1].reference == 12U,
+        "CCF light blueprint mismatch");
 
     Bytes descriptorBombPayload;
     descriptorBombPayload.reserve(250'000U * 6U);

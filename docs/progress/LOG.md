@@ -304,3 +304,31 @@ superseded evidence.
   budget.
 - Diagnostic inventory output contains counts only. It neither extracts nor
   writes mesh names, positions, indices, textures, or other proprietary data.
+- Commit `3c50eb8` passed portable CI run `29902026372` and unsigned iOS run
+  `29902026361` on the public, data-less build boundary.
+
+## 2026-07-21 — bounded UDSP logical lookup
+
+- `EV-20260721-026`: implemented logical path normalization and the original
+  directory-then-file-range hash lookup, followed by full bytewise legacy
+  case-insensitive comparison for every equal-hash candidate.
+- Lookup returns `notFound`, `unique`, or `ambiguous`; it never accepts hash
+  equality alone or silently selects a duplicate. Mixed slash/case, missing,
+  duplicate, length-limit, absolute/drive, empty-component, and traversal cases
+  have synthetic fixtures.
+- The API resolves archive metadata only. It performs no host-filesystem
+  canonicalization, extension guessing, package-layer precedence, or writes.
+
+## 2026-07-21 — object-to-CCF dependency resolution
+
+- `EV-20260721-027`: added the common bounded `0x4200` null/`0x4300` light
+  blueprint prefix and an ordered 9,328-entry CCF blueprint index, then joined
+  object `CCFF`/`MESH` through CCF-local names and triangle material references.
+- `udsp-list --resolve-objects` validates all 215 definitions directly against
+  `Resource.up`: 90 select meshes, 124 nulls, one has no selector, and 14 require
+  ASCII case folding. All 215 CCF paths resolve uniquely.
+- The 90 selected meshes resolve 212 stable per-object material uses and 210
+  typed primary/secondary/environment texture edges with no missing or
+  ambiguous material references.
+- The resolver returns typed missing/ambiguous/limit issues, never guesses a
+  first blueprint for the no-selector case, and emits aggregate counts only.

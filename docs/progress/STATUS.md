@@ -67,6 +67,12 @@
 - Implemented bounded CCF mesh geometry parsing for all 6,995 records,
   validating 136,363 vertices and 170,039 indexed triangles plus UV, paint,
   transform, and control metadata without exporting proprietary geometry.
+- Added bounded UDSP logical-path lookup with legacy hash/case behavior, full
+  collision comparison, traversal rejection, and explicit ambiguous results as
+  the first dependency-resolver primitive.
+- Indexed all 9,328 CCF blueprints and resolved all 215 object `CCFF`/`MESH`
+  selectors through 90 meshes, 124 nulls, and one no-selector case; all selected
+  material references are complete and unambiguous.
 
 ## Confirmed
 
@@ -95,8 +101,8 @@
 
 ## Next
 
-1. Resolve object `CCFF`/`MESH` dependencies and emit the first model diagnostic.
-2. Define a coordinate/winding conversion contract for the Metal vertex path.
+1. Define a coordinate/winding conversion contract for the Metal vertex path.
+2. Emit a private first-model diagnostic with resolved textures.
 3. Extend GTI RGBA conversion across every mip level and define Metal upload.
 4. Add a tested no-music asset configuration because the original CD/audio is
    unavailable.

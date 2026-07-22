@@ -701,6 +701,90 @@ void validateCcfMaterialVectors(
     return metadata;
 }
 
+[[nodiscard]] CcfBlueprintMetadata parseCcfNonMeshBlueprint(
+    const std::span<const std::uint8_t> bytes,
+    CcfChunk& blueprint,
+    CcfParseBudget& budget) {
+    if (blueprint.id != 0x4200U && blueprint.id != 0x4300U) {
+        throw ParseError("CCF blueprint parser received an unsupported chunk");
+    }
+    const auto payloadBegin = checkedAdd(
+        blueprint.offset, 6U, "CCF non-mesh blueprint payload");
+    const auto blueprintEnd = checkedAdd(
+        blueprint.offset, blueprint.totalSize, "CCF non-mesh blueprint end");
+    requireRange(payloadBegin, 6U, blueprintEnd, "CCF non-mesh blueprint name header");
+    CcfChunk nameChunk{
+        .id = readU16(bytes, static_cast<std::size_t>(payloadBegin),
+            "CCF non-mesh blueprint name id"),
+        .totalSize = readU32(bytes, static_cast<std::size_t>(payloadBegin + 2U),
+            "CCF non-mesh blueprint name size"),
+        .offset = payloadBegin,
+        .directChildren = {},
+    };
+    if (nameChunk.totalSize < 6U) {
+        throw ParseError("CCF non-mesh blueprint name is shorter than its header");
+    }
+    requireRange(
+        nameChunk.offset, nameChunk.totalSize, blueprintEnd,
+        "CCF non-mesh blueprint name");
+    const auto name = parseCcfName(
+        bytes, nameChunk, "CCF non-mesh blueprint name", budget);
+    auto cursor = checkedAdd(
+        nameChunk.offset, nameChunk.totalSize, "CCF non-mesh blueprint references");
+    requireRange(cursor, 12U, blueprintEnd, "CCF non-mesh blueprint references");
+    const auto reference = readU32(
+        bytes, static_cast<std::size_t>(cursor), "CCF non-mesh blueprint reference");
+    // The next two u32 values are retained in the source chunk. The loader
+    // ignores the first and resolves the second as a parent link later.
+    cursor = checkedAdd(cursor, 12U, "CCF non-mesh blueprint position");
+
+    requireRange(cursor, 18U, blueprintEnd, "CCF non-mesh blueprint position");
+    CcfChunk positionChunk{
+        .id = readU16(bytes, static_cast<std::size_t>(cursor),
+            "CCF non-mesh blueprint position id"),
+        .totalSize = readU32(bytes, static_cast<std::size_t>(cursor + 2U),
+            "CCF non-mesh blueprint position size"),
+        .offset = cursor,
+        .directChildren = {},
+    };
+    (void)parseCcfVector3(
+        bytes, positionChunk, 0xF040U, "CCF non-mesh blueprint position");
+    cursor = checkedAdd(cursor, positionChunk.totalSize, "CCF non-mesh blueprint scalar");
+    requireRange(cursor, 4U, blueprintEnd, "CCF non-mesh blueprint scalar");
+    (void)readFloat(
+        bytes, static_cast<std::size_t>(cursor), "CCF non-mesh blueprint scalar");
+    cursor = checkedAdd(cursor, 4U, "CCF non-mesh blueprint orientation");
+
+    requireRange(cursor, 66U, blueprintEnd, "CCF non-mesh blueprint orientation");
+    CcfChunk orientationChunk{
+        .id = readU16(bytes, static_cast<std::size_t>(cursor),
+            "CCF non-mesh blueprint orientation id"),
+        .totalSize = readU32(bytes, static_cast<std::size_t>(cursor + 2U),
+            "CCF non-mesh blueprint orientation size"),
+        .offset = cursor,
+        .directChildren = {},
+    };
+    (void)parseCcfOrientation(bytes, orientationChunk, budget);
+    cursor = checkedAdd(
+        cursor, orientationChunk.totalSize, "CCF non-mesh blueprint children");
+    blueprint.directChildren = parseCcfChunkSequence(
+        bytes,
+        static_cast<std::size_t>(cursor),
+        static_cast<std::size_t>(blueprintEnd),
+        "CCF non-mesh blueprint child",
+        budget);
+    return {
+        .kind = blueprint.id == 0x4200U
+            ? CcfBlueprintKind::nullNode
+            : CcfBlueprintKind::light,
+        .name = name.name,
+        .prefix = name.prefix,
+        .reference = reference,
+        .meshIndex = std::nullopt,
+        .offset = blueprint.offset,
+    };
+}
+
 } // namespace
 
 std::uint32_t gtiBitsPerPixel(const std::uint32_t format) noexcept {
@@ -984,6 +1068,7 @@ CcfMetadata parseCcf(const std::span<const std::uint8_t> bytes) {
         .topLevelChunks = {},
         .materials = {},
         .meshes = {},
+        .blueprints = {},
     };
     constexpr std::size_t kCcfDescriptorLimit = 250'000U;
     CcfParseBudget budget{
@@ -992,6 +1077,7 @@ CcfMetadata parseCcf(const std::span<const std::uint8_t> bytes) {
     metadata.topLevelChunks = parseCcfChunkSequence(
         bytes, 14U, bytes.size(), "CCF root", budget);
     constexpr std::size_t kCcfMeshLimit = 100'000U;
+    constexpr std::size_t kCcfBlueprintLimit = 100'000U;
     constexpr std::size_t kCcfVertexLimit = 2'000'000U;
     constexpr std::size_t kCcfTriangleLimit = 4'000'000U;
     std::size_t vertexCount = 0U;
@@ -1013,19 +1099,37 @@ CcfMetadata parseCcf(const std::span<const std::uint8_t> bytes) {
             }
         }
         else if (section.id == 0x3000U) {
-            for (auto& mesh : section.directChildren) {
-                if (mesh.id == 0x3100U) {
+            for (auto& blueprint : section.directChildren) {
+                if (blueprint.id == 0x3100U) {
+                    if (metadata.blueprints.size() >= kCcfBlueprintLimit) {
+                        throw ParseError("CCF exceeds the blueprint limit");
+                    }
                     if (metadata.meshes.size() >= kCcfMeshLimit) {
                         throw ParseError("CCF exceeds the mesh limit");
                     }
-                    auto parsed = parseCcfMesh(bytes, mesh, budget);
+                    auto parsed = parseCcfMesh(bytes, blueprint, budget);
                     if (parsed.vertices.size() > kCcfVertexLimit - vertexCount ||
                         parsed.triangles.size() > kCcfTriangleLimit - triangleCount) {
                         throw ParseError("CCF exceeds the geometry descriptor limit");
                     }
                     vertexCount += parsed.vertices.size();
                     triangleCount += parsed.triangles.size();
+                    metadata.blueprints.push_back({
+                        .kind = CcfBlueprintKind::mesh,
+                        .name = parsed.name,
+                        .prefix = parsed.prefix,
+                        .reference = parsed.reference,
+                        .meshIndex = metadata.meshes.size(),
+                        .offset = parsed.offset,
+                    });
                     metadata.meshes.push_back(std::move(parsed));
+                }
+                else if (blueprint.id == 0x4200U || blueprint.id == 0x4300U) {
+                    if (metadata.blueprints.size() >= kCcfBlueprintLimit) {
+                        throw ParseError("CCF exceeds the blueprint limit");
+                    }
+                    metadata.blueprints.push_back(
+                        parseCcfNonMeshBlueprint(bytes, blueprint, budget));
                 }
             }
         }

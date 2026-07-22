@@ -226,6 +226,39 @@ budget prevent nested allocation amplification. Unknown paint types remain
 opaque; known types require their loader-read color prefix and tolerate a
 `CloseChunk`-skipped extension tail.
 
+## Blueprint index and object selection
+
+`EV-20260721-027` extends the ordered `0x3000` table to all 9,328 blueprints:
+
+| Kind | ID | Records | Portable geometry |
+|---|---:|---:|---|
+| mesh | `0x3100` | 6,995 | `CcfMeshMetadata` |
+| null node | `0x4200` | 2,130 | index/common prefix only |
+| light | `0x4300` | 203 | index/common prefix only |
+
+Null and light records share `CcName`, three u32 references/link fields,
+`0xF040` position, one float32 scalar, and the same `0xF070/F050/3×F040`
+orientation shape. The fixed tail after `CcName` is exactly 100 bytes. Their
+bounded child sequences remain available in the generic chunk index; light/null
+effect payload semantics are deferred.
+
+Blueprint names are not globally unique: 29 CCF files contain exact duplicate
+names, including 18 groups spanning different kinds. The portable index
+therefore preserves physical order and every candidate rather than using a
+single-value map. References are unique within each selected CCF.
+
+Object resolution is CCF-scoped: resolve `CCFF`, then match `MESH` against
+`CcName.name` with bytewise ASCII case folding. Prefix is not a fallback.
+Across all 215 object definitions, 90 select a mesh, 124 select a null, and one
+has no `MESH` and deliberately receives no guessed fallback. Fourteen matches
+require case folding. All selected names are unambiguous.
+
+For selected meshes, each triangle's u32 material reference is joined to
+`CcfMaterialMetadata.reference`, never treated as a vector index. The complete
+diagnostic resolves 212 distinct-per-object material uses and 210 texture edges
+with no missing or ambiguous reference. Primary, secondary, and environment
+roles remain separate.
+
 ## Portable implementation and next step
 
 - file/root/top-level/direct-child/material/mesh parser:
@@ -235,7 +268,6 @@ opaque; known types require their loader-read color prefix and tolerate a
   `tests/LegacyFormatsTests.cpp`;
 - ignored decompilation evidence: `artifacts/ghidra/Cc.dll.*`.
 
-The next step is a diagnostic resolver that joins an object definition's
-`CCFF`/`MESH` to this mesh table and its material/GTI dependencies. It can then
-emit one model's positions, indices, UVs, and dependency summary for the first
-Metal or desktop renderable fixture without committing proprietary data.
+The next step is a coordinate/winding contract and private first-model
+diagnostic that emits positions, indices, UVs, and resolved texture paths for a
+Metal or desktop fixture without committing proprietary data.

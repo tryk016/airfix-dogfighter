@@ -78,6 +78,12 @@ The semantic mesh pass validates all 6,995 `0x3100` records: 136,363 vertices,
 optional range/control records. Every triangle index is in range. Aggregate
 facts only are retained; no geometry or asset-name list is written.
 
+The complete `0x3000` blueprint index contains those 6,995 meshes plus 2,130
+null and 203 light records. A read-only aggregate resolver validates all 215
+object `CCFF` paths and selectors: 90 mesh, 124 null, one no-selector, and 14
+case-folded matches. Selected meshes resolve 212 material uses and 210 texture
+edges without missing or ambiguous references.
+
 All 299 selected `AfChunkContainer` files also pass exact root/child framing:
 7,376 chunks total. The semantic layer validates all 215 object definitions,
 including the observed optional category/nationality/mesh fields and exact

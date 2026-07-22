@@ -1,7 +1,7 @@
 function_id,module,rva,original_symbol,working_name,system,state,confidence,calls,called_by,evidence_ids,scenario_ids,source_path,notes
 FN-UDSPACK-00001000,UDSPACK,00001000,??0UpHashTable@@QAE@PAUUpHashEntry@@HH@Z,UpHashTable::UpHashTable,archive,understood,2,,,EV-20260721-006,,src/airfix/archive/UdspArchive.cpp,Wraps an existing 24-byte record array
 FN-UDSPACK-00001160,UDSPACK,00001160,?Add@UpHashTable@@QAE_NPAUUpHashEntry@@@Z,UpHashTable::Add,archive,understood,3,,,EV-20260721-007;EV-20260721-008,,src/airfix/archive/UdspArchive.cpp,Computes legacy name hash and inserts in sorted order
-FN-UDSPACK-000012D0,UDSPACK,000012D0,?Lookup@UpHashTable@@QAEPAUUpHashEntry@@PBD@Z,UpHashTable::Lookup,archive,understood,3,,,EV-20260721-007;EV-20260721-008,,src/airfix/archive/UdspArchive.cpp,Binary search by hash then case-insensitive name compare
+FN-UDSPACK-000012D0,UDSPACK,000012D0,?Lookup@UpHashTable@@QAEPAUUpHashEntry@@PBD@Z,UpHashTable::Lookup,archive,implemented,3,,,EV-20260721-007;EV-20260721-008;EV-20260721-026,,src/airfix/archive/UdspArchive.cpp,Binary search by hash then full legacy case-insensitive compare with explicit ambiguity
 FN-UDSPACK-000014B0,UDSPACK,000014B0,??0UpPackage@@QAE@PBDPAV0@@Z,UpPackage::UpPackage,archive,specified,3,,,EV-20260721-006;EV-20260721-007,,src/airfix/archive/UdspArchive.cpp,Validates header and relocates three metadata tables
 FN-UDSPACK-000017E0,UDSPACK,000017E0,?Open@UpPackage@@QAEPAUUpHashEntry@@PBDPAI1@Z,UpPackage::Open,archive,specified,3,FN-UDSPACK-000012D0,,EV-20260721-007,,src/airfix/archive/UdspArchive.cpp,Resolves directory and filename and returns stored data span
 FN-UDSPACK-00002280,UDSPACK,00002280,??0UpFile@@QAE@PBDPAVUpPackage@@W4__UPFILE_OPENMODE@@@Z,UpFile::UpFile,archive,implemented,3,FN-UDSPACK-000017E0,,EV-20260721-007;EV-20260721-009,,src/airfix/archive/UdspArchive.cpp,Opens raw or packaged file and decodes flag-bit-0 compression
@@ -28,5 +28,5 @@ FN-AFENGINE-00038C30,AFENGINE,00038C30,,AfChunkContainer::GetChunkByID,asset_io,
 FN-AFENGINE-00038C80,AFENGINE,00038C80,,AfChunkContainer::CountChunksByID,asset_io,understood,3,,,EV-20260721-022,,,Counts repeated FourCC child chunks
 FN-AFENGINE-00038CD0,AFENGINE,00038CD0,,AfChunkContainer::Read,asset_io,implemented,3,,,EV-20260721-022,,src/airfix/assets/AfChunkContainer.cpp,Checks root size then consumes exact 8-byte-header children
 FN-AFENGINE-00038ED0,AFENGINE,00038ED0,,AfChunkContainer::GetBuffer,asset_io,understood,3,,,EV-20260721-022,,,Serializes root and child payload sizes excluding headers
-FN-AFENGINE-0002D6F0,AFENGINE,0002D6F0,,NfMission::LoadLevel,mission_loading,in_progress,3,,,EV-20260721-022,,,Resolves world object CCF texture and mesh-blueprint dependencies
+FN-AFENGINE-0002D6F0,AFENGINE,0002D6F0,,NfMission::LoadLevel,mission_loading,in_progress,3,,,EV-20260721-022;EV-20260721-027,,src/airfix/assets/AssetResolver.cpp,Resolves object CCF and CCF-scoped mesh/null/light plus material and texture dependencies
 FN-AFENGINE-00039C30,AFENGINE,00039C30,,AfPathRecord::Load,path_loading,understood,3,,,EV-20260721-022,,,Reads PPOS and quantized 12-byte PDAT records

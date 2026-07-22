@@ -75,6 +75,21 @@ void requireRange(
     return signedValue;
 }
 
+[[nodiscard]] bool legacyEqual(
+    const std::string_view left,
+    const std::string_view right) noexcept {
+    if (left.size() != right.size()) {
+        return false;
+    }
+    for (std::size_t index = 0U; index < left.size(); ++index) {
+        if (legacyLower(static_cast<std::uint8_t>(left[index])) !=
+            legacyLower(static_cast<std::uint8_t>(right[index]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
 [[nodiscard]] std::string indexedField(
     const std::string_view kind,
     const std::size_t index) {
@@ -157,6 +172,104 @@ std::uint32_t nameHash(const std::string_view name) noexcept {
         hash += static_cast<std::uint32_t>(contribution);
     }
     return hash;
+}
+
+std::string normalizeLogicalPath(
+    const std::string_view logicalPath,
+    const std::size_t pathLimit) {
+    if (logicalPath.empty() || logicalPath.size() > pathLimit) {
+        throw ParseError("logical archive path is empty or exceeds its configured limit");
+    }
+    std::string normalized;
+    normalized.reserve(logicalPath.size());
+    for (const auto character : logicalPath) {
+        const auto value = static_cast<std::uint8_t>(character);
+        if (value < 0x20U || value == 0x7FU || character == ':') {
+            throw ParseError("logical archive path contains a forbidden character");
+        }
+        normalized.push_back(character == '/' ? '\\' : character);
+    }
+    if (normalized.front() == '\\' || normalized.back() == '\\') {
+        throw ParseError("logical archive path must be relative and name a file");
+    }
+    auto componentBegin = std::size_t{0U};
+    while (componentBegin < normalized.size()) {
+        const auto separator = normalized.find('\\', componentBegin);
+        const auto componentEnd = separator == std::string::npos
+            ? normalized.size()
+            : separator;
+        const auto component = std::string_view(normalized).substr(
+            componentBegin, componentEnd - componentBegin);
+        if (component.empty() || component == "." || component == "..") {
+            throw ParseError("logical archive path contains an unsafe component");
+        }
+        if (separator == std::string::npos) {
+            break;
+        }
+        componentBegin = separator + 1U;
+    }
+    return normalized;
+}
+
+FileLookupResult Archive::lookup(
+    const std::string_view logicalPath,
+    const std::size_t pathLimit) const {
+    const auto normalized = normalizeLogicalPath(logicalPath, pathLimit);
+    const auto separator = normalized.find_last_of('\\');
+    const auto directoryPath = separator == std::string::npos
+        ? std::string_view{}
+        : std::string_view(normalized).substr(0U, separator);
+    const auto fileName = separator == std::string::npos
+        ? std::string_view(normalized)
+        : std::string_view(normalized).substr(separator + 1U);
+    const auto directoryHash = nameHash(directoryPath);
+    const auto fileHash = nameHash(fileName);
+
+    FileLookupResult result;
+    auto directory = std::lower_bound(
+        directories_.begin(), directories_.end(), directoryHash,
+        [](const DirectoryEntry& entry, const std::uint32_t hash) {
+            return entry.hash < hash;
+        });
+    for (; directory != directories_.end() && directory->hash == directoryHash;
+         ++directory) {
+        if (!legacyEqual(directory->path, directoryPath)) {
+            continue;
+        }
+        const auto directoryIndex = static_cast<std::size_t>(
+            directory - directories_.begin());
+        const auto first = static_cast<std::size_t>(directory->firstFileIndex);
+        const auto end = first + static_cast<std::size_t>(directory->fileCount);
+        auto file = std::lower_bound(
+            files_.begin() + static_cast<std::ptrdiff_t>(first),
+            files_.begin() + static_cast<std::ptrdiff_t>(end),
+            fileHash,
+            [](const FileEntry& entry, const std::uint32_t hash) {
+                return entry.hash < hash;
+            });
+        for (; file != files_.begin() + static_cast<std::ptrdiff_t>(end) &&
+               file->hash == fileHash;
+             ++file) {
+            if (!legacyEqual(file->name, fileName)) {
+                continue;
+            }
+            const auto fileIndex = static_cast<std::size_t>(file - files_.begin());
+            if (result.status == LookupStatus::unique) {
+                if (result.fileIndex == fileIndex) {
+                    // Aliased directory ranges can point at the same physical
+                    // record; that is one file handle, not two candidates.
+                    continue;
+                }
+                return {.status = LookupStatus::ambiguous};
+            }
+            result = {
+                .status = LookupStatus::unique,
+                .directoryIndex = directoryIndex,
+                .fileIndex = fileIndex,
+            };
+        }
+    }
+    return result;
 }
 
 Archive Archive::parse(const std::span<const std::uint8_t> bytes) {

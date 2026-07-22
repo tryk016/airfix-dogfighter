@@ -122,6 +122,40 @@ void appendRecord(
     return makeArchiveWithPayload(Bytes{0x10U, 0x20U, 0x30U}, 0U, 3U);
 }
 
+[[nodiscard]] Bytes makeAmbiguousArchive() {
+    constexpr std::string_view directory = "Game\\Objects";
+    constexpr std::string_view fileName = "plane.bin";
+    Bytes archive(airfix::udsp::kHeaderSize, 0U);
+    const auto directoryOffset = static_cast<std::uint32_t>(archive.size());
+    appendRecord(
+        archive, airfix::udsp::nameHash(directory), 0U, 0U, 0U, 2U, 0U);
+    const auto fileOffset = static_cast<std::uint32_t>(archive.size());
+    for (std::size_t index = 0U; index < 2U; ++index) {
+        appendRecord(
+            archive,
+            airfix::udsp::nameHash(fileName),
+            static_cast<std::uint32_t>(directory.size() + 1U),
+            0U,
+            0U,
+            0U,
+            static_cast<std::uint32_t>(airfix::udsp::kHeaderSize));
+    }
+    const auto stringOffset = static_cast<std::uint32_t>(archive.size());
+    archive.insert(archive.end(), directory.begin(), directory.end());
+    archive.push_back(0U);
+    archive.insert(archive.end(), fileName.begin(), fileName.end());
+    archive.push_back(0U);
+    archive[0] = 'U'; archive[1] = 'D'; archive[2] = 'S'; archive[3] = 'P';
+    writeU32(archive, 4U, airfix::udsp::kVersion);
+    writeU32(archive, 8U, airfix::udsp::kRecordSize);
+    writeU32(archive, 12U, directoryOffset);
+    writeU32(archive, 16U, static_cast<std::uint32_t>(archive.size()) - stringOffset);
+    writeU32(archive, 20U, stringOffset);
+    writeU32(archive, 24U, 2U * airfix::udsp::kRecordSize);
+    writeU32(archive, 28U, fileOffset);
+    return archive;
+}
+
 void require(const bool condition, const std::string& message) {
     if (!condition) {
         throw std::runtime_error(message);
@@ -158,6 +192,36 @@ void testValidArchive() {
     require(archive.directories()[0].path == "Game\\Objects", "directory name mismatch");
     require(archive.files()[0].name == "plane.bin", "file name mismatch");
     require(archive.files()[0].unpackedSize == 3U, "file size mismatch");
+}
+
+void testLogicalLookup() {
+    const auto archive = airfix::udsp::Archive::parse(makeArchive());
+    const auto lookup = archive.lookup("game/OBJECTS/PLANE.BIN");
+    require(lookup.status == airfix::udsp::LookupStatus::unique,
+        "case-insensitive logical lookup failed");
+    require(lookup.directoryIndex == 0U && lookup.fileIndex == 0U,
+        "logical lookup indices mismatch");
+    require(archive.lookup("Game\\Objects\\missing.bin").status ==
+        airfix::udsp::LookupStatus::notFound,
+        "missing logical lookup mismatch");
+    require(airfix::udsp::normalizeLogicalPath("Game/Objects/plane.bin") ==
+        "Game\\Objects\\plane.bin",
+        "logical path separator normalization mismatch");
+
+    for (const auto unsafe : {
+             "", "\\absolute.bin", "C:\\drive.bin", "Game\\\\file.bin",
+             "Game\\.\\file.bin", "Game\\..\\file.bin", "Game\\file.bin\\"}) {
+        requireParseError([&] {
+            (void)airfix::udsp::normalizeLogicalPath(unsafe);
+        });
+    }
+    requireParseError([&] {
+        (void)archive.lookup("Game\\Objects\\plane.bin", 8U);
+    });
+    const auto ambiguous = airfix::udsp::Archive::parse(makeAmbiguousArchive());
+    require(ambiguous.lookup("Game\\Objects\\plane.bin").status ==
+        airfix::udsp::LookupStatus::ambiguous,
+        "duplicate logical lookup was not reported as ambiguous");
 }
 
 void testFileBackedArchive() {
@@ -285,6 +349,7 @@ int main() {
     try {
         testHash();
         testValidArchive();
+        testLogicalLookup();
         testFileBackedArchive();
         testEmbeddedFileBackedArchive();
         testBoundedFilePrefixes();

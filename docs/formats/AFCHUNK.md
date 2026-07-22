@@ -103,8 +103,10 @@ non-12-byte `GRAV` is rejected.
 - `PATH`: `PPOS` is six float32 values; `PDAT` contains 12-byte records of six
   signed 16-bit deltas.
 
-The next semantic parser should resolve object `CCFF`/`MESH` references into CCF
-blueprints before interpreting the more variable `MODL` and `IAOB` placements.
+The portable resolver now joins object `CCFF`/`MESH` to CCF-scoped mesh/null/light
+blueprints and material references. The next semantic parser can build on that
+verified identity layer when interpreting the more variable `MODL` and `IAOB`
+placements.
 
 ## Portable implementation
 

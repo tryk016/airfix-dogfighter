@@ -1,5 +1,6 @@
 #include "airfix/archive/UdspArchive.hpp"
 #include "airfix/assets/AfChunkContainer.hpp"
+#include "airfix/assets/AssetResolver.hpp"
 #include "airfix/assets/LegacyFormats.hpp"
 
 #include <algorithm>
@@ -60,13 +61,17 @@ int main(const int argc, const char* const* argv) {
     const bool summaryOnly = argc == 3 && std::string(argv[1]) == "--summary";
     const bool verifyPayloads = argc == 3 && std::string(argv[1]) == "--verify";
     const bool inventory = argc == 3 && std::string(argv[1]) == "--inventory";
-    if (argc != 2 && !summaryOnly && !verifyPayloads && !inventory) {
-        std::cerr << "usage: udsp-list [--summary|--verify|--inventory] <archive.up>\n";
+    const bool resolveObjects = argc == 3 && std::string(argv[1]) == "--resolve-objects";
+    if (argc != 2 && !summaryOnly && !verifyPayloads && !inventory && !resolveObjects) {
+        std::cerr << "usage: udsp-list "
+                  << "[--summary|--verify|--inventory|--resolve-objects] <archive.up>\n";
         return 2;
     }
 
     try {
-        const auto pathIndex = summaryOnly || verifyPayloads || inventory ? 2 : 1;
+        const auto pathIndex = summaryOnly || verifyPayloads || inventory || resolveObjects
+            ? 2
+            : 1;
         const std::string archivePath = argv[pathIndex];
         const auto bytes = verifyPayloads ? readArchive(archivePath) : std::vector<std::uint8_t>{};
         const auto archive = verifyPayloads
@@ -90,6 +95,84 @@ int main(const int argc, const char* const* argv) {
                   << " unpackedBytes=" << unpackedBytes << '\n';
 
         if (summaryOnly) {
+            return 0;
+        }
+
+        if (resolveObjects) {
+            constexpr std::size_t kObjectReadLimit = 1024U * 1024U;
+            constexpr std::size_t kCcfReadLimit = 64U * 1024U * 1024U;
+            std::size_t objectCount = 0U;
+            std::size_t meshCount = 0U;
+            std::size_t nullCount = 0U;
+            std::size_t lightCount = 0U;
+            std::size_t noSelectorCount = 0U;
+            std::size_t caseFoldMatchCount = 0U;
+            std::size_t materialCount = 0U;
+            std::size_t textureEdgeCount = 0U;
+            for (const auto& file : archive.files()) {
+                const auto prefix = airfix::udsp::readFilePrefix(
+                    archivePath, archive, file, 4U);
+                if (prefix.size() != 4U) {
+                    continue;
+                }
+                const auto magic = static_cast<std::uint32_t>(prefix[0]) |
+                    (static_cast<std::uint32_t>(prefix[1]) << 8U) |
+                    (static_cast<std::uint32_t>(prefix[2]) << 16U) |
+                    (static_cast<std::uint32_t>(prefix[3]) << 24U);
+                if (magic != airfix::assets::kAfObjectRoot &&
+                    magic != airfix::assets::kAfModelRoot) {
+                    continue;
+                }
+                const auto objectBytes = airfix::udsp::readFile(
+                    archivePath, archive, file, kObjectReadLimit);
+                const auto object = airfix::assets::parseObjectDefinition(objectBytes);
+                if (!object.ccfPath.has_value()) {
+                    throw std::runtime_error("object resolver found a missing CCF path");
+                }
+                const auto ccfLookup = archive.lookup(*object.ccfPath);
+                if (ccfLookup.status != airfix::udsp::LookupStatus::unique) {
+                    throw std::runtime_error("object resolver did not find one CCF entry");
+                }
+                const auto ccfBytes = airfix::udsp::readFile(
+                    archivePath, archive, archive.files().at(ccfLookup.fileIndex),
+                    kCcfReadLimit);
+                const auto ccf = airfix::assets::parseCcf(ccfBytes);
+                const auto resolution = airfix::assets::resolveObjectDependencies(
+                    object, ccf);
+                if (!resolution.issues.empty()) {
+                    throw std::runtime_error("object resolver found a semantic dependency issue");
+                }
+                ++objectCount;
+                materialCount += resolution.materialIndices.size();
+                textureEdgeCount += resolution.textures.size();
+                if (resolution.selectorStatus ==
+                    airfix::assets::BlueprintSelectorStatus::noSelector) {
+                    ++noSelectorCount;
+                    continue;
+                }
+                if (resolution.selectorStatus !=
+                        airfix::assets::BlueprintSelectorStatus::unique ||
+                    !resolution.blueprintIndex.has_value()) {
+                    throw std::runtime_error("object resolver did not select one blueprint");
+                }
+                const auto& blueprint = ccf.blueprints.at(*resolution.blueprintIndex);
+                if (*object.meshName != blueprint.name) {
+                    ++caseFoldMatchCount;
+                }
+                switch (blueprint.kind) {
+                case airfix::assets::CcfBlueprintKind::mesh: ++meshCount; break;
+                case airfix::assets::CcfBlueprintKind::nullNode: ++nullCount; break;
+                case airfix::assets::CcfBlueprintKind::light: ++lightCount; break;
+                }
+            }
+            std::cout << "resolvedObjects=" << objectCount
+                      << " mesh=" << meshCount
+                      << " null=" << nullCount
+                      << " light=" << lightCount
+                      << " noSelector=" << noSelectorCount
+                      << " caseFoldMatches=" << caseFoldMatchCount
+                      << " materials=" << materialCount
+                      << " textureEdges=" << textureEdgeCount << '\n';
             return 0;
         }
 
@@ -215,6 +298,18 @@ int main(const int argc, const char* const* argv) {
                                             return triangle.paint.has_value();
                                         });
                                 }
+                                const auto nullBlueprintCount = std::count_if(
+                                    metadata.blueprints.begin(), metadata.blueprints.end(),
+                                    [](const auto& blueprint) {
+                                        return blueprint.kind ==
+                                            airfix::assets::CcfBlueprintKind::nullNode;
+                                    });
+                                const auto lightBlueprintCount = std::count_if(
+                                    metadata.blueprints.begin(), metadata.blueprints.end(),
+                                    [](const auto& blueprint) {
+                                        return blueprint.kind ==
+                                            airfix::assets::CcfBlueprintKind::light;
+                                    });
                                 detail << "CCF:materials=" << metadata.materials.size()
                                        << ",primary=" << primaryTextures
                                        << ",secondary=" << secondaryTextures
@@ -229,6 +324,9 @@ int main(const int argc, const char* const* argv) {
                                        << ",uv=" << textureCoordinateCount
                                        << ",paint=" << paintCount
                                        << ",ranges=" << rangeCount
+                                       << ":blueprints=" << metadata.blueprints.size()
+                                       << ",nulls=" << nullBlueprintCount
+                                       << ",lights=" << lightBlueprintCount
                                        << ":top=";
                                 for (std::size_t child = 0U;
                                      child < metadata.topLevelChunks.size();

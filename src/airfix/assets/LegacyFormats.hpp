@@ -110,12 +110,28 @@ struct CcfMeshMetadata {
     std::uint64_t offset{};
 };
 
+enum class CcfBlueprintKind : std::uint8_t {
+    mesh,
+    nullNode,
+    light,
+};
+
+struct CcfBlueprintMetadata {
+    CcfBlueprintKind kind{CcfBlueprintKind::mesh};
+    std::string name;
+    std::string prefix;
+    std::uint32_t reference{};
+    std::optional<std::size_t> meshIndex;
+    std::uint64_t offset{};
+};
+
 struct CcfMetadata {
     std::uint16_t rootId{};
     std::uint32_t rootSize{};
     std::vector<CcfChunk> topLevelChunks;
     std::vector<CcfMaterialMetadata> materials;
     std::vector<CcfMeshMetadata> meshes;
+    std::vector<CcfBlueprintMetadata> blueprints;
 };
 
 struct RgbaImage {
