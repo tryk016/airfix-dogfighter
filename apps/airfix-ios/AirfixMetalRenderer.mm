@@ -266,7 +266,10 @@ simd_float4x4 aspectCorrection(const CGSize size) {
                                                             error:&libraryError];
     if (library == nil) {
         if (error != nullptr) {
-            NSString* reason = libraryError.localizedDescription ?: @"default.metallib is missing.";
+            NSString* reason = libraryError.localizedDescription;
+            if (reason == nil) {
+                reason = @"default.metallib is missing.";
+            }
             *error = makeError(
                 RendererError::missingShaderLibrary,
                 [@"Metal shader library could not be loaded: " stringByAppendingString:reason]);
@@ -298,7 +301,10 @@ simd_float4x4 aspectCorrection(const CGSize size) {
                                                                  error:&pipelineError];
     if (self.pipelineState == nil) {
         if (error != nullptr) {
-            NSString* reason = pipelineError.localizedDescription ?: @"unknown pipeline error";
+            NSString* reason = pipelineError.localizedDescription;
+            if (reason == nil) {
+                reason = @"unknown pipeline error";
+            }
             *error = makeError(
                 RendererError::pipelineCreation,
                 [@"Metal render pipeline creation failed: " stringByAppendingString:reason]);

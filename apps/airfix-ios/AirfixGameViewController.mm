@@ -41,7 +41,10 @@
     label.textColor = UIColor.whiteColor;
     label.font = [UIFont preferredFontForTextStyle:UIFontTextStyleTitle2];
     if (self.renderer == nil) {
-        NSString* reason = rendererError.localizedDescription ?: @"Unknown Metal initialization error.";
+        NSString* reason = rendererError.localizedDescription;
+        if (reason == nil) {
+            reason = @"Unknown Metal initialization error.";
+        }
         label.text = [@"Metal renderer unavailable\n" stringByAppendingString:reason];
         label.accessibilityLabel = @"Metal renderer unavailable";
     }

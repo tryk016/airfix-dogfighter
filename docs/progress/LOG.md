@@ -500,3 +500,7 @@ superseded evidence.
 - CMake compiles `AirfixShaders.metal` offline into `default.metallib`, and the
   iOS bundle verifier now requires a non-empty library. Independent source
   review found no P1/P2; Xcode 26.6 Actions remains the authoritative compiler.
+- Initial iOS run `29915449239` compiled and linked Objective-C++ for both SDKs,
+  then exposed a multi-configuration path expansion bug in the custom shader
+  post-build command. The fix lets Xcode's native `CompileMetalFile`/`MetalLink`
+  phases build `default.metallib`; bundle verification remains fail-closed.
