@@ -177,6 +177,24 @@ else()
     target_compile_options(airfix_afpack PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+add_library(airfix_content
+    src/airfix/content/VerifiedContentSession.cpp
+)
+add_library(airfix::content ALIAS airfix_content)
+
+target_include_directories(airfix_content
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+)
+target_compile_features(airfix_content PUBLIC cxx_std_20)
+target_link_libraries(airfix_content PUBLIC airfix::afpack)
+
+if(MSVC)
+    target_compile_options(airfix_content PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(airfix_content PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
 if(AIRFIX_BUILD_TOOLS)
     add_executable(udsp-list tools/udsp/main.cpp)
     target_link_libraries(udsp-list PRIVATE airfix::udsp airfix::assets airfix::render)
@@ -233,6 +251,13 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_afpack_recovery_tests tests/AfPackRecoveryTests.cpp)
     target_link_libraries(airfix_afpack_recovery_tests PRIVATE airfix::afpack)
     add_test(NAME airfix_afpack_recovery_tests COMMAND airfix_afpack_recovery_tests)
+
+    add_executable(airfix_verified_content_tests
+        tests/VerifiedContentSessionTests.cpp)
+    target_link_libraries(airfix_verified_content_tests
+        PRIVATE airfix::content)
+    add_test(NAME airfix_verified_content_tests
+        COMMAND airfix_verified_content_tests)
 
     add_executable(airfix_crypto_tests tests/Sha256Tests.cpp)
     target_link_libraries(airfix_crypto_tests PRIVATE airfix::crypto)

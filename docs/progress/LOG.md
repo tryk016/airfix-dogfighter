@@ -886,3 +886,25 @@ superseded evidence.
 - This checkpoint is a prerequisite for the private AFPACK content bridge. It
   does not claim that installed package payloads are already decoded and fed
   through the iOS renderer end to end.
+
+## 2026-07-23 — authenticated runtime content session
+
+- Added the portable `airfix_content` library and a move-only
+  `VerifiedContentSession`. Opening a session authenticates the exact physical
+  size and full SHA-256 of one owned seekable AFPACK stream against an active
+  `{generation, size, digest}` revision.
+- The same handle is retained through AFPACK metadata, strict manifest, and
+  exact `source/Resource.up` UDSP parsing. `sourceLabel` is diagnostic text
+  only and is never reopened; subsequent source-entry reads remain serialized
+  on the retained stream.
+- Added reusable public-only generators for synthetic UDSP and AFPACK fixtures.
+  The AFPACK fixture uses the production writer and contains no original or
+  converted game content.
+- Regression coverage rejects wrong size, digest, generation, malformed nested
+  UDSP, invalid hash-buffer limits, and cancellation before or during hashing.
+  A poisoned-label test points at a real invalid file while supplying a
+  different valid already-opened file handle, proving that no label-based
+  pathname reopen contributes bytes.
+- The full portable suite passes 30/30. The library is linked into unsigned iOS
+  builds for Apple compilation coverage, but the native coordinator and Metal
+  renderer do not consume a loaded room yet.

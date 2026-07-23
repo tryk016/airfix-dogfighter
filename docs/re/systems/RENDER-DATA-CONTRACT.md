@@ -206,8 +206,10 @@ sRGB, premultiplication, V-origin, projection, front-face, blending, or BSP
 visibility decision. The offline `.metal` source is still compiled into
 `default.metallib`, which bundle verification requires.
 
-This adapter still has no AFPACK connection, private GTI texture ownership,
-authored/generated mip upload cache, or asset-backed room input. It has not
-received visual acceptance on a physical iPhone. Those boundaries and tests
-remain required before the synthetic payload can be replaced by private
-content.
+The portable content layer now supplies an authenticated, move-only,
+single-handle AFPACK/`Resource.up` session tagged with generation, size, and
+digest. It does not yet compose World, CCF, GTI preparations, geometry, and
+draw submission into one immutable room result or hand that result to this
+adapter. Private GTI texture ownership, authored/generated mip upload cache,
+asset-backed room input, and visual acceptance on a physical iPhone therefore
+remain required before the synthetic payload can be replaced.

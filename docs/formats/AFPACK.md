@@ -269,6 +269,18 @@ public precondition is an exclusively created file in an app-private staging
 directory; the future importer, rather than an arbitrary external caller, owns
 that directory and serializes publication transactions.
 
+Runtime loading uses the separate move-only
+`airfix::content::VerifiedContentSession`. It owns the caller-supplied
+read-only `ifstream`, compares its exact physical size and complete SHA-256
+with the active revision, and then parses AFPACK, the strict manifest, and
+`source/Resource.up` through that same handle. The handle must come from the
+app-private immutable content store, and installation, activation, cleanup,
+and reads must serialize writers for the entire session lifetime. The supplied
+source label exists only for diagnostics and is never opened. The session
+exposes serialized bounded reads from the authenticated source archive,
+preventing a path reopen from splicing metadata and payload bytes from
+different backing objects.
+
 The durability layer provides exclusive durable creation, atomic replacement,
 and no-replace publication on Windows and POSIX/iOS. These operations accept
 only installer-owned private staging/final directories: they verify regular

@@ -68,6 +68,7 @@ sources.
 | Legacy assets | GTI textures plus bounded CCF scene, room/fog/BSP, mesh, material, blueprint, and placed-node parsing implemented |
 | Dependency resolution | Object-to-scene, blueprint/placed graphs, BSP polygons, verified world-to-CCF binding, rooms, meshes, portals, materials, and texture edges implemented |
 | Private packaging | AFPACK writer, validation, transactional install/recovery, and native iOS import/rollback UI implemented |
+| Runtime content session | Move-only, single-handle AFPACK authentication and bounded `Resource.up` access implemented; room loading and iOS coordinator handoff pending |
 | Rendering | Bounded explicit-room assembly, stable texture IDs, atomic RGBA8 upload preparation, fail-closed draw submission, CPU diagnostics, and a bounded synthetic multi-mesh Metal adapter implemented |
 | Input core | Deterministic semantic router for touch/controller/test sources implemented |
 | Native controls | UIKit touch overlay and Apple Game Controller adapters pending |
@@ -98,6 +99,14 @@ limits, and `streamoff`/`streamsize` representability are checked before the
 corresponding allocation or read. This is the foundation for a private
 AFPACK-to-render-data bridge; the runtime does not yet consume installed AFPACK
 payloads end to end.
+
+The portable `airfix_content` layer now owns one seekable stream for an active
+content revision. It verifies the exact physical size and SHA-256 of the whole
+AFPACK, then parses the pack, strict manifest, and exact
+`source/Resource.up` region through that same handle. Its diagnostic label is
+never reopened as a path, and only serialized, bounded nested-file reads are
+exposed. This closes the package-to-archive ownership boundary; World, CCF, and
+GTI composition into one immutable room snapshot is the next checkpoint.
 
 ## Architecture
 
@@ -212,6 +221,7 @@ See [docs/ci/GITHUB-ACTIONS-IOS.md](docs/ci/GITHUB-ACTIONS-IOS.md) and
 apps/airfix-ios/       UIKit, Metal, and Objective-C++ platform shell
 src/airfix/archive/    UDSP archive parsing and bounded entry reads
 src/airfix/assets/     Legacy formats, dependency graphs, render-ready data
+src/airfix/content/    Authenticated single-handle runtime content sessions
 src/airfix/input/      Deterministic semantic input router
 src/airfix/io/         Cross-platform durable file primitives
 src/airfix/package/    Private AFPACK format, validation, and installation

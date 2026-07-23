@@ -33,6 +33,7 @@ target_compile_options(airfix_ios PRIVATE
 )
 target_link_libraries(airfix_ios PRIVATE
     airfix::afpack
+    airfix::content
     airfix::render
     airfix::runtime
     "-framework UIKit"
