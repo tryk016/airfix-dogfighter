@@ -207,6 +207,52 @@ struct CcfName {
     return parseCcfString(bytes, children[0], field);
 }
 
+[[nodiscard]] CcfRoomMetadata parseCcfRoom(
+    const std::span<const std::uint8_t> bytes,
+    CcfChunk& room,
+    CcfParseBudget& budget,
+    const bool primaryBinding) {
+    if (room.id != 0x1100U) {
+        throw ParseError("CCF room parser received a non-room chunk");
+    }
+    const auto roomEnd = checkedAdd(room.offset, room.totalSize, "CCF room end");
+    const auto payload = checkedAdd(room.offset, 6U, "CCF room payload");
+    requireRange(payload, 6U, roomEnd, "CCF room name header");
+    const CcfChunk nameChunk{
+        .id = readU16(bytes, static_cast<std::size_t>(payload), "CCF room name id"),
+        .totalSize = readU32(
+            bytes, static_cast<std::size_t>(payload + 2U), "CCF room name size"),
+        .offset = payload,
+        .directChildren = {},
+    };
+    if (nameChunk.totalSize < 6U) {
+        throw ParseError("CCF room name is shorter than its header");
+    }
+    requireRange(nameChunk.offset, nameChunk.totalSize, roomEnd, "CCF room name");
+    budget.consume("CCF room name");
+    const auto name = parseCcfName(bytes, nameChunk, "CCF room name", budget);
+    auto cursor = checkedAdd(
+        nameChunk.offset, nameChunk.totalSize, "CCF room reference");
+    requireRange(cursor, 4U, roomEnd, "CCF room reference");
+    const auto reference = readU32(
+        bytes, static_cast<std::size_t>(cursor), "CCF room reference");
+    cursor = checkedAdd(cursor, 4U, "CCF room children");
+    room.directChildren = parseCcfChunkSequence(
+        bytes,
+        static_cast<std::size_t>(cursor),
+        static_cast<std::size_t>(roomEnd),
+        "CCF room child",
+        budget);
+    return {
+        .name = name.name,
+        .prefix = name.prefix,
+        .reference = reference,
+        .primaryBinding = primaryBinding,
+        .directChildren = room.directChildren,
+        .offset = room.offset,
+    };
+}
+
 void validateCcfMaterialVectors(
     const std::span<const std::uint8_t> bytes,
     const CcfChunk& chunk) {
@@ -1610,6 +1656,7 @@ CcfMetadata parseCcf(const std::span<const std::uint8_t> bytes) {
         .rootId = rootId,
         .rootSize = rootSize,
         .topLevelChunks = {},
+        .rooms = {},
         .materials = {},
         .meshes = {},
         .blueprints = {},
@@ -1621,6 +1668,7 @@ CcfMetadata parseCcf(const std::span<const std::uint8_t> bytes) {
     };
     metadata.topLevelChunks = parseCcfChunkSequence(
         bytes, 14U, bytes.size(), "CCF root", budget);
+    constexpr std::size_t kCcfRoomLimit = 100'000U;
     constexpr std::size_t kCcfMeshLimit = 100'000U;
     constexpr std::size_t kCcfBlueprintLimit = 100'000U;
     constexpr std::size_t kCcfPlacedNodeLimit = 100'000U;
@@ -1637,7 +1685,19 @@ CcfMetadata parseCcf(const std::span<const std::uint8_t> bytes) {
             static_cast<std::size_t>(childEnd),
             "CCF section",
             budget);
-        if (section.id == 0x2000U) {
+        if (section.id == 0x1000U) {
+            for (auto& room : section.directChildren) {
+                if (room.id != 0x1100U) {
+                    continue;
+                }
+                if (metadata.rooms.size() >= kCcfRoomLimit) {
+                    throw ParseError("CCF exceeds the room limit");
+                }
+                metadata.rooms.push_back(parseCcfRoom(
+                    bytes, room, budget, metadata.rooms.empty()));
+            }
+        }
+        else if (section.id == 0x2000U) {
             for (auto& material : section.directChildren) {
                 if (material.id == 0x2100U) {
                     metadata.materials.push_back(parseCcfMaterial(bytes, material, budget));

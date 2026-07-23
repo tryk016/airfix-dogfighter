@@ -414,11 +414,11 @@ contract, evidence, implementation, tests, parity result, and documentation agre
 8. Establish the isolated reference runtime and record the first deterministic
    flight/control/render scenarios; this remains independent of host static
    analysis until the isolated environment is available.
-9. **In progress:** the bounded blueprint graph, seam-safe draw-model payload,
+9. **In progress:** the bounded blueprint and placed-scene graphs, seam-safe draw-model payload,
    and multi-instance diagnostic have assembled and rendered a complete grouped
    aircraft. Parent-relative local derivation and the public synthetic Metal
-   smoke path and placed-record decoder are implemented; resolve the placed
-   graph/rooms, build the first-room renderer, and connect private textures
+   smoke path, placed-record decoder, and room/mesh/portal resolver are
+   implemented; decode room BSP, build the first-room renderer, and connect private textures
    through the existing data-less shell.
 10. Implement native UIKit touch capture and Apple Game Controller adapters,
     followed by the configurable visual overlay and on-device usability tests.

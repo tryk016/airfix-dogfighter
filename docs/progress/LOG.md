@@ -677,3 +677,16 @@ superseded evidence.
   6,995 objects, 2,130 nulls, and 203 lights. All shipped records use F050
   matrices; the loader-supported alternate F040 orientation remains synthetic-
   tested. Independent review found no P1/P2.
+
+## 2026-07-21 â€” CCF rooms and placed-scene references
+
+- `EV-20260721-038`: decoded the bounded `0x1100` name/reference prefix and
+  marked the first physical record as the receiver/root-room binding. All 392
+  rooms across 286 CCF files parse with no zero or duplicate references.
+- Implemented bounded iterative placed parent, mesh, ordinary-room, and portal-
+  room resolution, including skipped missing-mesh objects, explicit receiver
+  fallback, mesh-prototype parents, stable child order, ambiguity rejection,
+  cycle/depth checks, and allocation/edge limits.
+- Read-only census yields 9,328 instantiated nodes, 2,062 roots, 7,266 edges,
+  maximum depth 7, and zero missing, ambiguous, or cyclic dependencies. All
+  6,995 object meshes and 154 nonzero portal rooms resolve uniquely.

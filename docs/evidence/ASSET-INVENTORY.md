@@ -64,11 +64,16 @@ signatures; English contributes another 152 GTI files.
   inferred from filename alone.
 
 All 286 CCF signatures have ordered root sections `0x1000`, `0x2000`,
-`0x3000`, and `0x4000`. Bounded direct-child indexing found 392 room records,
+`0x3000`, and `0x4000`. Bounded semantic parsing found 392 room records,
 10,385 materials, and two equal 9,328-record blueprint/placed-node tables; see
 `FMT-CCF` for the ID sets and per-file bounds. Static analysis proves that the
 tables have independent prototype/placed-node roles; their equal physical
 counts do not imply an index mapping.
+
+The 392 rooms have one to eight records per CCF and no zero or duplicate
+references. The first physical room is marked as the receiver/root binding;
+later room records retain their names and bounded direct-child descriptors for
+future spatial decoding.
 
 The semantic material pass validates all 10,385 `0x2100` records. It exposes
 10,256 primary and 263 environment texture references; the loader-supported

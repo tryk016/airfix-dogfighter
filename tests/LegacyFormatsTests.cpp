@@ -416,7 +416,10 @@ void requireParseError(const std::function<void()>& action) {
 }
 
 [[nodiscard]] Bytes makeCcf() {
-    return ccfDocument(ccfChunk(0x1000U, ccfChunk(0x1100U, {})));
+    Bytes room = ccfNamed("World", "House");
+    appendU32(room, 77U);
+    appendBytes(room, ccfChunk(0x1101U, Bytes{0x01U, 0x02U}));
+    return ccfDocument(ccfChunk(0x1000U, ccfChunk(0x1100U, room)));
 }
 
 void testGti() {
@@ -479,6 +482,27 @@ void testCcf() {
         "CCF direct child count mismatch");
     require(metadata.topLevelChunks[0].directChildren[0].id == 0x1100U,
         "CCF direct child id mismatch");
+    require(metadata.rooms.size() == 1U && metadata.rooms[0].name == "World" &&
+            metadata.rooms[0].prefix == "House" &&
+            metadata.rooms[0].reference == 77U &&
+            metadata.rooms[0].primaryBinding &&
+            metadata.rooms[0].directChildren.size() == 1U &&
+            metadata.rooms[0].directChildren[0].id == 0x1101U,
+        "CCF room metadata mismatch");
+
+    Bytes firstRoom = ccfNamed("World", "House");
+    appendU32(firstRoom, 77U);
+    Bytes secondRoom = ccfNamed("Attic", "House");
+    appendU32(secondRoom, 78U);
+    Bytes roomRecords;
+    appendBytes(roomRecords, ccfChunk(0x1100U, firstRoom));
+    appendBytes(roomRecords, ccfChunk(0x1100U, secondRoom));
+    const auto twoRooms = airfix::assets::parseCcf(
+        ccfDocument(ccfChunk(0x1000U, roomRecords)));
+    require(twoRooms.rooms.size() == 2U &&
+            twoRooms.rooms[0].primaryBinding &&
+            !twoRooms.rooms[1].primaryBinding,
+        "CCF primary room binding mismatch");
 
     auto invalid = bytes;
     invalid[10] = 17U;
@@ -486,6 +510,11 @@ void testCcf() {
     invalid = bytes;
     invalid[16] = 5U;
     requireParseError([&] { (void)airfix::assets::parseCcf(invalid); });
+    Bytes truncatedRoom = ccfNamed("World", "House");
+    truncatedRoom.push_back(0U);
+    const auto malformedRoom = ccfDocument(
+        ccfChunk(0x1000U, ccfChunk(0x1100U, truncatedRoom)));
+    requireParseError([&] { (void)airfix::assets::parseCcf(malformedRoom); });
 
     const auto materialBytes = makeMaterialCcf();
     const auto materialMetadata = airfix::assets::parseCcf(materialBytes);

@@ -1,14 +1,14 @@
 # FMT-CCF — chunked scene/model container
 
-**State:** file/root/top-level, material, mesh geometry, blueprint graph, and
-placed-scene record decoding implemented; placed-room graph resolution pending
+**State:** file/root/top-level, room, material, mesh geometry, blueprint graph,
+placed-scene decoding, and bounded placed-scene reference resolution implemented
 
 **Confidence:** 3/3 for framing and blueprint hierarchy, 2/3 for remaining
 section semantics
 
 **Evidence:** `EV-20260721-017`, `EV-20260721-018`, `EV-20260721-023`,
 `EV-20260721-024`, `EV-20260721-025`, `EV-20260721-033`,
-`EV-20260721-037`
+`EV-20260721-037`, `EV-20260721-038`
 
 ## Evidence
 
@@ -97,6 +97,31 @@ primary mesh/object IDs, 157 also contain `0x4200`, and 29 also contain
 `0x3000` contains prototypes and `0x4000` contains already placed scene nodes.
 Equal counts do not establish, and the portable code does not assume, an index
 mapping between the two tables.
+
+## Room records (`0x1100`)
+
+`EV-20260721-038` confirms the bounded room prefix shared by the loader and the
+independent `cc-tools` shape map:
+
+```text
+0x1100 room:
+  0xF010 CcName
+    0xF020 name
+    0xF020 prefix
+  u32 roomReference
+  child chunks...
+```
+
+The first physical room record is special: the loader registers the receiving
+world/root room under its stored reference. Later records find or create named
+rooms. `CcfRoomMetadata::primaryBinding` retains that distinction without
+constructing runtime rooms during parsing. The remaining direct children are
+bounded descriptors for the still-separate fog, static/portal BSP, and related
+spatial decoders.
+
+All 392 records across the 286 selected CCF files parse in physical order, with
+one to eight rooms per file and no zero or duplicate references inside a file.
+No private room names or geometry are recorded in the repository.
 
 ## Material records (`0x2100`)
 
@@ -363,11 +388,40 @@ invalid fixed sizes, string/count mismatches, parent-container overruns, and
 the shared descriptor budget fail closed. A separate 100,000-record ceiling
 precedes placed-node growth.
 
+Loader consumers narrow several otherwise raw child values:
+
+- object `0xF0B1` is a Boolean dynamic-BSP enable/eligibility gate. Every one
+  of the 1,160 shipped objects carrying a `0x4101` BSP block has it enabled;
+- object and light `0xF0B0` form a shared Boolean lighting-classification gate,
+  although a stable user-facing name remains unproven;
+- object `0x4501` is a serialized limb-count/ordinal bound and null `0x4500`
+  is a limb index/ID. Neither field is a parent reference. Both are absent from
+  the selected placed records.
+
 Read-only validation parses all 286 CCF files, including the extension-less
-scene: 9,328 records in physical order, with zero parse errors. The portable
-model exposes current/mesh/room/parent/portal references but does not yet apply
-legacy room fallback, resolve the placed parent graph, or infer semantic names
-for raw flags and light values.
+scene: 9,328 records in physical order, with zero parse errors. Every ordinary
+room and mesh reference resolves uniquely. The 154 nonzero portal-room
+references also resolve uniquely; 6,841 objects store zero and therefore have
+no portal room. The portable model exposes current/mesh/room/parent/portal
+references and resolves their scene dependencies without inferring semantic
+names for the remaining raw flags and light values.
+
+### Placed-scene reference graph
+
+The bounded resolver reproduces the loader's deferred lookup after the complete
+section is read. Instantiated placed nodes and loaded `0x3100` mesh prototypes
+share the SRT-reference domain; `0x3000` null/light blueprints do not. A placed
+object whose mesh reference is missing or ambiguous is not instantiated.
+Parent, room, mesh, and portal-room references are resolved by value, never by
+physical index. Missing ordinary rooms retain an explicit receiver/root-room
+fallback, while a missing portal room remains unset. Duplicate candidates fail
+closed instead of inheriting the legacy loader's list-order-dependent match.
+
+The selected corpus resolves 9,328 nodes into 2,062 roots and 7,266 placed-
+parent edges, with maximum depth 7 and no cycles, missing dependencies, or
+ambiguities. All 6,995 object mesh references resolve uniquely. Seven parent
+edges cross room boundaries, so room binding is resolved per node rather than
+inherited from its parent.
 
 ## Portable implementation and next step
 
@@ -376,14 +430,15 @@ for raw flags and light values.
 - synthetic bounds, strings, geometry, index, UV, opaque/extended paint,
   unknown-extension, and global descriptor-budget tests:
   `tests/LegacyFormatsTests.cpp`;
-- bounded blueprint graph and subtree dependency resolution:
-  `src/airfix/assets/CcfBlueprintGraph.*` and
+- bounded blueprint and placed-scene graph/reference resolution:
+  `src/airfix/assets/CcfBlueprintGraph.*`,
+  `src/airfix/assets/CcfPlacedScene.*`, and
   `src/airfix/assets/AssetResolver.*`;
 - ignored decompilation evidence: `artifacts/ghidra/Cc.dll.*`.
 
-The backend-neutral seam-safe draw-model payload, bounded blueprint graph, and
-multi-instance diagnostic render a complete grouped aircraft from authored
-world transforms. Portable parent-relative local derivation now round-trips the
-recovered parent-first composition, and placed records are decoded. The next
-scene step is bounded placed-graph and room-reference resolution. No proprietary
-geometry or preview is committed.
+The backend-neutral seam-safe draw-model payload, bounded blueprint and placed
+graphs, and multi-instance diagnostic render a complete grouped aircraft from
+authored world transforms. Portable parent-relative local derivation
+round-trips the recovered parent-first composition. The next scene step is
+bounded room/BSP decoding and first-room assembly. No proprietary geometry or
+preview is committed.

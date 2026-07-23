@@ -1,6 +1,7 @@
 #include "airfix/archive/UdspArchive.hpp"
 #include "airfix/assets/AfChunkContainer.hpp"
 #include "airfix/assets/AssetResolver.hpp"
+#include "airfix/assets/CcfPlacedScene.hpp"
 #include "airfix/assets/LegacyFormats.hpp"
 #include "airfix/assets/MissionEntryResolver.hpp"
 #include "airfix/render/LegacyGeometry.hpp"
@@ -331,6 +332,12 @@ int main(const int argc, const char* const* argv) {
                                 const auto data = airfix::udsp::readFile(
                                     archivePath, archive, file, kAssetReadLimit);
                                 const auto metadata = airfix::assets::parseCcf(data);
+                                const auto placedScene =
+                                    airfix::assets::resolvePlacedScene(metadata);
+                                if (!placedScene.issues.empty()) {
+                                    throw std::runtime_error(
+                                        "CCF placed-scene reference resolution failed");
+                                }
                                 const auto primaryTextures = std::count_if(
                                     metadata.materials.begin(), metadata.materials.end(),
                                     [](const auto& material) {
@@ -408,6 +415,10 @@ int main(const int argc, const char* const* argv) {
                                 std::size_t placedLightCount = 0U;
                                 std::size_t placedMatrixCount = 0U;
                                 std::size_t placedAlternateCount = 0U;
+                                std::size_t placedParentEdgeCount = 0U;
+                                std::size_t meshParentEdgeCount = 0U;
+                                std::size_t roomFallbackCount = 0U;
+                                std::size_t resolvedPortalRoomCount = 0U;
                                 for (const auto& placed : metadata.placedNodes) {
                                     switch (placed.kind) {
                                     case airfix::assets::CcfPlacedNodeKind::object:
@@ -429,7 +440,31 @@ int main(const int argc, const char* const* argv) {
                                         ++placedAlternateCount;
                                     }
                                 }
-                                detail << "CCF:materials=" << metadata.materials.size()
+                                for (const auto& resolved : placedScene.nodes) {
+                                    roomFallbackCount += resolved.roomTarget.kind ==
+                                            airfix::assets::PlacedRoomTargetKind::
+                                                externalReceiverFallback
+                                        ? 1U
+                                        : 0U;
+                                    resolvedPortalRoomCount +=
+                                        resolved.portalRoomTarget.kind ==
+                                            airfix::assets::
+                                                PlacedPortalRoomTargetKind::parsedRoom
+                                        ? 1U
+                                        : 0U;
+                                    if (!resolved.parentTarget.has_value()) {
+                                        continue;
+                                    }
+                                    if (resolved.parentTarget->kind ==
+                                        airfix::assets::PlacedParentTargetKind::placedNode) {
+                                        ++placedParentEdgeCount;
+                                    }
+                                    else {
+                                        ++meshParentEdgeCount;
+                                    }
+                                }
+                                detail << "CCF:rooms=" << metadata.rooms.size()
+                                       << ":materials=" << metadata.materials.size()
                                        << ",primary=" << primaryTextures
                                        << ",secondary=" << secondaryTextures
                                        << ",environment=" << environmentTextures
@@ -453,6 +488,11 @@ int main(const int argc, const char* const* argv) {
                                        << ",lights=" << placedLightCount
                                        << ",matrices=" << placedMatrixCount
                                        << ",alternate=" << placedAlternateCount
+                                       << ",roots=" << placedScene.rootIndices.size()
+                                       << ",placedParents=" << placedParentEdgeCount
+                                       << ",meshParents=" << meshParentEdgeCount
+                                       << ",roomFallbacks=" << roomFallbackCount
+                                       << ",portalRooms=" << resolvedPortalRoomCount
                                        << ":top=";
                                 for (std::size_t child = 0U;
                                      child < metadata.topLevelChunks.size();

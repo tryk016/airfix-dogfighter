@@ -53,6 +53,17 @@ struct CcfChunk {
     std::vector<CcfChunk> directChildren;
 };
 
+struct CcfRoomMetadata {
+    std::string name;
+    std::string prefix;
+    std::uint32_t reference{};
+    // The first physical 0x1100 binds the receiver/root room instead of
+    // allocating an ordinary child room.
+    bool primaryBinding{};
+    std::vector<CcfChunk> directChildren;
+    std::uint64_t offset{};
+};
+
 struct CcfMaterialMetadata {
     std::string name;
     std::string prefix;
@@ -166,14 +177,19 @@ struct CcfPlacedObjectMetadata {
     std::uint8_t rawFlag{};
     std::uint32_t portalType{};
     std::uint32_t portalRoomReference{};
+    // Boolean lighting-classification gate shared with placed lights; the
+    // stable user-facing name remains unproven.
     std::optional<std::uint32_t> propertyF0B0;
+    // Boolean dynamic-BSP enable/eligibility gate.
     std::optional<std::uint32_t> propertyF0B1;
+    // Serialized 1-based limb-count/ordinal bound, not a parent reference.
     std::optional<std::uint32_t> value4501;
     std::optional<CcfChunk> bsp4101;
 };
 
 struct CcfPlacedNullMetadata {
     std::optional<CcfOpaqueRange> block4210;
+    // Serialized limb index/ID, not a parent reference.
     std::optional<std::uint32_t> value4500;
 };
 
@@ -200,6 +216,7 @@ struct CcfPlacedLightMetadata {
     std::optional<CcfPlacedLight4310Metadata> property4310;
     std::optional<CcfPlacedLight4320Metadata> property4320;
     std::optional<CcfPlacedLight4330Metadata> property4330;
+    // Boolean lighting-classification gate shared with placed objects.
     std::optional<std::uint32_t> propertyF0B0;
 };
 
@@ -225,6 +242,7 @@ struct CcfMetadata {
     std::uint16_t rootId{};
     std::uint32_t rootSize{};
     std::vector<CcfChunk> topLevelChunks;
+    std::vector<CcfRoomMetadata> rooms;
     std::vector<CcfMaterialMetadata> materials;
     std::vector<CcfMeshMetadata> meshes;
     std::vector<CcfBlueprintMetadata> blueprints;

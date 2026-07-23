@@ -143,6 +143,10 @@
   transforms, references, bounded light properties, zero-copy null payloads,
   and opaque BSP containers. All 286 CCF scenes parse 9,328 placed records:
   6,995 objects, 2,130 nulls, and 203 lights, all using the matrix orientation.
+- Parsed all 392 CCF room prefixes and implemented bounded placed-scene
+  reference resolution across instantiated nodes, mesh prototypes, rooms, and
+  portals. The selected corpus forms 2,062 roots and 7,266 edges at maximum
+  depth 7 with zero missing, ambiguous, or cyclic dependencies.
 - Implemented finite, invertible parent-relative local transform derivation and
   composition in runtime column-vector order. Round-trip tests include
   non-commutative rotations and shear; `rawScalar` is not treated as scale.
@@ -174,9 +178,9 @@
 
 ## Next
 
-1. Resolve the independent `0x4000` placed parent graph plus mesh/room/portal
-   references needed for a faithful first room; record decoding, static grouped-
-   aircraft rendering, and parent-relative local math are complete.
+1. Decode the bounded room/BSP structures needed for a faithful first room;
+   placed records, their parent/mesh/room/portal graph, static grouped-aircraft
+   rendering, and parent-relative local math are complete.
 2. Connect the draw payload and texture upload policy to the Metal shell, first
    with unlit/no-cull diagnostics and then with evidence-backed render states.
 3. Implement native UIKit and Game Controller adapters over the deterministic

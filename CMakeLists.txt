@@ -88,6 +88,7 @@ add_library(airfix_assets
     src/airfix/assets/AfChunkContainer.cpp
     src/airfix/assets/AssetResolver.cpp
     src/airfix/assets/CcfBlueprintGraph.cpp
+    src/airfix/assets/CcfPlacedScene.cpp
     src/airfix/assets/LegacyFormats.cpp
     src/airfix/assets/MissionEntryResolver.cpp
 )
@@ -255,6 +256,10 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_blueprint_graph_tests tests/CcfBlueprintGraphTests.cpp)
     target_link_libraries(airfix_blueprint_graph_tests PRIVATE airfix::assets)
     add_test(NAME airfix_blueprint_graph_tests COMMAND airfix_blueprint_graph_tests)
+
+    add_executable(airfix_placed_scene_tests tests/CcfPlacedSceneTests.cpp)
+    target_link_libraries(airfix_placed_scene_tests PRIVATE airfix::assets)
+    add_test(NAME airfix_placed_scene_tests COMMAND airfix_placed_scene_tests)
 
     add_executable(airfix_runtime_tests tests/AppSessionTests.cpp)
     target_link_libraries(airfix_runtime_tests PRIVATE airfix::runtime)
