@@ -717,3 +717,27 @@ superseded evidence.
 - BSP is confirmed as a spatial index rather than a geometry source. The next
   renderer step is a conservative draw-all assembly for one room; culling and
   portal traversal remain disabled until their traversal semantics are proven.
+
+## 2026-07-23 — conservative first-room draw assembly
+
+- Added an assets-only first receiver/root-room plan that internally resolves
+  the canonical placed scene, retains physical object order, includes the
+  loader-compatible receiver fallback, deduplicates meshes/materials by first
+  use, and publishes primary/secondary/environment texture dependencies.
+- Added a backend-neutral bounded builder that shares mesh payloads and emits
+  one instance per selected object. Placed F050 transforms use their own
+  authored-world relation exactly once; cross-room parents and mesh-prototype
+  transforms do not alter the instance result.
+- The plan never consults room BSP for visibility. Synthetic partial/malformed
+  spatial metadata cannot hide, duplicate, or reorder geometry. F040 placed
+  orientation remains unsupported and fails closed rather than receiving an
+  invented matrix meaning.
+- Per-mesh and aggregate mesh, instance, material-binding, vertex, index,
+  material, range, and byte limits precede dependent growth. Missing or
+  duplicate materials, invalid placed graphs, non-finite/singular transforms,
+  unsupported orientation, overflow, and draw conversion errors publish an
+  empty model with typed diagnostics.
+- Read-only validation builds every first room in all 286 scenes: 2,084
+  instances, 2,084 per-scene unique meshes, 3,120 material uses, 3,272 texture
+  edges, 123,121 draw vertices, 140,943 indices/46,981 triangles, and 6,435
+  ranges with zero issue. No private payload or derived geometry is written.

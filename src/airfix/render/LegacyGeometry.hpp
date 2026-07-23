@@ -51,6 +51,7 @@ enum class GeometryErrorCode : std::uint8_t {
     nonFiniteValue,
     singularBasis,
     singularTransform,
+    unsupportedOrientation,
     invalidScale,
     limitExceeded,
     vertexIndexOutOfRange,
@@ -113,6 +114,13 @@ struct ConvertedNodeTransform {
 // linear transform or translation.
 [[nodiscard]] ConvertedNodeTransform convertLegacyTransform(
     const assets::CcfSrtMetadata& source,
+    const BasisTransform& basis = {});
+
+// Placed F050 transforms use the same authored-world convention. The
+// loader-supported alternate F040 orientation remains semantically unproven
+// and is rejected instead of being guessed as a matrix or identity.
+[[nodiscard]] ConvertedNodeTransform convertLegacyTransform(
+    const assets::CcfPlacedSrtMetadata& source,
     const BasisTransform& basis = {});
 
 // The blueprint loader stores authored world transforms. These helpers derive

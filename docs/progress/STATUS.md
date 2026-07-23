@@ -152,6 +152,11 @@
   fail-closed spatial resolver joins every descriptor to its unique placed
   object, mesh, in-range triangle, ordinary room, and (for all 332 portal
   descriptors) target room with zero corpus issues.
+- Implemented a bounded conservative first-room draw plan and backend-neutral
+  assembly that ignore BSP visibility, share first-use meshes, preserve
+  physical instance order, and apply each placed authored-world transform
+  exactly once. All 286 scenes yield 2,084 instances and 46,981 triangles with
+  zero plan, transform, geometry, or material issues.
 - Implemented finite, invertible parent-relative local transform derivation and
   composition in runtime column-vector order. Round-trip tests include
   non-commutative rotations and shear; `rawScalar` is not treated as scale.
@@ -183,11 +188,12 @@
 
 ## Next
 
-1. Assemble a conservative first-room draw list from resolved placed objects,
-   world transforms, meshes, materials, and textures. Keep BSP culling and
-   portal traversal disabled until their runtime traversal semantics are proven.
-2. Connect the draw payload and texture upload policy to the Metal shell, first
-   with unlit/no-cull diagnostics and then with evidence-backed render states.
+1. Resolve the first-room texture dependency edges to imported runtime texture
+   IDs with stable deduplication and bounded upload metadata.
+2. Extend the Metal shell from its current synthetic single-mesh buffers to the
+   bounded multi-mesh/multi-instance first-room payload, first with unlit/
+   no-cull diagnostics and then with evidence-backed render states. Keep BSP
+   culling and portal traversal disabled until their semantics are proven.
 3. Implement native UIKit and Game Controller adapters over the deterministic
    input router, then add the configurable safe-area-aware touch overlay.
 

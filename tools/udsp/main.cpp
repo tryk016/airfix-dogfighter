@@ -2,10 +2,12 @@
 #include "airfix/assets/AfChunkContainer.hpp"
 #include "airfix/assets/AssetResolver.hpp"
 #include "airfix/assets/CcfPlacedScene.hpp"
+#include "airfix/assets/CcfRoomDrawPlan.hpp"
 #include "airfix/assets/CcfRoomScene.hpp"
 #include "airfix/assets/LegacyFormats.hpp"
 #include "airfix/assets/MissionEntryResolver.hpp"
 #include "airfix/render/LegacyGeometry.hpp"
+#include "airfix/render/CcfRoomDrawAssembly.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -346,6 +348,39 @@ int main(const int argc, const char* const* argv) {
                                     throw std::runtime_error(
                                         "CCF room-scene reference resolution failed");
                                 }
+                                const auto firstRoomPlan =
+                                    airfix::assets::resolveFirstRoomDrawPlan(
+                                        metadata);
+                                if (!firstRoomPlan.issues.empty()) {
+                                    throw std::runtime_error(
+                                        "CCF first-room draw planning failed");
+                                }
+                                std::vector<airfix::render::DrawMaterial>
+                                    firstRoomMaterials;
+                                firstRoomMaterials.reserve(
+                                    firstRoomPlan.materialIndices.size());
+                                for (const auto materialIndex :
+                                     firstRoomPlan.materialIndices) {
+                                    if (materialIndex >=
+                                        metadata.materials.size()) {
+                                        throw std::runtime_error(
+                                            "CCF first-room material index is invalid");
+                                    }
+                                    firstRoomMaterials.push_back({
+                                        .sourceReference =
+                                            metadata.materials[materialIndex].
+                                                reference,
+                                    });
+                                }
+                                const auto firstRoomDraw =
+                                    airfix::render::
+                                        buildFirstRoomDrawAssembly(
+                                            metadata,
+                                            firstRoomMaterials);
+                                if (!firstRoomDraw.issues.empty()) {
+                                    throw std::runtime_error(
+                                        "CCF first-room draw assembly failed");
+                                }
                                 const auto primaryTextures = std::count_if(
                                     metadata.materials.begin(), metadata.materials.end(),
                                     [](const auto& material) {
@@ -427,6 +462,18 @@ int main(const int argc, const char* const* argv) {
                                 std::size_t meshParentEdgeCount = 0U;
                                 std::size_t roomFallbackCount = 0U;
                                 std::size_t resolvedPortalRoomCount = 0U;
+                                std::size_t firstRoomDrawVertexCount = 0U;
+                                std::size_t firstRoomDrawIndexCount = 0U;
+                                std::size_t firstRoomDrawRangeCount = 0U;
+                                for (const auto& drawMesh :
+                                     firstRoomDraw.model.meshes) {
+                                    firstRoomDrawVertexCount +=
+                                        drawMesh.vertices.size();
+                                    firstRoomDrawIndexCount +=
+                                        drawMesh.indices.size();
+                                    firstRoomDrawRangeCount +=
+                                        drawMesh.ranges.size();
+                                }
                                 std::size_t fogCount = 0U;
                                 std::size_t enabledFogCount = 0U;
                                 std::size_t staticBspTreeCount = 0U;
@@ -552,6 +599,20 @@ int main(const int argc, const char* const* argv) {
                                        << ",portalPolygons="
                                        << portalBspPolygonCount
                                        << ",bindings=" << roomScene.bindings.size()
+                                       << ":firstRoom=instances="
+                                       << firstRoomDraw.model.instances.size()
+                                       << ",meshes="
+                                       << firstRoomDraw.model.meshes.size()
+                                       << ",materials="
+                                       << firstRoomPlan.materialIndices.size()
+                                       << ",textures="
+                                       << firstRoomPlan.textures.size()
+                                       << ",drawVertices="
+                                       << firstRoomDrawVertexCount
+                                       << ",drawIndices="
+                                       << firstRoomDrawIndexCount
+                                       << ",drawRanges="
+                                       << firstRoomDrawRangeCount
                                        << ":top=";
                                 for (std::size_t child = 0U;
                                      child < metadata.topLevelChunks.size();

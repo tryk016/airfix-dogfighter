@@ -259,6 +259,26 @@ ConvertedNodeTransform convertLegacyTransform(
     return result;
 }
 
+ConvertedNodeTransform convertLegacyTransform(
+    const assets::CcfPlacedSrtMetadata& source,
+    const BasisTransform& basis) {
+    const auto* orientation =
+        std::get_if<std::array<assets::CcfVector3, 3>>(
+            &source.orientation);
+    if (orientation == nullptr) {
+        fail(
+            GeometryErrorCode::unsupportedOrientation,
+            "placed F040 orientation semantics are not established");
+    }
+    return convertLegacyTransform(
+        assets::CcfSrtMetadata{
+            .position = source.position,
+            .rawScalar = source.rawScalar,
+            .orientation = *orientation,
+        },
+        basis);
+}
+
 ConvertedNodeTransform deriveLocalTransform(
     const ConvertedNodeTransform& parentWorld,
     const ConvertedNodeTransform& childWorld) {

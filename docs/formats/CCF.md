@@ -221,11 +221,38 @@ are 2,442/3,985, and all 198,210 deferred bindings resolve without an error.
 Every polygon index is within its mesh and every ordinary room agrees with the
 owning tree. All 332 portal descriptors resolve a nonzero portal-room target.
 
-The first renderer may therefore draw all placed objects assigned to the
-selected room, using their resolved meshes, materials, textures, and world
-transforms. BSP culling, collision, and portal traversal remain later runtime
-features; no geometry should be hidden from the initial diagnostic until those
-traversal semantics are separately proven.
+### Conservative first-room draw assembly
+
+The portable first-room plan scans the canonical placed scene in physical CCF
+order. It selects instantiated objects explicitly assigned to the first
+`primaryBinding` room plus the loader-compatible external-receiver fallback,
+while omitting null and light nodes. Room BSP is deliberately not consulted:
+an empty, partial, or repeated spatial descriptor cannot hide, duplicate, or
+reorder draw instances.
+
+Meshes are shared by resolved mesh index in first-use order. Materials are
+resolved uniquely by reference across the selected mesh triangles, preserving
+primary, secondary, and environment texture dependencies. The render builder
+creates one seam-safe `DrawMeshPayload` per unique mesh and one
+`DrawMeshInstance` per selected placed object. Each instance uses its own
+stored authored-world F050 transform exactly once; neither the prototype mesh
+transform nor the placed parent graph is composed onto it again.
+
+The loader-supported alternate placed F040 orientation remains semantically
+unproven and fails closed with a typed issue. Non-finite or singular
+transforms, missing/duplicate material bindings, invalid placed dependencies,
+integer overflow, and per-mesh or aggregate mesh/instance/vertex/index/
+material/range/byte limits likewise publish an empty model rather than a
+partial room.
+
+Read-only validation builds plans and backend-neutral draw payloads for the
+first room of all 286 scenes: 2,084 instances, 2,084 per-scene unique mesh
+slots, 3,120 material uses, 3,272 texture dependency edges, 123,121 draw
+vertices, 140,943 indices (46,981 triangles), and 6,435 ordered draw ranges.
+No plan, transform, geometry, material, or limit issue occurs.
+
+BSP culling, collision, and portal traversal remain later runtime features; no
+geometry is hidden until those traversal semantics are separately proven.
 
 ## Material records (`0x2100`)
 
@@ -541,14 +568,18 @@ inherited from its parent.
 - bounded blueprint, placed-scene, and room-BSP graph/reference resolution:
   `src/airfix/assets/CcfBlueprintGraph.*`,
   `src/airfix/assets/CcfPlacedScene.*`,
+  `src/airfix/assets/CcfRoomDrawPlan.*`,
   `src/airfix/assets/CcfRoomScene.*`, and
   `src/airfix/assets/AssetResolver.*`;
+- bounded backend-neutral first-room assembly:
+  `src/airfix/render/CcfRoomDrawAssembly.*`;
 - ignored decompilation evidence: `artifacts/ghidra/Cc.dll.*`.
 
 The backend-neutral seam-safe draw-model payload, bounded blueprint and placed
 graphs, and multi-instance diagnostic render a complete grouped aircraft from
 authored world transforms. Portable parent-relative local derivation
-round-trips the recovered parent-first composition. Room fog/BSP decoding and
-all deferred spatial bindings are complete. The next scene step is conservative
-first-room draw assembly with BSP culling disabled. No proprietary geometry or
-preview is committed.
+round-trips the recovered parent-first composition. Room fog/BSP decoding, all
+deferred spatial bindings, and the conservative first-room draw assembly are
+complete. The next scene step assigns imported texture runtime IDs and feeds
+the multi-mesh/multi-instance payload to Metal with BSP culling disabled. No
+proprietary geometry or preview is committed.

@@ -141,6 +141,43 @@ void testLegacyNodeTransformConversion() {
             "node transform interpreted or discarded raw scalar metadata");
 }
 
+void testPlacedNodeTransformConversion() {
+    const auto ordinary = sampleTransform();
+    airfix::assets::CcfPlacedSrtMetadata placed{
+        .position = ordinary.position,
+        .rawScalar = ordinary.rawScalar,
+        .orientation = ordinary.orientation,
+    };
+    const auto expected = airfix::render::convertLegacyTransform(ordinary);
+    const auto converted = airfix::render::convertLegacyTransform(placed);
+    requireMatrix(
+        converted.linear,
+        expected.linear,
+        "placed F050 orientation did not use the authored-world conversion");
+    requireVec(
+        converted.translation,
+        expected.translation,
+        "placed F050 translation did not use the authored-world conversion");
+    require(
+        converted.rawScalar == expected.rawScalar,
+        "placed F050 conversion changed raw scalar metadata");
+
+    placed.orientation =
+        airfix::assets::CcfVector3{1.0F, 0.0F, 0.0F};
+    requireGeometryError(GeometryErrorCode::unsupportedOrientation, [&] {
+        (void)airfix::render::convertLegacyTransform(placed);
+    }, "placed alternate F040 orientation was guessed");
+
+    placed.orientation = std::array<airfix::assets::CcfVector3, 3>{
+        airfix::assets::CcfVector3{1.0F, 0.0F, 0.0F},
+        airfix::assets::CcfVector3{2.0F, 0.0F, 0.0F},
+        airfix::assets::CcfVector3{0.0F, 0.0F, 1.0F},
+    };
+    requireGeometryError(GeometryErrorCode::singularTransform, [&] {
+        (void)airfix::render::convertLegacyTransform(placed);
+    }, "placed singular authored orientation was accepted");
+}
+
 void testParentRelativeRoundTripAndOrder() {
     const Mat3 parentLinear{{
         Vec3{0.0F, 1.0F, 0.0F},
@@ -506,6 +543,7 @@ int main() {
         testUvPolicies();
         testBasisConjugationAndScaling();
         testLegacyNodeTransformConversion();
+        testPlacedNodeTransformConversion();
         testParentRelativeRoundTripAndOrder();
         testGeneralInverseAndTranslationOnly();
         testNodeTransformValidationFailures();

@@ -82,6 +82,14 @@ unique instantiated placed object and mesh to an in-range triangle; every
 ordinary room agrees with the tree owner, and all 332 portal descriptors
 resolve their object's target room.
 
+The conservative draw-all pass independently assembles the first receiver/root
+room without using BSP as a visibility source. Across all 286 scenes it emits
+2,084 placed instances, 2,084 per-scene unique mesh slots, 3,120 material uses,
+3,272 texture dependency edges, 123,121 seam-safe draw vertices, 140,943
+indices (46,981 triangles), and 6,435 ordered draw ranges. Every F050
+authored-world transform and material dependency validates; no partial model is
+published and no geometry or texture payload is written.
+
 The semantic material pass validates all 10,385 `0x2100` records. It exposes
 10,256 primary and 263 environment texture references; the loader-supported
 secondary texture field is absent from the selected corpus. The special

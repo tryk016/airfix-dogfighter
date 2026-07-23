@@ -1,7 +1,8 @@
 # Backend-neutral render data and first-model diagnostic
 
-**State:** mesh/model payload, private CPU diagnostic, and public synthetic
-Metal smoke path implemented; private asset-backed Metal path pending
+**State:** mesh/model payload, conservative first-room assembly, private CPU
+diagnostic, and public synthetic Metal smoke path implemented; private
+asset-backed Metal path pending
 
 **Evidence:** `EV-20260721-030` through `EV-20260721-034`
 
@@ -69,6 +70,27 @@ as one coherent assembly and repeats byte-identically. Its markings also
 distinguish the UV policies: preserved raw V is correct for this path, while
 the explicit flipped-V comparison is visibly wrong. The private outputs and
 hashes remain ignored and uncommitted.
+
+## First-room draw-all boundary
+
+`resolveFirstRoomDrawPlan` selects placed objects from the first receiver/root
+room in physical order and never uses BSP as a visibility list. The plan maps
+mesh slots and material/texture dependencies in first-use order.
+`buildFirstRoomDrawAssembly` converts each unique mesh once and emits one world
+instance per selected placed object. Stored F050 placed transforms are authored
+world relations and are applied exactly once; prototype transforms and parent
+links are not recomposed.
+
+The builder accepts externally assigned `TextureAssetId` bindings so archive
+lookup/upload ownership remains outside render conversion. It enforces both
+per-mesh and aggregate mesh, instance, vertex, index, material, range, and byte
+limits. Any plan, binding, transform, geometry, overflow, or limit issue leaves
+the public `DrawModelPayload` empty. The F040 placed orientation is explicitly
+unsupported until evidence establishes its meaning.
+
+All 286 first rooms build with no issue, producing aggregate metadata-only
+counts of 2,084 instances, 46,981 triangles, and 6,435 ordered ranges. These
+payloads are validated in memory only; no private geometry is exported.
 
 ## Metal handoff
 

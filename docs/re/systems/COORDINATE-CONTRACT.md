@@ -78,6 +78,14 @@ t_world = R_parent_world * t_local + t_parent_world
 parent first and caches the composed relation. Its SRT composition calls
 `CcSRT::InheritParentSRT` at RVA `0x0002BFD0`.
 
+The first-room draw path uses each placed node's stored F050 world relation
+directly after the canonical placed graph validates. It does not recompose the
+parent chain, including the observed cross-room parent edges, because
+`SetParent` preserves that authored world result. The portable placed-transform
+adapter applies the same basis conjugation and unit conversion as blueprints.
+The alternate loader-supported F040 form has no proven matrix meaning and is
+rejected with a typed unsupported-orientation issue.
+
 The object path selects one `0x3000` blueprint by name and
 `CcBlueprint::MakeInstance(..., true)` at RVA `0x000244F0` clones that node and
 its descendants. Clone/mesh setup first materializes each prototype's world
