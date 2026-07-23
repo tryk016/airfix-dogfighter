@@ -28,7 +28,9 @@ enum class WorldCcfTextureIssueKind : std::uint8_t {
     ccfNotFound,
     ccfAmbiguous,
     ccfEntryMismatch,
-    firstRoomPlanDependency,
+    roomPlanDependency,
+    // Compatibility name for the original first-room-only entry point.
+    firstRoomPlanDependency = roomPlanDependency,
 };
 
 struct WorldCcfTextureIssue {
@@ -56,6 +58,19 @@ struct WorldCcfTextureResolution {
     TextureEntryResolution textures;
     std::vector<WorldCcfTextureIssue> issues;
 };
+
+// Validates that the world's CCF path resolves to the supplied source-entry
+// index, then derives texture edges for one explicit physical room. This
+// metadata-only comparison does not prove where the CCF payload came from.
+// The caller must create CCF metadata and its source-entry index in one
+// immutable load transaction. No archive payload is read or copied here.
+[[nodiscard]] WorldCcfTextureResolution resolveWorldRoomTextures(
+    const WorldDefinition& world,
+    const CcfMetadata& ccf,
+    std::size_t ccfArchiveFileIndex,
+    const udsp::Archive& archive,
+    std::size_t ccfRoomIndex,
+    const WorldCcfTextureResolutionLimits& limits = {});
 
 // Validates that the world's CCF path resolves to the supplied source-entry
 // index, then derives texture edges from that CCF's canonical first-room plan.

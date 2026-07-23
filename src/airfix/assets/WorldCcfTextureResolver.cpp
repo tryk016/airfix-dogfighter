@@ -25,11 +25,12 @@ void addIssue(
 
 } // namespace
 
-WorldCcfTextureResolution resolveWorldFirstRoomTextures(
+WorldCcfTextureResolution resolveWorldRoomTextures(
     const WorldDefinition& world,
     const CcfMetadata& ccf,
     const std::size_t ccfArchiveFileIndex,
     const udsp::Archive& archive,
+    const std::size_t ccfRoomIndex,
     const WorldCcfTextureResolutionLimits& limits) {
     WorldCcfTextureResolution result;
     result.ccf.suppliedArchiveFileIndex = ccfArchiveFileIndex;
@@ -90,11 +91,12 @@ WorldCcfTextureResolution resolveWorldFirstRoomTextures(
     }
 
     result.ccf.status = WorldCcfBindingStatus::unique;
-    result.plan = resolveFirstRoomDrawPlan(ccf, limits.plan);
+    result.plan = resolveRoomDrawPlan(
+        ccf, ccfRoomIndex, limits.plan);
     if (!result.plan.issues.empty()) {
         addIssue(
             result,
-            WorldCcfTextureIssueKind::firstRoomPlanDependency);
+            WorldCcfTextureIssueKind::roomPlanDependency);
         return result;
     }
 
@@ -104,6 +106,16 @@ WorldCcfTextureResolution resolveWorldFirstRoomTextures(
     result.textures = resolveTextureEntries(
         textureRoot, result.plan.textures, archive, limits.textureEntries);
     return result;
+}
+
+WorldCcfTextureResolution resolveWorldFirstRoomTextures(
+    const WorldDefinition& world,
+    const CcfMetadata& ccf,
+    const std::size_t ccfArchiveFileIndex,
+    const udsp::Archive& archive,
+    const WorldCcfTextureResolutionLimits& limits) {
+    return resolveWorldRoomTextures(
+        world, ccf, ccfArchiveFileIndex, archive, 0U, limits);
 }
 
 } // namespace airfix::assets

@@ -16,12 +16,14 @@ void addIssue(
     const CcfRoomDrawPlanIssueKind kind,
     const std::optional<std::size_t> placedNodeIndex = std::nullopt,
     const std::optional<std::size_t> meshIndex = std::nullopt,
-    const std::optional<std::uint32_t> reference = std::nullopt) {
+    const std::optional<std::uint32_t> reference = std::nullopt,
+    const std::optional<std::size_t> requestedRoomIndex = std::nullopt) {
     result.issues.push_back({
         .kind = kind,
         .placedNodeIndex = placedNodeIndex,
         .meshIndex = meshIndex,
         .reference = reference,
+        .requestedRoomIndex = requestedRoomIndex,
     });
 }
 
@@ -40,12 +42,19 @@ struct MaterialMatch {
 
 } // namespace
 
-CcfRoomDrawPlan resolveFirstRoomDrawPlan(
+CcfRoomDrawPlan resolveRoomDrawPlan(
     const CcfMetadata& ccf,
+    const std::size_t ccfRoomIndex,
     const CcfRoomDrawPlanLimits& limits) {
     CcfRoomDrawPlan result;
-    if (ccf.rooms.empty()) {
-        addIssue(result, CcfRoomDrawPlanIssueKind::noRoom);
+    if (ccfRoomIndex >= ccf.rooms.size()) {
+        addIssue(
+            result,
+            CcfRoomDrawPlanIssueKind::roomIndexOutOfRange,
+            std::nullopt,
+            std::nullopt,
+            std::nullopt,
+            ccfRoomIndex);
         return result;
     }
     if (!ccf.rooms.front().primaryBinding) {
@@ -58,7 +67,8 @@ CcfRoomDrawPlan resolveFirstRoomDrawPlan(
         return result;
     }
 
-    result.roomIndex = 0U;
+    result.roomIndex = ccfRoomIndex;
+    const auto selectedRoomIsReceiver = ccfRoomIndex == 0U;
     const auto placedScene = resolvePlacedScene(ccf);
     if (!placedScene.issues.empty() ||
         placedScene.nodes.size() != ccf.placedNodes.size()) {
@@ -138,13 +148,18 @@ CcfRoomDrawPlan resolveFirstRoomDrawPlan(
                 failClosed(result);
                 return result;
             }
-            if (*node.roomTarget.roomIndex != 0U) {
+            if (*node.roomTarget.roomIndex != ccfRoomIndex) {
                 continue;
             }
         }
         else if (
-            node.roomTarget.kind !=
+            node.roomTarget.kind ==
             PlacedRoomTargetKind::externalReceiverFallback) {
+            if (!selectedRoomIsReceiver) {
+                continue;
+            }
+        }
+        else {
             addIssue(
                 result,
                 CcfRoomDrawPlanIssueKind::invalidPlacedNode,
@@ -312,6 +327,12 @@ CcfRoomDrawPlan resolveFirstRoomDrawPlan(
         failClosed(result);
     }
     return result;
+}
+
+CcfRoomDrawPlan resolveFirstRoomDrawPlan(
+    const CcfMetadata& ccf,
+    const CcfRoomDrawPlanLimits& limits) {
+    return resolveRoomDrawPlan(ccf, 0U, limits);
 }
 
 } // namespace airfix::assets

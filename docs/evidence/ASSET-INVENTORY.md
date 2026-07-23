@@ -82,13 +82,14 @@ unique instantiated placed object and mesh to an in-range triangle; every
 ordinary room agrees with the tree owner, and all 332 portal descriptors
 resolve their object's target room.
 
-The conservative draw-all pass independently assembles the first receiver/root
-room without using BSP as a visibility source. Across all 286 scenes it emits
-2,084 placed instances, 2,084 per-scene unique mesh slots, 3,120 material uses,
-3,272 texture dependency edges, 123,121 seam-safe draw vertices, 140,943
-indices (46,981 triangles), and 6,435 ordered draw ranges. Every F050
-authored-world transform and material dependency validates; no partial model is
-published and no geometry or texture payload is written.
+The conservative draw-all pass independently assembles every physical CCF room
+without using BSP as a visibility source. Across all 392 rooms in 286 scenes,
+a coverage bitmap proves that all 6,995 placed objects appear exactly once. The
+plans emit 6,995 instances and mesh slots, 10,461 material bindings, 10,519
+texture dependency edges, 409,565 seam-safe draw vertices, 510,117 indices
+(170,039 triangles), and 20,211 ordered draw ranges. Every F050 authored-world
+transform and material dependency validates; no partial model is published and
+no geometry or texture payload is written.
 
 The semantic material pass validates all 10,385 `0x2100` records. It exposes
 10,256 primary and 263 environment texture references; the loader-supported
@@ -139,11 +140,19 @@ a global cross-object cache size.
 
 All 29 world definitions also resolve their `CCFF` path to one exact archive
 entry before any `TEXU` lookup. Their CCFs contain 135 rooms, 4,911 meshes,
-6,318 blueprints, and 6,318 placed nodes. The first physical receiver/root room
-selects zero placed objects in every world CCF, so it produces no material or
-texture edge. This is a useful negative result: the runtime must select an
-actual world room rather than assume that the receiver binding owns visible
-geometry.
+6,318 blueprints, and 6,318 placed nodes. Explicit selection validates 105
+non-empty rooms and 30 valid empty rooms; the latter are all 29 receiver rooms
+plus one ordinary room. All 4,911 objects occur exactly once and no receiver
+or external-fallback instance occurs. Per-room texture plans contain 7,247
+edges and 2,637 first-use import requests: 2,629 authored-chain and eight
+generated-chain requests, 9,165 uploaded and 9,205 allocated mip levels,
+99,485,312 upload RGBA8 bytes, and 99,502,984 estimated resident bytes. These
+are per-room-plan aggregates, not a global cache size.
+
+The 17-entry World `ROOM` catalog is not joined to the associated CCF's two to
+eight physical rooms: counts differ, populated rooms can lack a name match,
+and neither ID, reference, position, nor name is a proven key. The public
+selector therefore names a physical `CcfMetadata::rooms` index explicitly.
 
 One private grouped-aircraft selection contains 46 nodes, 25 mesh instances,
 21 null groups, 663 triangles, and maximum subtree depth 3. Only these anonymous

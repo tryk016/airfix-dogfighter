@@ -184,6 +184,35 @@ void testFirstUseMeshSlots() {
         "first-use mesh slots are unstable");
 }
 
+void testExplicitRoomAssemblyExcludesReceiverFallback() {
+    const auto ccf = sharedMeshScene();
+    const std::vector<DrawMaterial> bindings{{
+        .sourceReference = 50U,
+    }};
+    const auto result =
+        buildRoomDrawAssembly(ccf, 1U, bindings);
+    require(
+        result.issues.empty() && result.plan.roomIndex == 1U &&
+            result.plan.placedNodeIndices ==
+                std::vector<std::size_t>{2U} &&
+            result.model.instances.size() == 1U &&
+            result.model.instances[0].sourceNodeReference == 9U &&
+            result.model.instances[0].modelTranslation ==
+                Vec3{100.0F, 101.0F, 102.0F},
+        "explicit ordinary-room assembly included another room or fallback");
+
+    const auto outOfRange =
+        buildRoomDrawAssembly(ccf, 2U, bindings);
+    require(
+        hasIssue(outOfRange, CcfRoomDrawIssueKind::planDependency) &&
+            outOfRange.plan.issues.size() == 1U &&
+            outOfRange.plan.issues[0].kind ==
+                CcfRoomDrawPlanIssueKind::roomIndexOutOfRange &&
+            outOfRange.model.meshes.empty() &&
+            outOfRange.model.instances.empty(),
+        "out-of-range room assembly did not fail atomically");
+}
+
 void testTypedFailuresAreAtomic() {
     auto ccf = sharedMeshScene();
     auto result = buildFirstRoomDrawAssembly(
@@ -315,6 +344,7 @@ int main() {
     try {
         testDrawAllUsesPlacedWorldAndSharesMeshes();
         testFirstUseMeshSlots();
+        testExplicitRoomAssemblyExcludesReceiverFallback();
         testTypedFailuresAreAtomic();
         std::cout << "CcfRoomDrawAssembly tests passed\n";
         return 0;

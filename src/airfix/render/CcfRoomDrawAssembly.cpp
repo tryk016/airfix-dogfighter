@@ -87,14 +87,16 @@ CcfRoomDrawIssueKind drawMeshIssueKind(
 
 } // namespace
 
-CcfRoomDrawAssembly buildFirstRoomDrawAssembly(
+CcfRoomDrawAssembly buildRoomDrawAssembly(
     const assets::CcfMetadata& ccf,
+    const std::size_t ccfRoomIndex,
     const std::span<const DrawMaterial> materialBindings,
     const BasisTransform& basis,
     const UvPolicy uvPolicy,
     const CcfRoomDrawLimits& limits) {
     CcfRoomDrawAssembly result;
-    result.plan = assets::resolveFirstRoomDrawPlan(ccf, limits.plan);
+    result.plan = assets::resolveRoomDrawPlan(
+        ccf, ccfRoomIndex, limits.plan);
     if (!result.plan.issues.empty()) {
         addIssue(result, CcfRoomDrawIssueKind::planDependency);
         return result;
@@ -384,6 +386,16 @@ CcfRoomDrawAssembly buildFirstRoomDrawAssembly(
 
     result.model = std::move(candidate);
     return result;
+}
+
+CcfRoomDrawAssembly buildFirstRoomDrawAssembly(
+    const assets::CcfMetadata& ccf,
+    const std::span<const DrawMaterial> materialBindings,
+    const BasisTransform& basis,
+    const UvPolicy uvPolicy,
+    const CcfRoomDrawLimits& limits) {
+    return buildRoomDrawAssembly(
+        ccf, 0U, materialBindings, basis, uvPolicy, limits);
 }
 
 } // namespace airfix::render

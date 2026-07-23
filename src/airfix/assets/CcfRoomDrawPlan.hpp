@@ -10,7 +10,9 @@
 namespace airfix::assets {
 
 enum class CcfRoomDrawPlanIssueKind : std::uint8_t {
-    noRoom,
+    roomIndexOutOfRange,
+    // Compatibility name for the original first-room-only entry point.
+    noRoom = roomIndexOutOfRange,
     firstRoomNotPrimary,
     placedSceneDependency,
     invalidPlacedNode,
@@ -21,10 +23,12 @@ enum class CcfRoomDrawPlanIssueKind : std::uint8_t {
 };
 
 struct CcfRoomDrawPlanIssue {
-    CcfRoomDrawPlanIssueKind kind{CcfRoomDrawPlanIssueKind::noRoom};
+    CcfRoomDrawPlanIssueKind kind{
+        CcfRoomDrawPlanIssueKind::roomIndexOutOfRange};
     std::optional<std::size_t> placedNodeIndex;
     std::optional<std::size_t> meshIndex;
     std::optional<std::uint32_t> reference;
+    std::optional<std::size_t> requestedRoomIndex;
 };
 
 struct CcfRoomDrawPlanLimits {
@@ -47,6 +51,15 @@ struct CcfRoomDrawPlan {
     std::vector<TextureDependency> textures;
     std::vector<CcfRoomDrawPlanIssue> issues;
 };
+
+// Builds a conservative assets-only draw plan for one explicit physical room.
+// The selected room index is never inferred from BSP data. Objects resolved to
+// the external receiver fallback belong only to the primary receiver room.
+// Any issue clears the room selection and every dependency list.
+[[nodiscard]] CcfRoomDrawPlan resolveRoomDrawPlan(
+    const CcfMetadata& ccf,
+    std::size_t ccfRoomIndex,
+    const CcfRoomDrawPlanLimits& limits = {});
 
 // Builds the conservative assets-only draw plan for the first physical room.
 // Room BSP metadata is deliberately irrelevant. The placed scene is resolved

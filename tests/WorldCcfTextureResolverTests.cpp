@@ -346,6 +346,60 @@ void testHappyPathCaseSeparatorsAndCanonicalPlan() {
         "environment first-room TEXU metadata mismatch");
 }
 
+void testExplicitRoomTextureSelectionAndRangeFailure() {
+    const auto archive = standardArchive();
+    const auto ccfIndex = fileIndex(archive, "Airfield.ccf");
+    auto ccf = standardCcf();
+    ccf.rooms.push_back({
+        .name = "second room",
+        .prefix = "",
+        .reference = 20U,
+        .primaryBinding = false,
+    });
+    ccf.meshes.push_back(mesh(200U, {9U}));
+    ccf.placedNodes.push_back(object(2U, 20U, 200U));
+    ccf.placedNodes.push_back(object(3U, 999U, 100U));
+
+    const auto secondRoom =
+        airfix::assets::resolveWorldRoomTextures(
+            standardWorld(), ccf, ccfIndex, archive, 1U);
+    require(
+        secondRoom.ccf.status ==
+                airfix::assets::WorldCcfBindingStatus::unique &&
+            secondRoom.issues.empty() &&
+            secondRoom.plan.issues.empty() &&
+            secondRoom.plan.roomIndex == 1U &&
+            secondRoom.plan.placedNodeIndices ==
+                std::vector<std::size_t>{1U} &&
+            secondRoom.plan.materialIndices ==
+                std::vector<std::size_t>{1U} &&
+            secondRoom.textures.entries.size() == 1U &&
+            secondRoom.textures.entries[0].role ==
+                airfix::assets::TextureDependencyRole::environment &&
+            secondRoom.textures.entries[0].archiveFileIndex ==
+                fileIndex(archive, "Clouds.gti"),
+        "explicit world room did not retain its isolated texture plan");
+
+    const auto outOfRange =
+        airfix::assets::resolveWorldRoomTextures(
+            standardWorld(), ccf, ccfIndex, archive, 2U);
+    require(
+        outOfRange.ccf.status ==
+                airfix::assets::WorldCcfBindingStatus::unique &&
+            hasIssue(
+                outOfRange,
+                airfix::assets::WorldCcfTextureIssueKind::
+                    roomPlanDependency) &&
+            outOfRange.plan.issues.size() == 1U &&
+            outOfRange.plan.issues[0].kind ==
+                airfix::assets::CcfRoomDrawPlanIssueKind::
+                    roomIndexOutOfRange &&
+            outOfRange.plan.issues[0].requestedRoomIndex == 2U,
+        "out-of-range world room did not retain typed diagnostics");
+    requireNoPublishedTextures(
+        outOfRange, "out-of-range world room");
+}
+
 void testCcfBindingFailuresAreTypedAndFailClosed() {
     const auto archive = standardArchive();
     const auto ccf = standardCcf();
@@ -690,6 +744,7 @@ void testEmptyPlanTexturesStillValidateCcf() {
 int main() {
     try {
         testHappyPathCaseSeparatorsAndCanonicalPlan();
+        testExplicitRoomTextureSelectionAndRangeFailure();
         testCcfBindingFailuresAreTypedAndFailClosed();
         testSuppliedCcfEntryMismatchFailsClosed();
         testPlanDependencyIsRetainedAndFailClosed();

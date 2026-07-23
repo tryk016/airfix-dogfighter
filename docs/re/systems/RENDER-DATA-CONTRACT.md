@@ -1,8 +1,8 @@
 # Backend-neutral render data and first-model diagnostic
 
-**State:** mesh/model payload, conservative first-room assembly, stable runtime
-texture/upload plans, private CPU diagnostic, and public synthetic Metal smoke
-path implemented; private asset-backed Metal path pending
+**State:** mesh/model payload, conservative explicit-room assembly, stable
+runtime texture/upload plans, private CPU diagnostic, and public synthetic
+Metal smoke path implemented; private asset-backed Metal path pending
 
 **Evidence:** `EV-20260721-030` through `EV-20260721-034`
 
@@ -25,10 +25,10 @@ uniquely under this rule.
 
 World texture resolution first verifies that the world's `CCFF` path maps to
 the supplied CCF source-entry index, then internally derives the canonical
-first-room dependency plan. This comparison is metadata-only: the loader must
-create the parsed CCF and its source index in one immutable transaction. The
-resolver does not claim that an ordinal alone authenticates payload
-provenance.
+explicit-CCF-room dependency plan. This comparison is metadata-only: the
+loader must create the parsed CCF and its source index in one immutable
+transaction. The resolver does not claim that an ordinal alone authenticates
+payload provenance.
 
 `buildTextureBindingPlan` accepts the expected dependencies and the complete
 texture-entry resolution. Any upstream issue, missing/extra entry, or mismatch
@@ -48,10 +48,9 @@ is checked before a plan is published.
 
 Across all 215 object plans, 2,959 edges become 614 per-object unique imports:
 612 authored-chain and two generated-chain imports, with 2,355 uploaded and
-2,368 allocated levels. All 29 world-to-CCF bindings also validate, but their
-first receiver/root rooms contain no selected placed object despite 6,318
-placed nodes across those CCFs. Explicit playable-room selection must precede
-an asset-backed world draw.
+2,368 allocated levels. All 29 world-to-CCF bindings and all 135 physical CCF
+rooms also validate. Explicit selection assigns all 4,911 objects exactly once
+to ordinary rooms; receiver rooms contain no selected object.
 
 ## Draw mesh payload
 
@@ -104,15 +103,19 @@ distinguish the UV policies: preserved raw V is correct for this path, while
 the explicit flipped-V comparison is visibly wrong. The private outputs and
 hashes remain ignored and uncommitted.
 
-## First-room draw-all boundary
+## Explicit-room draw-all boundary
 
-`resolveFirstRoomDrawPlan` selects placed objects from the first receiver/root
-room in physical order and never uses BSP as a visibility list. The plan maps
-mesh slots and material/texture dependencies in first-use order.
-`buildFirstRoomDrawAssembly` converts each unique mesh once and emits one world
+`resolveRoomDrawPlan` selects placed objects from one caller-supplied physical
+index into `CcfMetadata::rooms`, in physical placed-node order, and never uses
+BSP as a visibility list. The index is not an index or ID from
+`WorldDefinition::rooms`, a CCF reference, or a name match. The receiver
+fallback belongs only to physical CCF room zero. The plan maps mesh slots and
+material/texture dependencies in first-use order.
+`buildRoomDrawAssembly` converts each unique mesh once and emits one world
 instance per selected placed object. Stored F050 placed transforms are authored
 world relations and are applied exactly once; prototype transforms and parent
-links are not recomposed.
+links are not recomposed. The original first-room functions remain thin room-
+zero compatibility wrappers.
 
 The builder accepts externally assigned `TextureAssetId` bindings so archive
 lookup/upload ownership remains outside render conversion. It enforces both
@@ -121,9 +124,11 @@ limits. Any plan, binding, transform, geometry, overflow, or limit issue leaves
 the public `DrawModelPayload` empty. The F040 placed orientation is explicitly
 unsupported until evidence establishes its meaning.
 
-All 286 first rooms build with no issue, producing aggregate metadata-only
-counts of 2,084 instances, 46,981 triangles, and 6,435 ordered ranges. These
-payloads are validated in memory only; no private geometry is exported.
+All 392 rooms across 286 CCFs build with no issue. A per-node coverage bitmap
+proves that all 6,995 placed objects appear in exactly one plan. The aggregate
+metadata-only result contains 6,995 instances, 170,039 triangles, and 20,211
+ordered ranges. These payloads are validated in memory only; no private
+geometry is exported.
 
 ## Metal handoff
 

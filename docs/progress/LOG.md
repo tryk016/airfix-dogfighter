@@ -765,3 +765,35 @@ superseded evidence.
   nodes yield zero objects in the first receiver/root binding, proving that the
   next world pass must select an actual room explicitly rather than assume the
   receiver owns visible geometry.
+
+## 2026-07-23 — explicit physical CCF-room selection
+
+- Generalized the assets-only plan, backend-neutral assembly, and world texture
+  resolver to accept an explicit physical `CcfMetadata::rooms` index. The
+  first-room entry points remain thin room-zero compatibility wrappers.
+- Receiver fallback remains exclusive to physical CCF room zero. Ordinary
+  rooms select only placed objects whose resolved room index matches exactly;
+  nulls, lights, cross-room parents, and incomplete BSP do not alter selection.
+  Out-of-range indices, including `SIZE_MAX`, fail closed with the requested
+  index retained in typed diagnostics.
+- The inventory now validates every room and maintains a per-placed-node
+  coverage bitmap. A selected object must occur exactly once across all plans,
+  while nulls and lights must occur zero times. Aggregate counters use checked
+  `uint64_t` addition.
+- Read-only validation covers all 392 rooms in 286 CCFs: all 6,995 objects
+  appear exactly once, yielding 6,995 instances, 10,461 material bindings,
+  10,519 texture edges, 170,039 triangles, and 20,211 ranges with no issue.
+- The 29 world CCFs contain 135 rooms. Exactly 105 ordinary rooms are non-empty;
+  all 29 receiver rooms and one ordinary room are valid empty plans. Their
+  4,911 objects appear exactly once and receiver/fallback instance count is
+  zero.
+- Per-room world texture plans validate 7,247 edges and 2,637 first-use import
+  requests: 2,629 authored and eight generated, with 9,165 uploaded and 9,205
+  allocated mip levels. These are per-room aggregates rather than a global
+  runtime cache.
+- Corpus structure disproves an implicit World `ROOM` to CCF-room join: the
+  catalogs have different counts and no proven position, ID, reference, or
+  name key. The public parameter is therefore named `ccfRoomIndex`; BSP
+  visibility remains disabled.
+- Independent review found no P1/P2 in the explicit-room APIs. The portable
+  suite remains green at 27/27 tests, and no private payload was written.

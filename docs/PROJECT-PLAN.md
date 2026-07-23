@@ -419,12 +419,13 @@ contract, evidence, implementation, tests, parity result, and documentation agre
    rendered a complete grouped aircraft. Parent-relative local derivation, the
    public synthetic Metal smoke path, placed-record decoder, and flat bounded
    room fog/BSP parser plus polygon/object/mesh/portal resolver are implemented.
-   The conservative first-room plan and multi-mesh/multi-instance draw assembly
-   are also implemented and validated across all scenes. Exact world/CCF/TEXU
-   binding, dense runtime texture IDs, cross-role deduplication, and bounded GTI
-   upload metadata are complete. Generalize selection from the empty
-   receiver/root binding to an explicit world room, then connect that payload
-   through the existing data-less Metal shell; BSP culling remains disabled
-   until its traversal semantics are proven.
+   The conservative explicit-CCF-room plan and multi-mesh/multi-instance draw
+   assembly are implemented and validate every physical room across all
+   scenes. Exact world/CCF/TEXU binding, dense runtime texture IDs, cross-role
+   deduplication, and bounded GTI upload metadata are complete. Connect the
+   explicit-room payload through the existing data-less Metal shell and
+   separately recover the gameplay room-selection rule; the structurally
+   different World `ROOM` catalog is not treated as a join. BSP culling remains
+   disabled until its traversal semantics are proven.
 10. Implement native UIKit touch capture and Apple Game Controller adapters,
     followed by the configurable visual overlay and on-device usability tests.

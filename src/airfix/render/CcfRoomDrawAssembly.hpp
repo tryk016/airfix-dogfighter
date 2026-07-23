@@ -55,6 +55,19 @@ struct CcfRoomDrawAssembly {
     std::vector<CcfRoomDrawIssue> issues;
 };
 
+// Builds a conservative draw-all model for one explicit physical room.
+// Selection is based only on each placed object's resolved room; room BSP does
+// not hide, duplicate, or reorder geometry. Receiver-fallback objects belong
+// only to the primary room. Material bindings are supplied by the caller after
+// texture assets receive runtime IDs.
+[[nodiscard]] CcfRoomDrawAssembly buildRoomDrawAssembly(
+    const assets::CcfMetadata& ccf,
+    std::size_t ccfRoomIndex,
+    std::span<const DrawMaterial> materialBindings,
+    const BasisTransform& basis = {},
+    UvPolicy uvPolicy = UvPolicy::preserveRaw,
+    const CcfRoomDrawLimits& limits = {});
+
 // Builds a conservative draw-all model for the first receiver/root room.
 // Selection is based only on each placed object's resolved room; room BSP does
 // not hide, duplicate, or reorder geometry. Material bindings are supplied by

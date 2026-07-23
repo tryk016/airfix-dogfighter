@@ -22,6 +22,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace {
@@ -62,6 +63,28 @@ namespace {
         }
     }
     return text;
+}
+
+template <typename Value>
+void checkedAccumulate(
+    std::uint64_t& total,
+    const Value value,
+    const char* const label) {
+    static_assert(std::is_integral_v<Value> && std::is_unsigned_v<Value>);
+    if constexpr (
+        std::numeric_limits<Value>::max() >
+        std::numeric_limits<std::uint64_t>::max()) {
+        if (value > std::numeric_limits<std::uint64_t>::max()) {
+            throw std::runtime_error(
+                std::string{"inventory aggregate overflow: "} + label);
+        }
+    }
+    const auto converted = static_cast<std::uint64_t>(value);
+    if (total > std::numeric_limits<std::uint64_t>::max() - converted) {
+        throw std::runtime_error(
+            std::string{"inventory aggregate overflow: "} + label);
+    }
+    total += converted;
 }
 
 } // namespace
@@ -421,11 +444,20 @@ int main(const int argc, const char* const* argv) {
                                 const auto data = airfix::udsp::readFile(
                                     archivePath, archive, file, kAssetReadLimit);
                                 const auto metadata = airfix::assets::parseCcf(data);
+                                if (metadata.rooms.empty()) {
+                                    throw std::runtime_error(
+                                        "CCF has no physical room");
+                                }
                                 const auto placedScene =
                                     airfix::assets::resolvePlacedScene(metadata);
                                 if (!placedScene.issues.empty()) {
                                     throw std::runtime_error(
                                         "CCF placed-scene reference resolution failed");
+                                }
+                                if (placedScene.nodes.size() !=
+                                    metadata.placedNodes.size()) {
+                                    throw std::runtime_error(
+                                        "CCF placed-scene node count mismatch");
                                 }
                                 const auto roomScene =
                                     airfix::assets::resolveCcfRoomScene(
@@ -434,38 +466,138 @@ int main(const int argc, const char* const* argv) {
                                     throw std::runtime_error(
                                         "CCF room-scene reference resolution failed");
                                 }
-                                const auto firstRoomPlan =
-                                    airfix::assets::resolveFirstRoomDrawPlan(
-                                        metadata);
-                                if (!firstRoomPlan.issues.empty()) {
-                                    throw std::runtime_error(
-                                        "CCF first-room draw planning failed");
-                                }
-                                std::vector<airfix::render::DrawMaterial>
-                                    firstRoomMaterials;
-                                firstRoomMaterials.reserve(
-                                    firstRoomPlan.materialIndices.size());
-                                for (const auto materialIndex :
-                                     firstRoomPlan.materialIndices) {
-                                    if (materialIndex >=
-                                        metadata.materials.size()) {
+                                std::uint64_t roomsValidated = 0U;
+                                std::uint64_t nonEmptyRooms = 0U;
+                                std::uint64_t roomInstanceCount = 0U;
+                                std::uint64_t roomMeshSlotCount = 0U;
+                                std::uint64_t roomMaterialBindingCount = 0U;
+                                std::uint64_t roomTextureEdgeCount = 0U;
+                                std::uint64_t roomDrawVertexCount = 0U;
+                                std::uint64_t roomDrawIndexCount = 0U;
+                                std::uint64_t roomDrawRangeCount = 0U;
+                                std::uint64_t receiverInstanceCount = 0U;
+                                std::uint64_t coveredObjectCount = 0U;
+                                std::vector<std::uint8_t> roomCoverage(
+                                    metadata.placedNodes.size(), 0U);
+                                for (std::size_t roomIndex = 0U;
+                                     roomIndex < metadata.rooms.size();
+                                     ++roomIndex) {
+                                    const auto roomPlan =
+                                        airfix::assets::resolveRoomDrawPlan(
+                                            metadata, roomIndex);
+                                    if (!roomPlan.issues.empty()) {
                                         throw std::runtime_error(
-                                            "CCF first-room material index is invalid");
+                                            "CCF room draw planning failed");
                                     }
-                                    firstRoomMaterials.push_back({
-                                        .sourceReference =
-                                            metadata.materials[materialIndex].
-                                                reference,
-                                    });
-                                }
-                                const auto firstRoomDraw =
-                                    airfix::render::
-                                        buildFirstRoomDrawAssembly(
+                                    for (const auto placedNodeIndex :
+                                         roomPlan.placedNodeIndices) {
+                                        if (placedNodeIndex >=
+                                                roomCoverage.size() ||
+                                            metadata.placedNodes[
+                                                placedNodeIndex].kind !=
+                                                airfix::assets::
+                                                    CcfPlacedNodeKind::object ||
+                                            roomCoverage[placedNodeIndex] !=
+                                                0U) {
+                                            throw std::runtime_error(
+                                                "CCF room draw coverage is "
+                                                "invalid");
+                                        }
+                                        roomCoverage[placedNodeIndex] = 1U;
+                                    }
+                                    std::vector<airfix::render::DrawMaterial>
+                                        roomMaterials;
+                                    roomMaterials.reserve(
+                                        roomPlan.materialIndices.size());
+                                    for (const auto materialIndex :
+                                         roomPlan.materialIndices) {
+                                        if (materialIndex >=
+                                            metadata.materials.size()) {
+                                            throw std::runtime_error(
+                                                "CCF room material index is invalid");
+                                        }
+                                        roomMaterials.push_back({
+                                            .sourceReference =
+                                                metadata.materials[materialIndex].
+                                                    reference,
+                                        });
+                                    }
+                                    const auto roomDraw =
+                                        airfix::render::buildRoomDrawAssembly(
                                             metadata,
-                                            firstRoomMaterials);
-                                if (!firstRoomDraw.issues.empty()) {
-                                    throw std::runtime_error(
-                                        "CCF first-room draw assembly failed");
+                                            roomIndex,
+                                            roomMaterials);
+                                    if (!roomDraw.issues.empty()) {
+                                        throw std::runtime_error(
+                                            "CCF room draw assembly failed");
+                                    }
+                                    checkedAccumulate(
+                                        roomsValidated, 1U, "CCF rooms");
+                                    checkedAccumulate(
+                                        nonEmptyRooms,
+                                        roomDraw.model.instances.empty()
+                                            ? 0U
+                                            : 1U,
+                                        "CCF non-empty rooms");
+                                    checkedAccumulate(
+                                        roomInstanceCount,
+                                        roomDraw.model.instances.size(),
+                                        "CCF room instances");
+                                    checkedAccumulate(
+                                        receiverInstanceCount,
+                                        roomIndex == 0U
+                                            ? roomDraw.model.instances.size()
+                                            : 0U,
+                                        "CCF receiver instances");
+                                    checkedAccumulate(
+                                        roomMeshSlotCount,
+                                        roomDraw.model.meshes.size(),
+                                        "CCF room mesh slots");
+                                    checkedAccumulate(
+                                        roomMaterialBindingCount,
+                                        roomMaterials.size(),
+                                        "CCF room material bindings");
+                                    checkedAccumulate(
+                                        roomTextureEdgeCount,
+                                        roomPlan.textures.size(),
+                                        "CCF room texture edges");
+                                    for (const auto& drawMesh :
+                                         roomDraw.model.meshes) {
+                                        checkedAccumulate(
+                                            roomDrawVertexCount,
+                                            drawMesh.vertices.size(),
+                                            "CCF room draw vertices");
+                                        checkedAccumulate(
+                                            roomDrawIndexCount,
+                                            drawMesh.indices.size(),
+                                            "CCF room draw indices");
+                                        checkedAccumulate(
+                                            roomDrawRangeCount,
+                                            drawMesh.ranges.size(),
+                                            "CCF room draw ranges");
+                                    }
+                                }
+                                for (std::size_t placedNodeIndex = 0U;
+                                     placedNodeIndex <
+                                         metadata.placedNodes.size();
+                                     ++placedNodeIndex) {
+                                    const auto expected =
+                                        metadata.placedNodes[
+                                            placedNodeIndex].kind ==
+                                                airfix::assets::
+                                                    CcfPlacedNodeKind::object &&
+                                        placedScene.nodes[
+                                            placedNodeIndex].instantiated;
+                                    if (roomCoverage[placedNodeIndex] !=
+                                        (expected ? 1U : 0U)) {
+                                        throw std::runtime_error(
+                                            "CCF room draw coverage is "
+                                            "incomplete");
+                                    }
+                                    checkedAccumulate(
+                                        coveredObjectCount,
+                                        expected ? 1U : 0U,
+                                        "CCF covered objects");
                                 }
                                 const auto primaryTextures = std::count_if(
                                     metadata.materials.begin(), metadata.materials.end(),
@@ -548,18 +680,6 @@ int main(const int argc, const char* const* argv) {
                                 std::size_t meshParentEdgeCount = 0U;
                                 std::size_t roomFallbackCount = 0U;
                                 std::size_t resolvedPortalRoomCount = 0U;
-                                std::size_t firstRoomDrawVertexCount = 0U;
-                                std::size_t firstRoomDrawIndexCount = 0U;
-                                std::size_t firstRoomDrawRangeCount = 0U;
-                                for (const auto& drawMesh :
-                                     firstRoomDraw.model.meshes) {
-                                    firstRoomDrawVertexCount +=
-                                        drawMesh.vertices.size();
-                                    firstRoomDrawIndexCount +=
-                                        drawMesh.indices.size();
-                                    firstRoomDrawRangeCount +=
-                                        drawMesh.ranges.size();
-                                }
                                 std::size_t fogCount = 0U;
                                 std::size_t enabledFogCount = 0U;
                                 std::size_t staticBspTreeCount = 0U;
@@ -685,20 +805,28 @@ int main(const int argc, const char* const* argv) {
                                        << ",portalPolygons="
                                        << portalBspPolygonCount
                                        << ",bindings=" << roomScene.bindings.size()
-                                       << ":firstRoom=instances="
-                                       << firstRoomDraw.model.instances.size()
-                                       << ",meshes="
-                                       << firstRoomDraw.model.meshes.size()
-                                       << ",materials="
-                                       << firstRoomPlan.materialIndices.size()
-                                       << ",textures="
-                                       << firstRoomPlan.textures.size()
+                                       << ":roomDraw=roomsValidated="
+                                       << roomsValidated
+                                       << ",nonEmptyRooms="
+                                       << nonEmptyRooms
+                                       << ",instances="
+                                       << roomInstanceCount
+                                       << ",coveredObjects="
+                                       << coveredObjectCount
+                                       << ",receiverInstances="
+                                       << receiverInstanceCount
+                                       << ",meshSlots="
+                                       << roomMeshSlotCount
+                                       << ",materialBindings="
+                                       << roomMaterialBindingCount
+                                       << ",textureEdges="
+                                       << roomTextureEdgeCount
                                        << ",drawVertices="
-                                       << firstRoomDrawVertexCount
+                                       << roomDrawVertexCount
                                        << ",drawIndices="
-                                       << firstRoomDrawIndexCount
+                                       << roomDrawIndexCount
                                        << ",drawRanges="
-                                       << firstRoomDrawRangeCount
+                                       << roomDrawRangeCount
                                        << ":top=";
                                 for (std::size_t child = 0U;
                                      child < metadata.topLevelChunks.size();
@@ -780,105 +908,182 @@ int main(const int argc, const char* const* argv) {
                                             kAssetReadLimit);
                                     const auto ccf =
                                         airfix::assets::parseCcf(ccfData);
-                                    const auto worldTextures =
-                                        airfix::assets::
-                                            resolveWorldFirstRoomTextures(
-                                                definition,
-                                                ccf,
-                                                ccfLookup.fileIndex,
-                                                archive);
-                                    if (!worldTextures.issues.empty() ||
-                                        !worldTextures.plan.issues.empty() ||
-                                        !worldTextures.textures.issues.empty()) {
+                                    if (ccf.rooms.empty()) {
                                         throw std::runtime_error(
-                                            "world first-room texture "
-                                            "resolution failed");
+                                            "world CCF has no physical room");
                                     }
-                                    std::vector<std::uint32_t>
-                                        firstRoomMaterialReferences;
-                                    firstRoomMaterialReferences.reserve(
-                                        worldTextures.plan.materialIndices.
-                                            size());
-                                    for (const auto materialIndex :
-                                         worldTextures.plan.materialIndices) {
-                                        if (materialIndex >=
-                                            ccf.materials.size()) {
-                                            throw std::runtime_error(
-                                                "world first-room material "
-                                                "index is invalid");
-                                        }
-                                        firstRoomMaterialReferences.push_back(
-                                            ccf.materials[materialIndex].
-                                                reference);
-                                    }
-                                    const auto textureBindings =
-                                        airfix::render::
-                                            buildTextureBindingPlan(
-                                                firstRoomMaterialReferences,
-                                                worldTextures.plan.textures,
-                                                worldTextures.textures);
-                                    if (!textureBindings.issues.empty()) {
-                                        throw std::runtime_error(
-                                            "world first-room runtime texture "
-                                            "binding failed");
-                                    }
-                                    std::size_t authoredTextureCount = 0U;
-                                    std::size_t generatedTextureCount = 0U;
+                                    std::uint64_t roomsValidated = 0U;
+                                    std::uint64_t nonEmptyRooms = 0U;
+                                    std::uint64_t roomInstanceCount = 0U;
+                                    std::uint64_t roomMeshSlotCount = 0U;
+                                    std::uint64_t receiverInstanceCount = 0U;
+                                    std::uint64_t materialBindingCount = 0U;
+                                    std::uint64_t textureEdgeCount = 0U;
+                                    std::uint64_t textureImportCount = 0U;
+                                    std::uint64_t authoredTextureCount = 0U;
+                                    std::uint64_t generatedTextureCount = 0U;
                                     std::uint64_t uploadedMipCount = 0U;
                                     std::uint64_t allocatedMipCount = 0U;
                                     std::uint64_t uploadRgbaBytes = 0U;
                                     std::uint64_t residentRgbaBytes = 0U;
-                                    for (const auto& request :
-                                         textureBindings.imports) {
-                                        if (request.archiveFileIndex >=
-                                            archive.files().size()) {
+                                    for (std::size_t roomIndex = 0U;
+                                         roomIndex < ccf.rooms.size();
+                                         ++roomIndex) {
+                                        const auto worldTextures =
+                                            airfix::assets::
+                                                resolveWorldRoomTextures(
+                                                    definition,
+                                                    ccf,
+                                                    ccfLookup.fileIndex,
+                                                    archive,
+                                                    roomIndex);
+                                        if (!worldTextures.issues.empty() ||
+                                            !worldTextures.plan.issues.empty() ||
+                                            !worldTextures.textures.issues.empty()) {
                                             throw std::runtime_error(
-                                                "world texture import index "
-                                                "is invalid");
+                                                "world room texture "
+                                                "resolution failed");
                                         }
-                                        const auto textureData =
-                                            airfix::udsp::readFile(
-                                                archivePath,
-                                                archive,
-                                                archive.files().at(
-                                                    request.archiveFileIndex),
-                                                kAssetReadLimit);
-                                        const auto textureMetadata =
-                                            airfix::assets::parseGti(
-                                                textureData);
-                                        const auto upload =
+                                        std::vector<std::uint32_t>
+                                            roomMaterialReferences;
+                                        roomMaterialReferences.reserve(
+                                            worldTextures.plan.materialIndices.
+                                                size());
+                                        for (const auto materialIndex :
+                                             worldTextures.plan.
+                                                 materialIndices) {
+                                            if (materialIndex >=
+                                                ccf.materials.size()) {
+                                                throw std::runtime_error(
+                                                    "world room material "
+                                                    "index is invalid");
+                                            }
+                                            roomMaterialReferences.push_back(
+                                                ccf.materials[materialIndex].
+                                                    reference);
+                                        }
+                                        const auto textureBindings =
                                             airfix::render::
-                                                describeGtiUpload(
-                                                    request,
-                                                    textureMetadata);
-                                        if (!upload.issues.empty() ||
-                                            !upload.plan.has_value()) {
+                                                buildTextureBindingPlan(
+                                                    roomMaterialReferences,
+                                                    worldTextures.plan.
+                                                        textures,
+                                                    worldTextures.textures);
+                                        if (!textureBindings.issues.empty()) {
                                             throw std::runtime_error(
-                                                "world texture upload "
-                                                "planning failed");
+                                                "world room runtime texture "
+                                                "binding failed");
                                         }
-                                        authoredTextureCount +=
-                                            upload.plan->mipPolicy ==
+                                        for (const auto& request :
+                                             textureBindings.imports) {
+                                            if (request.archiveFileIndex >=
+                                                archive.files().size()) {
+                                                throw std::runtime_error(
+                                                    "world texture import "
+                                                    "index is invalid");
+                                            }
+                                            const auto textureData =
+                                                airfix::udsp::readFile(
+                                                    archivePath,
+                                                    archive,
+                                                    archive.files().at(
+                                                        request.
+                                                            archiveFileIndex),
+                                                    kAssetReadLimit);
+                                            const auto textureMetadata =
+                                                airfix::assets::parseGti(
+                                                    textureData);
+                                            const auto upload =
                                                 airfix::render::
-                                                    GtiMipPolicy::
-                                                        authoredChain
-                                            ? 1U
-                                            : 0U;
-                                        generatedTextureCount +=
-                                            upload.plan->mipPolicy ==
-                                                airfix::render::
-                                                    GtiMipPolicy::
-                                                        generateFromBase
-                                            ? 1U
-                                            : 0U;
-                                        uploadedMipCount +=
-                                            upload.plan->uploadedMipCount;
-                                        allocatedMipCount +=
-                                            upload.plan->allocatedMipCount;
-                                        uploadRgbaBytes +=
-                                            upload.plan->uploadRgbaBytes;
-                                        residentRgbaBytes +=
-                                            upload.plan->residentRgbaBytes;
+                                                    describeGtiUpload(
+                                                        request,
+                                                        textureMetadata);
+                                            if (!upload.issues.empty() ||
+                                                !upload.plan.has_value()) {
+                                                throw std::runtime_error(
+                                                    "world texture upload "
+                                                    "planning failed");
+                                            }
+                                            checkedAccumulate(
+                                                authoredTextureCount,
+                                                upload.plan->mipPolicy ==
+                                                        airfix::render::
+                                                            GtiMipPolicy::
+                                                                authoredChain
+                                                    ? 1U
+                                                    : 0U,
+                                                "world authored textures");
+                                            checkedAccumulate(
+                                                generatedTextureCount,
+                                                upload.plan->mipPolicy ==
+                                                        airfix::render::
+                                                            GtiMipPolicy::
+                                                                generateFromBase
+                                                    ? 1U
+                                                    : 0U,
+                                                "world generated textures");
+                                            checkedAccumulate(
+                                                uploadedMipCount,
+                                                upload.plan->
+                                                    uploadedMipCount,
+                                                "world uploaded mips");
+                                            checkedAccumulate(
+                                                allocatedMipCount,
+                                                upload.plan->
+                                                    allocatedMipCount,
+                                                "world allocated mips");
+                                            checkedAccumulate(
+                                                uploadRgbaBytes,
+                                                upload.plan->
+                                                    uploadRgbaBytes,
+                                                "world upload RGBA bytes");
+                                            checkedAccumulate(
+                                                residentRgbaBytes,
+                                                upload.plan->
+                                                    residentRgbaBytes,
+                                                "world resident RGBA bytes");
+                                        }
+                                        checkedAccumulate(
+                                            roomsValidated,
+                                            1U,
+                                            "world CCF rooms");
+                                        checkedAccumulate(
+                                            nonEmptyRooms,
+                                            worldTextures.plan.
+                                                    placedNodeIndices.empty()
+                                                ? 0U
+                                                : 1U,
+                                            "world non-empty CCF rooms");
+                                        checkedAccumulate(
+                                            roomInstanceCount,
+                                            worldTextures.plan.
+                                                placedNodeIndices.size(),
+                                            "world room instances");
+                                        checkedAccumulate(
+                                            receiverInstanceCount,
+                                            roomIndex == 0U
+                                                ? worldTextures.plan.
+                                                      placedNodeIndices.size()
+                                                : 0U,
+                                            "world receiver instances");
+                                        checkedAccumulate(
+                                            roomMeshSlotCount,
+                                            worldTextures.plan.
+                                                meshIndices.size(),
+                                            "world room mesh slots");
+                                        checkedAccumulate(
+                                            materialBindingCount,
+                                            textureBindings.materials.size(),
+                                            "world material bindings");
+                                        checkedAccumulate(
+                                            textureEdgeCount,
+                                            worldTextures.textures.entries.
+                                                size(),
+                                            "world texture edges");
+                                        checkedAccumulate(
+                                            textureImportCount,
+                                            textureBindings.imports.size(),
+                                            "world texture imports");
                                     }
                                     detail << ":world:texture="
                                            << definition.textureRoot.has_value()
@@ -903,16 +1108,22 @@ int main(const int argc, const char* const* argv) {
                                            << ccf.blueprints.size()
                                            << ",placed="
                                            << ccf.placedNodes.size()
-                                           << ":firstRoom=instances="
-                                           << worldTextures.plan.
-                                                  placedNodeIndices.size()
-                                           << ",materials="
-                                           << textureBindings.materials.size()
+                                           << ":roomDraw=roomsValidated="
+                                           << roomsValidated
+                                           << ",nonEmptyRooms="
+                                           << nonEmptyRooms
+                                           << ",instances="
+                                           << roomInstanceCount
+                                           << ",receiverInstances="
+                                           << receiverInstanceCount
+                                           << ",meshSlots="
+                                           << roomMeshSlotCount
+                                           << ",materialBindings="
+                                           << materialBindingCount
                                            << ",edges="
-                                           << worldTextures.textures.entries.
-                                                  size()
+                                           << textureEdgeCount
                                            << ",imports="
-                                           << textureBindings.imports.size()
+                                           << textureImportCount
                                            << ",authored="
                                            << authoredTextureCount
                                            << ",generated="
