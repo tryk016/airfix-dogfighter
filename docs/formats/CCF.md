@@ -251,6 +251,13 @@ slots, 3,120 material uses, 3,272 texture dependency edges, 123,121 draw
 vertices, 140,943 indices (46,981 triangles), and 6,435 ordered draw ranges.
 No plan, transform, geometry, material, or limit issue occurs.
 
+The 29 CCFs referenced directly by world definitions contain 135 rooms and
+6,318 placed nodes, but their first receiver/root bindings select zero placed
+objects. The nonzero aggregate above comes from other CCF roles, including
+object scenes. Therefore the receiver binding is not treated as a default
+playable room. Explicit room selection is the next conservative world step;
+BSP traversal is still not used to guess visibility.
+
 BSP culling, collision, and portal traversal remain later runtime features; no
 geometry is hidden until those traversal semantics are separately proven.
 

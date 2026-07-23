@@ -128,6 +128,23 @@ entries, with zero missing, invalid, or ambiguous graph, material, or texture
 dependencies. The earlier 212-material/210-texture census measured only
 directly selected mesh roots and remains a historical narrower-scope result.
 
+The runtime binding pass validates the full upstream resolution and expected
+dependency identity before assigning dense first-use texture IDs. Summed over
+the 215 independent object plans, the 2,959 edges deduplicate to 614 import
+requests. Of those requests, 612 retain exact authored mip chains and two use
+base-level upload plus generated mips. They describe 2,355 uploaded and 2,368
+allocated mip levels, 28,754,080 upload RGBA8 bytes, and 28,774,992 estimated
+resident RGBA8 bytes. These are metadata-only, per-object-plan aggregates, not
+a global cross-object cache size.
+
+All 29 world definitions also resolve their `CCFF` path to one exact archive
+entry before any `TEXU` lookup. Their CCFs contain 135 rooms, 4,911 meshes,
+6,318 blueprints, and 6,318 placed nodes. The first physical receiver/root room
+selects zero placed objects in every world CCF, so it produces no material or
+texture edge. This is a useful negative result: the runtime must select an
+actual world room rather than assume that the receiver binding owns visible
+geometry.
+
 One private grouped-aircraft selection contains 46 nodes, 25 mesh instances,
 21 null groups, 663 triangles, and maximum subtree depth 3. Only these anonymous
 aggregates and the successful complete-assembly result are retained publicly;

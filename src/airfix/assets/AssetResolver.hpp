@@ -8,7 +8,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace airfix::assets {
@@ -128,6 +130,8 @@ struct ObjectTextureEntryResolution {
     std::vector<TextureEntryIssue> issues;
 };
 
+using TextureEntryResolution = ObjectTextureEntryResolution;
+
 [[nodiscard]] ObjectDependencyResolution resolveObjectDependencies(
     const ObjectDefinition& object,
     const CcfMetadata& ccf,
@@ -143,6 +147,12 @@ struct ObjectTextureEntryResolution {
 // Resolves the exact legacy TEXU/source-text join as "root\\source.gti".
 // The .gti suffix is always appended; no alternate roots are searched and no
 // payload bytes are read.
+[[nodiscard]] TextureEntryResolution resolveTextureEntries(
+    std::optional<std::string_view> textureRoot,
+    std::span<const TextureDependency> dependencies,
+    const udsp::Archive& archive,
+    const TextureEntryResolutionLimits& limits = {});
+
 [[nodiscard]] ObjectTextureEntryResolution resolveObjectTextureEntries(
     const ObjectDefinition& object,
     const ObjectDependencyResolution& dependencies,

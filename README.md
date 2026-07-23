@@ -65,9 +65,9 @@ sources.
 | Reverse engineering | Ongoing, with functions and claims tied to reproducible evidence |
 | `UDSP` archives | Bounded metadata parser, lookup, decompression, verification, and CLI implemented |
 | Legacy assets | GTI textures plus bounded CCF scene, room/fog/BSP, mesh, material, blueprint, and placed-node parsing implemented |
-| Dependency resolution | Object-to-scene, blueprint/placed graphs, BSP polygons, first-room draw plan, rooms, meshes, portals, materials, and texture edges implemented |
+| Dependency resolution | Object-to-scene, blueprint/placed graphs, BSP polygons, verified world-to-CCF binding, rooms, meshes, portals, materials, and texture edges implemented |
 | Private packaging | AFPACK writer, validation, transactional install/recovery, and native iOS import/rollback UI implemented |
-| Rendering | Deterministic CPU diagnostics, bounded first-room multi-instance assembly, and a synthetic iOS Metal smoke renderer implemented |
+| Rendering | Deterministic CPU diagnostics, bounded first-room multi-instance assembly, stable texture runtime IDs/upload plans, and a synthetic iOS Metal smoke renderer implemented |
 | Input core | Deterministic semantic router for touch/controller/test sources implemented |
 | Native controls | UIKit touch overlay and Apple Game Controller adapters pending |
 | Game simulation | Reconstruction in progress; no complete playable loop yet |

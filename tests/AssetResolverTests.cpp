@@ -379,6 +379,10 @@ void testTextureEntryResolution() {
     }));
     const auto result = airfix::assets::resolveObjectTextureEntries(
         object, dependencies, archive);
+    const auto generic = airfix::assets::resolveTextureEntries(
+        std::optional<std::string_view>{*object.textureRoot},
+        dependencies.textures,
+        archive);
     const auto fileIndex = [&](const std::string_view name) {
         const auto found = std::find_if(
             archive.files().begin(), archive.files().end(),
@@ -389,6 +393,16 @@ void testTextureEntryResolution() {
 
     require(result.entries.size() == 3U && result.issues.empty(),
         "valid texture entries did not resolve uniquely");
+    require(generic.entries.size() == result.entries.size() &&
+            generic.issues.empty() &&
+            generic.entries[0].logicalPath == result.entries[0].logicalPath &&
+            generic.entries[0].archiveFileIndex ==
+                result.entries[0].archiveFileIndex &&
+            generic.entries[1].archiveFileIndex ==
+                result.entries[1].archiveFileIndex &&
+            generic.entries[2].archiveFileIndex ==
+                result.entries[2].archiveFileIndex,
+        "generic texture-entry resolver diverged from the object wrapper");
     require(result.entries[0].role == airfix::assets::TextureDependencyRole::primary &&
             result.entries[0].materialReference == 7U &&
             result.entries[0].materialIndex == 0U &&
@@ -447,6 +461,28 @@ void testTextureEntryFailures() {
     require(missing.entries[0].status == airfix::assets::TextureEntryStatus::notFound &&
             hasTextureIssue(missing, airfix::assets::TextureEntryIssueKind::notFound, 0U),
         "missing texture lookup was not reported");
+
+    const auto dependencyView = std::span<const airfix::assets::TextureDependency>{
+        dependencies.textures}.subspan(1U, 1U);
+    const auto genericSubspan = airfix::assets::resolveTextureEntries(
+        std::optional<std::string_view>{*object.textureRoot},
+        dependencyView,
+        missingArchive);
+    require(genericSubspan.entries.size() == 1U &&
+            genericSubspan.entries[0].role ==
+                dependencies.textures[1].role &&
+            hasTextureIssue(
+                genericSubspan,
+                airfix::assets::TextureEntryIssueKind::notFound,
+                0U),
+        "generic texture resolver did not keep dependency indices local to its span");
+
+    const auto empty = airfix::assets::resolveTextureEntries(
+        std::nullopt,
+        std::span<const airfix::assets::TextureDependency>{},
+        missingArchive);
+    require(empty.entries.empty() && empty.issues.empty(),
+        "empty generic texture resolution required a texture root");
 
     object.textureRoot = std::nullopt;
     const auto missingRoot = airfix::assets::resolveObjectTextureEntries(

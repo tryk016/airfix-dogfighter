@@ -6,8 +6,10 @@
 #include "airfix/assets/CcfRoomScene.hpp"
 #include "airfix/assets/LegacyFormats.hpp"
 #include "airfix/assets/MissionEntryResolver.hpp"
+#include "airfix/assets/WorldCcfTextureResolver.hpp"
 #include "airfix/render/LegacyGeometry.hpp"
 #include "airfix/render/CcfRoomDrawAssembly.hpp"
+#include "airfix/render/TextureRuntimePlan.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -123,6 +125,13 @@ int main(const int argc, const char* const* argv) {
             std::size_t invalidTexturePathCount = 0U;
             std::size_t missingTextureEntryCount = 0U;
             std::size_t ambiguousTextureEntryCount = 0U;
+            std::size_t runtimeTextureImportCount = 0U;
+            std::size_t authoredTextureCount = 0U;
+            std::size_t generatedTextureCount = 0U;
+            std::uint64_t uploadedMipCount = 0U;
+            std::uint64_t allocatedMipCount = 0U;
+            std::uint64_t uploadRgbaBytes = 0U;
+            std::uint64_t residentRgbaBytes = 0U;
             for (const auto& file : archive.files()) {
                 const auto prefix = airfix::udsp::readFilePrefix(
                     archivePath, archive, file, 4U);
@@ -189,6 +198,73 @@ int main(const int argc, const char* const* argv) {
                         break;
                     }
                 }
+                if (textureResolution.issues.empty()) {
+                    std::vector<std::uint32_t> materialReferences;
+                    materialReferences.reserve(
+                        sceneResolution.materialIndices.size());
+                    for (const auto materialIndex :
+                         sceneResolution.materialIndices) {
+                        if (materialIndex >= ccf.materials.size()) {
+                            throw std::runtime_error(
+                                "object runtime material index is invalid");
+                        }
+                        materialReferences.push_back(
+                            ccf.materials[materialIndex].reference);
+                    }
+                    const auto textureBindings =
+                        airfix::render::buildTextureBindingPlan(
+                            materialReferences,
+                            sceneResolution.textures,
+                            textureResolution);
+                    if (!textureBindings.issues.empty()) {
+                        throw std::runtime_error(
+                            "object runtime texture binding failed");
+                    }
+                    runtimeTextureImportCount +=
+                        textureBindings.imports.size();
+                    for (const auto& request : textureBindings.imports) {
+                        if (request.archiveFileIndex >=
+                            archive.files().size()) {
+                            throw std::runtime_error(
+                                "object texture import index is invalid");
+                        }
+                        const auto textureBytes = airfix::udsp::readFile(
+                            archivePath,
+                            archive,
+                            archive.files().at(request.archiveFileIndex),
+                            kCcfReadLimit);
+                        const auto textureMetadata =
+                            airfix::assets::parseGti(textureBytes);
+                        const auto upload =
+                            airfix::render::describeGtiUpload(
+                                request, textureMetadata);
+                        if (!upload.issues.empty() ||
+                            !upload.plan.has_value()) {
+                            throw std::runtime_error(
+                                "object texture upload planning failed");
+                        }
+                        authoredTextureCount +=
+                            upload.plan->mipPolicy ==
+                                airfix::render::
+                                    GtiMipPolicy::authoredChain
+                            ? 1U
+                            : 0U;
+                        generatedTextureCount +=
+                            upload.plan->mipPolicy ==
+                                airfix::render::
+                                    GtiMipPolicy::generateFromBase
+                            ? 1U
+                            : 0U;
+                        uploadedMipCount +=
+                            upload.plan->uploadedMipCount;
+                        allocatedMipCount +=
+                            upload.plan->allocatedMipCount;
+                        uploadRgbaBytes +=
+                            upload.plan->uploadRgbaBytes;
+                        residentRgbaBytes +=
+                            upload.plan->residentRgbaBytes;
+                    }
+                }
                 ++objectCount;
                 selectedBlueprintNodeCount += sceneResolution.blueprintIndices.size();
                 selectedMeshInstanceCount += sceneResolution.meshes.size();
@@ -231,6 +307,16 @@ int main(const int argc, const char* const* argv) {
                       << " invalidTexturePaths=" << invalidTexturePathCount
                       << " missingTextureEntries=" << missingTextureEntryCount
                       << " ambiguousTextureEntries=" << ambiguousTextureEntryCount
+                      << " runtimeTextureImports="
+                      << runtimeTextureImportCount
+                      << " authoredTextureImports="
+                      << authoredTextureCount
+                      << " generatedTextureImports="
+                      << generatedTextureCount
+                      << " uploadedMips=" << uploadedMipCount
+                      << " allocatedMips=" << allocatedMipCount
+                      << " uploadRgba=" << uploadRgbaBytes
+                      << " residentRgba=" << residentRgbaBytes
                       << '\n';
             const auto unresolvedTextureCount = missingTextureRootCount +
                 invalidTexturePathCount + missingTextureEntryCount +
@@ -674,6 +760,126 @@ int main(const int argc, const char* const* argv) {
                                     for (const auto& list : definition.lineLists) {
                                         lineCount += list.lines.size();
                                     }
+                                    if (!definition.ccfPath.has_value()) {
+                                        throw std::runtime_error(
+                                            "world has no CCF path");
+                                    }
+                                    const auto ccfLookup =
+                                        archive.lookup(*definition.ccfPath);
+                                    if (ccfLookup.status !=
+                                        airfix::udsp::LookupStatus::unique) {
+                                        throw std::runtime_error(
+                                            "world CCF entry is not unique");
+                                    }
+                                    const auto ccfData =
+                                        airfix::udsp::readFile(
+                                            archivePath,
+                                            archive,
+                                            archive.files().at(
+                                                ccfLookup.fileIndex),
+                                            kAssetReadLimit);
+                                    const auto ccf =
+                                        airfix::assets::parseCcf(ccfData);
+                                    const auto worldTextures =
+                                        airfix::assets::
+                                            resolveWorldFirstRoomTextures(
+                                                definition,
+                                                ccf,
+                                                ccfLookup.fileIndex,
+                                                archive);
+                                    if (!worldTextures.issues.empty() ||
+                                        !worldTextures.plan.issues.empty() ||
+                                        !worldTextures.textures.issues.empty()) {
+                                        throw std::runtime_error(
+                                            "world first-room texture "
+                                            "resolution failed");
+                                    }
+                                    std::vector<std::uint32_t>
+                                        firstRoomMaterialReferences;
+                                    firstRoomMaterialReferences.reserve(
+                                        worldTextures.plan.materialIndices.
+                                            size());
+                                    for (const auto materialIndex :
+                                         worldTextures.plan.materialIndices) {
+                                        if (materialIndex >=
+                                            ccf.materials.size()) {
+                                            throw std::runtime_error(
+                                                "world first-room material "
+                                                "index is invalid");
+                                        }
+                                        firstRoomMaterialReferences.push_back(
+                                            ccf.materials[materialIndex].
+                                                reference);
+                                    }
+                                    const auto textureBindings =
+                                        airfix::render::
+                                            buildTextureBindingPlan(
+                                                firstRoomMaterialReferences,
+                                                worldTextures.plan.textures,
+                                                worldTextures.textures);
+                                    if (!textureBindings.issues.empty()) {
+                                        throw std::runtime_error(
+                                            "world first-room runtime texture "
+                                            "binding failed");
+                                    }
+                                    std::size_t authoredTextureCount = 0U;
+                                    std::size_t generatedTextureCount = 0U;
+                                    std::uint64_t uploadedMipCount = 0U;
+                                    std::uint64_t allocatedMipCount = 0U;
+                                    std::uint64_t uploadRgbaBytes = 0U;
+                                    std::uint64_t residentRgbaBytes = 0U;
+                                    for (const auto& request :
+                                         textureBindings.imports) {
+                                        if (request.archiveFileIndex >=
+                                            archive.files().size()) {
+                                            throw std::runtime_error(
+                                                "world texture import index "
+                                                "is invalid");
+                                        }
+                                        const auto textureData =
+                                            airfix::udsp::readFile(
+                                                archivePath,
+                                                archive,
+                                                archive.files().at(
+                                                    request.archiveFileIndex),
+                                                kAssetReadLimit);
+                                        const auto textureMetadata =
+                                            airfix::assets::parseGti(
+                                                textureData);
+                                        const auto upload =
+                                            airfix::render::
+                                                describeGtiUpload(
+                                                    request,
+                                                    textureMetadata);
+                                        if (!upload.issues.empty() ||
+                                            !upload.plan.has_value()) {
+                                            throw std::runtime_error(
+                                                "world texture upload "
+                                                "planning failed");
+                                        }
+                                        authoredTextureCount +=
+                                            upload.plan->mipPolicy ==
+                                                airfix::render::
+                                                    GtiMipPolicy::
+                                                        authoredChain
+                                            ? 1U
+                                            : 0U;
+                                        generatedTextureCount +=
+                                            upload.plan->mipPolicy ==
+                                                airfix::render::
+                                                    GtiMipPolicy::
+                                                        generateFromBase
+                                            ? 1U
+                                            : 0U;
+                                        uploadedMipCount +=
+                                            upload.plan->uploadedMipCount;
+                                        allocatedMipCount +=
+                                            upload.plan->allocatedMipCount;
+                                        uploadRgbaBytes +=
+                                            upload.plan->uploadRgbaBytes;
+                                        residentRgbaBytes +=
+                                            upload.plan->residentRgbaBytes;
+                                    }
                                     detail << ":world:texture="
                                            << definition.textureRoot.has_value()
                                            << ",ccf=" << definition.ccfPath.has_value()
@@ -688,7 +894,37 @@ int main(const int argc, const char* const* argv) {
                                            << ",ignoredDuplicates="
                                            << definition.ignoredDuplicateChunks.size()
                                            << ",unknown="
-                                           << definition.unknownChunks.size();
+                                           << definition.unknownChunks.size()
+                                           << ":ccf=rooms="
+                                           << ccf.rooms.size()
+                                           << ",meshes="
+                                           << ccf.meshes.size()
+                                           << ",blueprints="
+                                           << ccf.blueprints.size()
+                                           << ",placed="
+                                           << ccf.placedNodes.size()
+                                           << ":firstRoom=instances="
+                                           << worldTextures.plan.
+                                                  placedNodeIndices.size()
+                                           << ",materials="
+                                           << textureBindings.materials.size()
+                                           << ",edges="
+                                           << worldTextures.textures.entries.
+                                                  size()
+                                           << ",imports="
+                                           << textureBindings.imports.size()
+                                           << ",authored="
+                                           << authoredTextureCount
+                                           << ",generated="
+                                           << generatedTextureCount
+                                           << ",uploadedMips="
+                                           << uploadedMipCount
+                                           << ",allocatedMips="
+                                           << allocatedMipCount
+                                           << ",uploadRgba="
+                                           << uploadRgbaBytes
+                                           << ",residentRgba="
+                                           << residentRgbaBytes;
                                 }
                                 else if (magic == airfix::assets::kAfFullHouseRoot) {
                                     const auto definition =

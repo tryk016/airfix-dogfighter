@@ -1,7 +1,8 @@
 # FMT-GTI — `GtImage` texture container
 
 **State:** header, chunk table, image metadata, palette placement, pixel-size
-calculation, and bounded full-chain RGBA8 conversion implemented
+calculation, bounded full-chain RGBA8 conversion, and backend-neutral upload
+metadata implemented
 
 **Confidence:** 3/3 for fields below across the selected 1,985-file corpus
 
@@ -94,6 +95,8 @@ resolved.
 - bounded per-level decoder: `decodeGtiMipLevelRgba`;
 - strict owned chain: `decodeGtiMipChainRgba`;
 - compatibility entry point: `decodeGtiBaseRgba` delegates to level zero;
+- bounded runtime descriptor: `render/TextureRuntimePlan` selects the variant,
+  upload policy, levels, rows, and decoded/upload/resident byte budgets;
 - bounded corpus tool: `udsp-list --inventory`;
 - private diagnostic preview tool: `gti-preview` (PPM output under ignored paths);
 - synthetic malformed cases: `tests/LegacyFormatsTests.cpp`.

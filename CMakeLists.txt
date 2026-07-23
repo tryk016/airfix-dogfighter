@@ -93,6 +93,7 @@ add_library(airfix_assets
     src/airfix/assets/CcfRoomScene.cpp
     src/airfix/assets/LegacyFormats.cpp
     src/airfix/assets/MissionEntryResolver.cpp
+    src/airfix/assets/WorldCcfTextureResolver.cpp
 )
 add_library(airfix::assets ALIAS airfix_assets)
 
@@ -114,6 +115,7 @@ add_library(airfix_render
     src/airfix/render/DiagnosticRasterizer.cpp
     src/airfix/render/DrawMesh.cpp
     src/airfix/render/LegacyGeometry.cpp
+    src/airfix/render/TextureRuntimePlan.cpp
 )
 add_library(airfix::render ALIAS airfix_render)
 
@@ -256,6 +258,13 @@ if(AIRFIX_BUILD_TESTS)
     add_test(NAME airfix_mission_entry_resolver_tests
         COMMAND airfix_mission_entry_resolver_tests)
 
+    add_executable(airfix_world_ccf_texture_resolver_tests
+        tests/WorldCcfTextureResolverTests.cpp)
+    target_link_libraries(airfix_world_ccf_texture_resolver_tests
+        PRIVATE airfix::assets)
+    add_test(NAME airfix_world_ccf_texture_resolver_tests
+        COMMAND airfix_world_ccf_texture_resolver_tests)
+
     add_executable(airfix_blueprint_graph_tests tests/CcfBlueprintGraphTests.cpp)
     target_link_libraries(airfix_blueprint_graph_tests PRIVATE airfix::assets)
     add_test(NAME airfix_blueprint_graph_tests COMMAND airfix_blueprint_graph_tests)
@@ -295,6 +304,12 @@ if(AIRFIX_BUILD_TESTS)
     target_link_libraries(airfix_room_draw_assembly_tests PRIVATE airfix::render)
     add_test(NAME airfix_room_draw_assembly_tests
         COMMAND airfix_room_draw_assembly_tests)
+
+    add_executable(airfix_texture_runtime_plan_tests
+        tests/TextureRuntimePlanTests.cpp)
+    target_link_libraries(airfix_texture_runtime_plan_tests PRIVATE airfix::render)
+    add_test(NAME airfix_texture_runtime_plan_tests
+        COMMAND airfix_texture_runtime_plan_tests)
 
     add_executable(airfix_diagnostic_rasterizer_tests
         tests/DiagnosticRasterizerTests.cpp)

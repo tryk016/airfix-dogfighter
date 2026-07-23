@@ -157,6 +157,20 @@
   physical instance order, and apply each placed authored-world transform
   exactly once. All 286 scenes yield 2,084 instances and 46,981 triangles with
   zero plan, transform, geometry, or material issues.
+- Added exact world `CCFF` source-entry validation, a generic bounded
+  `TEXU\\source.gti` resolver, and a fail-closed runtime texture plan. Expected
+  dependencies are checked one-to-one before dense first-use IDs are assigned
+  across primary, secondary, and environment roles.
+- Added backend-neutral GTI upload metadata with the recovered `8, 7, 4, 3, 6`
+  variant preference, authored-chain/base-plus-generated-mips policy, hard
+  parser bounds, and checked decoded/upload/resident RGBA8 budgets. Complete
+  object-subtree validation resolves 2,959 edges into 614 per-object unique
+  import requests: 612 authored-chain and two generated-chain imports.
+- All 29 world definitions bind uniquely to their named CCF. Their CCFs contain
+  135 rooms and 6,318 placed nodes, but the first receiver/root rooms select
+  zero objects. The next world-render step must therefore choose an actual
+  room explicitly instead of treating the receiver binding as playable
+  geometry or inventing a BSP traversal rule.
 - Implemented finite, invertible parent-relative local transform derivation and
   composition in runtime column-vector order. Round-trip tests include
   non-commutative rotations and shear; `rawScalar` is not treated as scale.
@@ -188,8 +202,9 @@
 
 ## Next
 
-1. Resolve the first-room texture dependency edges to imported runtime texture
-   IDs with stable deduplication and bounded upload metadata.
+1. Generalize the conservative draw plan from the receiver/root binding to an
+   explicit world-room selection while keeping BSP visibility disabled until
+   traversal semantics are proven.
 2. Extend the Metal shell from its current synthetic single-mesh buffers to the
    bounded multi-mesh/multi-instance first-room payload, first with unlit/
    no-cull diagnostics and then with evidence-backed render states. Keep BSP

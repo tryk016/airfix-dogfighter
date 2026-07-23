@@ -92,12 +92,12 @@ void addTextureIssue(
     result.issues.push_back({.kind = kind, .dependencyIndex = dependencyIndex});
 }
 
-[[nodiscard]] ObjectTextureEntryResolution resolveTextureEntries(
-    const ObjectDefinition& object,
-    const std::vector<TextureDependency>& dependencies,
+[[nodiscard]] TextureEntryResolution resolveTextureEntriesImpl(
+    const std::optional<std::string_view> textureRoot,
+    const std::span<const TextureDependency> dependencies,
     const udsp::Archive& archive,
     const TextureEntryResolutionLimits& limits) {
-    ObjectTextureEntryResolution result;
+    TextureEntryResolution result;
     if (dependencies.size() > limits.maximumDependencies) {
         addTextureIssue(result, TextureEntryIssueKind::limitExceeded, std::nullopt);
         return result;
@@ -119,7 +119,7 @@ void addTextureIssue(
             .archiveLogicalPath = std::nullopt,
         };
 
-        if (!object.textureRoot.has_value() || object.textureRoot->empty()) {
+        if (!textureRoot.has_value() || textureRoot->empty()) {
             entry.status = TextureEntryStatus::missingTextureRoot;
             addTextureIssue(result, TextureEntryIssueKind::missingTextureRoot, index);
             result.entries.push_back(std::move(entry));
@@ -128,7 +128,7 @@ void addTextureIssue(
 
         try {
             entry.logicalPath = joinTextureLogicalPath(
-                *object.textureRoot,
+                *textureRoot,
                 dependency.sourceText,
                 limits.maximumLogicalPathBytes);
             entry.sourceText = dependency.sourceText;
@@ -166,6 +166,14 @@ void addTextureIssue(
 }
 
 } // namespace
+
+TextureEntryResolution resolveTextureEntries(
+    const std::optional<std::string_view> textureRoot,
+    const std::span<const TextureDependency> dependencies,
+    const udsp::Archive& archive,
+    const TextureEntryResolutionLimits& limits) {
+    return resolveTextureEntriesImpl(textureRoot, dependencies, archive, limits);
+}
 
 ObjectDependencyResolution resolveObjectDependencies(
     const ObjectDefinition& object,
@@ -441,7 +449,10 @@ ObjectTextureEntryResolution resolveObjectTextureEntries(
     const ObjectDependencyResolution& dependencies,
     const udsp::Archive& archive,
     const TextureEntryResolutionLimits& limits) {
-    return resolveTextureEntries(object, dependencies.textures, archive, limits);
+    const auto textureRoot = object.textureRoot.has_value()
+        ? std::optional<std::string_view>{*object.textureRoot}
+        : std::nullopt;
+    return resolveTextureEntries(textureRoot, dependencies.textures, archive, limits);
 }
 
 ObjectTextureEntryResolution resolveObjectTextureEntries(
@@ -449,7 +460,10 @@ ObjectTextureEntryResolution resolveObjectTextureEntries(
     const ObjectSceneDependencyResolution& dependencies,
     const udsp::Archive& archive,
     const TextureEntryResolutionLimits& limits) {
-    return resolveTextureEntries(object, dependencies.textures, archive, limits);
+    const auto textureRoot = object.textureRoot.has_value()
+        ? std::optional<std::string_view>{*object.textureRoot}
+        : std::nullopt;
+    return resolveTextureEntries(textureRoot, dependencies.textures, archive, limits);
 }
 
 } // namespace airfix::assets

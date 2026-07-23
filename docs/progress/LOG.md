@@ -741,3 +741,27 @@ superseded evidence.
   instances, 2,084 per-scene unique meshes, 3,120 material uses, 3,272 texture
   edges, 123,121 draw vertices, 140,943 indices/46,981 triangles, and 6,435
   ranges with zero issue. No private payload or derived geometry is written.
+
+## 2026-07-23 — runtime texture identity and upload planning
+
+- Generalized the recovered `TEXU\\source.gti` lookup without changing the
+  object wrappers. World resolution verifies `CCFF` against the supplied CCF
+  source entry and internally derives the canonical room dependencies; it does
+  not accept an unrelated dependency span.
+- Added fail-closed runtime binding that validates the complete upstream
+  resolution one-to-one, preserves material order and three texture roles, and
+  assigns dense first-use IDs while deduplicating shared archive entries.
+- Added backend-neutral GTI upload metadata with recovered variant preference,
+  authored-chain versus base-plus-generated-mips policy, parser-hard
+  dimension/mip ceilings, checked row/byte arithmetic, and independent
+  decoded/upload/resident budgets.
+- Two independent reviews identified and closed stale-dependency, provenance
+  overclaim, upstream-error erasure, and relaxable-hard-bound findings. The
+  portable suite passes 27/27 tests.
+- Read-only object-corpus validation resolves 2,959 edges into 614 per-object
+  unique imports: 612 authored and two generated, 2,355 uploaded and 2,368
+  allocated levels, with no resolution or upload-plan issue.
+- All 29 worlds bind uniquely to CCF metadata. Their 135 rooms and 6,318 placed
+  nodes yield zero objects in the first receiver/root binding, proving that the
+  next world pass must select an actual room explicitly rather than assume the
+  receiver owns visible geometry.

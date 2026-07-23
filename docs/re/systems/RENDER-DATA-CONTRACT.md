@@ -1,8 +1,8 @@
 # Backend-neutral render data and first-model diagnostic
 
-**State:** mesh/model payload, conservative first-room assembly, private CPU
-diagnostic, and public synthetic Metal smoke path implemented; private
-asset-backed Metal path pending
+**State:** mesh/model payload, conservative first-room assembly, stable runtime
+texture/upload plans, private CPU diagnostic, and public synthetic Metal smoke
+path implemented; private asset-backed Metal path pending
 
 **Evidence:** `EV-20260721-030` through `EV-20260721-034`
 
@@ -13,12 +13,45 @@ the search root in `TEXU`. `GtTextureGroup::AddTexture` at `Cc.dll` RVA
 `0x00046C30` formats ordinary image candidates as `%s\\%s.gti`; the alternate
 boolean path selects `.tga`. CCF loading calls the ordinary path.
 
-`resolveObjectTextureEntries` therefore joins `TEXU`, one separator, the exact
+`resolveTextureEntries` therefore joins `TEXU`, one separator, the exact
 material source text, and `.gti`, then uses bounded UDSP normalization and
 legacy lookup. It never searches alternate roots or treats an already-present
 extension specially. Missing roots, unsafe paths, missing entries, ambiguity,
-and configured limits are typed failures. All 210 selected-corpus texture edges
-resolve uniquely under this recovered rule.
+and configured limits are typed failures. Object wrappers retain the same
+behavior. Complete selected object subtrees resolve all 2,959 texture edges
+uniquely under this rule.
+
+## Runtime texture and upload plans
+
+World texture resolution first verifies that the world's `CCFF` path maps to
+the supplied CCF source-entry index, then internally derives the canonical
+first-room dependency plan. This comparison is metadata-only: the loader must
+create the parsed CCF and its source index in one immutable transaction. The
+resolver does not claim that an ordinal alone authenticates payload
+provenance.
+
+`buildTextureBindingPlan` accepts the expected dependencies and the complete
+texture-entry resolution. Any upstream issue, missing/extra entry, or mismatch
+in role, material reference/index, or source text fails closed. Successful
+entries receive dense `TextureAssetId` values in first-use order, deduplicated
+by archive entry across all materials and primary, secondary, and environment
+roles. ID zero is valid; absence remains `std::optional`.
+
+`describeGtiUpload` performs no I/O and makes no sRGB, premultiplication, or
+V-origin decision. It selects formats in recovered preference order
+`8, 7, 4, 3, 6`. Exact legacy mip layouts upload every authored level;
+dimension-anomalous quarter-area chains upload only level zero and allocate the
+natural clamped chain for backend generation. Dimensions and declared mip
+counts retain the parser's hard 32,768/16 bounds even if configurable budgets
+are raised. All RGBA8 row, decoded, upload, resident, and metadata arithmetic
+is checked before a plan is published.
+
+Across all 215 object plans, 2,959 edges become 614 per-object unique imports:
+612 authored-chain and two generated-chain imports, with 2,355 uploaded and
+2,368 allocated levels. All 29 world-to-CCF bindings also validate, but their
+first receiver/root rooms contain no selected placed object despite 6,318
+placed nodes across those CCFs. Explicit playable-room selection must precede
+an asset-backed world draw.
 
 ## Draw mesh payload
 
