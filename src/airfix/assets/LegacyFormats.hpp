@@ -53,6 +53,63 @@ struct CcfChunk {
     std::vector<CcfChunk> directChildren;
 };
 
+using CcfVector3 = std::array<float, 3>;
+
+struct CcfFogMetadata {
+    std::uint32_t enabledRaw{};
+    float first{};
+    float second{};
+    CcfVector3 color{};
+    std::uint64_t offset{};
+};
+
+enum class CcfBspTreeKind : std::uint8_t {
+    staticTree,
+    portalTree,
+};
+
+enum class CcfBspTreeSource : std::uint8_t {
+    direct,
+    wrapped,
+};
+
+struct CcfBspPolygonMetadata {
+    CcfVector3 faceCross{};
+    CcfVector3 faceNormal{};
+    CcfVector3 point0{};
+    CcfVector3 edge01{};
+    CcfVector3 edge12{};
+    std::uint32_t polygonIndex{};
+    std::uint32_t placedObjectReference{};
+    std::uint64_t offset{};
+};
+
+struct CcfBspNodeMetadata {
+    std::uint32_t childAPresenceRaw{};
+    std::uint32_t childBPresenceRaw{};
+    std::optional<std::size_t> childAIndex;
+    std::optional<std::size_t> childBIndex;
+    CcfVector3 splitNormal{};
+    CcfVector3 pointOnPlane{};
+    // Indices into CcfBspTreeMetadata::polygons, in physical F0C1 order.
+    std::vector<std::size_t> polygonIndices;
+    // Includes known polygons and unknown trailing descriptors. Nested child
+    // nodes and the two fixed plane vectors are represented by typed fields.
+    std::vector<CcfChunk> trailingChildren;
+    std::uint64_t offset{};
+};
+
+struct CcfBspTreeMetadata {
+    CcfBspTreeKind kind{CcfBspTreeKind::staticTree};
+    CcfBspTreeSource source{CcfBspTreeSource::direct};
+    std::size_t rootNodeIndex{};
+    // Flat physical/preorder node arena; child links are indices into it.
+    std::vector<CcfBspNodeMetadata> nodes;
+    // Flat polygon arena shared by every node in this tree.
+    std::vector<CcfBspPolygonMetadata> polygons;
+    std::uint64_t offset{};
+};
+
 struct CcfRoomMetadata {
     std::string name;
     std::string prefix;
@@ -60,6 +117,9 @@ struct CcfRoomMetadata {
     // The first physical 0x1100 binds the receiver/root room instead of
     // allocating an ordinary child room.
     bool primaryBinding{};
+    std::optional<CcfFogMetadata> fog;
+    std::vector<CcfBspTreeMetadata> staticBspTrees;
+    std::vector<CcfBspTreeMetadata> portalBspTrees;
     std::vector<CcfChunk> directChildren;
     std::uint64_t offset{};
 };
@@ -73,8 +133,6 @@ struct CcfMaterialMetadata {
     std::optional<std::string> environmentTexture;
     std::uint64_t offset{};
 };
-
-using CcfVector3 = std::array<float, 3>;
 
 struct CcfMeshVertexMetadata {
     CcfVector3 position{};

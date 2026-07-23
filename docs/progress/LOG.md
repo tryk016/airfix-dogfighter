@@ -694,3 +694,26 @@ superseded evidence.
   now cleared atomically, every node-kind/variant pair is checked, and objects
   skipped for a missing or ambiguous mesh perform no room/portal resolution.
   Re-review found no remaining P1/P2.
+
+## 2026-07-23 — CCF room fog, BSP, and spatial bindings
+
+- `EV-20260721-039`: recovered the exact room fog, static/portal BSP node, and
+  polygon-descriptor loaders plus the deferred polygon-to-object resolution
+  path from `Cc.dll`.
+- Implemented an iterative flat-arena parser for `0x1101`, `0x1200`, `0x1201`,
+  direct `0xF0C0`, and exact `0xF0C1` descriptors. Depth, tree, node, polygon,
+  and shared descriptor limits are enforced before dependent growth; legacy
+  nonzero child flags and the shipped quiet-NaN face-normal sentinel are
+  preserved.
+- Added a fail-closed spatial resolver that joins room BSP descriptors through
+  the canonical placed scene to a unique object, mesh, triangle, ordinary room,
+  and portal target without copying geometry. Independent review caused the
+  resolver to own its placed-scene resolution and to preflight raw polygon
+  arenas, closing stale-resolution and allocation-limit findings.
+- Read-only validation passes all 286 CCF scenes: 392 disabled fog records,
+  98,095 nodes, and 198,210 resolved polygon bindings, including 332 portal
+  bindings. No missing, ambiguous, cross-room, out-of-range, or portal-target
+  issue was found.
+- BSP is confirmed as a spatial index rather than a geometry source. The next
+  renderer step is a conservative draw-all assembly for one room; culling and
+  portal traversal remain disabled until their traversal semantics are proven.

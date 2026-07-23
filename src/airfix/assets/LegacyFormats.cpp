@@ -83,6 +83,38 @@ struct CcfParseBudget {
     }
 };
 
+struct CcfSpatialBudget {
+    static constexpr std::size_t kTreeLimit = 100'000U;
+    static constexpr std::size_t kNodeLimit = 100'000U;
+    static constexpr std::size_t kPolygonLimit = 250'000U;
+    static constexpr std::size_t kDepthLimit = 1'024U;
+
+    std::size_t treeCount{};
+    std::size_t nodeCount{};
+    std::size_t polygonCount{};
+
+    void addTree() {
+        if (treeCount >= kTreeLimit) {
+            throw ParseError("CCF exceeds the BSP tree limit");
+        }
+        ++treeCount;
+    }
+
+    void addNode() {
+        if (nodeCount >= kNodeLimit) {
+            throw ParseError("CCF exceeds the BSP node limit");
+        }
+        ++nodeCount;
+    }
+
+    void addPolygon() {
+        if (polygonCount >= kPolygonLimit) {
+            throw ParseError("CCF exceeds the BSP polygon limit");
+        }
+        ++polygonCount;
+    }
+};
+
 [[nodiscard]] std::vector<CcfChunk> parseCcfChunkSequence(
     const std::span<const std::uint8_t> bytes,
     const std::size_t begin,
@@ -208,50 +240,11 @@ struct CcfName {
 }
 
 [[nodiscard]] CcfRoomMetadata parseCcfRoom(
-    const std::span<const std::uint8_t> bytes,
+    std::span<const std::uint8_t> bytes,
     CcfChunk& room,
     CcfParseBudget& budget,
-    const bool primaryBinding) {
-    if (room.id != 0x1100U) {
-        throw ParseError("CCF room parser received a non-room chunk");
-    }
-    const auto roomEnd = checkedAdd(room.offset, room.totalSize, "CCF room end");
-    const auto payload = checkedAdd(room.offset, 6U, "CCF room payload");
-    requireRange(payload, 6U, roomEnd, "CCF room name header");
-    const CcfChunk nameChunk{
-        .id = readU16(bytes, static_cast<std::size_t>(payload), "CCF room name id"),
-        .totalSize = readU32(
-            bytes, static_cast<std::size_t>(payload + 2U), "CCF room name size"),
-        .offset = payload,
-        .directChildren = {},
-    };
-    if (nameChunk.totalSize < 6U) {
-        throw ParseError("CCF room name is shorter than its header");
-    }
-    requireRange(nameChunk.offset, nameChunk.totalSize, roomEnd, "CCF room name");
-    budget.consume("CCF room name");
-    const auto name = parseCcfName(bytes, nameChunk, "CCF room name", budget);
-    auto cursor = checkedAdd(
-        nameChunk.offset, nameChunk.totalSize, "CCF room reference");
-    requireRange(cursor, 4U, roomEnd, "CCF room reference");
-    const auto reference = readU32(
-        bytes, static_cast<std::size_t>(cursor), "CCF room reference");
-    cursor = checkedAdd(cursor, 4U, "CCF room children");
-    room.directChildren = parseCcfChunkSequence(
-        bytes,
-        static_cast<std::size_t>(cursor),
-        static_cast<std::size_t>(roomEnd),
-        "CCF room child",
-        budget);
-    return {
-        .name = name.name,
-        .prefix = name.prefix,
-        .reference = reference,
-        .primaryBinding = primaryBinding,
-        .directChildren = room.directChildren,
-        .offset = room.offset,
-    };
-}
+    CcfSpatialBudget& spatialBudget,
+    bool primaryBinding);
 
 void validateCcfMaterialVectors(
     const std::span<const std::uint8_t> bytes,
@@ -446,6 +439,336 @@ void validateCcfMaterialVectors(
     }
     requireRange(chunk.offset, chunk.totalSize, end, field);
     return chunk;
+}
+
+[[nodiscard]] CcfFogMetadata parseCcfFog(
+    const std::span<const std::uint8_t> bytes,
+    const CcfChunk& fog,
+    CcfParseBudget& budget) {
+    if (fog.id != 0x1101U || fog.totalSize != 36U) {
+        throw ParseError("CCF room fog has an invalid chunk");
+    }
+    const auto payload = checkedAdd(fog.offset, 6U, "CCF room fog payload");
+    const auto end = checkedAdd(fog.offset, fog.totalSize, "CCF room fog end");
+    const auto vectorOffset = checkedAdd(payload, 12U, "CCF room fog color");
+    const auto vector = readContainedCcfChunk(
+        bytes, vectorOffset, end, "CCF room fog color");
+    budget.consume("CCF room fog color");
+    if (checkedAdd(vector.offset, vector.totalSize, "CCF room fog color end") != end) {
+        throw ParseError("CCF room fog has trailing data");
+    }
+    return {
+        .enabledRaw = readU32(
+            bytes, static_cast<std::size_t>(payload), "CCF room fog enabled"),
+        .first = readFloat(
+            bytes, static_cast<std::size_t>(payload + 4U), "CCF room fog first"),
+        .second = readFloat(
+            bytes, static_cast<std::size_t>(payload + 8U), "CCF room fog second"),
+        .color = parseCcfVector3(
+            bytes, vector, 0xF030U, "CCF room fog color"),
+        .offset = fog.offset,
+    };
+}
+
+[[nodiscard]] CcfBspPolygonMetadata parseCcfBspPolygon(
+    const std::span<const std::uint8_t> bytes,
+    const CcfChunk& polygon,
+    CcfParseBudget& budget) {
+    if (polygon.id != 0xF0C1U || polygon.totalSize != 104U) {
+        throw ParseError("CCF BSP polygon has an invalid chunk");
+    }
+    const auto end = checkedAdd(
+        polygon.offset, polygon.totalSize, "CCF BSP polygon end");
+    auto cursor = checkedAdd(
+        polygon.offset, 6U, "CCF BSP polygon payload");
+    std::array<CcfVector3, 5> vectors{};
+    for (std::size_t index = 0U; index < vectors.size(); ++index) {
+        const auto vector = readContainedCcfChunk(
+            bytes, cursor, end, "CCF BSP polygon vector");
+        budget.consume("CCF BSP polygon vector");
+        vectors[index] = parseCcfVector3(
+            bytes, vector, 0xF040U, "CCF BSP polygon vector");
+        cursor = checkedAdd(
+            cursor, vector.totalSize, "CCF BSP polygon next vector");
+    }
+    requireRange(cursor, 8U, end, "CCF BSP polygon indices");
+    if (checkedAdd(cursor, 8U, "CCF BSP polygon payload end") != end) {
+        throw ParseError("CCF BSP polygon has trailing data");
+    }
+    return {
+        .faceCross = vectors[0],
+        .faceNormal = vectors[1],
+        .point0 = vectors[2],
+        .edge01 = vectors[3],
+        .edge12 = vectors[4],
+        .polygonIndex = readU32(
+            bytes, static_cast<std::size_t>(cursor), "CCF BSP polygon index"),
+        .placedObjectReference = readU32(
+            bytes,
+            static_cast<std::size_t>(cursor + 4U),
+            "CCF BSP polygon object reference"),
+        .offset = polygon.offset,
+    };
+}
+
+[[nodiscard]] CcfBspTreeMetadata parseCcfBspTree(
+    const std::span<const std::uint8_t> bytes,
+    const CcfChunk& root,
+    const CcfBspTreeKind kind,
+    const CcfBspTreeSource source,
+    CcfParseBudget& budget,
+    CcfSpatialBudget& spatialBudget) {
+    if (root.id != 0xF0C0U) {
+        throw ParseError("CCF BSP tree root has an invalid id");
+    }
+    spatialBudget.addTree();
+    CcfBspTreeMetadata tree{
+        .kind = kind,
+        .source = source,
+        .rootNodeIndex = 0U,
+        .nodes = {},
+        .polygons = {},
+        .offset = root.offset,
+    };
+
+    enum class ChildSide : std::uint8_t {
+        a,
+        b,
+    };
+    struct PendingNode {
+        CcfChunk chunk;
+        std::optional<std::size_t> parentIndex;
+        ChildSide side{ChildSide::a};
+        std::size_t depth{};
+    };
+    std::vector<PendingNode> pending;
+    pending.push_back({
+        .chunk = root,
+        .parentIndex = std::nullopt,
+        .side = ChildSide::a,
+        .depth = 1U,
+    });
+
+    while (!pending.empty()) {
+        auto current = std::move(pending.back());
+        pending.pop_back();
+        if (current.depth > CcfSpatialBudget::kDepthLimit) {
+            throw ParseError("CCF BSP tree exceeds the depth limit");
+        }
+        spatialBudget.addNode();
+        const auto nodeIndex = tree.nodes.size();
+        tree.nodes.push_back({
+            .childAPresenceRaw = 0U,
+            .childBPresenceRaw = 0U,
+            .childAIndex = std::nullopt,
+            .childBIndex = std::nullopt,
+            .splitNormal = {},
+            .pointOnPlane = {},
+            .polygonIndices = {},
+            .trailingChildren = {},
+            .offset = current.chunk.offset,
+        });
+        if (current.parentIndex.has_value()) {
+            auto& parent = tree.nodes[*current.parentIndex];
+            if (current.side == ChildSide::a) {
+                parent.childAIndex = nodeIndex;
+            }
+            else {
+                parent.childBIndex = nodeIndex;
+            }
+        }
+
+        const auto nodeEnd = checkedAdd(
+            current.chunk.offset, current.chunk.totalSize, "CCF BSP node end");
+        auto cursor = checkedAdd(
+            current.chunk.offset, 6U, "CCF BSP node payload");
+        requireRange(cursor, 4U, nodeEnd, "CCF BSP child A presence");
+        auto& node = tree.nodes[nodeIndex];
+        node.childAPresenceRaw = readU32(
+            bytes, static_cast<std::size_t>(cursor), "CCF BSP child A presence");
+        cursor = checkedAdd(cursor, 4U, "CCF BSP child A");
+
+        std::optional<CcfChunk> childA;
+        if (node.childAPresenceRaw != 0U) {
+            childA = readContainedCcfChunk(
+                bytes, cursor, nodeEnd, "CCF BSP child A");
+            budget.consume("CCF BSP child A");
+            if (childA->id != 0xF0C0U) {
+                throw ParseError("CCF BSP child A has an invalid id");
+            }
+            cursor = checkedAdd(
+                cursor, childA->totalSize, "CCF BSP child B presence");
+        }
+
+        requireRange(cursor, 4U, nodeEnd, "CCF BSP child B presence");
+        node.childBPresenceRaw = readU32(
+            bytes, static_cast<std::size_t>(cursor), "CCF BSP child B presence");
+        cursor = checkedAdd(cursor, 4U, "CCF BSP child B");
+        std::optional<CcfChunk> childB;
+        if (node.childBPresenceRaw != 0U) {
+            childB = readContainedCcfChunk(
+                bytes, cursor, nodeEnd, "CCF BSP child B");
+            budget.consume("CCF BSP child B");
+            if (childB->id != 0xF0C0U) {
+                throw ParseError("CCF BSP child B has an invalid id");
+            }
+            cursor = checkedAdd(
+                cursor, childB->totalSize, "CCF BSP split normal");
+        }
+
+        const auto splitNormal = readContainedCcfChunk(
+            bytes, cursor, nodeEnd, "CCF BSP split normal");
+        budget.consume("CCF BSP split normal");
+        node.splitNormal = parseCcfVector3(
+            bytes, splitNormal, 0xF040U, "CCF BSP split normal");
+        cursor = checkedAdd(
+            cursor, splitNormal.totalSize, "CCF BSP point on plane");
+        const auto pointOnPlane = readContainedCcfChunk(
+            bytes, cursor, nodeEnd, "CCF BSP point on plane");
+        budget.consume("CCF BSP point on plane");
+        node.pointOnPlane = parseCcfVector3(
+            bytes, pointOnPlane, 0xF040U, "CCF BSP point on plane");
+        cursor = checkedAdd(
+            cursor, pointOnPlane.totalSize, "CCF BSP trailing descriptors");
+
+        node.trailingChildren = parseCcfChunkSequence(
+            bytes,
+            static_cast<std::size_t>(cursor),
+            static_cast<std::size_t>(nodeEnd),
+            "CCF BSP trailing descriptor",
+            budget);
+        for (const auto& trailing : node.trailingChildren) {
+            if (trailing.id != 0xF0C1U) {
+                continue;
+            }
+            auto polygon = parseCcfBspPolygon(bytes, trailing, budget);
+            spatialBudget.addPolygon();
+            node.polygonIndices.push_back(tree.polygons.size());
+            tree.polygons.push_back(std::move(polygon));
+        }
+
+        const auto childDepth = current.depth + 1U;
+        if (childB.has_value()) {
+            pending.push_back({
+                .chunk = std::move(*childB),
+                .parentIndex = nodeIndex,
+                .side = ChildSide::b,
+                .depth = childDepth,
+            });
+        }
+        if (childA.has_value()) {
+            pending.push_back({
+                .chunk = std::move(*childA),
+                .parentIndex = nodeIndex,
+                .side = ChildSide::a,
+                .depth = childDepth,
+            });
+        }
+    }
+    return tree;
+}
+
+[[nodiscard]] CcfRoomMetadata parseCcfRoom(
+    const std::span<const std::uint8_t> bytes,
+    CcfChunk& room,
+    CcfParseBudget& budget,
+    CcfSpatialBudget& spatialBudget,
+    const bool primaryBinding) {
+    if (room.id != 0x1100U) {
+        throw ParseError("CCF room parser received a non-room chunk");
+    }
+    const auto roomEnd = checkedAdd(room.offset, room.totalSize, "CCF room end");
+    const auto payload = checkedAdd(room.offset, 6U, "CCF room payload");
+    requireRange(payload, 6U, roomEnd, "CCF room name header");
+    const CcfChunk nameChunk{
+        .id = readU16(bytes, static_cast<std::size_t>(payload), "CCF room name id"),
+        .totalSize = readU32(
+            bytes, static_cast<std::size_t>(payload + 2U), "CCF room name size"),
+        .offset = payload,
+        .directChildren = {},
+    };
+    if (nameChunk.totalSize < 6U) {
+        throw ParseError("CCF room name is shorter than its header");
+    }
+    requireRange(nameChunk.offset, nameChunk.totalSize, roomEnd, "CCF room name");
+    budget.consume("CCF room name");
+    const auto name = parseCcfName(bytes, nameChunk, "CCF room name", budget);
+    auto cursor = checkedAdd(
+        nameChunk.offset, nameChunk.totalSize, "CCF room reference");
+    requireRange(cursor, 4U, roomEnd, "CCF room reference");
+    const auto reference = readU32(
+        bytes, static_cast<std::size_t>(cursor), "CCF room reference");
+    cursor = checkedAdd(cursor, 4U, "CCF room children");
+    room.directChildren = parseCcfChunkSequence(
+        bytes,
+        static_cast<std::size_t>(cursor),
+        static_cast<std::size_t>(roomEnd),
+        "CCF room child",
+        budget);
+
+    CcfRoomMetadata metadata{
+        .name = name.name,
+        .prefix = name.prefix,
+        .reference = reference,
+        .primaryBinding = primaryBinding,
+        .fog = std::nullopt,
+        .staticBspTrees = {},
+        .portalBspTrees = {},
+        .directChildren = {},
+        .offset = room.offset,
+    };
+    for (auto& child : room.directChildren) {
+        if (child.id == 0x1101U) {
+            if (metadata.fog.has_value()) {
+                throw ParseError("CCF room contains duplicate fog");
+            }
+            metadata.fog = parseCcfFog(bytes, child, budget);
+            continue;
+        }
+        if (child.id == 0xF0C0U) {
+            metadata.staticBspTrees.push_back(parseCcfBspTree(
+                bytes,
+                child,
+                CcfBspTreeKind::staticTree,
+                CcfBspTreeSource::direct,
+                budget,
+                spatialBudget));
+            continue;
+        }
+        if (child.id != 0x1200U && child.id != 0x1201U) {
+            continue;
+        }
+        const auto wrapperBegin = checkedAdd(
+            child.offset, 6U, "CCF BSP wrapper payload");
+        const auto wrapperEnd = checkedAdd(
+            child.offset, child.totalSize, "CCF BSP wrapper end");
+        child.directChildren = parseCcfChunkSequence(
+            bytes,
+            static_cast<std::size_t>(wrapperBegin),
+            static_cast<std::size_t>(wrapperEnd),
+            "CCF BSP wrapper child",
+            budget);
+        const auto kind = child.id == 0x1200U
+            ? CcfBspTreeKind::staticTree
+            : CcfBspTreeKind::portalTree;
+        auto& trees = child.id == 0x1200U
+            ? metadata.staticBspTrees
+            : metadata.portalBspTrees;
+        for (const auto& rootChunk : child.directChildren) {
+            if (rootChunk.id != 0xF0C0U) {
+                continue;
+            }
+            trees.push_back(parseCcfBspTree(
+                bytes,
+                rootChunk,
+                kind,
+                CcfBspTreeSource::wrapped,
+                budget,
+                spatialBudget));
+        }
+    }
+    metadata.directChildren = room.directChildren;
+    return metadata;
 }
 
 [[nodiscard]] CcfPlacedOrientation parseCcfPlacedOrientation(
@@ -1666,6 +1989,7 @@ CcfMetadata parseCcf(const std::span<const std::uint8_t> bytes) {
     CcfParseBudget budget{
         .remainingDescriptors = std::min(kCcfDescriptorLimit, bytes.size() / 6U),
     };
+    CcfSpatialBudget spatialBudget;
     metadata.topLevelChunks = parseCcfChunkSequence(
         bytes, 14U, bytes.size(), "CCF root", budget);
     constexpr std::size_t kCcfRoomLimit = 100'000U;
@@ -1694,7 +2018,11 @@ CcfMetadata parseCcf(const std::span<const std::uint8_t> bytes) {
                     throw ParseError("CCF exceeds the room limit");
                 }
                 metadata.rooms.push_back(parseCcfRoom(
-                    bytes, room, budget, metadata.rooms.empty()));
+                    bytes,
+                    room,
+                    budget,
+                    spatialBudget,
+                    metadata.rooms.empty()));
             }
         }
         else if (section.id == 0x2000U) {

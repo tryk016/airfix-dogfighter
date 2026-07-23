@@ -71,9 +71,16 @@ tables have independent prototype/placed-node roles; their equal physical
 counts do not imply an index mapping.
 
 The 392 rooms have one to eight records per CCF and no zero or duplicate
-references. The first physical room is marked as the receiver/root binding;
-later room records retain their names and bounded direct-child descriptors for
-future spatial decoding.
+references. The first physical room is marked as the receiver/root binding.
+All 392 fog records decode and are disabled in the shipped data.
+
+Room spatial decoding covers 389 static and 392 portal wrappers. Of these,
+275 static and 103 portal wrappers contain a tree. Their flat bounded arenas
+hold 98,095 nodes and 198,210 polygon descriptors: 97,883/197,878 static and
+212/332 portal. Maximum depth is 40. Every descriptor resolves through a
+unique instantiated placed object and mesh to an in-range triangle; every
+ordinary room agrees with the tree owner, and all 332 portal descriptors
+resolve their object's target room.
 
 The semantic material pass validates all 10,385 `0x2100` records. It exposes
 10,256 primary and 263 environment texture references; the loader-supported
@@ -89,7 +96,9 @@ The semantic placed-scene pass validates all 9,328 `0x4000` records in physical
 order: 6,995 objects, 2,130 null nodes, and 203 lights. Exact transforms and
 references plus bounded known child shapes are decoded; all shipped records use
 the F050 matrix orientation, while the loader-supported alternate F040 form is
-covered synthetically. Opaque BSP and null blocks are not copied or exported.
+covered synthetically. Dynamic per-object `0x4101` BSP and null payload blocks
+remain opaque zero-copy descriptors; the decoded room BSP is a separate
+`0x1000` structure.
 
 The same read-only inventory validates the runtime conversion boundary for all
 6,995 meshes. GTI inspection covers 3,990 variants and 9,617 declared mip

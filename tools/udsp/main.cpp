@@ -2,6 +2,7 @@
 #include "airfix/assets/AfChunkContainer.hpp"
 #include "airfix/assets/AssetResolver.hpp"
 #include "airfix/assets/CcfPlacedScene.hpp"
+#include "airfix/assets/CcfRoomScene.hpp"
 #include "airfix/assets/LegacyFormats.hpp"
 #include "airfix/assets/MissionEntryResolver.hpp"
 #include "airfix/render/LegacyGeometry.hpp"
@@ -338,6 +339,13 @@ int main(const int argc, const char* const* argv) {
                                     throw std::runtime_error(
                                         "CCF placed-scene reference resolution failed");
                                 }
+                                const auto roomScene =
+                                    airfix::assets::resolveCcfRoomScene(
+                                        metadata);
+                                if (!roomScene.issues.empty()) {
+                                    throw std::runtime_error(
+                                        "CCF room-scene reference resolution failed");
+                                }
                                 const auto primaryTextures = std::count_if(
                                     metadata.materials.begin(), metadata.materials.end(),
                                     [](const auto& material) {
@@ -419,6 +427,46 @@ int main(const int argc, const char* const* argv) {
                                 std::size_t meshParentEdgeCount = 0U;
                                 std::size_t roomFallbackCount = 0U;
                                 std::size_t resolvedPortalRoomCount = 0U;
+                                std::size_t fogCount = 0U;
+                                std::size_t enabledFogCount = 0U;
+                                std::size_t staticBspTreeCount = 0U;
+                                std::size_t portalBspTreeCount = 0U;
+                                std::size_t staticBspNodeCount = 0U;
+                                std::size_t portalBspNodeCount = 0U;
+                                std::size_t staticBspPolygonCount = 0U;
+                                std::size_t portalBspPolygonCount = 0U;
+                                for (const auto& room : metadata.rooms) {
+                                    fogCount += room.fog.has_value() ? 1U : 0U;
+                                    enabledFogCount +=
+                                        room.fog.has_value() &&
+                                            room.fog->enabledRaw != 0U
+                                        ? 1U
+                                        : 0U;
+                                    staticBspTreeCount +=
+                                        room.staticBspTrees.size();
+                                    portalBspTreeCount +=
+                                        room.portalBspTrees.size();
+                                    for (const auto* trees : {
+                                             &room.staticBspTrees,
+                                             &room.portalBspTrees}) {
+                                        for (const auto& tree : *trees) {
+                                            if (tree.kind ==
+                                                airfix::assets::
+                                                    CcfBspTreeKind::staticTree) {
+                                                staticBspNodeCount +=
+                                                    tree.nodes.size();
+                                                staticBspPolygonCount +=
+                                                    tree.polygons.size();
+                                            }
+                                            else {
+                                                portalBspNodeCount +=
+                                                    tree.nodes.size();
+                                                portalBspPolygonCount +=
+                                                    tree.polygons.size();
+                                            }
+                                        }
+                                    }
+                                }
                                 for (const auto& placed : metadata.placedNodes) {
                                     switch (placed.kind) {
                                     case airfix::assets::CcfPlacedNodeKind::object:
@@ -493,6 +541,17 @@ int main(const int argc, const char* const* argv) {
                                        << ",meshParents=" << meshParentEdgeCount
                                        << ",roomFallbacks=" << roomFallbackCount
                                        << ",portalRooms=" << resolvedPortalRoomCount
+                                       << ":spatial=fog=" << fogCount
+                                       << ",enabledFog=" << enabledFogCount
+                                       << ",staticTrees=" << staticBspTreeCount
+                                       << ",portalTrees=" << portalBspTreeCount
+                                       << ",staticNodes=" << staticBspNodeCount
+                                       << ",portalNodes=" << portalBspNodeCount
+                                       << ",staticPolygons="
+                                       << staticBspPolygonCount
+                                       << ",portalPolygons="
+                                       << portalBspPolygonCount
+                                       << ",bindings=" << roomScene.bindings.size()
                                        << ":top=";
                                 for (std::size_t child = 0U;
                                      child < metadata.topLevelChunks.size();

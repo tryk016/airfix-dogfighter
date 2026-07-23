@@ -1,14 +1,15 @@
 # FMT-CCF — chunked scene/model container
 
-**State:** file/root/top-level, room, material, mesh geometry, blueprint graph,
-placed-scene decoding, and bounded placed-scene reference resolution implemented
+**State:** file/root/top-level, room/fog/BSP, material, mesh geometry, blueprint
+graph, placed-scene decoding, and bounded spatial reference resolution
+implemented
 
 **Confidence:** 3/3 for framing and blueprint hierarchy, 2/3 for remaining
 section semantics
 
 **Evidence:** `EV-20260721-017`, `EV-20260721-018`, `EV-20260721-023`,
 `EV-20260721-024`, `EV-20260721-025`, `EV-20260721-033`,
-`EV-20260721-037`, `EV-20260721-038`
+`EV-20260721-037`, `EV-20260721-038`, `EV-20260721-039`
 
 ## Evidence
 
@@ -115,13 +116,116 @@ independent `cc-tools` shape map:
 The first physical room record is special: the loader registers the receiving
 world/root room under its stored reference. Later records find or create named
 rooms. `CcfRoomMetadata::primaryBinding` retains that distinction without
-constructing runtime rooms during parsing. The remaining direct children are
-bounded descriptors for the still-separate fog, static/portal BSP, and related
-spatial decoders.
+constructing runtime rooms during parsing. Scene-load flag bit `0x20` skips the
+complete room section. Bit `0x4000` does not control first-room ownership; it
+only copies the first room's stored name/prefix onto the receiving room.
 
 All 392 records across the 286 selected CCF files parse in physical order, with
 one to eight rooms per file and no zero or duplicate references inside a file.
 No private room names or geometry are recorded in the repository.
+
+### Fog (`0x1101`)
+
+Every room has one exact 36-byte fog chunk:
+
+```text
+0x1101 fog:
+  u32 enabledRaw
+  float32 first
+  float32 second
+  0xF030 color                       // 3 x float32
+```
+
+The portable model preserves the raw enable word and neutral scalar names. All
+392 shipped records are disabled and contain `first = 1.0`, `second = 200.0`,
+and a zero color, so fog must not be enabled merely because metadata exists.
+Malformed sizes, duplicate fog chunks, and an invalid nested color shape are
+rejected.
+
+### Static and portal BSP (`0x1200`, `0x1201`)
+
+`0x1200` owns static spatial trees and `0x1201` owns portal spatial trees. Each
+contains zero or more `0xF0C0` roots. The loader also accepts a direct room
+`0xF0C0` as a static tree; the selected corpus has no direct-root occurrence,
+but the portable parser retains and tests that compatibility path. Multiple
+roots are format-valid even though each shipped wrapper contains at most one.
+
+An `0xF0C0` node has this exact loader-read prefix:
+
+```text
+0xF0C0 node:
+  u32 childAPresenceRaw
+  [0xF0C0 childA]                    // present when raw word is nonzero
+  u32 childBPresenceRaw
+  [0xF0C0 childB]                    // present when raw word is nonzero
+  0xF040 splitNormal
+  0xF040 pointOnPlane
+  0..N x 0xF0C1 polygon descriptor
+```
+
+The A/B labels deliberately avoid an unproven front/back interpretation.
+Minimum total node size is 50 bytes. Nodes are decoded iteratively into a flat
+physical/preorder arena with optional child indices; this avoids call-stack and
+recursive-ownership growth on hostile input.
+
+Each `0xF0C1` descriptor is exactly 104 bytes:
+
+```text
+0xF0C1 polygon:
+  0xF040 faceCross                   // unnormalized
+  0xF040 faceNormal
+  0xF040 point0
+  0xF040 edge01
+  0xF040 edge12
+  u32 polygonIndex                  // zero-based in the placed object's mesh
+  u32 placedObjectReference
+```
+
+These vectors are stored in world space. Exactly 234 descriptors use the
+legacy quiet-NaN sentinel `0xFFC00000` in all three components of
+`faceNormal`; the parser accepts and bit-preserves it. Consumers must treat
+that triplet as a legacy sentinel and must not normalize or reject the complete
+scene because of it. No other BSP float is non-finite in the selected corpus.
+
+The bounded parser enforces a maximum tree depth of 1,024, 100,000 nodes,
+250,000 polygon descriptors, and a shared 250,000 spatial-descriptor budget per
+CCF before arena growth. Child-presence words accept any nonzero value, matching
+the original Boolean test. Truncation, parent overruns, malformed vector or
+polygon shapes, impossible child links, and descriptor/depth exhaustion fail
+closed.
+
+### Deferred BSP binding
+
+BSP is an index over already placed geometry, not another geometry source.
+After `0x4000` resolution, every polygon descriptor is joined strictly as:
+
+```text
+placedObjectReference
+  -> unique instantiated placed object
+  -> that object's uniquely resolved mesh
+  -> mesh.triangles[polygonIndex]
+```
+
+A portal tree additionally requires the placed object's resolved
+`portalRoomReference`; the `0x1201` wrapper itself stores no target room. The
+ordinary resolved room of the object must equal the room owning the BSP tree.
+The portable resolver returns only indices into existing metadata, never
+geometry copies. Missing, ambiguous, inactive or non-object targets, missing
+meshes, out-of-range polygons, room mismatches, absent portal targets, invalid
+tree ownership, or limit failures clear all resolved bindings atomically.
+
+The complete selected corpus contains 389 static wrappers, 392 portal wrappers,
+98,095 nodes, and 198,210 polygon descriptors: 97,883/197,878 static and
+212/332 portal. Maximum tree depth is 40, maximum nodes/descriptors in one tree
+are 2,442/3,985, and all 198,210 deferred bindings resolve without an error.
+Every polygon index is within its mesh and every ordinary room agrees with the
+owning tree. All 332 portal descriptors resolve a nonzero portal-room target.
+
+The first renderer may therefore draw all placed objects assigned to the
+selected room, using their resolved meshes, materials, textures, and world
+transforms. BSP culling, collision, and portal traversal remain later runtime
+features; no geometry should be hidden from the initial diagnostic until those
+traversal semantics are separately proven.
 
 ## Material records (`0x2100`)
 
@@ -434,15 +538,17 @@ inherited from its parent.
 - synthetic bounds, strings, geometry, index, UV, opaque/extended paint,
   unknown-extension, and global descriptor-budget tests:
   `tests/LegacyFormatsTests.cpp`;
-- bounded blueprint and placed-scene graph/reference resolution:
+- bounded blueprint, placed-scene, and room-BSP graph/reference resolution:
   `src/airfix/assets/CcfBlueprintGraph.*`,
-  `src/airfix/assets/CcfPlacedScene.*`, and
+  `src/airfix/assets/CcfPlacedScene.*`,
+  `src/airfix/assets/CcfRoomScene.*`, and
   `src/airfix/assets/AssetResolver.*`;
 - ignored decompilation evidence: `artifacts/ghidra/Cc.dll.*`.
 
 The backend-neutral seam-safe draw-model payload, bounded blueprint and placed
 graphs, and multi-instance diagnostic render a complete grouped aircraft from
 authored world transforms. Portable parent-relative local derivation
-round-trips the recovered parent-first composition. The next scene step is
-bounded room/BSP decoding and first-room assembly. No proprietary geometry or
+round-trips the recovered parent-first composition. Room fog/BSP decoding and
+all deferred spatial bindings are complete. The next scene step is conservative
+first-room draw assembly with BSP culling disabled. No proprietary geometry or
 preview is committed.

@@ -1,6 +1,6 @@
 # Project status
 
-**Updated:** 2026-07-21  
+**Updated:** 2026-07-23
 **Stage:** Phase 1 — static analysis and archive recovery in progress
 
 ## Now
@@ -147,6 +147,11 @@
   reference resolution across instantiated nodes, mesh prototypes, rooms, and
   portals. The selected corpus forms 2,062 roots and 7,266 edges at maximum
   depth 7 with zero missing, ambiguous, or cyclic dependencies.
+- Decoded bounded room fog and static/portal BSP into flat iterative arenas:
+  98,095 nodes and 198,210 polygon descriptors across all 286 scenes. The
+  fail-closed spatial resolver joins every descriptor to its unique placed
+  object, mesh, in-range triangle, ordinary room, and (for all 332 portal
+  descriptors) target room with zero corpus issues.
 - Implemented finite, invertible parent-relative local transform derivation and
   composition in runtime column-vector order. Round-trip tests include
   non-commutative rotations and shear; `rawScalar` is not treated as scale.
@@ -178,9 +183,9 @@
 
 ## Next
 
-1. Decode the bounded room/BSP structures needed for a faithful first room;
-   placed records, their parent/mesh/room/portal graph, static grouped-aircraft
-   rendering, and parent-relative local math are complete.
+1. Assemble a conservative first-room draw list from resolved placed objects,
+   world transforms, meshes, materials, and textures. Keep BSP culling and
+   portal traversal disabled until their runtime traversal semantics are proven.
 2. Connect the draw payload and texture upload policy to the Metal shell, first
    with unlit/no-cull diagnostics and then with evidence-backed render states.
 3. Implement native UIKit and Game Controller adapters over the deterministic

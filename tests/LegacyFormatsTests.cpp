@@ -2,10 +2,12 @@
 
 #include <array>
 #include <bit>
+#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <variant>
@@ -415,10 +417,76 @@ void requireParseError(const std::function<void()>& action) {
     return bytes;
 }
 
+[[nodiscard]] Bytes ccfFog(
+    const std::uint32_t enabledRaw,
+    const float first,
+    const float second,
+    const airfix::assets::CcfVector3& color) {
+    Bytes payload;
+    appendU32(payload, enabledRaw);
+    appendFloat(payload, first);
+    appendFloat(payload, second);
+    appendBytes(payload, ccfVector3(
+        0xF030U, color[0], color[1], color[2]));
+    return ccfChunk(0x1101U, payload);
+}
+
+[[nodiscard]] Bytes ccfBspPolygon(
+    const float seed,
+    const std::uint32_t polygonIndex,
+    const std::uint32_t objectReference) {
+    Bytes payload;
+    for (std::size_t vector = 0U; vector < 5U; ++vector) {
+        const auto base = seed + static_cast<float>(vector * 3U);
+        appendBytes(payload, ccfVector3(
+            0xF040U, base, base + 1.0F, base + 2.0F));
+    }
+    appendU32(payload, polygonIndex);
+    appendU32(payload, objectReference);
+    return ccfChunk(0xF0C1U, payload);
+}
+
+[[nodiscard]] Bytes ccfBspNode(
+    const std::uint32_t childAPresenceRaw = 0U,
+    const std::optional<Bytes>& childA = std::nullopt,
+    const std::uint32_t childBPresenceRaw = 0U,
+    const std::optional<Bytes>& childB = std::nullopt,
+    const airfix::assets::CcfVector3& splitNormal = {1.0F, 0.0F, 0.0F},
+    const airfix::assets::CcfVector3& pointOnPlane = {0.0F, 1.0F, 0.0F},
+    const Bytes& trailing = {}) {
+    Bytes payload;
+    appendU32(payload, childAPresenceRaw);
+    if (childA.has_value()) {
+        appendBytes(payload, *childA);
+    }
+    appendU32(payload, childBPresenceRaw);
+    if (childB.has_value()) {
+        appendBytes(payload, *childB);
+    }
+    appendBytes(payload, ccfVector3(
+        0xF040U, splitNormal[0], splitNormal[1], splitNormal[2]));
+    appendBytes(payload, ccfVector3(
+        0xF040U, pointOnPlane[0], pointOnPlane[1], pointOnPlane[2]));
+    appendBytes(payload, trailing);
+    return ccfChunk(0xF0C0U, payload);
+}
+
+[[nodiscard]] Bytes ccfRoomDocument(
+    const Bytes& children,
+    const std::string& name = "World",
+    const std::string& prefix = "House",
+    const std::uint32_t reference = 77U) {
+    Bytes room = ccfNamed(name, prefix);
+    appendU32(room, reference);
+    appendBytes(room, children);
+    return ccfDocument(ccfChunk(0x1000U, ccfChunk(0x1100U, room)));
+}
+
 [[nodiscard]] Bytes makeCcf() {
     Bytes room = ccfNamed("World", "House");
     appendU32(room, 77U);
-    appendBytes(room, ccfChunk(0x1101U, Bytes{0x01U, 0x02U}));
+    appendBytes(room, ccfFog(
+        1U, 10.0F, 20.0F, {0.25F, 0.5F, 0.75F}));
     return ccfDocument(ccfChunk(0x1000U, ccfChunk(0x1100U, room)));
 }
 
@@ -486,6 +554,12 @@ void testCcf() {
             metadata.rooms[0].prefix == "House" &&
             metadata.rooms[0].reference == 77U &&
             metadata.rooms[0].primaryBinding &&
+            metadata.rooms[0].fog.has_value() &&
+            metadata.rooms[0].fog->enabledRaw == 1U &&
+            metadata.rooms[0].fog->first == 10.0F &&
+            metadata.rooms[0].fog->second == 20.0F &&
+            metadata.rooms[0].fog->color ==
+                airfix::assets::CcfVector3{0.25F, 0.5F, 0.75F} &&
             metadata.rooms[0].directChildren.size() == 1U &&
             metadata.rooms[0].directChildren[0].id == 0x1101U,
         "CCF room metadata mismatch");
@@ -678,6 +752,264 @@ void testCcf() {
     const auto descriptorBomb = ccfDocument(
         ccfChunk(0x1000U, descriptorBombPayload));
     requireParseError([&] { (void)airfix::assets::parseCcf(descriptorBomb); });
+}
+
+void testCcfRoomSpatialMetadata() {
+    Bytes rootTrailing = ccfBspPolygon(1.0F, 101U, 201U);
+    appendBytes(rootTrailing, ccfChunk(0xF0CFU, Bytes{0xAAU, 0x55U}));
+    const auto grandchild = ccfBspNode(
+        0U,
+        std::nullopt,
+        0U,
+        std::nullopt,
+        {3.0F, 0.0F, 0.0F},
+        {0.0F, 3.0F, 0.0F},
+        ccfBspPolygon(31.0F, 303U, 403U));
+    const auto childA = ccfBspNode(
+        7U,
+        grandchild,
+        0U,
+        std::nullopt,
+        {2.0F, 0.0F, 0.0F},
+        {0.0F, 2.0F, 0.0F});
+    const auto childB = ccfBspNode(
+        0U,
+        std::nullopt,
+        0U,
+        std::nullopt,
+        {4.0F, 0.0F, 0.0F},
+        {0.0F, 4.0F, 0.0F});
+    const auto root = ccfBspNode(
+        2U,
+        childA,
+        0x80000000U,
+        childB,
+        {1.0F, 0.0F, 0.0F},
+        {0.0F, 1.0F, 0.0F},
+        rootTrailing);
+    const auto secondRoot = ccfBspNode(
+        0U,
+        std::nullopt,
+        0U,
+        std::nullopt,
+        {5.0F, 0.0F, 0.0F},
+        {0.0F, 5.0F, 0.0F});
+    const auto portalRoot = ccfBspNode(
+        0U,
+        std::nullopt,
+        0U,
+        std::nullopt,
+        {6.0F, 0.0F, 0.0F},
+        {0.0F, 6.0F, 0.0F});
+    const auto directRoot = ccfBspNode(
+        0U,
+        std::nullopt,
+        0U,
+        std::nullopt,
+        {7.0F, 0.0F, 0.0F},
+        {0.0F, 7.0F, 0.0F});
+
+    Bytes staticWrapperPayload = root;
+    appendBytes(staticWrapperPayload, ccfChunk(0x12FFU, Bytes{0x42U}));
+    appendBytes(staticWrapperPayload, secondRoot);
+    Bytes children = ccfFog(
+        0xDEADBEEFU, -5.0F, 42.5F, {0.1F, 0.2F, 0.3F});
+    appendBytes(children, ccfChunk(0x1200U, staticWrapperPayload));
+    appendBytes(children, ccfChunk(0x1201U, portalRoot));
+    appendBytes(children, directRoot);
+    appendBytes(children, ccfChunk(0x13FFU, Bytes{0x11U}));
+
+    const auto metadata = airfix::assets::parseCcf(ccfRoomDocument(children));
+    require(metadata.rooms.size() == 1U, "CCF spatial room count mismatch");
+    const auto& room = metadata.rooms[0];
+    require(room.fog.has_value() &&
+            room.fog->enabledRaw == 0xDEADBEEFU &&
+            room.fog->first == -5.0F &&
+            room.fog->second == 42.5F &&
+            room.fog->color == airfix::assets::CcfVector3{0.1F, 0.2F, 0.3F},
+        "CCF fog fields mismatch");
+    require(room.staticBspTrees.size() == 3U &&
+            room.portalBspTrees.size() == 1U,
+        "CCF BSP tree classification or multi-root count mismatch");
+    require(room.directChildren.size() == 5U &&
+            room.directChildren[1].id == 0x1200U &&
+            room.directChildren[1].directChildren.size() == 3U &&
+            room.directChildren[1].directChildren[1].id == 0x12FFU &&
+            room.directChildren.back().id == 0x13FFU,
+        "CCF room/wrapper unknown children were not retained");
+
+    const auto& tree = room.staticBspTrees[0];
+    require(tree.kind == airfix::assets::CcfBspTreeKind::staticTree &&
+            tree.source == airfix::assets::CcfBspTreeSource::wrapped &&
+            tree.rootNodeIndex == 0U && tree.nodes.size() == 4U,
+        "CCF static BSP tree header mismatch");
+    require(tree.nodes[0].childAPresenceRaw == 2U &&
+            tree.nodes[0].childBPresenceRaw == 0x80000000U &&
+            tree.nodes[0].childAIndex == 1U &&
+            tree.nodes[0].childBIndex == 3U &&
+            tree.nodes[1].childAPresenceRaw == 7U &&
+            tree.nodes[1].childAIndex == 2U &&
+            !tree.nodes[1].childBIndex.has_value() &&
+            !tree.nodes[2].childAIndex.has_value() &&
+            !tree.nodes[2].childBIndex.has_value(),
+        "CCF BSP non-boolean presence or preorder links mismatch");
+    require(tree.nodes[0].offset < tree.nodes[1].offset &&
+            tree.nodes[1].offset < tree.nodes[2].offset &&
+            tree.nodes[2].offset < tree.nodes[3].offset &&
+            tree.nodes[1].splitNormal ==
+                airfix::assets::CcfVector3{2.0F, 0.0F, 0.0F} &&
+            tree.nodes[3].pointOnPlane ==
+                airfix::assets::CcfVector3{0.0F, 4.0F, 0.0F},
+        "CCF BSP physical/preorder mapping or plane fields mismatch");
+    require(tree.polygons.size() == 2U &&
+            tree.nodes[0].polygonIndices == std::vector<std::size_t>{0U} &&
+            tree.nodes[2].polygonIndices == std::vector<std::size_t>{1U} &&
+            tree.nodes[0].trailingChildren.size() == 2U &&
+            tree.nodes[0].trailingChildren[1].id == 0xF0CFU,
+        "CCF BSP polygon arena or unknown trailing descriptor mismatch");
+    const auto& polygon = tree.polygons[0];
+    require(polygon.faceCross ==
+                airfix::assets::CcfVector3{1.0F, 2.0F, 3.0F} &&
+            polygon.faceNormal ==
+                airfix::assets::CcfVector3{4.0F, 5.0F, 6.0F} &&
+            polygon.point0 ==
+                airfix::assets::CcfVector3{7.0F, 8.0F, 9.0F} &&
+            polygon.edge01 ==
+                airfix::assets::CcfVector3{10.0F, 11.0F, 12.0F} &&
+            polygon.edge12 ==
+                airfix::assets::CcfVector3{13.0F, 14.0F, 15.0F} &&
+            polygon.polygonIndex == 101U &&
+            polygon.placedObjectReference == 201U,
+        "CCF BSP polygon fields mismatch");
+    require(room.staticBspTrees[1].source ==
+                airfix::assets::CcfBspTreeSource::wrapped &&
+            room.staticBspTrees[2].source ==
+                airfix::assets::CcfBspTreeSource::direct &&
+            room.portalBspTrees[0].kind ==
+                airfix::assets::CcfBspTreeKind::portalTree &&
+            room.portalBspTrees[0].source ==
+                airfix::assets::CcfBspTreeSource::wrapped,
+        "CCF BSP source classification mismatch");
+
+    Bytes emptyWrappers = ccfChunk(0x1200U, {});
+    appendBytes(emptyWrappers, ccfChunk(0x1201U, {}));
+    const auto empty = airfix::assets::parseCcf(
+        ccfRoomDocument(emptyWrappers));
+    require(empty.rooms[0].staticBspTrees.empty() &&
+            empty.rooms[0].portalBspTrees.empty() &&
+            empty.rooms[0].directChildren[0].directChildren.empty() &&
+            empty.rooms[0].directChildren[1].directChildren.empty(),
+        "CCF empty BSP wrappers were not accepted and indexed");
+
+    const auto noStaticWrapper = airfix::assets::parseCcf(
+        ccfRoomDocument(ccfFog(0U, 0.0F, 0.0F, {0.0F, 0.0F, 0.0F})));
+    require(noStaticWrapper.rooms[0].staticBspTrees.empty() &&
+            noStaticWrapper.rooms[0].portalBspTrees.empty(),
+        "CCF room without a static wrapper was not accepted");
+}
+
+void testCcfRoomSpatialFailures() {
+    const auto requireRoomError = [](const Bytes& children) {
+        const auto invalid = ccfRoomDocument(children);
+        requireParseError([&] { (void)airfix::assets::parseCcf(invalid); });
+    };
+
+    requireRoomError(ccfChunk(0x1101U, Bytes{0x01U, 0x02U}));
+    Bytes duplicateFog = ccfFog(1U, 2.0F, 3.0F, {4.0F, 5.0F, 6.0F});
+    appendBytes(duplicateFog, ccfFog(
+        0U, 7.0F, 8.0F, {9.0F, 10.0F, 11.0F}));
+    requireRoomError(duplicateFog);
+    auto invalidFogVector = ccfFog(
+        1U, 2.0F, 3.0F, {4.0F, 5.0F, 6.0F});
+    invalidFogVector[18U] = 0x40U;
+    requireRoomError(invalidFogVector);
+
+    requireRoomError(ccfChunk(0x1200U, Bytes(5U, 0U)));
+    requireRoomError(ccfBspNode(1U));
+    requireRoomError(ccfBspNode(
+        1U, ccfChunk(0xF0C2U, {}), 0U, std::nullopt));
+    auto invalidSplitVector = ccfBspNode();
+    invalidSplitVector[14U] = 0x30U;
+    requireRoomError(invalidSplitVector);
+    auto truncatedSplitVector = ccfBspNode();
+    truncatedSplitVector[16U] = 17U;
+    requireRoomError(truncatedSplitVector);
+
+    requireRoomError(ccfBspNode(
+        0U,
+        std::nullopt,
+        0U,
+        std::nullopt,
+        {1.0F, 0.0F, 0.0F},
+        {0.0F, 1.0F, 0.0F},
+        ccfChunk(0xF0C1U, Bytes(97U, 0U))));
+    auto invalidPolygonVector = ccfBspPolygon(1.0F, 2U, 3U);
+    invalidPolygonVector[6U] = 0x30U;
+    requireRoomError(ccfBspNode(
+        0U,
+        std::nullopt,
+        0U,
+        std::nullopt,
+        {1.0F, 0.0F, 0.0F},
+        {0.0F, 1.0F, 0.0F},
+        invalidPolygonVector));
+
+    const auto sentinel = std::bit_cast<float>(0x7FC00001U);
+    const auto nanMetadata = airfix::assets::parseCcf(ccfRoomDocument(
+        ccfBspNode(
+            0U,
+            std::nullopt,
+            0U,
+            std::nullopt,
+            {sentinel, 0.0F, 0.0F},
+            {0.0F, sentinel, 0.0F},
+            ccfBspPolygon(sentinel, 4U, 5U))));
+    const auto& nanTree = nanMetadata.rooms[0].staticBspTrees[0];
+    require(std::isnan(nanTree.nodes[0].splitNormal[0]) &&
+            std::bit_cast<std::uint32_t>(nanTree.nodes[0].splitNormal[0]) ==
+                0x7FC00001U &&
+            std::isnan(nanTree.polygons[0].faceCross[0]) &&
+            std::bit_cast<std::uint32_t>(nanTree.polygons[0].faceCross[0]) ==
+                0x7FC00001U,
+        "CCF BSP NaN sentinel bits were rejected or normalized");
+
+    auto tooDeep = ccfBspNode();
+    for (std::size_t depth = 0U; depth < 1'024U; ++depth) {
+        tooDeep = ccfBspNode(1U, tooDeep);
+    }
+    requireRoomError(tooDeep);
+
+    // A balanced 131,071-node payload exceeds the explicit 100k node bound.
+    // The shared descriptor budget is intentionally stronger (each node also
+    // owns two F040 descriptors), so the parser may reject it even earlier.
+    auto tooManyNodes = ccfBspNode();
+    for (std::size_t level = 0U; level < 16U; ++level) {
+        tooManyNodes = ccfBspNode(
+            1U, tooManyNodes, 2U, tooManyNodes);
+    }
+    requireRoomError(tooManyNodes);
+
+    // Every polygon consumes its F0C1 plus five vector descriptors. This is
+    // the smallest useful polygon-shaped bomb that exhausts the 250k shared
+    // descriptor cap, before the separate polygon arena can grow unbounded.
+    constexpr std::size_t kPolygonDescriptorBombCount = 41'667U;
+    const auto polygonDescriptor = ccfBspPolygon(1.0F, 2U, 3U);
+    Bytes tooManyPolygonDescriptors;
+    tooManyPolygonDescriptors.reserve(
+        kPolygonDescriptorBombCount * polygonDescriptor.size());
+    for (std::size_t index = 0U;
+         index < kPolygonDescriptorBombCount;
+         ++index) {
+        appendBytes(tooManyPolygonDescriptors, polygonDescriptor);
+    }
+    requireRoomError(ccfBspNode(
+        0U,
+        std::nullopt,
+        0U,
+        std::nullopt,
+        {1.0F, 0.0F, 0.0F},
+        {0.0F, 1.0F, 0.0F},
+        tooManyPolygonDescriptors));
 }
 
 void testCcfPlacedNodes() {
@@ -1135,6 +1467,8 @@ int main() {
     try {
         testGti();
         testCcf();
+        testCcfRoomSpatialMetadata();
+        testCcfRoomSpatialFailures();
         testCcfPlacedNodes();
         testGtiBaseDecoding();
         testGtiMipLayouts();
