@@ -219,6 +219,21 @@
   reads. Synthetic tests cover wrong size/digest/generation, cancellation
   during hashing, malformed source UDSP, exact/one-under limits, and a poisoned
   label that points at a different real file. The portable suite passes 30/30.
+- Implemented an atomic `WorldRoomLoader` on that session. A request contains
+  only an exact World logical path and an explicit physical CCF room index; CCF
+  and GTI entry indices are derived internally from the same archive. The
+  loader validates World -> `CCFF`, room dependencies, dense first-use texture
+  IDs, GTI plans and RGBA data, room assembly, and draw submission before
+  publishing one revision-tagged result. It preserves raw UVs and does not use
+  World `ROOM` or BSP as an inferred selection/visibility rule.
+- Global limits cover unique texture count, aggregate source bytes,
+  decoded/upload/resident RGBA, and published CPU data. GTI plan-only
+  preflight rejects exact aggregate overruns before decode; compressed source
+  budgets account for the simultaneous stored and unpacked buffers before I/O.
+  Synthetic end-to-end tests cover valid/empty rooms, exact `CCFF` among two
+  CCFs, texture ID zero, two-texture budgets, deduplication, cancellation,
+  malformed later GTI atomicity, compressed peak allocation, and published CPU
+  exact/one-under bounds. The portable suite passes 31/31.
 
 ## Confirmed
 
@@ -247,12 +262,12 @@
 
 ## Next
 
-1. Build an atomic World -> CCF -> GTI -> draw-submission room loader on the
-   authenticated `VerifiedContentSession`, with aggregate source/decoded/upload
-   budgets and cancellation between stages. Then hand immutable,
-   revision-tagged room data through the iOS coordinator to the bounded Metal
-   adapter. Keep BSP culling and portal traversal disabled until their
-   semantics are proven.
+1. Make recovery hand off a move-only active-content lease that binds the
+   authenticated handle and revision, then have the iOS coordinator reject
+   stale request serials/generations before passing an immutable loaded room to
+   the bounded Metal adapter. Add private Metal texture ownership for authored
+   and generated mip chains. Keep BSP culling and portal traversal disabled
+   until their semantics are proven.
 2. Implement native UIKit and Game Controller adapters over the deterministic
    input router, then add the configurable safe-area-aware touch overlay.
 3. Recover the runtime rule that selects a physical CCF room during gameplay;

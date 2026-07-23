@@ -68,7 +68,7 @@ sources.
 | Legacy assets | GTI textures plus bounded CCF scene, room/fog/BSP, mesh, material, blueprint, and placed-node parsing implemented |
 | Dependency resolution | Object-to-scene, blueprint/placed graphs, BSP polygons, verified world-to-CCF binding, rooms, meshes, portals, materials, and texture edges implemented |
 | Private packaging | AFPACK writer, validation, transactional install/recovery, and native iOS import/rollback UI implemented |
-| Runtime content session | Move-only, single-handle AFPACK authentication and bounded `Resource.up` access implemented; room loading and iOS coordinator handoff pending |
+| Runtime content loading | Move-only AFPACK session plus atomic World → CCF → GTI → draw-submission room loading implemented; native coordinator/renderer handoff pending |
 | Rendering | Bounded explicit-room assembly, stable texture IDs, atomic RGBA8 upload preparation, fail-closed draw submission, CPU diagnostics, and a bounded synthetic multi-mesh Metal adapter implemented |
 | Input core | Deterministic semantic router for touch/controller/test sources implemented |
 | Native controls | UIKit touch overlay and Apple Game Controller adapters pending |
@@ -105,8 +105,18 @@ content revision. It verifies the exact physical size and SHA-256 of the whole
 AFPACK, then parses the pack, strict manifest, and exact
 `source/Resource.up` region through that same handle. Its diagnostic label is
 never reopened as a path, and only serialized, bounded nested-file reads are
-exposed. This closes the package-to-archive ownership boundary; World, CCF, and
-GTI composition into one immutable room snapshot is the next checkpoint.
+exposed.
+
+`WorldRoomLoader` composes that session into one immutable, revision-tagged
+room result. It resolves an exact World and its exact `CCFF`, selects only an
+explicit physical CCF room, derives dense texture IDs, preflights aggregate
+source/decoded/upload/resident/CPU budgets, prepares every GTI, assembles the
+draw model, and validates the final draw submission before publishing anything.
+The public synthetic end-to-end tests include valid texture ID zero, empty
+receiver rooms, multiple CCF candidates, deduplication, cancellation, malformed
+later dependencies, compressed-source peak memory, and exact/one-under limits.
+The native iOS coordinator and Metal texture store do not consume this room
+snapshot yet.
 
 ## Architecture
 

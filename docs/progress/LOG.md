@@ -908,3 +908,30 @@ superseded evidence.
 - The full portable suite passes 30/30. The library is linked into unsigned iOS
   builds for Apple compilation coverage, but the native coordinator and Metal
   renderer do not consume a loaded room yet.
+
+## 2026-07-23 — atomic AFPACK-to-room loader
+
+- Added `WorldRoomLoader`, which consumes only an authenticated
+  `VerifiedContentSession`, an exact World logical path, and an explicit
+  physical CCF room index. It derives every CCF and GTI archive index
+  internally and never interprets World `ROOM`, BSP, or a diagnostic label as a
+  hidden join, visibility rule, or host path.
+- The transaction resolves and parses World/CCF, verifies exact `CCFF`
+  provenance, resolves material textures, assigns dense first-use texture IDs,
+  preflights and prepares GTI uploads, assembles the room model, and validates
+  its backend-neutral draw submission. Only the complete result is published,
+  tagged with the session revision.
+- Added checked per-entry and aggregate limits for texture count, source bytes,
+  decoded/upload/resident RGBA, and published CPU data. Compressed source
+  accounting includes both simultaneously live stored and unpacked buffers.
+  GTI metadata and upload planning run before decode so exact aggregate
+  overruns fail before the RGBA allocation.
+- Added reusable synthetic World, two-room CCF, triangle/material/placed-node,
+  and exact 2-by-2 RGBA8 GTI fixtures. End-to-end coverage includes an empty
+  receiver room, ordinary room, exact CCF selection among two entries, valid
+  texture ID zero, duplicate texture-role deduplication, cancellation, malformed
+  later GTI atomicity, two-texture aggregate limits, compressed peak memory,
+  and published CPU exact/one-under boundaries.
+- Independent review found and closed ambiguous aggregate-GTI limit mapping and
+  incomplete compressed-read peak accounting. The full portable suite passes
+  31/31. Native active-lease/coordinator/Metal texture handoff remains pending.

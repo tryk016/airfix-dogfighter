@@ -179,6 +179,7 @@ endif()
 
 add_library(airfix_content
     src/airfix/content/VerifiedContentSession.cpp
+    src/airfix/content/WorldRoomLoader.cpp
 )
 add_library(airfix::content ALIAS airfix_content)
 
@@ -187,7 +188,7 @@ target_include_directories(airfix_content
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
 )
 target_compile_features(airfix_content PUBLIC cxx_std_20)
-target_link_libraries(airfix_content PUBLIC airfix::afpack)
+target_link_libraries(airfix_content PUBLIC airfix::afpack airfix::render)
 
 if(MSVC)
     target_compile_options(airfix_content PRIVATE /W4 /permissive-)
@@ -258,6 +259,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::content)
     add_test(NAME airfix_verified_content_tests
         COMMAND airfix_verified_content_tests)
+
+    add_executable(airfix_world_room_loader_tests
+        tests/WorldRoomLoaderTests.cpp)
+    target_link_libraries(airfix_world_room_loader_tests
+        PRIVATE airfix::content)
+    add_test(NAME airfix_world_room_loader_tests
+        COMMAND airfix_world_room_loader_tests)
 
     add_executable(airfix_crypto_tests tests/Sha256Tests.cpp)
     target_link_libraries(airfix_crypto_tests PRIVATE airfix::crypto)

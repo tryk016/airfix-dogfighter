@@ -208,8 +208,10 @@ visibility decision. The offline `.metal` source is still compiled into
 
 The portable content layer now supplies an authenticated, move-only,
 single-handle AFPACK/`Resource.up` session tagged with generation, size, and
-digest. It does not yet compose World, CCF, GTI preparations, geometry, and
-draw submission into one immutable room result or hand that result to this
-adapter. Private GTI texture ownership, authored/generated mip upload cache,
-asset-backed room input, and visual acceptance on a physical iPhone therefore
-remain required before the synthetic payload can be replaced.
+digest. `WorldRoomLoader` composes exact World/CCF dependencies, an explicit
+physical room, every GTI preparation, geometry, and draw submission into one
+atomically published immutable result. The remaining native boundary is a
+move-only active-content lease, stale generation/request rejection in the iOS
+coordinator, private Metal texture ownership and authored/generated mip upload
+cache, then visual acceptance on a physical iPhone. The synthetic renderer is
+not replaced until those pieces are complete.

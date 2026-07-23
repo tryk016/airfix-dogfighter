@@ -13,6 +13,7 @@
 #include <fstream>
 #include <initializer_list>
 #include <limits>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -28,6 +29,8 @@ using Bytes = std::vector<std::uint8_t>;
 struct UdspInputEntry {
     std::string logicalPath;
     Bytes bytes;
+    std::uint32_t flags{};
+    std::optional<std::uint32_t> unpackedSize;
 };
 
 namespace detail {
@@ -38,6 +41,8 @@ struct PreparedFile {
     std::uint32_t hash{};
     std::uint32_t nameOffset{};
     std::uint32_t dataOffset{};
+    std::uint32_t flags{};
+    std::uint32_t unpackedSize{};
 };
 
 struct PreparedDirectory {
@@ -127,6 +132,12 @@ inline void appendRecord(
             throw std::runtime_error(
                 "synthetic UDSP entry exceeds the default parser payload limit");
         }
+        if (input.flags != 0U && input.flags != udsp::kCompressedFlag) {
+            throw std::runtime_error(
+                "synthetic UDSP entry uses unsupported flags");
+        }
+        const auto unpackedSize = input.unpackedSize.value_or(
+            checkedU32(input.bytes.size(), "unpacked file size"));
 
         auto directory = std::find_if(
             directories.begin(),
@@ -148,6 +159,8 @@ inline void appendRecord(
             .name = fileName,
             .bytes = input.bytes,
             .hash = udsp::nameHash(fileName),
+            .flags = input.flags,
+            .unpackedSize = unpackedSize,
         });
     }
 
@@ -268,8 +281,9 @@ inline void writeFile(
 
 } // namespace detail
 
-// Builds a structurally valid, uncompressed UDSP archive. Duplicate logical
-// paths are intentionally retained so tests can exercise ambiguous lookup.
+// Builds a structurally valid UDSP archive. Compressed entries supply their
+// already encoded bytes, compression flag, and declared unpacked size.
+// Duplicate logical paths are retained so tests can exercise ambiguous lookup.
 [[nodiscard]] inline Bytes makeUdspArchive(
     const std::span<const UdspInputEntry> inputEntries) {
     auto directories = detail::prepareDirectories(inputEntries);
@@ -319,8 +333,8 @@ inline void writeFile(
                 archive,
                 file.hash,
                 file.nameOffset,
-                0U,
-                payloadSize,
+                file.flags,
+                file.unpackedSize,
                 payloadSize,
                 file.dataOffset);
         }

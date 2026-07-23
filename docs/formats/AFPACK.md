@@ -281,6 +281,15 @@ exposes serialized bounded reads from the authenticated source archive,
 preventing a path reopen from splicing metadata and payload bytes from
 different backing objects.
 
+`airfix::content::WorldRoomLoader` then performs the first complete portable
+runtime transaction over that handle: exact World lookup, exact `CCFF` binding,
+explicit physical CCF room selection, GTI dependency resolution/materialization,
+room assembly, and fail-closed draw submission. Its result retains the active
+generation/size/digest revision. Per-entry limits include both stored and
+unpacked buffers for compressed UDSP reads, while aggregate texture and
+published-output budgets are checked before the corresponding decode or result
+publication.
+
 The durability layer provides exclusive durable creation, atomic replacement,
 and no-replace publication on Windows and POSIX/iOS. These operations accept
 only installer-owned private staging/final directories: they verify regular
