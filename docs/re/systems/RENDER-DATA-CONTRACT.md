@@ -173,18 +173,41 @@ geometry is exported.
 
 ## Metal handoff
 
-The data-less iOS shell now proves the first complete handoff with public
-synthetic data. `AirfixMetalRenderer` consumes the exported `DrawModelPayload`,
-explicitly repacks vertices and column-vector transforms into a documented
-CPU/GPU ABI, uploads one shared mesh and RGBA8 texture, then draws two instances
-and their ranges in source order. The offline `.metal` source is compiled into
-the application `default.metallib`; bundle verification requires it to exist.
+The data-less iOS shell now exercises a bounded multi-mesh/multi-instance
+adapter with public synthetic data. `AirfixMetalRenderer` first obtains a
+complete `DrawSubmissionPlan`; it does not independently reinterpret model
+ranges or accept a partial plan. The fixture contains two reusable meshes and
+three instances in deliberate mesh-slot order `1 -> 0 -> 1`. Each command
+uses its exact `instanceIndex` transform and rebinds the corresponding
+per-mesh vertex and index resources before drawing.
 
-This smoke pipeline uses BGRA8 color, Depth32Float with less/write, nearest
-clamp sampling, no blending, and no culling. It does not yet load AFPACK or
-private textures. The portable layer now provides validated draw commands and
-owned upload levels, but the Metal shell does not consume those boundaries yet.
-Remaining backend work is resource ownership/cache handles, wiring authored
-uploads and generated mip requests, final projection/front-face and blending
-decisions, then the asset-backed room path. The reference-oriented pass keeps
-culling disabled until parity diagnostics establish viewport parity.
+Vertices and column-vector transforms are explicitly repacked into the
+documented CPU/GPU ABI. Preparation is two-pass: all mesh upload counts,
+vertex/index byte lengths, command offsets and range ends, instance/mesh/range
+relationships, and `NSUInteger` conversions are checked before vertex
+repacking or Metal-buffer creation. Each buffer must fit
+`device.maxBufferLength`; total logical GPU resources and peak packed CPU
+vertices have separate 64 MiB ceilings. Empty/no-draw meshes are represented
+by strongly retained per-mesh wrappers with nullable buffers, so no zero-length
+Metal allocation is attempted and no command can reference a missing resource.
+
+Texture asset ID zero remains a valid real asset and binds the generated
+2-by-2 RGBA8 texture. Missing primary textures and
+`TexcoordMode::none` bind a separate explicit one-pixel RGBA8 fallback; those
+states are not rewritten in `DrawModelPayload` or `DrawSubmissionPlan`.
+Pipeline, depth, sampler, mesh buffers, both textures, the immutable resource
+snapshot, payload, plan, and checked offsets are constructed before renderer
+state is published. C++ allocation/conversion failures are contained at the
+Objective-C initializer boundary and reported as `NSError`.
+
+The smoke policy remains BGRA8 color, Depth32Float with less/write, UInt32
+indices, nearest/clamp sampling, no blending, and no culling. It makes no new
+sRGB, premultiplication, V-origin, projection, front-face, blending, or BSP
+visibility decision. The offline `.metal` source is still compiled into
+`default.metallib`, which bundle verification requires.
+
+This adapter still has no AFPACK connection, private GTI texture ownership,
+authored/generated mip upload cache, or asset-backed room input. It has not
+received visual acceptance on a physical iPhone. Those boundaries and tests
+remain required before the synthetic payload can be replaced by private
+content.

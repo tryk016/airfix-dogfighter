@@ -33,9 +33,12 @@
   macOS 26, including the post-fix AFPACK streaming tests on Windows.
 - Added a data-less UIKit/Metal iPhone shell generated through CMake, a portable
   lifecycle/content state machine, and a public-source boundary scanner.
-- Added a public-data Metal smoke renderer that consumes the exported
-  `DrawModelPayload`, renders shared mesh instances and ordered ranges, and
-  packages an offline-compiled shader library; private content is not bundled.
+- Added a bounded public-data Metal adapter that consumes
+  `DrawSubmissionPlan`, owns buffers per mesh, and renders two reusable meshes
+  through three ordered instances (`1 -> 0 -> 1`). Commands select transforms
+  by `instanceIndex`; valid texture ID zero and the explicit one-pixel
+  missing/coordinate-free fallback remain distinct. Private content is not
+  bundled.
 - Unsigned ARM64 `iphoneos` and `iphonesimulator` builds pass on Xcode 26.6 with
   verified minimum iOS 16.4 and no private files in either bundle.
 - Recovered package-chain startup and the type/mode/graphics plugin discovery,
@@ -178,6 +181,14 @@
   and emits deterministic mesh uploads plus instance-then-range commands only
   on complete success. Optional primary/secondary/environment roles and valid
   texture ID zero remain distinct.
+- Wired that plan into the synthetic Metal adapter. Vertex/index sizes, draw
+  offsets and ranges, instance/mesh relationships, a 64 MiB packed-CPU budget,
+  a 64 MiB aggregate GPU budget, and `device.maxBufferLength` are checked
+  before packed payload or Metal-buffer allocation. Valid empty/no-draw meshes
+  retain nullable resources in strongly owned per-mesh wrappers; commands may
+  reference only populated resources. Renderer state is published only after
+  the entire pipeline, buffer, texture, and immutable resource snapshot is
+  ready, with C++ failures contained at the Objective-C boundary.
 - All 29 world definitions bind uniquely to their named CCF. Explicit physical
   CCF-room selection validates all 135 rooms and assigns all 4,911 objects
   exactly once to 105 non-empty ordinary rooms. All 29 receiver rooms and one
@@ -215,11 +226,11 @@
 
 ## Next
 
-1. Wire `GtiUploadPreparation` and `DrawSubmissionPlan` into the Metal shell,
-   replacing its current synthetic single-mesh buffers with the bounded
-   multi-mesh/multi-instance explicit-room payload. Start with unlit/no-cull
-   diagnostics, then add evidence-backed render states; keep BSP culling and
-   portal traversal disabled until their semantics are proven.
+1. Wire `GtiUploadPreparation` and private AFPACK-backed room data into the
+   bounded Metal adapter. Replace the public synthetic payload only after
+   authenticated content ownership and lifetime are defined; start with
+   unlit/no-cull diagnostics, then add evidence-backed render states. Keep BSP
+   culling and portal traversal disabled until their semantics are proven.
 2. Implement native UIKit and Game Controller adapters over the deterministic
    input router, then add the configurable safe-area-aware touch overlay.
 3. Recover the runtime rule that selects a physical CCF room during gameplay;

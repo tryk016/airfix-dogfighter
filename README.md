@@ -68,7 +68,7 @@ sources.
 | Legacy assets | GTI textures plus bounded CCF scene, room/fog/BSP, mesh, material, blueprint, and placed-node parsing implemented |
 | Dependency resolution | Object-to-scene, blueprint/placed graphs, BSP polygons, verified world-to-CCF binding, rooms, meshes, portals, materials, and texture edges implemented |
 | Private packaging | AFPACK writer, validation, transactional install/recovery, and native iOS import/rollback UI implemented |
-| Rendering | Bounded explicit-room assembly, stable texture IDs, atomic RGBA8 upload preparation, fail-closed draw submission, CPU diagnostics, and a synthetic iOS Metal smoke renderer implemented |
+| Rendering | Bounded explicit-room assembly, stable texture IDs, atomic RGBA8 upload preparation, fail-closed draw submission, CPU diagnostics, and a bounded synthetic multi-mesh Metal adapter implemented |
 | Input core | Deterministic semantic router for touch/controller/test sources implemented |
 | Native controls | UIKit touch overlay and Apple Game Controller adapters pending |
 | Game simulation | Reconstruction in progress; no complete playable loop yet |
@@ -77,6 +77,17 @@ sources.
 Detailed, frequently updated progress lives in
 [docs/progress/STATUS.md](docs/progress/STATUS.md) and
 [docs/progress/LOG.md](docs/progress/LOG.md).
+
+The current public-only Metal checkpoint consumes a validated
+`DrawSubmissionPlan` for two reusable meshes and three instances in
+`1 -> 0 -> 1` mesh order. It owns separate buffers per mesh, applies transforms
+through each command's `instanceIndex`, and explicitly distinguishes valid
+texture asset ID zero from a one-pixel fallback used for absent primary
+textures or ranges without texture coordinates. Resource creation is bounded
+by checked 64 MiB CPU/GPU staging budgets and `device.maxBufferLength`, and the
+renderer publishes state only after complete initialization. This remains a
+synthetic diagnostic: AFPACK content, private textures, and visual acceptance
+on a physical device are not connected or claimed.
 
 ## Architecture
 

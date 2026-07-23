@@ -828,3 +828,34 @@ superseded evidence.
   gap. Texture review found that metadata budgets were initially applied only
   after parsing; parser-level pre-allocation limits and chunk-heavy/zero-variant
   regressions closed it. Both re-reviews found no remaining P1/P2.
+
+## 2026-07-23 — bounded multi-mesh Metal submission adapter
+
+- Replaced the synthetic renderer's private range traversal with the
+  backend-neutral `DrawSubmissionPlan`. The public fixture now contains two
+  reusable meshes and three instances in deliberate mesh-slot order
+  `1 -> 0 -> 1`; every command selects its model transform through
+  `instanceIndex` and rebinds the matching per-mesh vertex/index resources.
+- Kept the established explicit render policy: BGRA8 presentation,
+  Depth32Float less/write, UInt32 indices, nearest/clamp sampling, no blending,
+  and no culling. No sRGB, premultiplication, V-origin, projection, front-face,
+  or visibility behavior was inferred.
+- Texture asset ID zero remains a real binding. A separate one-pixel RGBA8
+  fallback is bound explicitly for an absent primary texture or
+  `TexcoordMode::none`, including independent synthetic coverage of both
+  conditions.
+- Added two-pass resource preparation. The first pass checks every vertex and
+  index byte count, command offset/range, instance-to-mesh relationship,
+  `device.maxBufferLength`, a 64 MiB aggregate GPU budget, and a separate
+  64 MiB packed-CPU budget. Vertex repacking and Metal-buffer creation begin
+  only after the complete preflight succeeds.
+- Valid empty/no-draw meshes use strongly retained wrappers with nullable
+  buffers instead of zero-length Metal allocations; preflight guarantees that
+  a draw command can reference only populated resources. C++ allocation
+  failures are converted to `NSError`, and renderer state is published only
+  after the complete immutable resource snapshot and all Metal objects exist.
+- Independent review approved the adapter after the empty-mesh, exception
+  boundary, command consistency, and pre-allocation findings were closed.
+  This checkpoint still uses only public synthetic data: AFPACK, private GTI
+  textures, asset-backed room rendering, and visual testing on a physical
+  iPhone remain pending.
