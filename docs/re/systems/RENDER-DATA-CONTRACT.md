@@ -1,8 +1,9 @@
 # Backend-neutral render data and first-model diagnostic
 
 **State:** mesh/model payload, conservative explicit-room assembly, stable
-runtime texture/upload plans, private CPU diagnostic, and public synthetic
-Metal smoke path implemented; private asset-backed Metal path pending
+runtime texture plans, atomic RGBA8 upload preparation, fail-closed draw
+submission, private CPU diagnostic, and public synthetic Metal smoke path
+implemented; private asset-backed Metal path pending
 
 **Evidence:** `EV-20260721-030` through `EV-20260721-034`
 
@@ -46,6 +47,24 @@ counts retain the parser's hard 32,768/16 bounds even if configurable budgets
 are raised. All RGBA8 row, decoded, upload, resident, and metadata arithmetic
 is checked before a plan is published.
 
+`prepareGtiUpload` is the owned-data boundary above that descriptor. It checks
+the source-byte ceiling before parsing and passes variant/metadata budgets into
+the parser, which enforces them before retaining records. It parses the supplied
+GTI byte span, derives the canonical `GtiUploadPlan`, and decodes either every
+selected authored mip or only level zero for `generateFromBase`. Before
+publishing, it checks request identity, variant index/format, checksum,
+mip-policy shape, every level number/dimension/row byte/image byte count, and
+the aggregate decoded, upload, and resident RGBA8 totals against the plan.
+
+The returned `GtiUploadPreparation` is atomic: a successful result contains the
+plan and all uploadable owned `RgbaImage` levels together. A parse, planning,
+decode, mismatch, limit, or overflow issue clears both fields and reports a
+typed issue with plan, variant, and level context where available. A corrupt
+later authored mip therefore cannot expose an earlier partial chain. Generated
+lower mips are deliberately absent from the payload and remain work for the
+render backend. This boundary still makes no sRGB, premultiplication, vertical
+orientation, blending, archive-I/O, or Metal resource decision.
+
 Across all 215 object plans, 2,959 edges become 614 per-object unique imports:
 612 authored-chain and two generated-chain imports, with 2,355 uploaded and
 2,368 allocated levels. All 29 world-to-CCF bindings and all 135 physical CCF
@@ -73,6 +92,28 @@ The builder rejects non-finite values, invalid indices, missing/duplicate
 material bindings, integer overflow, and configured vertex/index/material/range
 or aggregate-byte limits. The payload keeps primary, secondary, and environment
 texture roles even though the first diagnostic samples only primary.
+
+## Fail-closed draw submission
+
+`buildDrawSubmissionPlan` is the validation boundary between an assembled
+`DrawModelPayload` and backend upload/draw work. Before allocating output, it
+preflights mesh, instance, aggregate vertex/index/material/range, command, and
+source-byte ceilings with checked arithmetic. It then validates finite vertex
+attributes and transforms; finite, ordered bounds that contain every vertex;
+the required zero bounds for an empty mesh; in-range indices, instance mesh
+slots, material slots, and texture IDs; known texture-coordinate modes; and a
+contiguous, complete partition of the index buffer into non-empty triangle
+ranges.
+
+Only complete success publishes a `DrawSubmissionPlan`. Mesh-upload metadata
+retains model mesh order, while indexed commands retain instance order and then
+range order. Each command preserves primary, secondary, and environment
+bindings independently; `TextureAssetId{0}` is a valid binding whenever at
+least one texture asset is available, while absence remains `std::optional`.
+An empty model and a well-formed empty mesh produce successful empty work.
+Every typed issue suppresses the whole plan and carries the narrowest available
+mesh, instance, vertex, index, range, material, texture-role, and texture-ID
+context. No partial upload list or draw-command prefix is exposed.
 
 ## CPU diagnostic
 
@@ -141,7 +182,9 @@ the application `default.metallib`; bundle verification requires it to exist.
 
 This smoke pipeline uses BGRA8 color, Depth32Float with less/write, nearest
 clamp sampling, no blending, and no culling. It does not yet load AFPACK or
-private textures. Remaining backend work is resource ownership/cache handles,
-the authored/generated mip upload policy, final projection/front-face and
-blending decisions, then the asset-backed room path. The reference-oriented
-pass keeps culling disabled until parity diagnostics establish viewport parity.
+private textures. The portable layer now provides validated draw commands and
+owned upload levels, but the Metal shell does not consume those boundaries yet.
+Remaining backend work is resource ownership/cache handles, wiring authored
+uploads and generated mip requests, final projection/front-face and blending
+decisions, then the asset-backed room path. The reference-oriented pass keeps
+culling disabled until parity diagnostics establish viewport parity.

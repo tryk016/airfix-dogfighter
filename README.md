@@ -8,8 +8,9 @@ and modern lighting without changing faithful-mode gameplay.
 
 The project is under active development and is **not yet a playable port**.
 It currently provides the portable archive/asset pipeline, deterministic input
-core, private content-package infrastructure, diagnostic rendering, and a
-data-less UIKit/Metal application shell.
+core, private content-package infrastructure, fail-closed render submission and
+texture-upload preparation, diagnostic rendering, and a data-less UIKit/Metal
+application shell.
 
 ## Project scope
 
@@ -67,7 +68,7 @@ sources.
 | Legacy assets | GTI textures plus bounded CCF scene, room/fog/BSP, mesh, material, blueprint, and placed-node parsing implemented |
 | Dependency resolution | Object-to-scene, blueprint/placed graphs, BSP polygons, verified world-to-CCF binding, rooms, meshes, portals, materials, and texture edges implemented |
 | Private packaging | AFPACK writer, validation, transactional install/recovery, and native iOS import/rollback UI implemented |
-| Rendering | Deterministic CPU diagnostics, bounded explicit-room multi-instance assembly, stable texture runtime IDs/upload plans, and a synthetic iOS Metal smoke renderer implemented |
+| Rendering | Bounded explicit-room assembly, stable texture IDs, atomic RGBA8 upload preparation, fail-closed draw submission, CPU diagnostics, and a synthetic iOS Metal smoke renderer implemented |
 | Input core | Deterministic semantic router for touch/controller/test sources implemented |
 | Native controls | UIKit touch overlay and Apple Game Controller adapters pending |
 | Game simulation | Reconstruction in progress; no complete playable loop yet |
@@ -103,7 +104,8 @@ The main boundaries are:
 - **Reverse-engineering evidence:** function catalogues, format notes, and
   reproducible experiments; generated decompiler databases stay local.
 - **Portable core:** bounded parsers, deterministic input, reconstructed game
-  rules, content identity, and platform-neutral render payloads.
+  rules, content identity, platform-neutral render payloads, and validated
+  texture/draw handoff plans.
 - **Private content pipeline:** offline conversion, cryptographic validation,
   content-addressed installation, activation, and rollback.
 - **iOS platform layer:** UIKit lifecycle, Metal presentation, Game Controller,
@@ -192,7 +194,7 @@ src/airfix/assets/     Legacy formats, dependency graphs, render-ready data
 src/airfix/input/      Deterministic semantic input router
 src/airfix/io/         Cross-platform durable file primitives
 src/airfix/package/    Private AFPACK format, validation, and installation
-src/airfix/render/     Portable geometry conversion and diagnostics
+src/airfix/render/     Geometry, texture preparation, draw plans, diagnostics
 src/airfix/runtime/    Platform-neutral application/session state
 tests/                 Synthetic unit and malformed-input tests
 tools/                 Read-only inspectors, converters, and CI checks

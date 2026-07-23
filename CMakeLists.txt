@@ -114,7 +114,9 @@ add_library(airfix_render
     src/airfix/render/CcfRoomDrawAssembly.cpp
     src/airfix/render/DiagnosticRasterizer.cpp
     src/airfix/render/DrawMesh.cpp
+    src/airfix/render/DrawSubmissionPlan.cpp
     src/airfix/render/LegacyGeometry.cpp
+    src/airfix/render/TextureRuntimeData.cpp
     src/airfix/render/TextureRuntimePlan.cpp
 )
 add_library(airfix::render ALIAS airfix_render)
@@ -299,6 +301,13 @@ if(AIRFIX_BUILD_TESTS)
     target_link_libraries(airfix_draw_mesh_tests PRIVATE airfix::render)
     add_test(NAME airfix_draw_mesh_tests COMMAND airfix_draw_mesh_tests)
 
+    add_executable(airfix_draw_submission_plan_tests
+        tests/DrawSubmissionPlanTests.cpp)
+    target_link_libraries(airfix_draw_submission_plan_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_draw_submission_plan_tests
+        COMMAND airfix_draw_submission_plan_tests)
+
     add_executable(airfix_room_draw_assembly_tests
         tests/CcfRoomDrawAssemblyTests.cpp)
     target_link_libraries(airfix_room_draw_assembly_tests PRIVATE airfix::render)
@@ -310,6 +319,13 @@ if(AIRFIX_BUILD_TESTS)
     target_link_libraries(airfix_texture_runtime_plan_tests PRIVATE airfix::render)
     add_test(NAME airfix_texture_runtime_plan_tests
         COMMAND airfix_texture_runtime_plan_tests)
+
+    add_executable(airfix_texture_runtime_data_tests
+        tests/TextureRuntimeDataTests.cpp)
+    target_link_libraries(airfix_texture_runtime_data_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_texture_runtime_data_tests
+        COMMAND airfix_texture_runtime_data_tests)
 
     add_executable(airfix_diagnostic_rasterizer_tests
         tests/DiagnosticRasterizerTests.cpp)

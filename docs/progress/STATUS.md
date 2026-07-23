@@ -167,6 +167,17 @@
   parser bounds, and checked decoded/upload/resident RGBA8 budgets. Complete
   object-subtree validation resolves 2,959 edges into 614 per-object unique
   import requests: 612 authored-chain and two generated-chain imports.
+- Added atomic GTI runtime materialization. `prepareGtiUpload` enforces the
+  source limit before parsing, composes parse/plan/decode, validates every
+  decoded level and aggregate byte total against its plan, and publishes the
+  plan plus owned RGBA8 levels only together. Authored chains materialize in
+  full; legacy anomalies expose only the valid base for backend mip generation.
+- Added fail-closed backend draw submission. `buildDrawSubmissionPlan`
+  preflights all aggregate/source/command limits before output allocation,
+  validates complete mesh/range/bounds/transform/material/texture invariants,
+  and emits deterministic mesh uploads plus instance-then-range commands only
+  on complete success. Optional primary/secondary/environment roles and valid
+  texture ID zero remain distinct.
 - All 29 world definitions bind uniquely to their named CCF. Explicit physical
   CCF-room selection validates all 135 rooms and assigns all 4,911 objects
   exactly once to 105 non-empty ordinary rooms. All 29 receiver rooms and one
@@ -204,10 +215,11 @@
 
 ## Next
 
-1. Extend the Metal shell from its current synthetic single-mesh buffers to the
-   bounded multi-mesh/multi-instance explicit-room payload, first with unlit/
-   no-cull diagnostics and then with evidence-backed render states. Keep BSP
-   culling and portal traversal disabled until their semantics are proven.
+1. Wire `GtiUploadPreparation` and `DrawSubmissionPlan` into the Metal shell,
+   replacing its current synthetic single-mesh buffers with the bounded
+   multi-mesh/multi-instance explicit-room payload. Start with unlit/no-cull
+   diagnostics, then add evidence-backed render states; keep BSP culling and
+   portal traversal disabled until their semantics are proven.
 2. Implement native UIKit and Game Controller adapters over the deterministic
    input router, then add the configurable safe-area-aware touch overlay.
 3. Recover the runtime rule that selects a physical CCF room during gameplay;

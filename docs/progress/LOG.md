@@ -797,3 +797,34 @@ superseded evidence.
   visibility remains disabled.
 - Independent review found no P1/P2 in the explicit-room APIs. The portable
   suite remains green at 27/27 tests, and no private payload was written.
+
+## 2026-07-23 — atomic texture data and draw submission
+
+- Added `prepareGtiUpload` as the bounded owned-data transaction above
+  `describeGtiUpload`. It rejects oversized source bytes before parsing,
+  applies variant and metadata-record budgets inside the parser before each
+  retained record, composes GTI parse/plan/decode, and materializes every
+  authored mip or only the valid base level for legacy generated-chain
+  anomalies.
+- `GtiUploadPreparation` publishes its plan and RGBA8 upload levels atomically.
+  Request identity, selected variant/format/checksum, mip-policy shape,
+  per-level dimensions/row/image bytes, and decoded/upload/resident totals must
+  all agree. Typed parse, plan, decode, mismatch, limit, or overflow issues
+  clear both outputs; a later corrupt authored mip cannot leak a partial chain.
+- Added fail-closed `buildDrawSubmissionPlan`. Aggregate mesh, instance,
+  vertex, index, material, range, command, and source-byte limits are
+  preflighted before output allocation. Complete validation covers finite
+  vertices/transforms, ordered and containing bounds, empty-mesh zero bounds,
+  indices, contiguous triangle ranges, material/mesh slots, texture-coordinate
+  modes, and all three optional texture roles.
+- Successful submission preserves mesh order and emits commands in instance-
+  then-range order, retaining primary/secondary/environment bindings and valid
+  texture ID zero. Any issue suppresses the entire upload/command plan with
+  typed contextual diagnostics; valid empty models and meshes yield empty work.
+- Added focused synthetic test targets for authored and generated GTI data,
+  later-mip atomic failure, every materialization budget, deterministic shared-
+  mesh commands, exact submission limits, malformed slots/ranges/transforms,
+  and bounds. Independent review found and closed the finite-but-invalid AABB
+  gap. Texture review found that metadata budgets were initially applied only
+  after parsing; parser-level pre-allocation limits and chunk-heavy/zero-variant
+  regressions closed it. Both re-reviews found no remaining P1/P2.

@@ -46,6 +46,18 @@ struct GtiMetadata {
     std::vector<GtiVariant> variants;
 };
 
+class GtiParseLimitError final : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
+
+struct GtiParseLimits {
+    std::size_t maximumVariants{4'096U};
+    // Counts retained GtiChunk and GtiVariant records. The distinct-format
+    // set is independently bounded by maximumVariants.
+    std::size_t maximumMetadataBytes{16U * 1024U * 1024U};
+};
+
 struct CcfChunk {
     std::uint16_t id{};
     std::uint32_t totalSize{};
@@ -328,7 +340,9 @@ struct RgbaMipChain {
     std::vector<RgbaImage> levels;
 };
 
-[[nodiscard]] GtiMetadata parseGti(std::span<const std::uint8_t> bytes);
+[[nodiscard]] GtiMetadata parseGti(
+    std::span<const std::uint8_t> bytes,
+    const GtiParseLimits& limits = {});
 [[nodiscard]] CcfMetadata parseCcf(std::span<const std::uint8_t> bytes);
 [[nodiscard]] std::uint32_t gtiBitsPerPixel(std::uint32_t format) noexcept;
 [[nodiscard]] std::uint64_t expectedGtiPixelBytes(

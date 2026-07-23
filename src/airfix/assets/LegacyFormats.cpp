@@ -63,6 +63,43 @@ void requireRange(
         (static_cast<std::uint32_t>(bytes[offset + 3U]) << 24U);
 }
 
+void requireGtiMetadataCapacity(
+    const std::size_t chunkCount,
+    const std::size_t variantCount,
+    const GtiParseLimits& limits) {
+    if (variantCount > limits.maximumVariants) {
+        throw GtiParseLimitError("GTI exceeds the configured variant limit");
+    }
+    if (chunkCount != 0U &&
+        sizeof(GtiChunk) >
+            std::numeric_limits<std::size_t>::max() / chunkCount) {
+        throw GtiParseLimitError(
+            "GTI metadata size exceeds this process");
+    }
+    const auto chunkBytes = chunkCount * sizeof(GtiChunk);
+    if (variantCount != 0U &&
+        sizeof(GtiVariant) >
+            std::numeric_limits<std::size_t>::max() / variantCount) {
+        throw GtiParseLimitError(
+            "GTI metadata size exceeds this process");
+    }
+    const auto variantBytes = variantCount * sizeof(GtiVariant);
+    if (variantBytes > std::numeric_limits<std::size_t>::max() - chunkBytes ||
+        chunkBytes + variantBytes > limits.maximumMetadataBytes) {
+        throw GtiParseLimitError(
+            "GTI exceeds the configured metadata limit");
+    }
+}
+
+[[nodiscard]] std::size_t nextGtiRecordCount(
+    const std::size_t current) {
+    if (current == std::numeric_limits<std::size_t>::max()) {
+        throw GtiParseLimitError(
+            "GTI metadata record count exceeds this process");
+    }
+    return current + 1U;
+}
+
 [[nodiscard]] float readFloat(
     const std::span<const std::uint8_t> bytes,
     const std::size_t offset,
@@ -1863,7 +1900,9 @@ RgbaImage decodeGtiBaseRgba(
     return decodeGtiMipLevelRgba(bytes, variant, 0U, outputLimit);
 }
 
-GtiMetadata parseGti(const std::span<const std::uint8_t> bytes) {
+GtiMetadata parseGti(
+    const std::span<const std::uint8_t> bytes,
+    const GtiParseLimits& limits) {
     if (bytes.size() < 8U || readU32(bytes, 0U, "GTI magic") != kGtiMagic) {
         throw ParseError("invalid GTI magic");
     }
@@ -1894,6 +1933,10 @@ GtiMetadata parseGti(const std::span<const std::uint8_t> bytes) {
             availablePayloadSize = bytes.size() - payloadOffset;
             metadata.terminalDeclaredOverrun = true;
         }
+        requireGtiMetadataCapacity(
+            nextGtiRecordCount(metadata.chunks.size()),
+            metadata.variants.size(),
+            limits);
         metadata.chunks.push_back({
             .id = id,
             .payloadSize = payloadSize,
@@ -1926,6 +1969,10 @@ GtiMetadata parseGti(const std::span<const std::uint8_t> bytes) {
             if (paletteBytes > availablePayloadSize - 20U) {
                 throw ParseError("GTI palette exceeds image chunk");
             }
+            requireGtiMetadataCapacity(
+                metadata.chunks.size(),
+                nextGtiRecordCount(metadata.variants.size()),
+                limits);
             if (!formats.insert(format).second) {
                 throw ParseError("GTI contains duplicate image format");
             }

@@ -1,8 +1,8 @@
 # FMT-GTI — `GtImage` texture container
 
 **State:** header, chunk table, image metadata, palette placement, pixel-size
-calculation, bounded full-chain RGBA8 conversion, and backend-neutral upload
-metadata implemented
+calculation, bounded full-chain RGBA8 conversion, backend-neutral upload
+metadata, and atomic owned upload preparation implemented
 
 **Confidence:** 3/3 for fields below across the selected 1,985-file corpus
 
@@ -97,9 +97,13 @@ resolved.
 - compatibility entry point: `decodeGtiBaseRgba` delegates to level zero;
 - bounded runtime descriptor: `render/TextureRuntimePlan` selects the variant,
   upload policy, levels, rows, and decoded/upload/resident byte budgets;
+- atomic runtime materializer: `render/TextureRuntimeData` parses, plans, and
+  decodes a supplied GTI byte span, then publishes the plan and owned upload
+  levels together only after their shapes and byte totals agree;
 - bounded corpus tool: `udsp-list --inventory`;
 - private diagnostic preview tool: `gti-preview` (PPM output under ignored paths);
-- synthetic malformed cases: `tests/LegacyFormatsTests.cpp`.
+- synthetic format and materialization cases: `tests/LegacyFormatsTests.cpp`
+  and `tests/TextureRuntimeDataTests.cpp`.
 
 The decoder has exact fixtures for formats 3/4/6/7/8, multiple levels, palette
 and alpha behavior, declared and physical bounds, aggregate output limits, and
@@ -136,3 +140,16 @@ and [`MTLBlitCommandEncoder` generation](https://developer.apple.com/documentati
 contracts. A future texture cache keys the logical asset, selected GTI variant,
 content checksum, pixel format, and authored/generated policy; cache
 implementation and font-only trailing-byte semantics remain separate work.
+
+`prepareGtiUpload` implements the portable half of this handoff. It enforces
+the source-byte limit before parsing and forwards variant/metadata budgets into
+the parser, where they are checked before retaining each record. It then
+decodes all authored levels or the anomalous base only and verifies identity,
+selected variant/format/checksum, mip-policy shape, per-level dimensions and
+row/image bytes, plus decoded/upload/resident totals. Success returns one
+`GtiUploadPreparation` containing both the canonical plan and owned RGBA8
+levels. Parse, plan, decode, mismatch, limit, or overflow failures clear both,
+so even corruption in a later mip cannot leak a partial chain. The eventual
+Metal layer must still create/cache resources and generate lower mips when the
+plan requests `generateFromBase`; color-space, alpha, row-orientation, and
+blending policy remain separate evidence-gated decisions.
