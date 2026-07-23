@@ -87,6 +87,10 @@
   authenticates only AFAC-derived current/previous packs, distinguishes
   malformed, unusable, and transient-unavailable states, rechecks stale active
   state on rollback, and requires exact durable readback after commit.
+- Startup inspection now retains the authenticated pack handle in a move-only
+  `ActiveContentLease` together with AFPACK, manifest, and exact
+  `source/Resource.up` metadata. `VerifiedContentSession` adopts this proof
+  without a pathname reopen, redundant full hash, or repeated metadata parse.
 - Added the native iOS private-content coordinator: document picker, bounded
   security-scoped copy into app-private storage, serialized install/inspection/
   rollback, lifecycle cancellation, progress and recovery UI, strict orphan
@@ -211,14 +215,14 @@
 - Implemented finite, invertible parent-relative local transform derivation and
   composition in runtime column-vector order. Round-trip tests include
   non-commutative rotations and shear; `rawScalar` is not treated as scale.
-- Added the portable `airfix_content` ownership boundary. A move-only
-  `VerifiedContentSession` owns one seekable stream, verifies its exact AFPACK
-  size and complete SHA-256 against `{generation, size, digest}`, then parses
-  the pack, strict manifest, and exact `source/Resource.up` UDSP region without
-  reopening its diagnostic label. It exposes only serialized bounded nested
-  reads. Synthetic tests cover wrong size/digest/generation, cancellation
-  during hashing, malformed source UDSP, exact/one-under limits, and a poisoned
-  label that points at a different real file. The portable suite passes 30/30.
+- Added the portable `airfix_content` ownership boundary. Recovery returns a
+  move-only lease that binds its already authenticated AFPACK handle to
+  `{generation, size, digest}`, parsed pack/manifest, and exact
+  `source/Resource.up` archive. `VerifiedContentSession::adopt` consumes it
+  without reopen, rehash, or reparse and exposes only serialized bounded nested
+  reads. A separate synthetic-stream entry point still covers wrong
+  size/digest/generation, cancellation during hashing, malformed source UDSP,
+  exact/one-under limits, and a poisoned label that points at another real file.
 - Implemented an atomic `WorldRoomLoader` on that session. A request contains
   only an exact World logical path and an explicit physical CCF room index; CCF
   and GTI entry indices are derived internally from the same archive. The

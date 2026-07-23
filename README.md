@@ -96,16 +96,15 @@ file handle; `Archive::open(stream, sourceLabel)` and the stream overloads of
 `readFilePrefix`/`readFile` never reopen `sourceLabel`, which is diagnostic
 text only. Exact current stream size, archive and payload regions, indices,
 limits, and `streamoff`/`streamsize` representability are checked before the
-corresponding allocation or read. This is the foundation for a private
-AFPACK-to-render-data bridge; the runtime does not yet consume installed AFPACK
-payloads end to end.
+corresponding allocation or read.
 
-The portable `airfix_content` layer now owns one seekable stream for an active
-content revision. It verifies the exact physical size and SHA-256 of the whole
-AFPACK, then parses the pack, strict manifest, and exact
-`source/Resource.up` region through that same handle. Its diagnostic label is
-never reopened as a path, and only serialized, bounded nested-file reads are
-exposed.
+The portable recovery layer now returns a move-only active-content lease. It
+keeps the exact file handle used for the full AFPACK SHA-256 check together
+with the already parsed pack, strict manifest, and exact
+`source/Resource.up` archive. `airfix_content` consumes that lease without
+reopening, rehashing, or reparsing the package. Its diagnostic label is never
+opened as a path, and only serialized, bounded nested-file reads are exposed.
+An independent stream-opening entry point remains for synthetic tests.
 
 `WorldRoomLoader` composes that session into one immutable, revision-tagged
 room result. It resolves an exact World and its exact `CCFF`, selects only an

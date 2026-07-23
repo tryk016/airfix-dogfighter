@@ -15,6 +15,14 @@
 #include <string>
 #include <vector>
 
+namespace airfix::afpack {
+class ActiveContentLease;
+}
+
+namespace airfix::testing {
+struct AuthenticatedStreamIdentityProbe;
+}
+
 namespace airfix::content {
 
 inline constexpr std::size_t kDefaultVerifiedContentIoBufferBytes = 64U * 1024U;
@@ -85,6 +93,11 @@ public:
         std::stop_token stopToken = {},
         VerifiedContentProgressCallback progress = {});
 
+    // Adopts the exact handle and metadata already authenticated by recovery.
+    // This performs no reopen, rehash or metadata reparse.
+    [[nodiscard]] static VerifiedContentSession adopt(
+        afpack::ActiveContentLease&& lease);
+
     [[nodiscard]] const ContentRevision& revision() const noexcept {
         return revision_;
     }
@@ -112,6 +125,8 @@ public:
         std::size_t outputLimit);
 
 private:
+    friend struct airfix::testing::AuthenticatedStreamIdentityProbe;
+
     VerifiedContentSession(
         std::unique_ptr<std::ifstream> input,
         std::string sourceLabel,

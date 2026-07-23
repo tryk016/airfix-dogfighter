@@ -177,8 +177,11 @@ or corrupted commit.
 digest-derived current/previous paths, requires regular non-link files and exact
 sizes, then streams each complete pack through SHA-256. After that full-file
 authentication it opens bounded AFPACK metadata, strictly validates the
-manifest, and opens both required nested UDSP regions without redundantly
-rehashing every payload through the installer gate. Typed results distinguish
+manifest, and opens both required nested UDSP regions. A valid candidate is
+returned as a move-only `ActiveContentLease` that retains the same authenticated
+handle together with the parsed pack, manifest, and exact source-archive
+metadata. `VerifiedContentSession::adopt` consumes this proof without a pathname
+reopen, second full-file hash, or repeated metadata parse. Typed results distinguish
 `noContent`, `ready`, `rollbackAvailable`, `unusable`, `malformedActive`, and
 transient `unavailable`; a temporary I/O failure never offers rollback.
 

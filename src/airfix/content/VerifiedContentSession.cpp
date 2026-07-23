@@ -1,6 +1,7 @@
 #include "airfix/content/VerifiedContentSession.hpp"
 
 #include "airfix/crypto/Sha256.hpp"
+#include "airfix/package/AfPackRecovery.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -282,6 +283,48 @@ VerifiedContentSession VerifiedContentSession::open(
         std::move(manifest),
         std::move(sourceArchive),
         sourceIndex);
+}
+
+VerifiedContentSession VerifiedContentSession::adopt(
+    afpack::ActiveContentLease&& lease) {
+    if (!lease.input_) {
+        throw VerifiedContentError(
+            "authenticated active content lease has already been consumed");
+    }
+    if (lease.activeGeneration_ == 0U) {
+        throw VerifiedContentError(
+            "authenticated active content lease has no generation");
+    }
+    if (lease.pack_.archiveSize() != lease.reference_.size) {
+        throw VerifiedContentError(
+            "authenticated active content lease has inconsistent pack size");
+    }
+    const auto entries = std::span<const afpack::Entry>(lease.pack_.entries());
+    if (lease.sourcePackEntryIndex_ >= entries.size()) {
+        throw VerifiedContentError(
+            "authenticated active content lease has no source archive entry");
+    }
+    const auto& sourceEntry = entries[lease.sourcePackEntryIndex_];
+    if (sourceEntry.path != kSourceArchivePath ||
+        sourceEntry.kind != afpack::EntryKind::sourceArchive ||
+        lease.sourceArchive_.backingOffset() != sourceEntry.dataOffset ||
+        lease.sourceArchive_.archiveSize() != sourceEntry.storedSize) {
+        throw VerifiedContentError(
+            "authenticated active content lease source archive is inconsistent");
+    }
+
+    ContentRevision revision{
+        .generation = lease.activeGeneration_,
+        .pack = lease.reference_,
+    };
+    return VerifiedContentSession(
+        std::move(lease.input_),
+        "active private package",
+        std::move(revision),
+        std::move(lease.pack_),
+        std::move(lease.manifest_),
+        std::move(lease.sourceArchive_),
+        lease.sourcePackEntryIndex_);
 }
 
 std::vector<std::uint8_t> VerifiedContentSession::readSourceFilePrefix(

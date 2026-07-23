@@ -12,6 +12,32 @@
 #include <utility>
 #include <vector>
 
+namespace airfix::afpack::detail {
+
+struct ActiveContentLeaseFactory final {
+    [[nodiscard]] static ActiveContentLease create(
+        std::unique_ptr<std::ifstream> input,
+        const std::uint64_t activeGeneration,
+        ActivePackReference reference,
+        std::filesystem::path path,
+        Pack pack,
+        Manifest manifest,
+        udsp::Archive sourceArchive,
+        const std::size_t sourcePackEntryIndex) {
+        return ActiveContentLease(
+            std::move(input),
+            activeGeneration,
+            std::move(reference),
+            std::move(path),
+            std::move(pack),
+            std::move(manifest),
+            std::move(sourceArchive),
+            sourcePackEntryIndex);
+    }
+};
+
+} // namespace airfix::afpack::detail
+
 namespace airfix::afpack {
 namespace {
 
@@ -237,7 +263,7 @@ struct ActiveRead {
     return static_cast<std::size_t>(std::distance(entries.begin(), match));
 }
 
-[[nodiscard]] const Entry& findEntry(
+[[nodiscard]] std::size_t findEntryIndex(
     const std::span<const Entry> entries,
     const ManifestEntry& requested) {
     const auto match = std::find_if(entries.begin(), entries.end(), [&](const Entry& entry) {
@@ -246,7 +272,7 @@ struct ActiveRead {
     if (match == entries.end()) {
         throw ManifestError("recovery manifest entry is absent from pack table");
     }
-    return *match;
+    return static_cast<std::size_t>(std::distance(entries.begin(), match));
 }
 
 [[nodiscard]] RecoveryPhase hashPhase(const CandidateRole role) noexcept {
@@ -260,7 +286,7 @@ struct ActiveRead {
 }
 
 struct CandidateResult {
-    std::optional<ActiveContent> content;
+    std::optional<ActiveContentLease> content;
     CandidateDiagnostic diagnostic;
 };
 
@@ -302,11 +328,12 @@ struct CandidateResult {
     }
 
     try {
-        std::ifstream input(path, std::ios::binary | std::ios::ate);
-        if (!input) {
+        auto input = std::make_unique<std::ifstream>(
+            path, std::ios::binary | std::ios::ate);
+        if (!*input) {
             throw CandidateIoError("cannot open digest-derived pack");
         }
-        const auto size = streamSize(input, path);
+        const auto size = streamSize(*input, path);
         if (size != reference.size) {
             return {
                 .content = std::nullopt,
@@ -316,8 +343,8 @@ struct CandidateResult {
                 },
             };
         }
-        input.seekg(0, std::ios::beg);
-        if (!input) {
+        input->seekg(0, std::ios::beg);
+        if (!*input) {
             throw CandidateIoError("cannot seek digest-derived pack");
         }
 
@@ -333,10 +360,10 @@ struct CandidateResult {
         while (completed != size) {
             const auto chunkSize = static_cast<std::size_t>(std::min<std::uint64_t>(
                 size - completed, buffer.size()));
-            input.read(
+            input->read(
                 reinterpret_cast<char*>(buffer.data()),
                 static_cast<std::streamsize>(chunkSize));
-            if (input.gcount() != static_cast<std::streamsize>(chunkSize)) {
+            if (input->gcount() != static_cast<std::streamsize>(chunkSize)) {
                 throw CandidateIoError("digest-derived pack shrank while hashing");
             }
             hash.update(std::span<const std::uint8_t>(buffer).first(chunkSize));
@@ -349,8 +376,8 @@ struct CandidateResult {
             });
         }
         char extra{};
-        input.read(&extra, 1);
-        if (input.gcount() != 0 || !input.eof()) {
+        input->read(&extra, 1);
+        if (input->gcount() != 0 || !input->eof()) {
             throw CandidateIoError("digest-derived pack grew while hashing");
         }
         if (hash.finish() != reference.sha256) {
@@ -369,38 +396,52 @@ struct CandidateResult {
             .totalBytes = size,
             .candidate = role,
         });
-        auto pack = Pack::open(input, path, limits.validation.afpack);
+        auto pack = Pack::open(*input, path, limits.validation.afpack);
         if (pack.archiveSize() != reference.size) {
             throw ParseError("trusted recovery pack size changed before metadata parse");
         }
         const auto entries = std::span<const Entry>(pack.entries());
         const auto manifestBytes = pack.readEntry(
-            input,
+            *input,
             path,
             manifestIndex(entries),
             limits.validation.maxManifestBytes);
         auto manifest = parseManifest(
             manifestBytes, entries, limits.validation.manifest);
+        std::optional<udsp::Archive> sourceArchive;
+        std::optional<std::size_t> sourcePackEntryIndex;
         for (const auto& manifestEntry : manifest.entries) {
             checkCancellation(stopToken);
-            const auto& entry = findEntry(entries, manifestEntry);
-            (void)udsp::Archive::openRegion(
-                input,
+            const auto entryIndex = findEntryIndex(entries, manifestEntry);
+            const auto& entry = entries[entryIndex];
+            auto archive = udsp::Archive::openRegion(
+                *input,
                 pack.archiveSize(),
                 path,
                 entry.dataOffset,
                 entry.storedSize,
                 limits.validation.udsp);
+            if (manifestEntry.path == "source/Resource.up" &&
+                manifestEntry.kind == EntryKind::sourceArchive) {
+                sourceArchive.emplace(std::move(archive));
+                sourcePackEntryIndex = entryIndex;
+            }
         }
         checkCancellation(stopToken);
+        if (!sourceArchive.has_value() || !sourcePackEntryIndex.has_value()) {
+            throw ManifestError(
+                "recovery manifest has no exact source/Resource.up archive");
+        }
         return {
-            .content = ActiveContent{
-                .activeGeneration = activeGeneration,
-                .reference = reference,
-                .path = path,
-                .pack = std::move(pack),
-                .manifest = std::move(manifest),
-            },
+            .content = detail::ActiveContentLeaseFactory::create(
+                std::move(input),
+                activeGeneration,
+                reference,
+                path,
+                std::move(pack),
+                std::move(manifest),
+                std::move(*sourceArchive),
+                *sourcePackEntryIndex),
             .diagnostic = {CandidateStatus::valid, {}},
         };
     }
@@ -437,19 +478,20 @@ struct CandidateResult {
 }
 
 void verifyRollbackPackUnchanged(
-    const ActiveContent& content,
+    const ActiveContentLease& content,
     const RecoveryLimits& limits,
     const std::stop_token stopToken,
     const RecoveryProgressCallback& progress) {
     try {
         std::error_code error;
-        const auto status = std::filesystem::symlink_status(content.path, error);
+        const auto status = std::filesystem::symlink_status(content.path(), error);
         if (error || !std::filesystem::is_regular_file(status) ||
             std::filesystem::is_symlink(status)) {
             throw StaleActiveContent{};
         }
-        std::ifstream input(content.path, std::ios::binary | std::ios::ate);
-        if (!input || streamSize(input, content.path) != content.reference.size) {
+        std::ifstream input(content.path(), std::ios::binary | std::ios::ate);
+        if (!input ||
+            streamSize(input, content.path()) != content.reference().size) {
             throw StaleActiveContent{};
         }
         input.seekg(0, std::ios::beg);
@@ -459,12 +501,12 @@ void verifyRollbackPackUnchanged(
         report(progress, stopToken, {
             .phase = RecoveryPhase::verifyingRollbackPack,
             .completedBytes = 0U,
-            .totalBytes = content.reference.size,
+            .totalBytes = content.reference().size,
             .candidate = CandidateRole::previous,
         });
-        while (completed != content.reference.size) {
+        while (completed != content.reference().size) {
             const auto chunkSize = static_cast<std::size_t>(std::min<std::uint64_t>(
-                content.reference.size - completed, buffer.size()));
+                content.reference().size - completed, buffer.size()));
             input.read(
                 reinterpret_cast<char*>(buffer.data()),
                 static_cast<std::streamsize>(chunkSize));
@@ -476,14 +518,14 @@ void verifyRollbackPackUnchanged(
             report(progress, stopToken, {
                 .phase = RecoveryPhase::verifyingRollbackPack,
                 .completedBytes = completed,
-                .totalBytes = content.reference.size,
+                .totalBytes = content.reference().size,
                 .candidate = CandidateRole::previous,
             });
         }
         char extra{};
         input.read(&extra, 1);
         if (input.gcount() != 0 || !input.eof() ||
-            hash.finish() != content.reference.sha256) {
+            hash.finish() != content.reference().sha256) {
             throw StaleActiveContent{};
         }
     }
@@ -530,8 +572,8 @@ void removeOwnedFile(const std::filesystem::path& path) noexcept {
     }
 
     const auto nextActive = makeNextActive(
-        rollbackContent.reference.sha256,
-        rollbackContent.reference.size,
+        rollbackContent.reference().sha256,
+        rollbackContent.reference().size,
         sourceActive,
         limits.maxPackBytes);
     const auto bytes = serializeActiveRecord(nextActive, limits.maxPackBytes);
@@ -540,7 +582,7 @@ void removeOwnedFile(const std::filesystem::path& path) noexcept {
     RollbackCommitResult result{
         .active = nextActive,
         .activePath = activePath,
-        .currentPackPath = rollbackContent.path,
+        .currentPackPath = rollbackContent.path(),
     };
 
     bool temporaryOwned = false;
@@ -626,11 +668,39 @@ void removeOwnedFile(const std::filesystem::path& path) noexcept {
 
 } // namespace
 
+ActiveContentLease::ActiveContentLease(
+    std::unique_ptr<std::ifstream> input,
+    const std::uint64_t activeGeneration,
+    ActivePackReference reference,
+    std::filesystem::path path,
+    Pack pack,
+    Manifest manifest,
+    udsp::Archive sourceArchive,
+    const std::size_t sourcePackEntryIndex) noexcept
+    : input_(std::move(input)),
+      activeGeneration_(activeGeneration),
+      reference_(std::move(reference)),
+      path_(std::move(path)),
+      pack_(std::move(pack)),
+      manifest_(std::move(manifest)),
+      sourceArchive_(std::move(sourceArchive)),
+      sourcePackEntryIndex_(sourcePackEntryIndex) {}
+
 RecoveryCancelled::RecoveryCancelled()
     : std::runtime_error("AFPACK recovery cancelled") {}
 
 StaleActiveContent::StaleActiveContent()
     : std::runtime_error("active content changed after recovery inspection") {}
+
+ActiveContentLease ActiveContentInspection::takeReadyLease() && {
+    if (status_ != ActiveContentStatus::ready || !current_.has_value()) {
+        throw std::logic_error(
+            "only a ready recovery inspection owns an active content lease");
+    }
+    auto lease = std::move(*current_);
+    current_.reset();
+    return lease;
+}
 
 ActiveContentInspection inspectActiveContent(
     const std::filesystem::path& contentRoot,

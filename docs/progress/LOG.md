@@ -935,3 +935,18 @@ superseded evidence.
 - Independent review found and closed ambiguous aggregate-GTI limit mapping and
   incomplete compressed-read peak accounting. The full portable suite passes
   31/31. Native active-lease/coordinator/Metal texture handoff remains pending.
+
+## 2026-07-23 â€” authenticated active-content lease
+
+- Changed startup recovery to retain the exact AFPACK handle used for the AFAC
+  size and full SHA-256 authentication. The move-only `ActiveContentLease`
+  binds that handle to the active generation/reference, parsed AFPACK,
+  manifest, and exact `source/Resource.up` archive/index.
+- Added consuming `VerifiedContentSession::adopt`. It transfers the complete
+  authenticated state without reopening the digest-derived path, hashing the
+  package a second time, or reparsing AFPACK/manifest/UDSP metadata.
+- Made recovery inspections move-only and added an rvalue-only
+  `takeReadyLease`, so only a verified current candidate can enter runtime and
+  a lease cannot be consumed twice. Rollback keeps its independently retained
+  previous-candidate handle and still re-verifies the path before publishing a
+  new AFAC generation.

@@ -269,17 +269,19 @@ public precondition is an exclusively created file in an app-private staging
 directory; the future importer, rather than an arbitrary external caller, owns
 that directory and serializes publication transactions.
 
-Runtime loading uses the separate move-only
-`airfix::content::VerifiedContentSession`. It owns the caller-supplied
-read-only `ifstream`, compares its exact physical size and complete SHA-256
-with the active revision, and then parses AFPACK, the strict manifest, and
-`source/Resource.up` through that same handle. The handle must come from the
-app-private immutable content store, and installation, activation, cleanup,
-and reads must serialize writers for the entire session lifetime. The supplied
-source label exists only for diagnostics and is never opened. The session
-exposes serialized bounded reads from the authenticated source archive,
-preventing a path reopen from splicing metadata and payload bytes from
-different backing objects.
+Runtime loading uses a move-only `ActiveContentLease` followed by the separate
+move-only `airfix::content::VerifiedContentSession`. Startup recovery retains
+the exact read-only handle used for the full AFPACK size/SHA-256 check and
+binds it to the already parsed AFPACK, strict manifest, exact
+`source/Resource.up` metadata, and AFAC generation/reference. Session adoption
+moves that entire proof without reopening the path, rehashing the file, or
+reparsing metadata. The handle must come from the app-private immutable content
+store, and installation, activation, cleanup, and reads must serialize writers
+for the entire lease/session lifetime. The session's source label is fixed
+diagnostic text and is never opened. Serialized bounded reads therefore cannot
+splice metadata and payload bytes from different backing objects. A separate
+full-verification stream entry point is retained for synthetic and isolated
+callers that do not already possess a recovery lease.
 
 `airfix::content::WorldRoomLoader` then performs the first complete portable
 runtime transaction over that handle: exact World lookup, exact `CCFF` binding,

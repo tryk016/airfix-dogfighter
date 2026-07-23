@@ -1,5 +1,6 @@
 #pragma once
 
+#include "airfix/archive/UdspArchive.hpp"
 #include "airfix/package/AfPackActiveRecord.hpp"
 #include "airfix/package/AfPackInstaller.hpp"
 #include "airfix/package/AfPackManifest.hpp"
@@ -8,14 +9,28 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <stop_token>
 #include <string>
 #include <string_view>
 
+namespace airfix::content {
+class VerifiedContentSession;
+}
+
+namespace airfix::testing {
+struct AuthenticatedStreamIdentityProbe;
+}
+
 namespace airfix::afpack {
+
+namespace detail {
+struct ActiveContentLeaseFactory;
+}
 
 inline constexpr std::size_t kDefaultRecoveryIoBufferBytes = 64U * 1024U;
 inline constexpr std::size_t kMaximumRecoveryIoBufferBytes = 1024U * 1024U;
@@ -56,12 +71,58 @@ struct CandidateDiagnostic {
     std::string message;
 };
 
-struct ActiveContent {
-    std::uint64_t activeGeneration{};
-    ActivePackReference reference;
-    std::filesystem::path path;
-    Pack pack;
-    Manifest manifest;
+// Move-only proof that one open AFPACK handle was authenticated against AFAC
+// and that its metadata and nested source archive were parsed from that exact
+// handle. The lease is retained until all runtime reads from the package end.
+class ActiveContentLease final {
+public:
+    ActiveContentLease(const ActiveContentLease&) = delete;
+    ActiveContentLease& operator=(const ActiveContentLease&) = delete;
+    ActiveContentLease(ActiveContentLease&&) noexcept = default;
+    ActiveContentLease& operator=(ActiveContentLease&&) noexcept = default;
+    ~ActiveContentLease() = default;
+
+    [[nodiscard]] std::uint64_t activeGeneration() const noexcept {
+        return activeGeneration_;
+    }
+    [[nodiscard]] const ActivePackReference& reference() const noexcept {
+        return reference_;
+    }
+    [[nodiscard]] const std::filesystem::path& path() const noexcept {
+        return path_;
+    }
+    [[nodiscard]] const Pack& pack() const noexcept { return pack_; }
+    [[nodiscard]] const Manifest& manifest() const noexcept { return manifest_; }
+    [[nodiscard]] const udsp::Archive& sourceArchive() const noexcept {
+        return sourceArchive_;
+    }
+    [[nodiscard]] std::size_t sourcePackEntryIndex() const noexcept {
+        return sourcePackEntryIndex_;
+    }
+
+private:
+    ActiveContentLease(
+        std::unique_ptr<std::ifstream> input,
+        std::uint64_t activeGeneration,
+        ActivePackReference reference,
+        std::filesystem::path path,
+        Pack pack,
+        Manifest manifest,
+        udsp::Archive sourceArchive,
+        std::size_t sourcePackEntryIndex) noexcept;
+
+    friend struct detail::ActiveContentLeaseFactory;
+    friend class airfix::content::VerifiedContentSession;
+    friend struct airfix::testing::AuthenticatedStreamIdentityProbe;
+
+    std::unique_ptr<std::ifstream> input_;
+    std::uint64_t activeGeneration_{};
+    ActivePackReference reference_;
+    std::filesystem::path path_;
+    Pack pack_;
+    Manifest manifest_;
+    udsp::Archive sourceArchive_;
+    std::size_t sourcePackEntryIndex_{};
 };
 
 enum class RecoveryPhase : std::uint8_t {
@@ -99,9 +160,9 @@ public:
 
 class ActiveContentInspection final {
 public:
-    ActiveContentInspection(const ActiveContentInspection&) = default;
+    ActiveContentInspection(const ActiveContentInspection&) = delete;
     ActiveContentInspection(ActiveContentInspection&&) noexcept = default;
-    ActiveContentInspection& operator=(const ActiveContentInspection&) = default;
+    ActiveContentInspection& operator=(const ActiveContentInspection&) = delete;
     ActiveContentInspection& operator=(ActiveContentInspection&&) noexcept = default;
 
     [[nodiscard]] ActiveContentStatus status() const noexcept { return status_; }
@@ -112,12 +173,15 @@ public:
     [[nodiscard]] const std::optional<ActiveRecord>& sourceActive() const noexcept {
         return sourceActive_;
     }
-    [[nodiscard]] const std::optional<ActiveContent>& current() const noexcept {
+    [[nodiscard]] const std::optional<ActiveContentLease>& current() const noexcept {
         return current_;
     }
-    [[nodiscard]] const std::optional<ActiveContent>& previous() const noexcept {
+    [[nodiscard]] const std::optional<ActiveContentLease>& previous() const noexcept {
         return previous_;
     }
+    // Consumes the authenticated current package. Only a ready inspection has
+    // such a lease; rollback and all error states are rejected.
+    [[nodiscard]] ActiveContentLease takeReadyLease() &&;
     [[nodiscard]] const CandidateDiagnostic& currentDiagnostic() const noexcept {
         return currentDiagnostic_;
     }
@@ -140,8 +204,8 @@ private:
     ActiveContentStatus status_{ActiveContentStatus::noContent};
     std::filesystem::path contentRoot_;
     std::optional<ActiveRecord> sourceActive_;
-    std::optional<ActiveContent> current_;
-    std::optional<ActiveContent> previous_;
+    std::optional<ActiveContentLease> current_;
+    std::optional<ActiveContentLease> previous_;
     CandidateDiagnostic currentDiagnostic_;
     CandidateDiagnostic previousDiagnostic_;
     std::string activeDiagnostic_;

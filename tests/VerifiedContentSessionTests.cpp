@@ -1,4 +1,6 @@
 #include "airfix/content/VerifiedContentSession.hpp"
+#include "airfix/package/AfPackInstaller.hpp"
+#include "airfix/package/AfPackRecovery.hpp"
 #include "support/SyntheticContent.hpp"
 
 #include <cstddef>
@@ -19,6 +21,22 @@
 #include <utility>
 #include <vector>
 
+namespace airfix::testing {
+
+struct AuthenticatedStreamIdentityProbe final {
+    [[nodiscard]] static const void* of(
+        const afpack::ActiveContentLease& lease) noexcept {
+        return lease.input_.get();
+    }
+
+    [[nodiscard]] static const void* of(
+        const content::VerifiedContentSession& session) noexcept {
+        return session.input_.get();
+    }
+};
+
+} // namespace airfix::testing
+
 namespace {
 
 using airfix::content::ContentRevision;
@@ -30,6 +48,9 @@ using airfix::content::VerifiedContentSession;
 using airfix::testing::Bytes;
 using airfix::testing::SyntheticAfPack;
 using airfix::testing::UdspInputEntry;
+
+constexpr std::string_view kAdoptionTransaction =
+    "00000000-0000-4000-8000-000000000101";
 
 static_assert(!std::is_copy_constructible_v<VerifiedContentSession>);
 static_assert(!std::is_copy_assignable_v<VerifiedContentSession>);
@@ -130,6 +151,55 @@ private:
     std::vector<std::filesystem::path> paths_;
 };
 
+class RecoveryFixture final {
+public:
+    explicit RecoveryFixture(const SyntheticAfPack& pack) {
+        static std::atomic<std::uint64_t> sequence{0U};
+        const auto tick = std::chrono::steady_clock::now()
+            .time_since_epoch()
+            .count();
+        root_ = std::filesystem::temp_directory_path() /
+            ("airfix-adopted-content-" + std::to_string(tick) + "-" +
+                std::to_string(sequence.fetch_add(
+                    1U, std::memory_order_relaxed)));
+        if (!std::filesystem::create_directory(root_)) {
+            throw std::runtime_error(
+                "failed to create adopted content test root");
+        }
+        inputPath_ = root_ / "input.afpack";
+        contentRoot_ = root_ / "content";
+        std::ofstream output(
+            inputPath_, std::ios::binary | std::ios::out | std::ios::trunc);
+        if (!output || (!pack.bytes.empty() && !output.write(
+                reinterpret_cast<const char*>(pack.bytes.data()),
+                static_cast<std::streamsize>(pack.bytes.size())))) {
+            throw std::runtime_error(
+                "failed to create adopted content test input");
+        }
+    }
+
+    ~RecoveryFixture() {
+        std::error_code ignored;
+        std::filesystem::remove_all(root_, ignored);
+    }
+
+    RecoveryFixture(const RecoveryFixture&) = delete;
+    RecoveryFixture& operator=(const RecoveryFixture&) = delete;
+
+    [[nodiscard]] const std::filesystem::path& inputPath() const noexcept {
+        return inputPath_;
+    }
+
+    [[nodiscard]] const std::filesystem::path& contentRoot() const noexcept {
+        return contentRoot_;
+    }
+
+private:
+    std::filesystem::path root_;
+    std::filesystem::path inputPath_;
+    std::filesystem::path contentRoot_;
+};
+
 [[nodiscard]] std::unique_ptr<std::ifstream> streamFor(
     const SyntheticAfPack& pack) {
     return TestInputStore::shared().open(pack);
@@ -183,6 +253,80 @@ void testValidSourceArchiveAndRevision() {
     require(
         moved.revision() == trusted,
         "moving a verified session lost its revision");
+}
+
+void testAdoptsReadyRecoveryLease() {
+    const auto pack = representativePack();
+    RecoveryFixture fixture(pack);
+    const auto installed = airfix::afpack::installPack(
+        fixture.inputPath(),
+        fixture.contentRoot(),
+        kAdoptionTransaction);
+    auto inspection = airfix::afpack::inspectActiveContent(
+        fixture.contentRoot());
+
+    require(
+        inspection.status() == airfix::afpack::ActiveContentStatus::ready &&
+            inspection.current().has_value(),
+        "installed package did not produce a ready recovery lease");
+    require(
+        inspection.current()->activeGeneration() ==
+                installed.active.generation &&
+            inspection.current()->reference() == installed.active.current &&
+            inspection.current()->pack().archiveSize() == pack.size &&
+            inspection.current()->manifest().converterVersion ==
+                "synthetic-test",
+        "recovery lease omitted authenticated package metadata");
+    const auto leaseLookup =
+        inspection.current()->sourceArchive().lookup("Data/Probe.bin");
+    require(
+        leaseLookup.status == airfix::udsp::LookupStatus::unique &&
+            inspection.current()->sourcePackEntryIndex() <
+                inspection.current()->pack().entries().size() &&
+            inspection.current()->pack()
+                    .entries()[inspection.current()->sourcePackEntryIndex()]
+                    .path == "source/Resource.up",
+        "recovery lease omitted the authenticated nested source archive");
+
+    auto lease = std::move(inspection).takeReadyLease();
+    const void* const authenticatedStream =
+        airfix::testing::AuthenticatedStreamIdentityProbe::of(lease);
+    require(
+        authenticatedStream != nullptr,
+        "ready lease did not retain its authenticated stream");
+    auto session = VerifiedContentSession::adopt(std::move(lease));
+    require(
+        airfix::testing::AuthenticatedStreamIdentityProbe::of(session) ==
+            authenticatedStream,
+        "adoption replaced rather than transferred the authenticated stream");
+    requireError<VerifiedContentError>([&] {
+        (void)VerifiedContentSession::adopt(std::move(lease));
+    });
+    const ContentRevision expectedRevision{
+        .generation = installed.active.generation,
+        .pack = installed.active.current,
+    };
+
+    require(
+        session.revision() == expectedRevision,
+        "adoption changed the active content revision");
+    require(
+        session.pack().archiveSize() == pack.size &&
+            session.manifest().converterVersion == "synthetic-test" &&
+            session.sourcePackEntryIndex() <
+                session.pack().entries().size() &&
+            session.pack().entries()[session.sourcePackEntryIndex()].path ==
+                "source/Resource.up",
+        "adoption lost AFPACK, manifest, or source entry metadata");
+    const auto sessionLookup =
+        session.sourceArchive().lookup("Data/Probe.bin");
+    require(
+        sessionLookup.status == airfix::udsp::LookupStatus::unique,
+        "adoption lost the nested source archive");
+    require(
+        session.readSourceFile(sessionLookup.fileIndex, 4U) ==
+            Bytes({0x10U, 0x20U, 0x30U, 0x40U}),
+        "adopted session could not read from the authenticated source handle");
 }
 
 void testWrongExpectedSizeFailsAtomically() {
@@ -390,6 +534,7 @@ void testExactPackAndHashBufferLimits() {
 int main() {
     try {
         testValidSourceArchiveAndRevision();
+        testAdoptsReadyRecoveryLease();
         testWrongExpectedSizeFailsAtomically();
         testWrongExpectedDigestFailsAtomically();
         testInvalidGenerationFailsAtomically();

@@ -13,16 +13,36 @@
 #include <functional>
 #include <iostream>
 #include <iterator>
+#include <optional>
 #include <stdexcept>
 #include <stop_token>
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace {
 
 using Bytes = std::vector<std::uint8_t>;
+using airfix::afpack::ActiveContentInspection;
+using airfix::afpack::ActiveContentLease;
+
+static_assert(!std::is_copy_constructible_v<ActiveContentLease>);
+static_assert(!std::is_copy_assignable_v<ActiveContentLease>);
+static_assert(std::is_nothrow_move_constructible_v<ActiveContentLease>);
+static_assert(std::is_nothrow_move_assignable_v<ActiveContentLease>);
+static_assert(!std::is_copy_constructible_v<ActiveContentInspection>);
+static_assert(!std::is_copy_assignable_v<ActiveContentInspection>);
+static_assert(std::is_nothrow_move_constructible_v<ActiveContentInspection>);
+static_assert(std::is_nothrow_move_assignable_v<ActiveContentInspection>);
+static_assert(std::is_same_v<
+    decltype(std::declval<const ActiveContentInspection&>().current()),
+    const std::optional<ActiveContentLease>&>);
+static_assert(std::is_same_v<
+    decltype(std::declval<const ActiveContentInspection&>().previous()),
+    const std::optional<ActiveContentLease>&>);
 
 constexpr std::string_view kTransaction1 = "00000000-0000-4000-8000-000000000001";
 constexpr std::string_view kTransaction2 = "00000000-0000-4000-8000-000000000002";
@@ -265,10 +285,11 @@ void testMissingReadyAndMalformedActive() {
             ready.current().has_value() &&
             ready.currentDiagnostic().status == airfix::afpack::CandidateStatus::valid,
         "valid active package was not reported ready");
-    require(ready.current()->activeGeneration == installed.active.generation &&
-            ready.current()->reference == installed.active.current &&
-            ready.current()->path == installed.finalPath &&
-            airfix::afpack::localeName(ready.current()->manifest.locale) == "en",
+    require(ready.current()->activeGeneration() == installed.active.generation &&
+            ready.current()->reference() == installed.active.current &&
+            ready.current()->path() == installed.finalPath &&
+            airfix::afpack::localeName(
+                ready.current()->manifest().locale) == "en",
         "ready inspection omitted trusted package metadata");
 
     writeBytes(readyContent / "active.afac", {'B', 'A', 'D'});
@@ -277,6 +298,67 @@ void testMissingReadyAndMalformedActive() {
                 airfix::afpack::ActiveContentStatus::malformedActive &&
             !malformed.activeDiagnostic().empty(),
         "malformed active record was confused with missing content");
+}
+
+void testMoveOnlyReadyLeaseExtraction() {
+    Fixture fixture;
+    const auto readyContent = fixture.path("lease-ready-content");
+    const auto pack = fixture.makePack("lease-ready", 71U, 193U);
+    const auto installed = airfix::afpack::installPack(
+        pack, readyContent, kTransaction1);
+    auto inspection = airfix::afpack::inspectActiveContent(readyContent);
+    require(
+        inspection.status() == airfix::afpack::ActiveContentStatus::ready &&
+            inspection.current().has_value(),
+        "ready fixture did not expose its current lease");
+
+    auto movedInspection = std::move(inspection);
+    require(
+        movedInspection.current().has_value() &&
+            movedInspection.current()->activeGeneration() ==
+                installed.active.generation,
+        "moving a ready inspection lost its lease");
+    auto lease = std::move(movedInspection).takeReadyLease();
+    require(
+        lease.activeGeneration() == installed.active.generation &&
+            lease.reference() == installed.active.current &&
+            lease.path() == installed.finalPath &&
+            lease.pack().archiveSize() == installed.size &&
+            airfix::afpack::localeName(lease.manifest().locale) == "en",
+        "taking the ready lease lost authenticated package metadata");
+    require(
+        lease.sourcePackEntryIndex() < lease.pack().entries().size() &&
+            lease.pack().entries()[lease.sourcePackEntryIndex()].path ==
+                "source/Resource.up" &&
+            lease.sourceArchive().lookup("dir/entry.bin").status ==
+                airfix::udsp::LookupStatus::unique,
+        "taking the ready lease lost the nested source archive");
+    requireError<std::logic_error>([&] {
+        (void)std::move(movedInspection).takeReadyLease();
+    });
+
+    const auto rollbackContent = fixture.path("lease-rollback-content");
+    const auto rotation = installRotation(
+        fixture, rollbackContent, "lease-rollback");
+    corruptSameSize(rotation.second.finalPath);
+    auto rollback = airfix::afpack::inspectActiveContent(rollbackContent);
+    require(
+        rollback.status() ==
+                airfix::afpack::ActiveContentStatus::rollbackAvailable &&
+            rollback.previous().has_value(),
+        "rollback fixture did not expose its previous lease");
+    requireError<std::logic_error>([&] {
+        (void)std::move(rollback).takeReadyLease();
+    });
+
+    const auto emptyContent = fixture.path("lease-empty-content");
+    require(
+        std::filesystem::create_directory(emptyContent),
+        "cannot create empty lease test root");
+    auto empty = airfix::afpack::inspectActiveContent(emptyContent);
+    requireError<std::logic_error>([&] {
+        (void)std::move(empty).takeReadyLease();
+    });
 }
 
 void testFallbackStatesAndShortCircuit() {
@@ -292,9 +374,10 @@ void testFallbackStatesAndShortCircuit() {
             fallback.previousDiagnostic().status ==
                 airfix::afpack::CandidateStatus::valid &&
             fallback.previous().has_value() &&
-            fallback.previous()->activeGeneration ==
+            fallback.previous()->activeGeneration() ==
                 fallbackRotation.second.active.generation &&
-            fallback.previous()->reference == fallbackRotation.first.active.current,
+            fallback.previous()->reference() ==
+                fallbackRotation.first.active.current,
         "valid previous package was not exposed as a verified rollback");
 
     const auto shortContent = fixture.path("short-circuit-content");
@@ -573,8 +656,8 @@ void testRollbackSuccessAndCancellation() {
 
     const auto after = airfix::afpack::inspectActiveContent(content);
     require(after.status() == airfix::afpack::ActiveContentStatus::ready &&
-            after.current()->activeGeneration == 3U &&
-            after.current()->reference == rotation.first.active.current &&
+            after.current()->activeGeneration() == 3U &&
+            after.current()->reference() == rotation.first.active.current &&
             after.previousDiagnostic().status ==
                 airfix::afpack::CandidateStatus::notInspected,
         "committed rollback did not become ready or rechecked corrupt previous");
@@ -787,6 +870,7 @@ void testRollbackCommitBoundaryRecovery() {
 int main() {
     try {
         testMissingReadyAndMalformedActive();
+        testMoveOnlyReadyLeaseExtraction();
         testFallbackStatesAndShortCircuit();
         testCandidatePathAndContentFailures();
         testInspectionCancellationAndProgress();
