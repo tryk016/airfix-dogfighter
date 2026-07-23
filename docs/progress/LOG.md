@@ -678,7 +678,7 @@ superseded evidence.
   matrices; the loader-supported alternate F040 orientation remains synthetic-
   tested. Independent review found no P1/P2.
 
-## 2026-07-21 â€” CCF rooms and placed-scene references
+## 2026-07-21 — CCF rooms and placed-scene references
 
 - `EV-20260721-038`: decoded the bounded `0x1100` name/reference prefix and
   marked the first physical record as the receiver/root-room binding. All 392
@@ -936,7 +936,7 @@ superseded evidence.
   incomplete compressed-read peak accounting. The full portable suite passes
   31/31. Native active-lease/coordinator/Metal texture handoff remains pending.
 
-## 2026-07-23 â€” authenticated active-content lease
+## 2026-07-23 — authenticated active-content lease
 
 - Changed startup recovery to retain the exact AFPACK handle used for the AFAC
   size and full SHA-256 authentication. The move-only `ActiveContentLease`
@@ -950,3 +950,51 @@ superseded evidence.
   a lease cannot be consumed twice. Rollback keeps its independently retained
   previous-candidate handle and still re-verifies the path before publishing a
   new AFAC generation.
+
+## 2026-07-23 — private full-room runtime smoke
+
+- Built a temporary AFPACK from the owner's external original installation,
+  installed it through the production transaction, inspected its AFAC, adopted
+  the retained authenticated handle, and loaded one explicit ordinary room
+  through the complete World/CCF/GTI/draw-submission pipeline.
+- The resulting immutable room contained 62 meshes, 62 instances, 23 dense
+  texture assets, and 167 validated draw commands. This is private runtime
+  evidence rather than a committed fixture; the generated package, installed
+  content root, and all original-derived bytes were removed after the run.
+
+## 2026-07-23 — native authenticated room-to-Metal publication
+
+- Extended the native coordinator to adopt the exact ready
+  `ActiveContentLease` into a `VerifiedContentSession` on its serialized worker.
+  The authenticated handle remains worker-confined, and content mutation closes
+  all inspection/session readers before the writer transaction starts.
+- Added a portable publication gate that binds each asynchronous request to the
+  complete active `{generation, size, digest}` revision and a monotonic serial.
+  Session state is checked before and after `WorldRoomLoader`; main accepts only
+  the still-current ticket and matching result revision. Replacement, lifecycle
+  invalidation, content revision changes, and serial exhaustion fail closed.
+- Added a one-shot Objective-C room snapshot. It moves one complete
+  `LoadedWorldRoom` from the worker to the renderer exactly once while exposing
+  only aggregate metadata to UIKit. The initial native smoke request selects
+  the exact logical World `Game/Worlds/axis_1.world` and explicit physical CCF
+  room index 1. If lifecycle or revision invalidation rejects the handoff before
+  consumption, its potentially large CPU payload is detached in constant time
+  and destroyed on a dedicated serial worker rather than on main.
+- Added two-phase Metal replacement. All private mesh buffers, RGBA8 textures,
+  authored or generated mip chains, offsets, payload, and submission state are
+  prepared off-main. Main revalidates the publication ticket and performs one
+  atomic strong-pointer assignment, leaving the previous room untouched on any
+  preparation or publication failure.
+- Private preparation checks a 128 MiB packed-CPU ceiling, a 256 MiB
+  per-snapshot GPU ceiling, and `device.maxBufferLength`. Every created buffer
+  and texture is then charged by its actual `allocatedSize`; main also checks
+  the actual current-plus-candidate allocations against a 384 MiB transition
+  ceiling.
+- Each render command buffer retains its immutable snapshot until GPU
+  completion. When the last owner releases a snapshot, its large Objective-C
+  and C++ resource graph is transferred to a serial off-main release queue.
+  Exact peak accounting across multiple retired GPU-in-flight snapshots remains
+  a bounded P2 follow-up, not a completed guarantee.
+- The full portable suite passes 32/32. The private full-room smoke remains
+  aggregate evidence only—62 meshes, 62 instances, 23 textures, and 167 draw
+  commands—and no private content or generated artifact was committed.

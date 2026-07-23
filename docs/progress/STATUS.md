@@ -95,6 +95,10 @@
   security-scoped copy into app-private storage, serialized install/inspection/
   rollback, lifecycle cancellation, progress and recovery UI, strict orphan
   temporary cleanup, and `AppSession` readiness gating.
+- The native coordinator now consumes the exact ready `ActiveContentLease` into
+  a `VerifiedContentSession` on its serialized content worker. Authenticated
+  handles never move to the main or render threads, and install/rollback closes
+  every reader before entering the serialized writer transaction.
 - Added bounded UDSP-in-container reads and completed a real English content
   pack round trip (192,755,765 bytes, 3 entries) outside Git; the temporary pack
   was removed after verification.
@@ -237,7 +241,36 @@
   Synthetic end-to-end tests cover valid/empty rooms, exact `CCFF` among two
   CCFs, texture ID zero, two-texture budgets, deduplication, cancellation,
   malformed later GTI atomicity, compressed peak allocation, and published CPU
-  exact/one-under bounds. The portable suite passes 31/31.
+  exact/one-under bounds.
+- A private external smoke run exercised the production writer, installer,
+  AFAC inspection, same-handle lease adoption, and `WorldRoomLoader` against an
+  ordinary room from the owner's original content. It published 62 meshes,
+  62 instances, 23 dense textures, and 167 validated draw commands. Generated
+  private artifacts and original-derived bytes never entered Git.
+- Added a portable `WorldRoomPublicationGate` and the native room handoff.
+  Main-thread state binds each request to the exact active
+  `{generation, size, digest}` revision and a monotonically increasing serial;
+  replacement, lifecycle invalidation, content changes, and serial exhaustion
+  fail closed. The worker rechecks the adopted session before and after loading,
+  and a loaded result must carry the same revision before a callback is accepted.
+- The first native smoke selection is the exact logical World
+  `Game/Worlds/axis_1.world` and explicit physical CCF room index 1. Its
+  Objective-C snapshot owns one immutable `LoadedWorldRoom`, exposes aggregate
+  counts only, and permits the CPU payload to be consumed once. A stale
+  unconsumed payload is detached and destroyed on a serial off-main queue.
+- Implemented two-phase private-room Metal publication. Complete mesh buffers,
+  authored RGBA8 mip levels, generated mip chains, texture arrays, draw offsets,
+  payload, and submission state are prepared off-main; only a current snapshot
+  is atomically published on main. Preparation checks a 128 MiB packed-CPU
+  ceiling, a 256 MiB private-snapshot GPU ceiling, `device.maxBufferLength`, and
+  every actual buffer/texture `allocatedSize`; publication checks the actual
+  old-plus-candidate allocation against a 384 MiB transition ceiling.
+- Draw submissions retain their immutable snapshot through the Metal command
+  buffer completion callback, while final large-resource destruction is
+  dispatched to a serial off-main release queue. Exact aggregate peak
+  accounting across multiple retired snapshots that are still GPU-in-flight is
+  a bounded P2 follow-up and is not claimed complete.
+- The new gate regression target brings the portable suite to 32/32.
 
 ## Confirmed
 

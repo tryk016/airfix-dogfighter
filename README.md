@@ -10,7 +10,7 @@ The project is under active development and is **not yet a playable port**.
 It currently provides the portable archive/asset pipeline, deterministic input
 core, private content-package infrastructure, fail-closed render submission and
 texture-upload preparation, diagnostic rendering, and a data-less UIKit/Metal
-application shell.
+application shell with an authenticated private-room loading path.
 
 ## Project scope
 
@@ -68,8 +68,8 @@ sources.
 | Legacy assets | GTI textures plus bounded CCF scene, room/fog/BSP, mesh, material, blueprint, and placed-node parsing implemented |
 | Dependency resolution | Object-to-scene, blueprint/placed graphs, BSP polygons, verified world-to-CCF binding, rooms, meshes, portals, materials, and texture edges implemented |
 | Private packaging | AFPACK writer, validation, transactional install/recovery, and native iOS import/rollback UI implemented |
-| Runtime content loading | Move-only AFPACK session plus atomic World → CCF → GTI → draw-submission room loading implemented; native coordinator/renderer handoff pending |
-| Rendering | Bounded explicit-room assembly, stable texture IDs, atomic RGBA8 upload preparation, fail-closed draw submission, CPU diagnostics, and a bounded synthetic multi-mesh Metal adapter implemented |
+| Runtime content loading | Exact authenticated active lease/session, atomic World → CCF → GTI → draw-submission room loading, and revision/serial-gated one-shot native handoff implemented |
+| Rendering | Bounded explicit-room assembly, stable texture IDs, atomic RGBA8 upload preparation, CPU diagnostics, synthetic bootstrap, and two-phase private-room Metal publication implemented |
 | Input core | Deterministic semantic router for touch/controller/test sources implemented |
 | Native controls | UIKit touch overlay and Apple Game Controller adapters pending |
 | Game simulation | Reconstruction in progress; no complete playable loop yet |
@@ -79,16 +79,25 @@ Detailed, frequently updated progress lives in
 [docs/progress/STATUS.md](docs/progress/STATUS.md) and
 [docs/progress/LOG.md](docs/progress/LOG.md).
 
-The current public-only Metal checkpoint consumes a validated
-`DrawSubmissionPlan` for two reusable meshes and three instances in
-`1 -> 0 -> 1` mesh order. It owns separate buffers per mesh, applies transforms
-through each command's `instanceIndex`, and explicitly distinguishes valid
-texture asset ID zero from a one-pixel fallback used for absent primary
-textures or ranges without texture coordinates. Resource creation is bounded
-by checked 64 MiB CPU/GPU staging budgets and `device.maxBufferLength`, and the
-renderer publishes state only after complete initialization. This remains a
-synthetic diagnostic: AFPACK content, private textures, and visual acceptance
-on a physical device are not connected or claimed.
+The public synthetic Metal scene remains the data-less bootstrap and regression
+fixture. Once private content is authenticated, the native coordinator keeps
+the adopted AFPACK session on its serialized worker, loads the initial
+`Game/Worlds/axis_1.world` logical asset at physical CCF room index 1, and
+issues a one-shot CPU room snapshot. Publication requires both the exact
+`{generation, size, digest}` content revision and the current monotonic request
+serial, so replaced requests, content changes, and lifecycle invalidation cannot
+publish stale work.
+
+Metal publication is two-phase. Complete buffers, RGBA8 textures, and generated
+mips are prepared off the main thread; the main thread rechecks the snapshot
+gate and publishes the complete immutable room with one pointer assignment.
+Actual `MTLResource.allocatedSize` values are checked against per-snapshot and
+current-plus-candidate transition budgets, and submitted command buffers retain
+their snapshot until GPU completion. Unconsumed CPU handoffs and large retired
+Metal snapshots are destroyed on dedicated serial release queues rather than
+on the main thread. Exact peak accounting across multiple retired snapshots
+that remain in flight on the GPU is still a bounded P2 follow-up, not a
+completed guarantee.
 
 The portable UDSP layer now supports a stable, caller-owned binary stream from
 metadata parsing through indexed entry reads. `Archive::open(path)` uses one
@@ -111,11 +120,15 @@ room result. It resolves an exact World and its exact `CCFF`, selects only an
 explicit physical CCF room, derives dense texture IDs, preflights aggregate
 source/decoded/upload/resident/CPU budgets, prepares every GTI, assembles the
 draw model, and validates the final draw submission before publishing anything.
+An external, private-data smoke run has completed this full transaction on an
+installed original-content package. The immutable room contained 62 meshes,
+62 instances, 23 dense texture assets, and 167 validated draw commands; no
+private package, original-derived bytes, or generated artifacts were committed.
 The public synthetic end-to-end tests include valid texture ID zero, empty
 receiver rooms, multiple CCF candidates, deduplication, cancellation, malformed
 later dependencies, compressed-source peak memory, and exact/one-under limits.
-The native iOS coordinator and Metal texture store do not consume this room
-snapshot yet.
+The portable suite passes 32/32 synthetic tests. Physical-device rendering and
+visual acceptance remain pending.
 
 ## Architecture
 

@@ -1,13 +1,18 @@
 #import "AirfixContentCoordinator.h"
+#import "AirfixWorldRoomSnapshot+Private.hpp"
 
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
+#include "airfix/content/VerifiedContentSession.hpp"
+#include "airfix/content/WorldRoomLoader.hpp"
+#include "airfix/content/WorldRoomPublicationGate.hpp"
 #include "airfix/package/AfPackInstaller.hpp"
 #include "airfix/package/AfPackRecovery.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <fcntl.h>
@@ -19,6 +24,7 @@
 #include <stop_token>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -26,6 +32,59 @@ namespace {
 
 constexpr std::uint64_t kMaximumImportedPackBytes = 512U * 1024U * 1024U;
 constexpr std::size_t kCopyBufferBytes = 64U * 1024U;
+constexpr NSUInteger kMaximumWorldLogicalPathBytes = 4096U;
+char kContentWorkQueueSpecificKey;
+
+struct RememberedWorldRoomRequest final {
+    std::string worldLogicalPath;
+    std::size_t physicalRoom{};
+};
+
+struct StoredInspectionOutcome final {
+    airfix::afpack::ActiveContentStatus status{
+        airfix::afpack::ActiveContentStatus::noContent};
+    std::optional<airfix::content::ContentRevision> activeRevision;
+};
+
+[[nodiscard]] StoredInspectionOutcome storeInspectedContent(
+    std::optional<airfix::afpack::ActiveContentInspection>& inspectionSlot,
+    std::optional<airfix::content::VerifiedContentSession>& sessionSlot,
+    airfix::afpack::ActiveContentInspection&& inspected) {
+    inspectionSlot.reset();
+    sessionSlot.reset();
+
+    StoredInspectionOutcome outcome{
+        .status = inspected.status(),
+        .activeRevision = std::nullopt,
+    };
+    if (outcome.status == airfix::afpack::ActiveContentStatus::ready) {
+        auto lease = std::move(inspected).takeReadyLease();
+        auto session =
+            airfix::content::VerifiedContentSession::adopt(std::move(lease));
+        outcome.activeRevision = session.revision();
+        sessionSlot.emplace(std::move(session));
+    }
+    else if (
+        outcome.status ==
+        airfix::afpack::ActiveContentStatus::rollbackAvailable) {
+        inspectionSlot.emplace(std::move(inspected));
+    }
+    return outcome;
+}
+
+void clearWorkerContent(
+    std::optional<airfix::afpack::ActiveContentInspection>& inspectionSlot,
+    std::optional<airfix::content::VerifiedContentSession>& sessionSlot) noexcept {
+    sessionSlot.reset();
+    inspectionSlot.reset();
+}
+
+[[nodiscard]] NSString* worldLogicalPathString(const std::string& logicalPath) {
+    return [[NSString alloc]
+        initWithBytes:logicalPath.data()
+               length:logicalPath.size()
+             encoding:NSUTF8StringEncoding];
+}
 
 class NativeCopyCancelled final : public std::runtime_error {
 public:
@@ -261,7 +320,23 @@ NSString* canonicalTransactionIdentifier(void) {
 @interface AirfixContentCoordinator () <UIDocumentPickerDelegate> {
     dispatch_queue_t _workQueue;
     std::stop_source _operationStop;
+    // Access only from _workQueue. They own every authenticated package
+    // handle; neither object is ever moved to the main/render threads.
     std::optional<airfix::afpack::ActiveContentInspection> _inspection;
+    std::optional<airfix::content::VerifiedContentSession> _verifiedSession;
+
+    // Access only from the main thread. stop_source cancellation itself is
+    // thread-safe and its token is copied into the serialized worker.
+    std::stop_source _loadStop;
+    airfix::content::WorldRoomPublicationGate _roomPublicationGate;
+    std::optional<RememberedWorldRoomRequest> _rememberedWorldRoomRequest;
+
+    // Opaque identities are confined to the main thread. Blocks retain the
+    // identities they started with, so pointer equality cannot wrap or alias a
+    // later operation/lifecycle/request.
+    __strong NSObject* _operationIdentity;
+    __strong NSObject* _lifecycleIdentity;
+    __strong NSObject* _worldRoomRequestIdentity;
 }
 @property(nonatomic, weak) UIViewController* presentingViewController;
 @property(nonatomic, strong, readwrite) UIView* controlsView;
@@ -275,6 +350,10 @@ NSString* canonicalTransactionIdentifier(void) {
 @property(nonatomic) BOOL started;
 @property(nonatomic) BOOL pickerPresented;
 @property(nonatomic) BOOL inspectWhenIdle;
+
+- (void)cancelWorldRoomLoadClearingRevision:(BOOL)clearRevision;
+- (void)invalidateContentOperationLifecycle;
+- (void)startRememberedWorldRoomLoadIfPossible;
 @end
 
 @implementation AirfixContentCoordinator
@@ -286,10 +365,34 @@ NSString* canonicalTransactionIdentifier(void) {
     }
     _presentingViewController = viewController;
     _readiness = AirfixContentReadinessMissing;
+    _lifecycleIdentity = [NSObject new];
+    _worldRoomRequestIdentity = [NSObject new];
     _workQueue = dispatch_queue_create(
         "com.tryk016.airfixdogfighter.content", DISPATCH_QUEUE_SERIAL);
+    dispatch_queue_set_specific(
+        _workQueue,
+        &kContentWorkQueueSpecificKey,
+        &kContentWorkQueueSpecificKey,
+        nullptr);
     [self buildControls];
     return self;
+}
+
+- (void)dealloc {
+    // C++ ivars are normally destroyed on whichever thread releases the last
+    // Objective-C owner. Explicitly empty handle-owning state on its serialized
+    // queue first; the later automatic C++ ivar destructors then see empties.
+    auto* const inspection = &_inspection;
+    auto* const session = &_verifiedSession;
+    if (dispatch_get_specific(&kContentWorkQueueSpecificKey) ==
+        &kContentWorkQueueSpecificKey) {
+        clearWorkerContent(*inspection, *session);
+    }
+    else {
+        dispatch_sync(_workQueue, ^{
+            clearWorkerContent(*inspection, *session);
+        });
+    }
 }
 
 - (void)buildControls {
@@ -375,21 +478,43 @@ NSString* canonicalTransactionIdentifier(void) {
     [self beginInspection];
 }
 
-- (void)applicationWillResignActive {
+- (void)cancelWorldRoomLoadClearingRevision:(BOOL)clearRevision {
+    NSAssert(NSThread.isMainThread, @"World room publication gate is main-thread confined");
+    _loadStop.request_stop();
+    _loadStop = std::stop_source{};
+    if (clearRevision) {
+        _roomPublicationGate.clearActiveRevision();
+    }
+    else {
+        _roomPublicationGate.invalidate();
+    }
+}
+
+- (void)invalidateContentOperationLifecycle {
+    NSAssert(NSThread.isMainThread, @"Content lifecycle is main-thread confined");
     _operationStop.request_stop();
+    _lifecycleIdentity = [NSObject new];
+}
+
+- (void)applicationWillResignActive {
+    [self invalidateContentOperationLifecycle];
+    [self cancelWorldRoomLoadClearingRevision:YES];
 }
 
 - (void)applicationDidEnterBackground {
-    _operationStop.request_stop();
+    [self invalidateContentOperationLifecycle];
+    [self cancelWorldRoomLoadClearingRevision:YES];
 }
 
 - (void)applicationWillEnterForeground {
+    [self cancelWorldRoomLoadClearingRevision:YES];
     // The active record may have changed at a commit boundary while the app was
     // leaving the foreground. Inspection is intentionally restarted only once
     // the application is active again.
 }
 
 - (void)applicationDidBecomeActive {
+    [self cancelWorldRoomLoadClearingRevision:YES];
     if (!self.started || self.pickerPresented) {
         return;
     }
@@ -494,8 +619,10 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
 }
 
 - (void)beginOperationWithText:(NSString*)text {
+    NSAssert(NSThread.isMainThread, @"Content operations are main-thread confined");
     self.busy = YES;
     _operationStop = std::stop_source{};
+    _operationIdentity = [NSObject new];
     self.statusLabel.text = text;
     self.progressView.progress = 0.0F;
     self.progressView.hidden = YES;
@@ -505,18 +632,80 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
     [self setReadinessAndNotify:AirfixContentReadinessValidating];
 }
 
-- (void)finishOperationWithStoredInspection {
-    if (!_inspection.has_value()) {
-        [self finishOperationWithErrorText:
-            @"Content could not be checked. Try again in the foreground."];
+- (BOOL)consumeTerminalOperationIdentity:(NSObject*)operationIdentity
+                       lifecycleIdentity:(NSObject*)lifecycleIdentity {
+    NSAssert(NSThread.isMainThread, @"Content completion is main-thread confined");
+    if (_operationIdentity != operationIdentity) {
+        return NO;
+    }
+
+    // Consume before publishing any result. Queued progress and duplicate
+    // terminal callbacks for this operation are stale from this point onward.
+    _operationIdentity = nil;
+    if (_lifecycleIdentity == lifecycleIdentity) {
+        return YES;
+    }
+
+    // The worker completed after a lifecycle cancellation. Its authenticated
+    // state remains worker-confined and will be cleared by the next serialized
+    // inspection, but it must not drive readiness/revision/room publication.
+    self.busy = NO;
+    self.inspectWhenIdle = YES;
+    self.rollbackEligible = NO;
+    self.progressView.hidden = YES;
+    self.rollbackButton.hidden = YES;
+    self.rollbackButton.enabled = NO;
+    self.statusLabel.text =
+        @"Content activity was paused. Active content will be checked again.";
+
+    const BOOL canInspectNow =
+        self.started &&
+        !self.pickerPresented &&
+        UIApplication.sharedApplication.applicationState ==
+            UIApplicationStateActive;
+    self.importButton.enabled = !canInspectNow;
+    if (canInspectNow) {
+        NSObject* const currentLifecycleIdentity = _lifecycleIdentity;
+        __weak AirfixContentCoordinator* weakSelf = self;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            AirfixContentCoordinator* coordinator = weakSelf;
+            if (coordinator == nil ||
+                coordinator->_lifecycleIdentity != currentLifecycleIdentity ||
+                coordinator->_operationIdentity != nil ||
+                coordinator.busy ||
+                !coordinator.inspectWhenIdle ||
+                coordinator.pickerPresented ||
+                UIApplication.sharedApplication.applicationState !=
+                    UIApplicationStateActive) {
+                return;
+            }
+            coordinator.inspectWhenIdle = NO;
+            [coordinator beginInspection];
+        });
+    }
+    return NO;
+}
+
+- (void)completeOperationWithErrorText:(NSString*)text
+                     operationIdentity:(NSObject*)operationIdentity
+                     lifecycleIdentity:(NSObject*)lifecycleIdentity
+                    inspectAfterFinish:(BOOL)inspectAfterFinish {
+    if (![self consumeTerminalOperationIdentity:operationIdentity
+                              lifecycleIdentity:lifecycleIdentity]) {
         return;
     }
+    self.inspectWhenIdle = inspectAfterFinish;
+    [self finishOperationWithErrorText:text];
+}
+
+- (void)finishOperationWithInspectionStatus:
+    (airfix::afpack::ActiveContentStatus)status {
+    NSAssert(NSThread.isMainThread, @"Inspection presentation is main-thread confined");
     self.inspectWhenIdle = NO;
     self.busy = NO;
     self.progressView.hidden = YES;
     self.importButton.enabled = YES;
 
-    const auto status = _inspection->status();
     self.rollbackEligible = status == airfix::afpack::ActiveContentStatus::rollbackAvailable;
     self.rollbackButton.hidden = !self.rollbackEligible;
     self.rollbackButton.enabled = self.rollbackEligible;
@@ -528,6 +717,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
     case airfix::afpack::ActiveContentStatus::ready:
         self.statusLabel.text = @"Private game content is ready.";
         [self setReadinessAndNotify:AirfixContentReadinessReady];
+        [self startRememberedWorldRoomLoadIfPossible];
         break;
     case airfix::afpack::ActiveContentStatus::rollbackAvailable:
         self.statusLabel.text =
@@ -545,7 +735,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
 }
 
 - (void)finishOperationWithErrorText:(NSString*)text {
-    _inspection.reset();
+    NSAssert(NSThread.isMainThread, @"Content UI completion is main-thread confined");
     self.busy = NO;
     self.rollbackEligible = NO;
     self.statusLabel.text = text;
@@ -570,10 +760,14 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
 
 - (void)publishCompleted:(std::uint64_t)completed
                    total:(std::uint64_t)total
-                    text:(NSString*)text {
+                    text:(NSString*)text
+       operationIdentity:(NSObject*)operationIdentity
+       lifecycleIdentity:(NSObject*)lifecycleIdentity {
     const std::uint64_t boundedCompleted = std::min(completed, total);
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (!self.busy) {
+        if (!self.busy ||
+            self->_operationIdentity != operationIdentity ||
+            self->_lifecycleIdentity != lifecycleIdentity) {
             return;
         }
         self.statusLabel.text = text;
@@ -583,58 +777,385 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
     });
 }
 
-- (void)beginInspection {
-    if (self.busy) {
+- (void)scheduleWorldRoomRequestFailureAtLogicalPath:(NSString*)worldLogicalPath
+                                        physicalRoom:(NSUInteger)physicalRoom
+                                     requestIdentity:(NSObject*)requestIdentity {
+    NSAssert(NSThread.isMainThread, @"World room requests are main-thread confined");
+    __weak AirfixContentCoordinator* weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        AirfixContentCoordinator* coordinator = weakSelf;
+        if (coordinator == nil ||
+            coordinator->_worldRoomRequestIdentity != requestIdentity) {
+            return;
+        }
+        coordinator.statusLabel.text = @"The requested world path is invalid.";
+        id<AirfixContentCoordinatorDelegate> delegate = coordinator.delegate;
+        if ([delegate respondsToSelector:@selector(
+                contentCoordinator:didFailLoadingWorldAtLogicalPath:physicalRoom:)]) {
+            [delegate contentCoordinator:coordinator
+                didFailLoadingWorldAtLogicalPath:
+                    (worldLogicalPath == nil ? @"" : worldLogicalPath)
+                physicalRoom:physicalRoom];
+        }
+    });
+}
+
+- (void)requestWorldAtLogicalPath:(NSString*)worldLogicalPath
+                    physicalRoom:(NSUInteger)physicalRoom {
+    NSAssert(NSThread.isMainThread, @"World room requests must start on the main thread");
+    NSObject* const requestIdentity = [NSObject new];
+    _worldRoomRequestIdentity = requestIdentity;
+    [self cancelWorldRoomLoadClearingRevision:NO];
+
+    const NSUInteger utf8Bytes =
+        [worldLogicalPath lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+    if (utf8Bytes == 0U || utf8Bytes > kMaximumWorldLogicalPathBytes) {
+        _rememberedWorldRoomRequest.reset();
+        [self scheduleWorldRoomRequestFailureAtLogicalPath:worldLogicalPath
+                                              physicalRoom:physicalRoom
+                                           requestIdentity:requestIdentity];
         return;
     }
-    [self beginOperationWithText:@"Checking private game content..."];
-    const std::stop_token stopToken = _operationStop.get_token();
+
+    const char* const utf8 = worldLogicalPath.UTF8String;
+    if (utf8 == nullptr) {
+        _rememberedWorldRoomRequest.reset();
+        [self scheduleWorldRoomRequestFailureAtLogicalPath:worldLogicalPath
+                                              physicalRoom:physicalRoom
+                                           requestIdentity:requestIdentity];
+        return;
+    }
+
+    try {
+        _rememberedWorldRoomRequest = RememberedWorldRoomRequest{
+            .worldLogicalPath =
+                std::string(utf8, static_cast<std::size_t>(utf8Bytes)),
+            .physicalRoom = static_cast<std::size_t>(physicalRoom),
+        };
+    }
+    catch (...) {
+        _rememberedWorldRoomRequest.reset();
+        [self scheduleWorldRoomRequestFailureAtLogicalPath:worldLogicalPath
+                                              physicalRoom:physicalRoom
+                                           requestIdentity:requestIdentity];
+        return;
+    }
+    [self startRememberedWorldRoomLoadIfPossible];
+}
+
+- (BOOL)isWorldRoomSnapshotCurrent:(AirfixWorldRoomSnapshot*)snapshot {
+    NSAssert(NSThread.isMainThread, @"World room publication checks are main-thread confined");
+    try {
+        return _roomPublicationGate.accepts(
+            airfix::ios::worldRoomPublicationTicket(snapshot),
+            airfix::ios::worldRoomResultRevision(snapshot)) ? YES : NO;
+    }
+    catch (...) {
+        return NO;
+    }
+}
+
+- (void)startRememberedWorldRoomLoadIfPossible {
+    NSAssert(NSThread.isMainThread, @"World room publication gate is main-thread confined");
+    if (self.busy ||
+        self.readiness != AirfixContentReadinessReady ||
+        UIApplication.sharedApplication.applicationState !=
+            UIApplicationStateActive ||
+        !_rememberedWorldRoomRequest.has_value() ||
+        _roomPublicationGate.hasOutstandingTicket() ||
+        !_roomPublicationGate.activeRevision().has_value()) {
+        return;
+    }
+
+    const auto request = *_rememberedWorldRoomRequest;
+    const auto expectedRevision = *_roomPublicationGate.activeRevision();
+    const auto ticket = _roomPublicationGate.begin(expectedRevision);
+    NSString* const logicalPath =
+        worldLogicalPathString(request.worldLogicalPath);
+    if (!ticket.has_value() || logicalPath == nil) {
+        _roomPublicationGate.invalidate();
+        self.statusLabel.text = @"The requested world room could not be started.";
+        id<AirfixContentCoordinatorDelegate> delegate = self.delegate;
+        if ([delegate respondsToSelector:@selector(
+                contentCoordinator:didFailLoadingWorldAtLogicalPath:physicalRoom:)]) {
+            [delegate contentCoordinator:self
+                didFailLoadingWorldAtLogicalPath:
+                    (logicalPath == nil ? @"" : logicalPath)
+                physicalRoom:static_cast<NSUInteger>(request.physicalRoom)];
+        }
+        return;
+    }
+
+    _loadStop = std::stop_source{};
+    const auto stopToken = _loadStop.get_token();
+    self.statusLabel.text = @"Loading private world room...";
+    self.progressView.progress = 0.0F;
+    self.progressView.hidden = YES;
+    id<AirfixContentCoordinatorDelegate> delegate = self.delegate;
+    if ([delegate respondsToSelector:@selector(
+            contentCoordinator:didBeginLoadingWorldAtLogicalPath:physicalRoom:)]) {
+        [delegate contentCoordinator:self
+            didBeginLoadingWorldAtLogicalPath:logicalPath
+            physicalRoom:static_cast<NSUInteger>(request.physicalRoom)];
+    }
+
     __weak AirfixContentCoordinator* weakSelf = self;
     dispatch_async(_workQueue, ^{
         AirfixContentCoordinator* strongSelf = weakSelf;
         if (strongSelf == nil) {
             return;
         }
-        try {
-            NSURL* rootURL = [strongSelf prepareContentRoot];
-            if (rootURL == nil) {
-                throw std::runtime_error("application support is unavailable");
-            }
-            auto inspection = std::make_shared<airfix::afpack::ActiveContentInspection>(
-                airfix::afpack::inspectActiveContent(
-                    fileSystemPath(rootURL), {}, stopToken,
-                    [weakSelf](const airfix::afpack::RecoveryProgress& progress) {
-                    AirfixContentCoordinator* coordinator = weakSelf;
-                    [coordinator publishCompleted:progress.completedBytes
-                                             total:progress.totalBytes
-                                              text:@"Checking private game content..."];
-                    }));
-            dispatch_async(dispatch_get_main_queue(), ^{
-                AirfixContentCoordinator* coordinator = weakSelf;
-                if (coordinator != nil) {
-                    coordinator->_inspection = std::move(*inspection);
-                    [coordinator finishOperationWithStoredInspection];
+
+        [&] {
+            try {
+                void (^publishFailure)(void) = ^{
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        AirfixContentCoordinator* coordinator = weakSelf;
+                        if (coordinator == nil ||
+                            !coordinator->_roomPublicationGate.isCurrent(*ticket)) {
+                            return;
+                        }
+                        coordinator->_roomPublicationGate.invalidate();
+                        coordinator.progressView.hidden = YES;
+                        coordinator.statusLabel.text =
+                            @"The requested world room could not be prepared.";
+                        id<AirfixContentCoordinatorDelegate> currentDelegate =
+                            coordinator.delegate;
+                        if ([currentDelegate respondsToSelector:@selector(
+                                contentCoordinator:
+                                didFailLoadingWorldAtLogicalPath:
+                                physicalRoom:)]) {
+                            [currentDelegate contentCoordinator:coordinator
+                                didFailLoadingWorldAtLogicalPath:logicalPath
+                                physicalRoom:static_cast<NSUInteger>(
+                                    request.physicalRoom)];
+                        }
+                    });
+                };
+
+                if (!strongSelf->_verifiedSession.has_value() ||
+                    strongSelf->_verifiedSession->revision() !=
+                        ticket->expectedRevision) {
+                    publishFailure();
+                    return;
                 }
-            });
+
+                const auto revisionBeforeLoad =
+                    strongSelf->_verifiedSession->revision();
+                const airfix::content::WorldRoomLoadRequest loadRequest{
+                    .worldLogicalPath = request.worldLogicalPath,
+                    .ccfRoomIndex = request.physicalRoom,
+                };
+                auto result = airfix::content::loadWorldRoom(
+                    *strongSelf->_verifiedSession,
+                    loadRequest,
+                    {},
+                    stopToken,
+                    [weakSelf, ticket](
+                        const airfix::content::WorldRoomLoadProgress& progress) {
+                        const auto completedItems = progress.completedItems;
+                        const auto totalItems = progress.totalItems;
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            AirfixContentCoordinator* coordinator = weakSelf;
+                            if (coordinator == nil ||
+                                !coordinator->_roomPublicationGate.isCurrent(
+                                    *ticket)) {
+                                return;
+                            }
+                            coordinator.statusLabel.text =
+                                @"Loading private world room...";
+                            coordinator.progressView.hidden =
+                                totalItems == 0U;
+                            coordinator.progressView.progress =
+                                totalItems == 0U ? 0.0F :
+                                static_cast<float>(std::min(
+                                    completedItems,
+                                    totalItems)) /
+                                static_cast<float>(totalItems);
+                        });
+                    });
+
+                if (!strongSelf->_verifiedSession.has_value() ||
+                    strongSelf->_verifiedSession->revision() !=
+                        revisionBeforeLoad ||
+                    revisionBeforeLoad != ticket->expectedRevision ||
+                    !result.success() ||
+                    !result.room.has_value() ||
+                    result.room->revision != ticket->expectedRevision) {
+                    publishFailure();
+                    return;
+                }
+
+                const auto resultRevision = result.room->revision;
+                AirfixWorldRoomSnapshot* const snapshot =
+                    airfix::ios::makeWorldRoomSnapshot(
+                        request.worldLogicalPath,
+                        request.physicalRoom,
+                        *ticket,
+                        std::move(*result.room));
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    AirfixContentCoordinator* coordinator = weakSelf;
+                    if (coordinator == nil ||
+                        !coordinator->_roomPublicationGate.accepts(
+                            *ticket, resultRevision)) {
+                        return;
+                    }
+                    coordinator.progressView.hidden = YES;
+                    coordinator.statusLabel.text =
+                        @"World room data is ready for rendering.";
+                    id<AirfixContentCoordinatorDelegate> currentDelegate =
+                        coordinator.delegate;
+                    if (![currentDelegate respondsToSelector:@selector(
+                            contentCoordinator:didLoadWorldRoomSnapshot:)]) {
+                        coordinator->_roomPublicationGate.invalidate();
+                        coordinator.statusLabel.text =
+                            @"The world room renderer is unavailable.";
+                        if ([currentDelegate respondsToSelector:@selector(
+                                contentCoordinator:
+                                didFailLoadingWorldAtLogicalPath:
+                                physicalRoom:)]) {
+                            [currentDelegate contentCoordinator:coordinator
+                                didFailLoadingWorldAtLogicalPath:logicalPath
+                                physicalRoom:static_cast<NSUInteger>(
+                                    request.physicalRoom)];
+                        }
+                        return;
+                    }
+                    [currentDelegate contentCoordinator:coordinator
+                        didLoadWorldRoomSnapshot:snapshot];
+                });
+            }
+            catch (...) {
+                // This catch encloses construction of the request, callbacks,
+                // loader result, and snapshot. No C++ exception may cross GCD.
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    AirfixContentCoordinator* coordinator = weakSelf;
+                    if (coordinator == nil ||
+                        !coordinator->_roomPublicationGate.isCurrent(*ticket)) {
+                        return;
+                    }
+                    coordinator->_roomPublicationGate.invalidate();
+                    coordinator.progressView.hidden = YES;
+                    coordinator.statusLabel.text =
+                        @"The requested world room could not be prepared.";
+                    id<AirfixContentCoordinatorDelegate> currentDelegate =
+                        coordinator.delegate;
+                    if ([currentDelegate respondsToSelector:@selector(
+                            contentCoordinator:
+                            didFailLoadingWorldAtLogicalPath:
+                            physicalRoom:)]) {
+                        [currentDelegate contentCoordinator:coordinator
+                            didFailLoadingWorldAtLogicalPath:logicalPath
+                            physicalRoom:static_cast<NSUInteger>(
+                                request.physicalRoom)];
+                    }
+                });
+            }
+        }();
+
+        // Ensure the worker's retain cannot be the final release. UIKit ivars
+        // and coordinator deallocation are handed back to the main queue.
+        AirfixContentCoordinator* const releaseOnMain = strongSelf;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            (void)releaseOnMain;
+        });
+    });
+}
+
+- (void)beginInspection {
+    if (self.busy) {
+        return;
+    }
+    [self cancelWorldRoomLoadClearingRevision:YES];
+    [self beginOperationWithText:@"Checking private game content..."];
+    const std::stop_token stopToken = _operationStop.get_token();
+    NSObject* const operationIdentity = _operationIdentity;
+    NSObject* const lifecycleIdentity = _lifecycleIdentity;
+    __weak AirfixContentCoordinator* weakSelf = self;
+    dispatch_async(_workQueue, ^{
+        AirfixContentCoordinator* strongSelf = weakSelf;
+        if (strongSelf == nil) {
+            return;
         }
-        catch (const airfix::afpack::RecoveryCancelled&) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [weakSelf finishOperationWithErrorText:
-                    @"Content check was paused. It will retry in the foreground."];
-            });
-        }
-        catch (const std::exception&) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [weakSelf finishOperationWithErrorText:
-                    @"Content could not be checked. Try again in the foreground."];
-            });
-        }
-        catch (...) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [weakSelf finishOperationWithErrorText:
-                    @"Content could not be checked. Try again in the foreground."];
-            });
-        }
+        [&] {
+            clearWorkerContent(
+                strongSelf->_inspection, strongSelf->_verifiedSession);
+            try {
+                NSURL* rootURL = [strongSelf prepareContentRoot];
+                if (rootURL == nil) {
+                    throw std::runtime_error(
+                        "application support is unavailable");
+                }
+                auto inspected = airfix::afpack::inspectActiveContent(
+                    fileSystemPath(rootURL), {}, stopToken,
+                    [weakSelf, operationIdentity, lifecycleIdentity](
+                        const airfix::afpack::RecoveryProgress& progress) {
+                        AirfixContentCoordinator* coordinator = weakSelf;
+                        [coordinator publishCompleted:progress.completedBytes
+                                                 total:progress.totalBytes
+                                                  text:@"Checking private game content..."
+                                     operationIdentity:operationIdentity
+                                     lifecycleIdentity:lifecycleIdentity];
+                    });
+                const auto outcome = storeInspectedContent(
+                    strongSelf->_inspection,
+                    strongSelf->_verifiedSession,
+                    std::move(inspected));
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    AirfixContentCoordinator* coordinator = weakSelf;
+                    if (coordinator == nil ||
+                        ![coordinator
+                            consumeTerminalOperationIdentity:operationIdentity
+                                           lifecycleIdentity:lifecycleIdentity]) {
+                        return;
+                    }
+                    if (outcome.activeRevision.has_value()) {
+                        coordinator->_roomPublicationGate.setActiveRevision(
+                            *outcome.activeRevision);
+                    }
+                    else {
+                        coordinator->_roomPublicationGate.clearActiveRevision();
+                    }
+                    [coordinator
+                        finishOperationWithInspectionStatus:outcome.status];
+                });
+            }
+            catch (const airfix::afpack::RecoveryCancelled&) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [weakSelf
+                        completeOperationWithErrorText:
+                            @"Content check was paused. It will retry in the foreground."
+                        operationIdentity:operationIdentity
+                        lifecycleIdentity:lifecycleIdentity
+                        inspectAfterFinish:NO];
+                });
+            }
+            catch (const std::exception&) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [weakSelf
+                        completeOperationWithErrorText:
+                            @"Content could not be checked. Try again in the foreground."
+                        operationIdentity:operationIdentity
+                        lifecycleIdentity:lifecycleIdentity
+                        inspectAfterFinish:NO];
+                });
+            }
+            catch (...) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [weakSelf
+                        completeOperationWithErrorText:
+                            @"Content could not be checked. Try again in the foreground."
+                        operationIdentity:operationIdentity
+                        lifecycleIdentity:lifecycleIdentity
+                        inspectAfterFinish:NO];
+                });
+            }
+        }();
+
+        AirfixContentCoordinator* const releaseOnMain = strongSelf;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            (void)releaseOnMain;
+        });
     });
 }
 
@@ -642,8 +1163,11 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
     if (self.busy) {
         return;
     }
+    [self cancelWorldRoomLoadClearingRevision:YES];
     [self beginOperationWithText:@"Preparing private import..."];
     const std::stop_token stopToken = _operationStop.get_token();
+    NSObject* const operationIdentity = _operationIdentity;
+    NSObject* const lifecycleIdentity = _lifecycleIdentity;
     NSString* transaction = canonicalTransactionIdentifier();
     __weak AirfixContentCoordinator* weakSelf = self;
     dispatch_async(_workQueue, ^{
@@ -651,8 +1175,12 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
         if (strongSelf == nil) {
             return;
         }
+        [&] {
         std::filesystem::path privateCopy;
         bool installReturned = false;
+        // Close every authenticated reader before the serialized writer starts.
+        clearWorkerContent(
+            strongSelf->_inspection, strongSelf->_verifiedSession);
         try {
             NSURL* rootURL = [strongSelf prepareContentRoot];
             if (rootURL == nil) {
@@ -677,11 +1205,14 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
                     try {
                         copyRegularFile(
                             fileSystemPath(coordinatedURL), privateCopy, stopToken,
-                            [weakSelf](const std::uint64_t completed,
-                                       const std::uint64_t total) {
+                            [weakSelf, operationIdentity, lifecycleIdentity](
+                                const std::uint64_t completed,
+                                const std::uint64_t total) {
                                 [weakSelf publishCompleted:completed
                                                      total:total
-                                                      text:@"Copying private package..."];
+                                                      text:@"Copying private package..."
+                                         operationIdentity:operationIdentity
+                                         lifecycleIdentity:lifecycleIdentity];
                             });
                     }
                     catch (...) {
@@ -698,76 +1229,114 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
 
             (void)airfix::afpack::installPack(
                 privateCopy, root, transaction.UTF8String, {}, stopToken,
-                [weakSelf](const airfix::afpack::InstallProgress& progress) {
+                [weakSelf, operationIdentity, lifecycleIdentity](
+                    const airfix::afpack::InstallProgress& progress) {
                     [weakSelf publishCompleted:progress.completedBytes
                                          total:progress.totalBytes
-                                          text:@"Validating and activating package..."];
+                                          text:@"Validating and activating package..."
+                             operationIdentity:operationIdentity
+                             lifecycleIdentity:lifecycleIdentity];
                 });
             installReturned = true;
             removeFile(privateCopy);
             privateCopy.clear();
-            auto inspection = std::make_shared<airfix::afpack::ActiveContentInspection>(
-                airfix::afpack::inspectActiveContent(
-                    root, {}, stopToken,
-                    [weakSelf](const airfix::afpack::RecoveryProgress& progress) {
+            auto inspected = airfix::afpack::inspectActiveContent(
+                root, {}, stopToken,
+                [weakSelf, operationIdentity, lifecycleIdentity](
+                    const airfix::afpack::RecoveryProgress& progress) {
                     [weakSelf publishCompleted:progress.completedBytes
                                          total:progress.totalBytes
-                                          text:@"Confirming active content..."];
-                    }));
+                                          text:@"Confirming active content..."
+                             operationIdentity:operationIdentity
+                             lifecycleIdentity:lifecycleIdentity];
+                });
+            const auto outcome = storeInspectedContent(
+                strongSelf->_inspection,
+                strongSelf->_verifiedSession,
+                std::move(inspected));
             dispatch_async(dispatch_get_main_queue(), ^{
                 AirfixContentCoordinator* coordinator = weakSelf;
-                if (coordinator != nil) {
-                    coordinator->_inspection = std::move(*inspection);
-                    [coordinator finishOperationWithStoredInspection];
+                if (coordinator == nil ||
+                    ![coordinator
+                        consumeTerminalOperationIdentity:operationIdentity
+                                       lifecycleIdentity:lifecycleIdentity]) {
+                    return;
                 }
+                if (outcome.activeRevision.has_value()) {
+                    coordinator->_roomPublicationGate.setActiveRevision(
+                        *outcome.activeRevision);
+                }
+                else {
+                    coordinator->_roomPublicationGate.clearActiveRevision();
+                }
+                [coordinator
+                    finishOperationWithInspectionStatus:outcome.status];
             });
         }
         catch (const NativeCopyCancelled&) {
             removeFile(privateCopy);
             dispatch_async(dispatch_get_main_queue(), ^{
-                weakSelf.inspectWhenIdle = YES;
-                [weakSelf finishOperationWithErrorText:
-                    @"Import was paused. It can be started again in the foreground."];
+                [weakSelf
+                    completeOperationWithErrorText:
+                        @"Import was paused. It can be started again in the foreground."
+                    operationIdentity:operationIdentity
+                    lifecycleIdentity:lifecycleIdentity
+                    inspectAfterFinish:YES];
             });
         }
         catch (const airfix::afpack::InstallCancelled&) {
             removeFile(privateCopy);
             dispatch_async(dispatch_get_main_queue(), ^{
-                weakSelf.inspectWhenIdle = YES;
-                [weakSelf finishOperationWithErrorText:
-                    @"Import was paused. It can be started again in the foreground."];
+                [weakSelf
+                    completeOperationWithErrorText:
+                        @"Import was paused. It can be started again in the foreground."
+                    operationIdentity:operationIdentity
+                    lifecycleIdentity:lifecycleIdentity
+                    inspectAfterFinish:YES];
             });
         }
         catch (const airfix::afpack::RecoveryCancelled&) {
             removeFile(privateCopy);
             dispatch_async(dispatch_get_main_queue(), ^{
-                weakSelf.inspectWhenIdle = YES;
-                [weakSelf finishOperationWithErrorText:
-                    @"The package was processed. Active content will be checked in the foreground."];
+                [weakSelf
+                    completeOperationWithErrorText:
+                        @"The package was processed. Active content will be checked in the foreground."
+                    operationIdentity:operationIdentity
+                    lifecycleIdentity:lifecycleIdentity
+                    inspectAfterFinish:YES];
             });
         }
         catch (const airfix::afpack::InstallCommitUnknown&) {
             removeFile(privateCopy);
             dispatch_async(dispatch_get_main_queue(), ^{
-                weakSelf.inspectWhenIdle = YES;
-                [weakSelf finishOperationWithErrorText:
-                    @"Package activation could not be confirmed. Content will be checked again."];
+                [weakSelf
+                    completeOperationWithErrorText:
+                        @"Package activation could not be confirmed. Content will be checked again."
+                    operationIdentity:operationIdentity
+                    lifecycleIdentity:lifecycleIdentity
+                    inspectAfterFinish:YES];
             });
         }
         catch (const std::exception&) {
             removeFile(privateCopy);
             if (installReturned) {
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    weakSelf.inspectWhenIdle = YES;
-                    [weakSelf finishOperationWithErrorText:
-                        @"The package was processed. Active content will be checked again."];
+                    [weakSelf
+                        completeOperationWithErrorText:
+                            @"The package was processed. Active content will be checked again."
+                        operationIdentity:operationIdentity
+                        lifecycleIdentity:lifecycleIdentity
+                        inspectAfterFinish:YES];
                 });
             }
             else {
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    weakSelf.inspectWhenIdle = YES;
-                    [weakSelf finishOperationWithErrorText:
-                        @"The package could not be imported. Choose a valid AFPACK and try again."];
+                    [weakSelf
+                        completeOperationWithErrorText:
+                            @"The package could not be imported. Choose a valid AFPACK and try again."
+                        operationIdentity:operationIdentity
+                        lifecycleIdentity:lifecycleIdentity
+                        inspectAfterFinish:YES];
                 });
             }
         }
@@ -775,28 +1344,43 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
             removeFile(privateCopy);
             if (installReturned) {
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    weakSelf.inspectWhenIdle = YES;
-                    [weakSelf finishOperationWithErrorText:
-                        @"The package was processed. Active content will be checked again."];
+                    [weakSelf
+                        completeOperationWithErrorText:
+                            @"The package was processed. Active content will be checked again."
+                        operationIdentity:operationIdentity
+                        lifecycleIdentity:lifecycleIdentity
+                        inspectAfterFinish:YES];
                 });
             }
             else {
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    weakSelf.inspectWhenIdle = YES;
-                    [weakSelf finishOperationWithErrorText:
-                        @"The package could not be imported. Choose a valid AFPACK and try again."];
+                    [weakSelf
+                        completeOperationWithErrorText:
+                            @"The package could not be imported. Choose a valid AFPACK and try again."
+                        operationIdentity:operationIdentity
+                        lifecycleIdentity:lifecycleIdentity
+                        inspectAfterFinish:YES];
                 });
             }
         }
+        }();
+
+        AirfixContentCoordinator* const releaseOnMain = strongSelf;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            (void)releaseOnMain;
+        });
     });
 }
 
 - (void)beginRollback {
-    if (self.busy || !self.rollbackEligible || !_inspection.has_value()) {
+    if (self.busy || !self.rollbackEligible) {
         return;
     }
+    [self cancelWorldRoomLoadClearingRevision:YES];
     [self beginOperationWithText:@"Restoring the verified package..."];
     const std::stop_token stopToken = _operationStop.get_token();
+    NSObject* const operationIdentity = _operationIdentity;
+    NSObject* const lifecycleIdentity = _lifecycleIdentity;
     NSString* transaction = canonicalTransactionIdentifier();
     __weak AirfixContentCoordinator* weakSelf = self;
     dispatch_async(_workQueue, ^{
@@ -804,7 +1388,11 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
         if (strongSelf == nil) {
             return;
         }
+        [&] {
         try {
+            // A ready session and rollback inspection are mutually exclusive,
+            // but close a session defensively before entering the writer.
+            strongSelf->_verifiedSession.reset();
             if (!strongSelf->_inspection.has_value() ||
                 strongSelf->_inspection->status() !=
                     airfix::afpack::ActiveContentStatus::rollbackAvailable) {
@@ -814,52 +1402,90 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
                 strongSelf->_inspection->contentRoot();
             (void)airfix::afpack::commitRollback(
                 *strongSelf->_inspection, transaction.UTF8String, {}, stopToken,
-                [weakSelf](const airfix::afpack::RecoveryProgress& progress) {
+                [weakSelf, operationIdentity, lifecycleIdentity](
+                    const airfix::afpack::RecoveryProgress& progress) {
                     [weakSelf publishCompleted:progress.completedBytes
                                          total:progress.totalBytes
-                                          text:@"Restoring the verified package..."];
+                                          text:@"Restoring the verified package..."
+                             operationIdentity:operationIdentity
+                             lifecycleIdentity:lifecycleIdentity];
                 });
             strongSelf->_inspection.reset();
-            auto inspection = std::make_shared<airfix::afpack::ActiveContentInspection>(
-                airfix::afpack::inspectActiveContent(
-                    contentRoot, {}, stopToken,
-                    [weakSelf](const airfix::afpack::RecoveryProgress& progress) {
+            auto inspected = airfix::afpack::inspectActiveContent(
+                contentRoot, {}, stopToken,
+                [weakSelf, operationIdentity, lifecycleIdentity](
+                    const airfix::afpack::RecoveryProgress& progress) {
                     [weakSelf publishCompleted:progress.completedBytes
                                          total:progress.totalBytes
-                                          text:@"Confirming restored content..."];
-                    }));
+                                          text:@"Confirming restored content..."
+                             operationIdentity:operationIdentity
+                             lifecycleIdentity:lifecycleIdentity];
+                });
+            const auto outcome = storeInspectedContent(
+                strongSelf->_inspection,
+                strongSelf->_verifiedSession,
+                std::move(inspected));
             dispatch_async(dispatch_get_main_queue(), ^{
                 AirfixContentCoordinator* coordinator = weakSelf;
-                if (coordinator != nil) {
-                    coordinator->_inspection = std::move(*inspection);
-                    [coordinator finishOperationWithStoredInspection];
+                if (coordinator == nil ||
+                    ![coordinator
+                        consumeTerminalOperationIdentity:operationIdentity
+                                       lifecycleIdentity:lifecycleIdentity]) {
+                    return;
                 }
+                if (outcome.activeRevision.has_value()) {
+                    coordinator->_roomPublicationGate.setActiveRevision(
+                        *outcome.activeRevision);
+                }
+                else {
+                    coordinator->_roomPublicationGate.clearActiveRevision();
+                }
+                [coordinator
+                    finishOperationWithInspectionStatus:outcome.status];
             });
         }
         catch (const airfix::afpack::RecoveryCancelled&) {
-            strongSelf->_inspection.reset();
+            clearWorkerContent(
+                strongSelf->_inspection, strongSelf->_verifiedSession);
             dispatch_async(dispatch_get_main_queue(), ^{
-                weakSelf.inspectWhenIdle = YES;
-                [weakSelf finishOperationWithErrorText:
-                    @"Restore was paused. Active content will be checked in the foreground."];
+                [weakSelf
+                    completeOperationWithErrorText:
+                        @"Restore was paused. Active content will be checked in the foreground."
+                    operationIdentity:operationIdentity
+                    lifecycleIdentity:lifecycleIdentity
+                    inspectAfterFinish:YES];
             });
         }
         catch (const std::exception&) {
-            strongSelf->_inspection.reset();
+            clearWorkerContent(
+                strongSelf->_inspection, strongSelf->_verifiedSession);
             dispatch_async(dispatch_get_main_queue(), ^{
-                weakSelf.inspectWhenIdle = YES;
-                [weakSelf finishOperationWithErrorText:
-                    @"The previous package could not be restored. Content will be checked again."];
+                [weakSelf
+                    completeOperationWithErrorText:
+                        @"The previous package could not be restored. Content will be checked again."
+                    operationIdentity:operationIdentity
+                    lifecycleIdentity:lifecycleIdentity
+                    inspectAfterFinish:YES];
             });
         }
         catch (...) {
-            strongSelf->_inspection.reset();
+            clearWorkerContent(
+                strongSelf->_inspection, strongSelf->_verifiedSession);
             dispatch_async(dispatch_get_main_queue(), ^{
-                weakSelf.inspectWhenIdle = YES;
-                [weakSelf finishOperationWithErrorText:
-                    @"The previous package could not be restored. Content will be checked again."];
+                [weakSelf
+                    completeOperationWithErrorText:
+                        @"The previous package could not be restored. Content will be checked again."
+                    operationIdentity:operationIdentity
+                    lifecycleIdentity:lifecycleIdentity
+                    inspectAfterFinish:YES];
             });
         }
+        }();
+
+        AirfixContentCoordinator* const releaseOnMain = strongSelf;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            (void)releaseOnMain;
+        });
     });
 }
 

@@ -13,6 +13,9 @@ add_executable(airfix_ios MACOSX_BUNDLE
     AirfixAppDelegate.mm
     AirfixContentCoordinator.h
     AirfixContentCoordinator.mm
+    AirfixWorldRoomSnapshot.h
+    AirfixWorldRoomSnapshot.mm
+    AirfixWorldRoomSnapshot+Private.hpp
     AirfixGameViewController.h
     AirfixGameViewController.mm
     AirfixMetalRenderer.h

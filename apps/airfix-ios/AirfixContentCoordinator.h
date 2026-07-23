@@ -10,10 +10,22 @@ typedef NS_ENUM(NSInteger, AirfixContentReadiness) {
 };
 
 @class AirfixContentCoordinator;
+@class AirfixWorldRoomSnapshot;
 
 @protocol AirfixContentCoordinatorDelegate <NSObject>
 - (void)contentCoordinator:(AirfixContentCoordinator*)coordinator
         didChangeReadiness:(AirfixContentReadiness)readiness;
+
+@optional
+// Main-thread notification.
+- (void)contentCoordinator:(AirfixContentCoordinator*)coordinator
+        didBeginLoadingWorldAtLogicalPath:(NSString*)worldLogicalPath
+        physicalRoom:(NSUInteger)physicalRoom;
+- (void)contentCoordinator:(AirfixContentCoordinator*)coordinator
+        didLoadWorldRoomSnapshot:(AirfixWorldRoomSnapshot*)snapshot;
+- (void)contentCoordinator:(AirfixContentCoordinator*)coordinator
+        didFailLoadingWorldAtLogicalPath:(NSString*)worldLogicalPath
+        physicalRoom:(NSUInteger)physicalRoom;
 @end
 
 // Owns the native private-content workflow. All package mutations are
@@ -34,6 +46,15 @@ typedef NS_ENUM(NSInteger, AirfixContentReadiness) {
 - (void)applicationDidEnterBackground;
 - (void)applicationWillEnterForeground;
 - (void)applicationDidBecomeActive;
+
+// Remembers the latest requested physical CCF room. If content is validating
+// or the app is inactive, loading begins after the next ready inspection.
+- (void)requestWorldAtLogicalPath:(NSString*)worldLogicalPath
+                    physicalRoom:(NSUInteger)physicalRoom;
+
+// Main-thread two-phase publication check. The caller checks after off-main
+// Metal preparation and again immediately before its constant-time swap.
+- (BOOL)isWorldRoomSnapshotCurrent:(AirfixWorldRoomSnapshot*)snapshot;
 
 @end
 

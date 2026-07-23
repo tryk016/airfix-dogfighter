@@ -2,8 +2,9 @@
 
 **State:** mesh/model payload, conservative explicit-room assembly, stable
 runtime texture plans, atomic RGBA8 upload preparation, fail-closed draw
-submission, private CPU diagnostic, and public synthetic Metal smoke path
-implemented; private asset-backed Metal path pending
+submission, private CPU diagnostic, public synthetic Metal bootstrap, and
+two-phase private asset-backed Metal room publication implemented; physical
+device visual acceptance pending
 
 **Evidence:** `EV-20260721-030` through `EV-20260721-034`
 
@@ -206,12 +207,54 @@ sRGB, premultiplication, V-origin, projection, front-face, blending, or BSP
 visibility decision. The offline `.metal` source is still compiled into
 `default.metallib`, which bundle verification requires.
 
-The portable content layer now supplies an authenticated, move-only,
-single-handle AFPACK/`Resource.up` session tagged with generation, size, and
-digest. `WorldRoomLoader` composes exact World/CCF dependencies, an explicit
-physical room, every GTI preparation, geometry, and draw submission into one
-atomically published immutable result. The remaining native boundary is a
-move-only active-content lease, stale generation/request rejection in the iOS
-coordinator, private Metal texture ownership and authored/generated mip upload
-cache, then visual acceptance on a physical iPhone. The synthetic renderer is
-not replaced until those pieces are complete.
+The portable content layer supplies an authenticated, move-only, single-handle
+AFPACK/`Resource.up` session tagged with the exact
+`{generation, size, digest}` revision. The native coordinator adopts the ready
+`ActiveContentLease` into that session on its serialized worker; the package
+handle is never transferred to the main or render threads. The first native
+smoke request selects the logical asset `Game/Worlds/axis_1.world` and explicit
+physical CCF room index 1.
+
+`WorldRoomLoader` composes exact World/CCF dependencies, that explicit physical
+room, every GTI preparation, geometry, and draw submission into one immutable
+result carrying the session revision. A monotonic request serial and the full
+content revision gate both the worker callback and final publication. Replaced
+requests, lifecycle invalidation, reinspection, and any generation, size, or
+digest mismatch fail closed. The Objective-C CPU snapshot owns the complete
+loaded result and allows it to be moved into renderer preparation only once.
+
+Private Metal replacement is two-phase. `prepareLoadedRoom` must run off-main
+and leaves the published snapshot untouched while it validates and creates
+every mesh buffer, RGBA8 texture, authored mip upload, generated mip chain,
+checked index offset, payload, and draw-submission owner. Generated mip work is
+committed and required to complete before the candidate is returned. Main then
+revalidates the publication ticket and `publishPreparedRoom` performs a single
+atomic strong-pointer assignment. A candidate is tied to its renderer and
+device, can be published once, and cannot partially replace the old room.
+
+Private preparation has a 128 MiB packed-CPU ceiling, a 256 MiB per-snapshot GPU
+ceiling, and per-buffer `device.maxBufferLength` checks. Logical byte preflight
+runs before allocation, but successful accounting is based on every actual
+Metal buffer and texture `allocatedSize`. Publication also charges the actual
+current and candidate snapshot allocations against a 384 MiB transition
+ceiling. The public bootstrap retains its independent checked 64 MiB
+packed-CPU/GPU policy.
+
+Each frame reads one immutable snapshot. Its command buffer completion handler
+retains that snapshot until the GPU has finished using the referenced buffers
+and textures. When the final owner releases a retired snapshot, destruction of
+its large Objective-C arrays and C++ payload is dispatched to a serial off-main
+release queue, keeping the main-thread swap constant-time.
+
+The current transition check covers the published and candidate snapshots at
+the swap. It does not yet track the exact aggregate peak across multiple
+retired snapshots that remain alive in GPU in-flight command buffers. Closing
+that accounting gap is an explicit bounded P2 follow-up; it is not claimed
+complete by this checkpoint.
+
+An external private-content smoke run completed the writer, installation,
+inspection, same-handle lease adoption, and full room load. The immutable
+result contained 62 meshes, 62 instances, 23 dense textures, and 167 validated
+draw commands. These are aggregate observations only; no private content,
+converted package, geometry, texture, or generated artifact was committed.
+Physical-device rendering and visual acceptance remain pending.

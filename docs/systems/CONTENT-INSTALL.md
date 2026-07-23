@@ -1,7 +1,8 @@
 # Private content installation and recovery
 
-**State:** portable installer, startup inspection, rollback transaction, and
-native iOS document-picker/progress/recovery UI implemented
+**State:** portable installer, startup inspection, rollback transaction, native
+iOS document-picker/progress/recovery UI, and authenticated runtime lease
+adoption implemented
 
 **Scope:** private sideload build, AFPACK v1, one serialized importer, no saves
 inside the content transaction
@@ -30,6 +31,9 @@ The installer maintains these invariants:
    begins only after a final cancellation check and is non-cancellable.
 7. Original or converted payload bytes never enter Git, GitHub Actions, the app
    bundle, diagnostics, crash metadata, or public test fixtures.
+8. Runtime adopts the exact authenticated active-content handle and metadata;
+   it does not reopen a diagnostic label or digest-derived pathname to begin a
+   room load.
 
 ## Private directory layout
 
@@ -193,6 +197,31 @@ file/directory resynchronization are required after ambiguous post-rename
 errors; otherwise the caller receives the same explicit unknown-commit outcome
 used by installation. Progress phases are monotonic and end at `complete`.
 
+## Authenticated runtime handoff
+
+A ready inspection owns a move-only `ActiveContentLease`. Its rvalue-only
+`takeReadyLease` can be called once, and `VerifiedContentSession::adopt`
+transfers the already authenticated AFPACK handle, active generation/reference,
+parsed pack and manifest, and exact `source/Resource.up` archive without
+reopening, rehashing, or reparsing them.
+
+The native coordinator stores both inspection and adopted session only on its
+serialized content worker. The main and render threads receive no package
+handle or host path. Before install or rollback begins, the worker destroys
+both reader objects; after the writer transaction, a fresh inspection must
+establish the next authenticated revision.
+
+Main-thread publication state contains only the exact
+`{generation, size, digest}` content revision and a monotonic room-request
+serial. Each worker load checks that its session matches the ticket before and
+after `WorldRoomLoader`, and the completed room must carry the same revision.
+The main-thread gate then rejects callbacks whose serial was replaced or whose
+revision was cleared by lifecycle, import, rollback, or reinspection. The
+accepted CPU room snapshot is move-only in effect: its complete payload can be
+consumed by native rendering once. If a stale snapshot loses its last UI-side
+owner before consumption, its storage is detached in constant time and
+destroyed on a dedicated serial queue rather than on the main thread.
+
 ## Required verification matrix
 
 Synthetic tests contain no game assets and cover:
@@ -214,11 +243,15 @@ Synthetic tests contain no game assets and cover:
 - crash checkpoints after staging sync, final publication, AFAC temp sync, and
   pointer rename, followed by startup recovery;
 - proof that a sentinel under `saves/` remains byte-identical through every
-  success, failure, rollback, and cleanup scenario.
+  success, failure, rollback, and cleanup scenario;
+- current/stale request serials, exact generation/size/digest revision matching,
+  explicit invalidation and active-revision clearing, and fail-closed serial
+  exhaustion for room publication.
 
 Linux, Windows, ARM64 macOS, `iphoneos`, and `iphonesimulator` targets compile
 the portable installer and recovery service because AFPACK is linked into the
-iOS application target. Physical-device tests later add document-provider permissions,
+iOS application target. The complete portable suite currently passes 32/32.
+Physical-device tests later add document-provider permissions,
 background/foreground interruption, force termination at checkpoints,
-insufficient-space behavior, file protection while locked, and large-package
-duration/thermal measurements.
+insufficient-space behavior, file protection while locked, large-package
+duration/thermal measurements, and private-room visual acceptance.

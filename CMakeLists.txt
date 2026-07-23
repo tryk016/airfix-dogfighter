@@ -179,6 +179,7 @@ endif()
 
 add_library(airfix_content
     src/airfix/content/VerifiedContentSession.cpp
+    src/airfix/content/WorldRoomPublicationGate.cpp
     src/airfix/content/WorldRoomLoader.cpp
 )
 add_library(airfix::content ALIAS airfix_content)
@@ -266,6 +267,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::content)
     add_test(NAME airfix_world_room_loader_tests
         COMMAND airfix_world_room_loader_tests)
+
+    add_executable(airfix_world_room_publication_gate_tests
+        tests/WorldRoomPublicationGateTests.cpp)
+    target_link_libraries(airfix_world_room_publication_gate_tests
+        PRIVATE airfix::content)
+    add_test(NAME airfix_world_room_publication_gate_tests
+        COMMAND airfix_world_room_publication_gate_tests)
 
     add_executable(airfix_crypto_tests tests/Sha256Tests.cpp)
     target_link_libraries(airfix_crypto_tests PRIVATE airfix::crypto)
