@@ -47,13 +47,14 @@ struct PlacedParentTarget {
 };
 
 enum class PlacedRoomTargetKind : std::uint8_t {
+    notApplicable,
     parsedRoom,
     externalReceiverFallback,
     unresolvedAmbiguous,
 };
 
 struct PlacedRoomTarget {
-    PlacedRoomTargetKind kind{PlacedRoomTargetKind::externalReceiverFallback};
+    PlacedRoomTargetKind kind{PlacedRoomTargetKind::notApplicable};
     std::optional<std::size_t> roomIndex;
 };
 

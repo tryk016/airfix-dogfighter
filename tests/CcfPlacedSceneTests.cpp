@@ -10,8 +10,10 @@
 namespace {
 
 using airfix::assets::CcfMetadata;
+using airfix::assets::CcfPlacedLightMetadata;
 using airfix::assets::CcfPlacedNodeKind;
 using airfix::assets::CcfPlacedNodeMetadata;
+using airfix::assets::CcfPlacedNullMetadata;
 using airfix::assets::PlacedParentTarget;
 using airfix::assets::PlacedParentTargetKind;
 using airfix::assets::PlacedPortalRoomTargetKind;
@@ -263,17 +265,23 @@ void testMissingSelfAndCycle() {
     CcfMetadata cycle;
     cycle.placedNodes = {nullNode(1U, 2U), nullNode(2U, 1U)};
     const auto cycleScene = airfix::assets::resolvePlacedScene(cycle);
-    require(hasIssue(cycleScene.issues, PlacedSceneIssueKind::cycle),
-        "placed-node cycle was accepted");
+    require(hasIssue(cycleScene.issues, PlacedSceneIssueKind::cycle) &&
+            cycleScene.rootIndices.empty() &&
+            !cycleScene.nodes[0].parentTarget.has_value() &&
+            !cycleScene.nodes[1].parentTarget.has_value() &&
+            cycleScene.nodes[0].childIndices.empty() &&
+            cycleScene.nodes[1].childIndices.empty(),
+        "placed-node cycle remained traversable");
 }
 
 void testAmbiguousAndMissingResources() {
     CcfMetadata ccf;
     ccf.rooms = {room(10U), room(10U)};
-    ccf.meshes = {mesh(20U), mesh(20U)};
+    ccf.meshes = {mesh(20U), mesh(20U), mesh(21U)};
     ccf.placedNodes = {
         object(1U, 0U, 10U, 20U, 10U),
         object(2U, 0U, 99U, 99U, 99U),
+        object(3U, 0U, 10U, 21U, 10U),
     };
     const auto scene = airfix::assets::resolvePlacedScene(ccf);
 
@@ -299,15 +307,19 @@ void testAmbiguousAndMissingResources() {
             !scene.nodes[1].instantiated,
         "object without a unique mesh was instantiated");
     require(scene.nodes[0].roomTarget.kind ==
-                PlacedRoomTargetKind::unresolvedAmbiguous &&
+                PlacedRoomTargetKind::notApplicable &&
             scene.nodes[0].portalRoomTarget.kind ==
-                PlacedPortalRoomTargetKind::unresolvedAmbiguous,
-        "ambiguous room target retained a guessed index");
-    require(scene.nodes[1].roomTarget.kind ==
-                PlacedRoomTargetKind::externalReceiverFallback &&
+                PlacedPortalRoomTargetKind::notApplicable &&
+            scene.nodes[1].roomTarget.kind ==
+                PlacedRoomTargetKind::notApplicable &&
             scene.nodes[1].portalRoomTarget.kind ==
-                PlacedPortalRoomTargetKind::notSet,
-        "missing room fallback or unset portal status mismatch");
+                PlacedPortalRoomTargetKind::notApplicable,
+        "skipped object resolved room or portal dependencies");
+    require(scene.nodes[2].roomTarget.kind ==
+                PlacedRoomTargetKind::unresolvedAmbiguous &&
+            scene.nodes[2].portalRoomTarget.kind ==
+                PlacedPortalRoomTargetKind::unresolvedAmbiguous,
+        "instantiated object retained an ambiguous room target");
 
     CcfMetadata skippedObject;
     skippedObject.placedNodes = {
@@ -329,6 +341,35 @@ void testAmbiguousAndMissingResources() {
     require(hasIssue(invalid.issues, PlacedSceneIssueKind::invalidNodeData) &&
             !invalid.nodes[0].instantiated,
         "inconsistent object variant was accepted");
+
+    CcfMetadata invalidKinds;
+    invalidKinds.placedNodes = {
+        nullNode(1U, 0U),
+        light(2U, 0U),
+        nullNode(3U, 0U),
+    };
+    invalidKinds.placedNodes[0].data = CcfPlacedLightMetadata{};
+    invalidKinds.placedNodes[1].data = CcfPlacedNullMetadata{};
+    invalidKinds.placedNodes[2].kind =
+        static_cast<CcfPlacedNodeKind>(0xffU);
+    const auto invalidKindScene =
+        airfix::assets::resolvePlacedScene(invalidKinds);
+    require(countIssue(
+                invalidKindScene.issues,
+                PlacedSceneIssueKind::invalidNodeData,
+                1U) == 1U &&
+            countIssue(
+                invalidKindScene.issues,
+                PlacedSceneIssueKind::invalidNodeData,
+                2U) == 1U &&
+            countIssue(
+                invalidKindScene.issues,
+                PlacedSceneIssueKind::invalidNodeData,
+                3U) == 1U &&
+            !invalidKindScene.nodes[0].instantiated &&
+            !invalidKindScene.nodes[1].instantiated &&
+            !invalidKindScene.nodes[2].instantiated,
+        "invalid placed-node kind or variant was instantiated");
 }
 
 void testLimits() {
@@ -377,10 +418,17 @@ void testLimits() {
     };
     limits = {};
     limits.maximumDepth = 1U;
+    const auto depthLimited =
+        airfix::assets::resolvePlacedScene(depth, limits);
     require(hasIssue(
-        airfix::assets::resolvePlacedScene(depth, limits).issues,
-        PlacedSceneIssueKind::limitExceeded),
-        "placed graph depth limit was not enforced");
+                depthLimited.issues,
+                PlacedSceneIssueKind::limitExceeded) &&
+            depthLimited.rootIndices.empty() &&
+            std::ranges::all_of(depthLimited.nodes, [](const auto& node) {
+                return !node.parentTarget.has_value() &&
+                    node.childIndices.empty();
+            }),
+        "placed graph depth limit left a traversable graph");
 
     CcfMetadata meshDepth;
     meshDepth.meshes = {mesh(50U)};

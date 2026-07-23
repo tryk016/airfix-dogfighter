@@ -40,6 +40,17 @@ void addIssue(
     });
 }
 
+void clearResolvedGraph(ResolvedPlacedScene& scene) {
+    scene.rootIndices.clear();
+    for (auto& node : scene.nodes) {
+        node.parentTarget.reset();
+        node.childIndices.clear();
+    }
+    for (auto& children : scene.meshChildIndices) {
+        children.clear();
+    }
+}
+
 template <typename Metadata>
 auto buildCatalogReferences(
     const std::vector<Metadata>& records,
@@ -191,16 +202,16 @@ ResolvedPlacedScene resolvePlacedScene(
         const auto& source = ccf.placedNodes[index];
         ResolvedPlacedNode node{
             .placedNodeIndex = index,
-            .instantiated = source.kind != CcfPlacedNodeKind::object,
+            .instantiated = false,
             .parentTarget = std::nullopt,
             .childIndices = {},
-            .roomTarget = resolveRoom(
-                rooms, source.roomReference, index, result.issues),
+            .roomTarget = {},
             .meshTarget = {},
             .portalRoomTarget = {},
         };
 
-        if (source.kind == CcfPlacedNodeKind::object) {
+        switch (source.kind) {
+        case CcfPlacedNodeKind::object: {
             const auto* object = std::get_if<CcfPlacedObjectMetadata>(
                 &source.data);
             if (object == nullptr) {
@@ -209,26 +220,56 @@ ResolvedPlacedScene resolvePlacedScene(
                     PlacedSceneIssueKind::invalidNodeData,
                     index,
                     source.currentReference);
-                node.meshTarget = {
-                    .kind = PlacedMeshTargetKind::unresolvedMissing,
-                    .meshIndex = std::nullopt,
-                };
-                node.portalRoomTarget = {
-                    .kind = PlacedPortalRoomTargetKind::notApplicable,
-                    .roomIndex = std::nullopt,
-                };
+                break;
             }
-            else {
-                node.meshTarget = resolveMesh(
-                    meshes, object->meshReference, index, result.issues);
-                node.portalRoomTarget = resolvePortalRoom(
-                    rooms,
-                    object->portalRoomReference,
+            node.meshTarget = resolveMesh(
+                meshes, object->meshReference, index, result.issues);
+            if (node.meshTarget.kind != PlacedMeshTargetKind::parsedMesh) {
+                break;
+            }
+            node.instantiated = true;
+            node.roomTarget = resolveRoom(
+                rooms, source.roomReference, index, result.issues);
+            node.portalRoomTarget = resolvePortalRoom(
+                rooms,
+                object->portalRoomReference,
+                index,
+                result.issues);
+            break;
+        }
+        case CcfPlacedNodeKind::nullNode:
+            if (!std::holds_alternative<CcfPlacedNullMetadata>(source.data)) {
+                addIssue(
+                    result.issues,
+                    PlacedSceneIssueKind::invalidNodeData,
                     index,
-                    result.issues);
-                node.instantiated =
-                    node.meshTarget.kind == PlacedMeshTargetKind::parsedMesh;
+                    source.currentReference);
+                break;
             }
+            node.instantiated = true;
+            node.roomTarget = resolveRoom(
+                rooms, source.roomReference, index, result.issues);
+            break;
+        case CcfPlacedNodeKind::light:
+            if (!std::holds_alternative<CcfPlacedLightMetadata>(source.data)) {
+                addIssue(
+                    result.issues,
+                    PlacedSceneIssueKind::invalidNodeData,
+                    index,
+                    source.currentReference);
+                break;
+            }
+            node.instantiated = true;
+            node.roomTarget = resolveRoom(
+                rooms, source.roomReference, index, result.issues);
+            break;
+        default:
+            addIssue(
+                result.issues,
+                PlacedSceneIssueKind::invalidNodeData,
+                index,
+                source.currentReference);
+            break;
         }
         result.nodes.push_back(std::move(node));
     }
@@ -239,6 +280,7 @@ ResolvedPlacedScene resolvePlacedScene(
     std::unordered_map<std::uint32_t, ReferenceMatch<PlacedParentTarget>>
         activeReferences;
     activeReferences.reserve(ccf.placedNodes.size() + ccf.meshes.size());
+    bool graphInvalid = false;
     for (std::size_t index = 0U; index < result.nodes.size(); ++index) {
         const auto reference = ccf.placedNodes[index].currentReference;
         if (result.nodes[index].instantiated) {
@@ -254,6 +296,7 @@ ResolvedPlacedScene resolvePlacedScene(
                     PlacedSceneIssueKind::duplicateSrtReference,
                     std::nullopt,
                     reference);
+                graphInvalid = true;
             }
         }
     }
@@ -271,6 +314,7 @@ ResolvedPlacedScene resolvePlacedScene(
                 PlacedSceneIssueKind::duplicateSrtReference,
                 std::nullopt,
                 reference);
+            graphInvalid = true;
         }
     }
 
@@ -291,6 +335,7 @@ ResolvedPlacedScene resolvePlacedScene(
                 PlacedSceneIssueKind::selfParent,
                 index,
                 source.parentReference);
+            graphInvalid = true;
             continue;
         }
         const auto current = activeReferences.find(source.currentReference);
@@ -303,6 +348,7 @@ ResolvedPlacedScene resolvePlacedScene(
                 PlacedSceneIssueKind::ambiguousChildReference,
                 index,
                 source.currentReference);
+            graphInvalid = true;
             continue;
         }
 
@@ -313,6 +359,7 @@ ResolvedPlacedScene resolvePlacedScene(
                 PlacedSceneIssueKind::missingParent,
                 index,
                 source.parentReference);
+            graphInvalid = true;
             continue;
         }
         if (parent->second.count != 1U) {
@@ -321,6 +368,7 @@ ResolvedPlacedScene resolvePlacedScene(
                 PlacedSceneIssueKind::ambiguousParentReference,
                 index,
                 source.parentReference);
+            graphInvalid = true;
             continue;
         }
         if (edgeCount >= limits.maximumEdges) {
@@ -329,6 +377,7 @@ ResolvedPlacedScene resolvePlacedScene(
                 PlacedSceneIssueKind::limitExceeded,
                 index,
                 source.parentReference);
+            graphInvalid = true;
             continue;
         }
         ++edgeCount;
@@ -379,6 +428,7 @@ ResolvedPlacedScene resolvePlacedScene(
                     PlacedSceneIssueKind::cycle,
                     current,
                     ccf.placedNodes[current].currentReference);
+                graphInvalid = true;
                 cycleFound = true;
                 break;
             }
@@ -401,6 +451,7 @@ ResolvedPlacedScene resolvePlacedScene(
                         PlacedSceneIssueKind::limitExceeded,
                         *iterator,
                         ccf.placedNodes[*iterator].currentReference);
+                    graphInvalid = true;
                     depthLimitReported = true;
                 }
                 ++nextDepth;
@@ -409,6 +460,10 @@ ResolvedPlacedScene resolvePlacedScene(
         for (const auto index : chain) {
             color[index] = 2U;
         }
+    }
+
+    if (graphInvalid) {
+        clearResolvedGraph(result);
     }
 
     return result;

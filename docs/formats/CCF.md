@@ -416,6 +416,10 @@ Parent, room, mesh, and portal-room references are resolved by value, never by
 physical index. Missing ordinary rooms retain an explicit receiver/root-room
 fallback, while a missing portal room remains unset. Duplicate candidates fail
 closed instead of inheriting the legacy loader's list-order-dependent match.
+Any structural parent error, cycle, or depth/edge-limit breach clears all
+published roots and links atomically, so callers cannot traverse a partial or
+out-of-policy graph. Objects skipped for unresolved meshes do not perform later
+room or portal lookup, matching the loader's early-exit order.
 
 The selected corpus resolves 9,328 nodes into 2,062 roots and 7,266 placed-
 parent edges, with maximum depth 7 and no cycles, missing dependencies, or

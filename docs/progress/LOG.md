@@ -690,3 +690,7 @@ superseded evidence.
 - Read-only census yields 9,328 instantiated nodes, 2,062 roots, 7,266 edges,
   maximum depth 7, and zero missing, ambiguous, or cyclic dependencies. All
   6,995 object meshes and 154 nonzero portal rooms resolve uniquely.
+- Independent review closed three P2 gaps: malformed graph relationships are
+  now cleared atomically, every node-kind/variant pair is checked, and objects
+  skipped for a missing or ambiguous mesh perform no room/portal resolution.
+  Re-review found no remaining P1/P2.
