@@ -166,17 +166,23 @@ every file record is referenced once, with no gaps or overlaps.
   `udsp-list [--summary|--verify|--inventory|--resolve-objects] <archive.up>`
 - Synthetic tests: `tests/UdspArchiveTests.cpp` and `tests/UdspLimitsTests.cpp`
 
-`Archive::open` performs bounded random-access I/O: it reads the 32-byte header,
-validates offsets against the physical file length, and then loads only the
-metadata tail. For `Resource.up` that is 130,961 bytes instead of 170,642,453
-bytes (about 1/1,303 of the previous allocation). Diagnostic `--verify` mode
-deliberately buffers the full archive so it can validate every payload stream;
-that mode is tooling, not the iOS runtime path.
+`Archive::open(path)` opens one binary file handle and delegates to
+`Archive::open(stream, sourceLabel)`. The stream API performs bounded
+random-access I/O: it measures the current stream size, reads the 32-byte
+header, validates offsets against that exact size, and then loads only the
+metadata tail. `sourceLabel` is used only in diagnostics and is never reopened
+or interpreted as a path. For `Resource.up` the metadata read is 130,961 bytes
+instead of 170,642,453 bytes (about 1/1,303 of the previous allocation).
+Diagnostic `--verify` mode deliberately buffers the full archive so it can
+validate every payload stream; that mode is tooling, not the iOS runtime path.
 
 `Archive::openRegion` applies the same validation and bounded metadata reads to
 a `[baseOffset, size)` region of a containing file. AFPACK validation therefore
 opens nested `Resource.up` and localization archives directly in place without
 copying their 192 MB combined payload to another buffer or temporary file.
+The declared containing-file size must equal the stream's current measured
+size. Both the archive region and every selected stored payload must remain
+inside their respective containing-file and `[0x20, directoryOffset)` bounds.
 
 `Archive::parse`, `open`, and `openRegion` accept the same explicit
 `ParseLimits`. Archive and metadata size, directory/file counts, string-table
@@ -188,14 +194,38 @@ measured v1.01
 directories, 2,628 files, and 191,873,346 declared unpacked bytes) with bounded
 headroom. Callers can tighten the policy further without changing the parser.
 
-`readFilePrefix` decodes only the requested logical prefix for signature
-classification. `readFile` applies a caller-provided decoded-size limit and is
-used one entry at a time by format tooling. The inventory path therefore never
-holds the full archive or all decoded assets in memory.
+The stream overloads of `readFilePrefix` and `readFile` accept the same
+seekable stream, exact containing-file size, diagnostic label, parsed archive,
+and a checked file index. `readFilePrefix` decodes only the requested logical
+prefix for signature classification. `readFile` applies a caller-provided
+decoded-size limit and is used one entry at a time by format tooling.
+`streamoff` offsets and `streamsize` read lengths are proven representable
+before metadata vectors, stored-payload vectors, or uncompressed prefix
+storage are constructed. The inventory path therefore never holds the full
+archive or all decoded assets in memory.
+
+The older `path + FileEntry` overloads remain convenience wrappers. They open a
+new handle and confirm that the supplied record matches the parsed archive,
+but they do not prove that the path still names the same backing object; code
+crossing a trust or mutation boundary must retain and use the stream overloads.
+All stream APIs require binary, seekable input. The stream position after a
+call is unspecified, and callers must serialize access: neither an archive nor
+a shared stream is a thread-safety mechanism.
 
 `Archive::lookup` and `normalizeLogicalPath` provide bounded, hash-compatible
 metadata lookup. Synthetic tests cover mixed slash/case input, missing records,
 unsafe components, path limits, and ambiguous duplicate records.
+
+Single-handle regressions additionally cover standalone and
+prefix-plus-UDSP-plus-suffix containers, compressed and uncompressed entries,
+zero-byte prefixes, exact and one-under output limits, invalid indices, current
+size mismatches, and a deliberately poisoned `sourceLabel` that names invalid
+data. Sparse virtual streams exercise pre-allocation `streamsize` rejection on
+targets where the format can express a read larger than that type.
+
+These APIs establish the stable-source primitive required by the future
+private content bridge. They do not mean that the iOS runtime already consumes
+installed AFPACK payloads through asset decoding and rendering end to end.
 
 ## Security requirements
 

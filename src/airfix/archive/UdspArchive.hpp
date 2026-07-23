@@ -90,8 +90,33 @@ public:
     [[nodiscard]] static Archive open(
         const std::filesystem::path& path,
         const ParseLimits& limits = {});
+    [[nodiscard]] static Archive open(
+        std::istream& input,
+        std::string_view sourceLabel,
+        const ParseLimits& limits = {});
     [[nodiscard]] static Archive openRegion(
         const std::filesystem::path& path,
+        std::uint64_t offset,
+        std::uint64_t size,
+        const ParseLimits& limits = {});
+    [[nodiscard]] static Archive openRegion(
+        std::istream& input,
+        std::uint64_t containingFileSize,
+        std::string_view sourceLabel,
+        std::uint64_t offset,
+        std::uint64_t size,
+        const ParseLimits& limits = {});
+    [[nodiscard]] static Archive openRegion(
+        std::istream& input,
+        std::uint64_t containingFileSize,
+        const char* sourceLabel,
+        std::uint64_t offset,
+        std::uint64_t size,
+        const ParseLimits& limits = {});
+    [[nodiscard]] static Archive openRegion(
+        std::istream& input,
+        std::uint64_t containingFileSize,
+        const std::string& sourceLabel,
         std::uint64_t offset,
         std::uint64_t size,
         const ParseLimits& limits = {});
@@ -149,10 +174,26 @@ private:
     const FileEntry& entry,
     std::size_t maximumBytes);
 
+[[nodiscard]] std::vector<std::uint8_t> readFilePrefix(
+    std::istream& input,
+    std::uint64_t containingFileSize,
+    std::string_view sourceLabel,
+    const Archive& archive,
+    std::size_t fileIndex,
+    std::size_t maximumBytes);
+
 [[nodiscard]] std::vector<std::uint8_t> readFile(
     const std::filesystem::path& path,
     const Archive& archive,
     const FileEntry& entry,
+    std::size_t outputLimit);
+
+[[nodiscard]] std::vector<std::uint8_t> readFile(
+    std::istream& input,
+    std::uint64_t containingFileSize,
+    std::string_view sourceLabel,
+    const Archive& archive,
+    std::size_t fileIndex,
     std::size_t outputLimit);
 
 } // namespace airfix::udsp

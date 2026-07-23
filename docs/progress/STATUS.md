@@ -29,6 +29,19 @@
   modules and confirmed the plugin factory ABI names.
 - Changed normal UDSP file opening to read only the header and metadata tail;
   `Resource.up` metadata buffering fell from 170,642,453 to 130,961 bytes.
+- Added the stable-source UDSP foundation. `Archive::open(path)` now uses one
+  handle, while `open(stream, sourceLabel)` and indexed stream entry reads keep
+  the caller's binary seekable handle and treat the label as diagnostics only.
+  Exact current size, archive/payload regions, index and output limits, and
+  `streamoff`/`streamsize` representability are checked before the relevant
+  allocation or I/O. Stream position is unspecified and shared access must be
+  serialized; legacy `path + FileEntry` reads remain convenience APIs without
+  backing-object provenance.
+- Synthetic UDSP tests cover standalone and embedded prefix/archive/suffix
+  layouts, compressed and uncompressed reads, zero-byte prefixes, poisoned
+  labels, bad indices, exact/one-under limits, size mismatches, suffix
+  containment, and sparse pre-allocation stream-limit rejection. This is not
+  yet an end-to-end installed-AFPACK runtime asset path.
 - Draft PR #1 is published; portable CI passes on Ubuntu, Windows, and ARM64
   macOS 26, including the post-fix AFPACK streaming tests on Windows.
 - Added a data-less UIKit/Metal iPhone shell generated through CMake, a portable

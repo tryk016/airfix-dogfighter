@@ -7,6 +7,7 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <sstream>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -173,6 +174,13 @@ void requireParseError(const std::function<void()>& action) {
     throw std::runtime_error("expected ParseError");
 }
 
+[[nodiscard]] std::string streamBytes(const Bytes& bytes) {
+    return {
+        reinterpret_cast<const char*>(bytes.data()),
+        bytes.size(),
+    };
+}
+
 void testHash() {
     require(airfix::udsp::nameHash("Game") == 0x00000E5EU, "Game hash mismatch");
     require(airfix::udsp::nameHash("GAME") == 0x00000E5EU, "hash must be ASCII case-insensitive");
@@ -311,6 +319,167 @@ void testBoundedFilePrefixes() {
     });
 }
 
+void testSingleHandleStreams() {
+    const auto archiveBytes = makeArchive();
+    const TempFile poisonedLabelFile(Bytes{'N', 'O', 'T', 'U', 'D', 'S', 'P'});
+    const auto poisonedLabel = poisonedLabelFile.path().string();
+    std::istringstream standalone(
+        streamBytes(archiveBytes), std::ios::in | std::ios::binary);
+    const auto standaloneArchive = airfix::udsp::Archive::open(
+        standalone, std::string_view(poisonedLabel));
+    require(standaloneArchive.backingOffset() == 0U,
+        "stream-backed standalone archive did not use zero prefix");
+    require(
+        airfix::udsp::readFilePrefix(
+            standalone,
+            archiveBytes.size(),
+            std::string_view(poisonedLabel),
+            standaloneArchive,
+            0U,
+            2U) == Bytes{0x10U, 0x20U},
+        "single-handle standalone prefix mismatch");
+    require(
+        airfix::udsp::readFilePrefix(
+            standalone,
+            archiveBytes.size(),
+            std::string_view(poisonedLabel),
+            standaloneArchive,
+            0U,
+            0U).empty(),
+        "single-handle zero-byte prefix mismatch");
+    require(
+        airfix::udsp::readFile(
+            standalone,
+            archiveBytes.size(),
+            std::string_view(poisonedLabel),
+            standaloneArchive,
+            0U,
+            3U) == Bytes{0x10U, 0x20U, 0x30U},
+        "single-handle standalone read mismatch");
+    requireParseError([&] {
+        (void)airfix::udsp::readFile(
+            standalone,
+            archiveBytes.size(),
+            std::string_view(poisonedLabel),
+            standaloneArchive,
+            0U,
+            2U);
+    });
+    requireParseError([&] {
+        (void)airfix::udsp::readFilePrefix(
+            standalone,
+            archiveBytes.size(),
+            std::string_view(poisonedLabel),
+            standaloneArchive,
+            1U,
+            1U);
+    });
+
+    constexpr std::size_t prefixSize = 13U;
+    constexpr std::size_t suffixSize = 17U;
+    Bytes container(prefixSize, 0xA5U);
+    container.insert(container.end(), archiveBytes.begin(), archiveBytes.end());
+    container.insert(container.end(), suffixSize, 0x5AU);
+    std::istringstream embedded(
+        streamBytes(container), std::ios::in | std::ios::binary);
+    constexpr std::string_view sourceLabel = "memory:embedded-udsp";
+    const auto embeddedArchive = airfix::udsp::Archive::openRegion(
+        embedded,
+        container.size(),
+        sourceLabel,
+        prefixSize,
+        archiveBytes.size());
+    require(embeddedArchive.backingOffset() == prefixSize,
+        "single-handle embedded backing offset mismatch");
+    require(
+        airfix::udsp::readFile(
+            embedded,
+            container.size(),
+            sourceLabel,
+            embeddedArchive,
+            0U,
+            3U) == Bytes{0x10U, 0x20U, 0x30U},
+        "single-handle embedded read mismatch");
+    require(
+        airfix::udsp::readFilePrefix(
+            embedded,
+            container.size(),
+            sourceLabel,
+            embeddedArchive,
+            0U,
+            1024U) == Bytes{0x10U, 0x20U, 0x30U},
+        "embedded prefix escaped the declared payload into the suffix");
+    requireParseError([&] {
+        (void)airfix::udsp::readFile(
+            embedded,
+            container.size() + 1U,
+            sourceLabel,
+            embeddedArchive,
+            0U,
+            3U);
+    });
+    requireParseError([&] {
+        (void)airfix::udsp::Archive::openRegion(
+            embedded,
+            container.size(),
+            sourceLabel,
+            prefixSize,
+            archiveBytes.size() + suffixSize);
+    });
+
+    const Bytes encoded{0x66U, 0x03U, 0x10U, 0x20U, 0x30U};
+    const auto compressedBytes = makeArchiveWithPayload(
+        encoded, airfix::udsp::kCompressedFlag, 3U);
+    Bytes compressedContainer(prefixSize, 0xA5U);
+    compressedContainer.insert(
+        compressedContainer.end(), compressedBytes.begin(), compressedBytes.end());
+    compressedContainer.insert(compressedContainer.end(), suffixSize, 0x5AU);
+    std::istringstream compressed(
+        streamBytes(compressedContainer), std::ios::in | std::ios::binary);
+    const auto compressedArchive = airfix::udsp::Archive::openRegion(
+        compressed,
+        compressedContainer.size(),
+        sourceLabel,
+        prefixSize,
+        compressedBytes.size());
+    require(
+        airfix::udsp::readFilePrefix(
+            compressed,
+            compressedContainer.size(),
+            sourceLabel,
+            compressedArchive,
+            0U,
+            2U) == Bytes{0x10U, 0x20U},
+        "single-handle compressed prefix mismatch");
+    require(
+        airfix::udsp::readFilePrefix(
+            compressed,
+            compressedContainer.size(),
+            sourceLabel,
+            compressedArchive,
+            0U,
+            0U).empty(),
+        "single-handle compressed zero-byte prefix mismatch");
+    require(
+        airfix::udsp::readFile(
+            compressed,
+            compressedContainer.size(),
+            sourceLabel,
+            compressedArchive,
+            0U,
+            3U) == Bytes{0x10U, 0x20U, 0x30U},
+        "single-handle compressed read mismatch");
+    requireParseError([&] {
+        (void)airfix::udsp::readFile(
+            compressed,
+            compressedContainer.size(),
+            sourceLabel,
+            compressedArchive,
+            0U,
+            2U);
+    });
+}
+
 void testMalformedArchives() {
     {
         auto bytes = makeArchive();
@@ -376,6 +545,7 @@ int main() {
         testFileBackedArchive();
         testEmbeddedFileBackedArchive();
         testBoundedFilePrefixes();
+        testSingleHandleStreams();
         testMalformedArchives();
         testDecompression();
         std::cout << "all UDSP tests passed\n";

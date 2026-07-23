@@ -45,6 +45,18 @@ void requireRange(
         (static_cast<std::uint32_t>(bytes[offset + 3U]) << 24U);
 }
 
+void requireStreamRangeRepresentable(
+    const std::uint64_t offset,
+    const std::uint64_t size,
+    const std::string_view field) {
+    if (offset > static_cast<std::uint64_t>(std::numeric_limits<std::streamoff>::max())) {
+        throw ParseError(std::string(field) + " offset exceeds stream limits");
+    }
+    if (size > static_cast<std::uint64_t>(std::numeric_limits<std::streamsize>::max())) {
+        throw ParseError(std::string(field) + " read size exceeds stream limits");
+    }
+}
+
 [[nodiscard]] std::string_view readName(
     const std::span<const std::uint8_t> strings,
     const std::uint32_t offset,
@@ -238,18 +250,90 @@ void readExact(
     std::istream& input,
     const std::uint64_t offset,
     const std::span<std::uint8_t> output,
-    const std::filesystem::path& path) {
-    if (offset > static_cast<std::uint64_t>(std::numeric_limits<std::streamoff>::max()) ||
-        output.size() > static_cast<std::size_t>(std::numeric_limits<std::streamsize>::max())) {
-        throw ParseError("archive range exceeds stream limits: " + path.string());
-    }
+    const std::string_view sourceLabel) {
+    requireStreamRangeRepresentable(offset, output.size(), "archive range");
     input.clear();
     input.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
     if (!input || (!output.empty() && !input.read(
             reinterpret_cast<char*>(output.data()),
             static_cast<std::streamsize>(output.size())))) {
-        throw ParseError("cannot read archive: " + path.string());
+        throw ParseError("cannot read archive: " + std::string(sourceLabel));
     }
+}
+
+[[nodiscard]] std::uint64_t currentStreamSize(
+    std::istream& input,
+    const std::string_view sourceLabel) {
+    input.clear();
+    input.seekg(0, std::ios::end);
+    const auto end = input.tellg();
+    if (end < 0) {
+        throw ParseError("cannot determine archive size: " + std::string(sourceLabel));
+    }
+    return static_cast<std::uint64_t>(end);
+}
+
+void requireCurrentStreamSize(
+    std::istream& input,
+    const std::uint64_t containingFileSize,
+    const std::string_view sourceLabel) {
+    if (currentStreamSize(input, sourceLabel) != containingFileSize) {
+        throw ParseError(
+            "archive stream size changed or does not match containingFileSize: " +
+            std::string(sourceLabel));
+    }
+}
+
+[[nodiscard]] const FileEntry& validateFileRead(
+    const std::uint64_t containingFileSize,
+    const Archive& archive,
+    const std::size_t fileIndex) {
+    if (fileIndex >= archive.files().size()) {
+        throw ParseError("UDSP file index is outside the archive");
+    }
+    requireRange(
+        archive.backingOffset(),
+        archive.archiveSize(),
+        containingFileSize,
+        "UDSP archive backing region");
+    if (archive.header().directoryOffset > archive.archiveSize()) {
+        throw ParseError("UDSP payload boundary is outside the archive");
+    }
+
+    const auto& entry = archive.files()[fileIndex];
+    requireRange(
+        entry.dataOffset,
+        entry.storedSize,
+        archive.header().directoryOffset,
+        "UDSP file data");
+    const auto absoluteOffset = checkedAdd(
+        archive.backingOffset(), entry.dataOffset, "UDSP file absolute offset");
+    requireRange(
+        absoluteOffset,
+        entry.storedSize,
+        checkedAdd(
+            archive.backingOffset(), archive.archiveSize(), "UDSP archive backing end"),
+        "UDSP file backing data");
+    return entry;
+}
+
+[[nodiscard]] std::size_t fileIndexForEntry(
+    const Archive& archive,
+    const FileEntry& entry) {
+    for (std::size_t index = 0U; index < archive.files().size(); ++index) {
+        const auto& candidate = archive.files()[index];
+        if (&candidate == &entry ||
+            (candidate.hash == entry.hash &&
+             candidate.nameOffset == entry.nameOffset &&
+             candidate.flags == entry.flags &&
+             candidate.unpackedSize == entry.unpackedSize &&
+             candidate.storedSize == entry.storedSize &&
+             candidate.dataOffset == entry.dataOffset &&
+             candidate.name == entry.name)) {
+            return index;
+        }
+    }
+    throw ParseError("UDSP file entry does not belong to the archive");
 }
 
 } // namespace
@@ -483,12 +567,19 @@ Archive Archive::parseMetadata(
 Archive Archive::open(
     const std::filesystem::path& path,
     const ParseLimits& limits) {
-    std::error_code sizeError;
-    const auto size = std::filesystem::file_size(path, sizeError);
-    if (sizeError) {
-        throw ParseError("cannot determine archive size: " + path.string());
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        throw ParseError("cannot open archive: " + path.string());
     }
-    return openRegion(path, 0U, size, limits);
+    return open(input, path.string(), limits);
+}
+
+Archive Archive::open(
+    std::istream& input,
+    const std::string_view sourceLabel,
+    const ParseLimits& limits) {
+    const auto size = currentStreamSize(input, sourceLabel);
+    return openRegion(input, size, sourceLabel, 0U, size, limits);
 }
 
 Archive Archive::openRegion(
@@ -496,23 +587,26 @@ Archive Archive::openRegion(
     const std::uint64_t offset,
     const std::uint64_t size,
     const ParseLimits& limits) {
-    std::ifstream input(path, std::ios::binary | std::ios::ate);
+    std::ifstream input(path, std::ios::binary);
     if (!input) {
         throw ParseError("cannot open archive: " + path.string());
     }
 
-    const auto end = input.tellg();
-    if (end < 0) {
-        throw ParseError("cannot determine archive size: " + path.string());
-    }
-    const auto physicalSize = static_cast<std::uint64_t>(end);
-    return openRegion(input, physicalSize, path, offset, size, limits);
+    const auto physicalSize = currentStreamSize(input, path.string());
+    const auto sourceLabel = path.string();
+    return openRegion(
+        input,
+        physicalSize,
+        std::string_view(sourceLabel),
+        offset,
+        size,
+        limits);
 }
 
 Archive Archive::openRegion(
     std::istream& input,
     const std::uint64_t containingFileSize,
-    const std::filesystem::path& sourcePath,
+    const std::string_view sourceLabel,
     const std::uint64_t offset,
     const std::uint64_t size,
     const ParseLimits& limits) {
@@ -523,9 +617,10 @@ Archive Archive::openRegion(
     if (size < kHeaderSize) {
         throw ParseError("archive region is shorter than the UDSP header");
     }
+    requireCurrentStreamSize(input, containingFileSize, sourceLabel);
 
     std::array<std::uint8_t, kHeaderSize> headerBytes{};
-    readExact(input, offset, headerBytes, sourcePath);
+    readExact(input, offset, headerBytes, sourceLabel);
     const auto header = readHeader(headerBytes);
     validateLayout(header, size);
     validateLimits(header, size, limits);
@@ -534,12 +629,11 @@ Archive Archive::openRegion(
     if (metadataSize > std::numeric_limits<std::size_t>::max()) {
         throw ParseError("UDSP metadata is too large for this process");
     }
+    const auto metadataOffset = checkedAdd(
+        offset, header.directoryOffset, "UDSP metadata absolute offset");
+    requireStreamRangeRepresentable(metadataOffset, metadataSize, "UDSP metadata");
     std::vector<std::uint8_t> metadata(static_cast<std::size_t>(metadataSize));
-    readExact(
-        input,
-        checkedAdd(offset, header.directoryOffset, "UDSP metadata absolute offset"),
-        metadata,
-        sourcePath);
+    readExact(input, metadataOffset, metadata, sourceLabel);
 
     const auto directoryStart = std::size_t{0};
     const auto fileStart = static_cast<std::size_t>(header.fileOffset - header.directoryOffset);
@@ -554,6 +648,55 @@ Archive Archive::openRegion(
         limits);
     archive.backingOffset_ = offset;
     return archive;
+}
+
+Archive Archive::openRegion(
+    std::istream& input,
+    const std::uint64_t containingFileSize,
+    const char* const sourceLabel,
+    const std::uint64_t offset,
+    const std::uint64_t size,
+    const ParseLimits& limits) {
+    return openRegion(
+        input,
+        containingFileSize,
+        sourceLabel == nullptr ? std::string_view{} : std::string_view(sourceLabel),
+        offset,
+        size,
+        limits);
+}
+
+Archive Archive::openRegion(
+    std::istream& input,
+    const std::uint64_t containingFileSize,
+    const std::string& sourceLabel,
+    const std::uint64_t offset,
+    const std::uint64_t size,
+    const ParseLimits& limits) {
+    return openRegion(
+        input,
+        containingFileSize,
+        std::string_view(sourceLabel),
+        offset,
+        size,
+        limits);
+}
+
+Archive Archive::openRegion(
+    std::istream& input,
+    const std::uint64_t containingFileSize,
+    const std::filesystem::path& sourcePath,
+    const std::uint64_t offset,
+    const std::uint64_t size,
+    const ParseLimits& limits) {
+    const auto sourceLabel = sourcePath.string();
+    return openRegion(
+        input,
+        containingFileSize,
+        std::string_view(sourceLabel),
+        offset,
+        size,
+        limits);
 }
 
 std::vector<std::uint8_t> decompress(
@@ -623,30 +766,66 @@ std::vector<std::uint8_t> readFilePrefix(
     const Archive& archive,
     const FileEntry& entry,
     const std::size_t maximumBytes) {
-    requireRange(
-        entry.dataOffset,
-        entry.storedSize,
-        archive.header().directoryOffset,
-        "UDSP file data");
+    const auto fileIndex = fileIndexForEntry(archive, entry);
     const auto targetSize = std::min<std::uint64_t>(maximumBytes, entry.unpackedSize);
+    if (targetSize > std::numeric_limits<std::size_t>::max()) {
+        throw ParseError("UDSP file prefix is too large for this process");
+    }
+    if (!entry.isCompressed()) {
+        requireStreamRangeRepresentable(
+            checkedAdd(
+                archive.backingOffset(),
+                entry.dataOffset,
+                "UDSP file absolute offset"),
+            targetSize,
+            "UDSP uncompressed file prefix");
+    }
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        throw ParseError("cannot open archive: " + path.string());
+    }
+    const auto containingFileSize = currentStreamSize(input, path.string());
+    return readFilePrefix(
+        input,
+        containingFileSize,
+        path.string(),
+        archive,
+        fileIndex,
+        maximumBytes);
+}
+
+std::vector<std::uint8_t> readFilePrefix(
+    std::istream& input,
+    const std::uint64_t containingFileSize,
+    const std::string_view sourceLabel,
+    const Archive& archive,
+    const std::size_t fileIndex,
+    const std::size_t maximumBytes) {
+    const auto& entry = validateFileRead(containingFileSize, archive, fileIndex);
+    const auto targetSize = std::min<std::uint64_t>(maximumBytes, entry.unpackedSize);
+    if (targetSize > std::numeric_limits<std::size_t>::max()) {
+        throw ParseError("UDSP file prefix is too large for this process");
+    }
+    const auto payloadOffset = checkedAdd(
+        archive.backingOffset(), entry.dataOffset, "UDSP file absolute offset");
+    if (!entry.isCompressed()) {
+        requireStreamRangeRepresentable(
+            payloadOffset, targetSize, "UDSP uncompressed file prefix");
+    }
+    requireCurrentStreamSize(input, containingFileSize, sourceLabel);
     std::vector<std::uint8_t> output;
     output.reserve(static_cast<std::size_t>(targetSize));
     if (targetSize == 0U) {
         return output;
     }
 
-    std::ifstream input(path, std::ios::binary);
-    if (!input) {
-        throw ParseError("cannot open archive: " + path.string());
-    }
-    auto cursor = checkedAdd(
-        archive.backingOffset(), entry.dataOffset, "UDSP file absolute offset");
+    auto cursor = payloadOffset;
     auto inputRemaining = static_cast<std::uint64_t>(entry.storedSize);
     auto pull = [&](const std::span<std::uint8_t> destination) {
         if (destination.size() > inputRemaining) {
             throw ParseError("truncated UDSP file payload");
         }
-        readExact(input, cursor, destination, path);
+        readExact(input, cursor, destination, sourceLabel);
         cursor = checkedAdd(cursor, destination.size(), "UDSP file cursor");
         inputRemaining -= destination.size();
     };
@@ -705,24 +884,53 @@ std::vector<std::uint8_t> readFile(
     const Archive& archive,
     const FileEntry& entry,
     const std::size_t outputLimit) {
+    const auto fileIndex = fileIndexForEntry(archive, entry);
     if (entry.unpackedSize > outputLimit) {
         throw ParseError("UDSP file exceeds the configured output limit");
     }
-    requireRange(
-        entry.dataOffset,
+    if (entry.storedSize > std::numeric_limits<std::size_t>::max()) {
+        throw ParseError("UDSP stored file is too large for this process");
+    }
+    requireStreamRangeRepresentable(
+        checkedAdd(
+            archive.backingOffset(), entry.dataOffset, "UDSP file absolute offset"),
         entry.storedSize,
-        archive.header().directoryOffset,
-        "UDSP file data");
+        "UDSP stored file");
     std::ifstream input(path, std::ios::binary);
     if (!input) {
         throw ParseError("cannot open archive: " + path.string());
     }
-    std::vector<std::uint8_t> stored(entry.storedSize);
-    readExact(
+    const auto containingFileSize = currentStreamSize(input, path.string());
+    return readFile(
         input,
-        checkedAdd(archive.backingOffset(), entry.dataOffset, "UDSP file absolute offset"),
-        stored,
-        path);
+        containingFileSize,
+        path.string(),
+        archive,
+        fileIndex,
+        outputLimit);
+}
+
+std::vector<std::uint8_t> readFile(
+    std::istream& input,
+    const std::uint64_t containingFileSize,
+    const std::string_view sourceLabel,
+    const Archive& archive,
+    const std::size_t fileIndex,
+    const std::size_t outputLimit) {
+    const auto& entry = validateFileRead(containingFileSize, archive, fileIndex);
+    if (entry.unpackedSize > outputLimit) {
+        throw ParseError("UDSP file exceeds the configured output limit");
+    }
+    if (entry.storedSize > std::numeric_limits<std::size_t>::max()) {
+        throw ParseError("UDSP stored file is too large for this process");
+    }
+    const auto payloadOffset = checkedAdd(
+        archive.backingOffset(), entry.dataOffset, "UDSP file absolute offset");
+    requireStreamRangeRepresentable(
+        payloadOffset, entry.storedSize, "UDSP stored file");
+    requireCurrentStreamSize(input, containingFileSize, sourceLabel);
+    std::vector<std::uint8_t> stored(static_cast<std::size_t>(entry.storedSize));
+    readExact(input, payloadOffset, stored, sourceLabel);
     if (entry.isCompressed()) {
         return decompress(stored, entry.unpackedSize, outputLimit);
     }

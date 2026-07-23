@@ -64,7 +64,7 @@ sources.
 | Component | State |
 |---|---|
 | Reverse engineering | Ongoing, with functions and claims tied to reproducible evidence |
-| `UDSP` archives | Bounded metadata parser, lookup, decompression, verification, and CLI implemented |
+| `UDSP` archives | Bounded single-handle metadata/parser and entry-read APIs, lookup, decompression, verification, and CLI implemented |
 | Legacy assets | GTI textures plus bounded CCF scene, room/fog/BSP, mesh, material, blueprint, and placed-node parsing implemented |
 | Dependency resolution | Object-to-scene, blueprint/placed graphs, BSP polygons, verified world-to-CCF binding, rooms, meshes, portals, materials, and texture edges implemented |
 | Private packaging | AFPACK writer, validation, transactional install/recovery, and native iOS import/rollback UI implemented |
@@ -88,6 +88,16 @@ by checked 64 MiB CPU/GPU staging budgets and `device.maxBufferLength`, and the
 renderer publishes state only after complete initialization. This remains a
 synthetic diagnostic: AFPACK content, private textures, and visual acceptance
 on a physical device are not connected or claimed.
+
+The portable UDSP layer now supports a stable, caller-owned binary stream from
+metadata parsing through indexed entry reads. `Archive::open(path)` uses one
+file handle; `Archive::open(stream, sourceLabel)` and the stream overloads of
+`readFilePrefix`/`readFile` never reopen `sourceLabel`, which is diagnostic
+text only. Exact current stream size, archive and payload regions, indices,
+limits, and `streamoff`/`streamsize` representability are checked before the
+corresponding allocation or read. This is the foundation for a private
+AFPACK-to-render-data bridge; the runtime does not yet consume installed AFPACK
+payloads end to end.
 
 ## Architecture
 

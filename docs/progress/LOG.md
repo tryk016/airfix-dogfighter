@@ -859,3 +859,30 @@ superseded evidence.
   This checkpoint still uses only public synthetic data: AFPACK, private GTI
   textures, asset-backed room rendering, and visual testing on a physical
   iPhone remain pending.
+
+## 2026-07-23 — single-handle UDSP entry reads
+
+- Reworked `Archive::open(path)` to use one binary handle and added
+  `Archive::open(stream, sourceLabel)`. The label is diagnostic text only:
+  parsing and reads never reopen or interpret it as a filesystem path.
+- Added indexed stream overloads for `readFilePrefix` and `readFile`. They
+  require the same seekable stream and its exact current containing-file size,
+  then constrain the parsed archive and selected stored payload to their
+  declared regions before any payload I/O.
+- Added a common `streamoff`/`streamsize` representability preflight before
+  metadata, complete stored-payload, or uncompressed-prefix allocation. An
+  independent review found the original post-allocation check and approved the
+  checkpoint after the preflight and sparse virtual-stream regression closed
+  it.
+- Kept `path + FileEntry` overloads as compatibility conveniences. They match
+  the entry back to the parsed table, but a newly opened path does not prove
+  backing-object provenance. Stable-source callers must retain the stream,
+  accept unspecified post-call position, and serialize access.
+- Synthetic coverage includes standalone and embedded
+  prefix-plus-UDSP-plus-suffix layouts, compressed/uncompressed and zero-byte
+  prefixes, a poisoned label, invalid index, exact and one-under output limits,
+  current-size mismatch, suffix containment, and pre-allocation stream limits.
+  The full portable suite passes 29/29.
+- This checkpoint is a prerequisite for the private AFPACK content bridge. It
+  does not claim that installed package payloads are already decoded and fed
+  through the iOS renderer end to end.
