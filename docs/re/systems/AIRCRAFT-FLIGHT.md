@@ -2,13 +2,17 @@
 
 **Status:** observed, not yet specified or implemented for parity
 **Evidence:** `EV-20260724-001`, `EV-20260724-002`,
-`EV-20260724-003`
+`EV-20260724-003`, `EV-20260724-004`
 **Reference build:** SHA-256 values in `docs/evidence/source-manifest.sha256`
 
 This note records the current clean-room boundary around
 `Game/Types/AirCraft.type`. It deliberately separates recovered executable
 facts from working names and hypotheses. Raw disassembly and decompiler output
 remain in the ignored `artifacts/` tree.
+
+The complete static equation, constructor-field, and 12 ms timing contract is
+maintained separately in `AIRCRAFT-FLIGHT-LAW.md`. This file retains the wider
+system boundary, event joins, and implementation policy.
 
 ## Method
 
@@ -75,9 +79,10 @@ Vtable slot 45 points directly to `0x10003F40`; its bounded code range is
 
 The durable working name is `AircraftFlightForceStep`. This name describes
 observed effects only. The argument is the scheduler-derived per-step delta
-after conversion to float; its unit and scale remain unknown. The method is not
-`NfActor::Refresh(__int64)`: the two ABIs have different argument sizes and
-stack cleanup.
+after conversion to seconds. AirCraft uses a 12 ms dependant interval and
+`AfVehicle::ProcessEvent` applies a `0.001f` millisecond-to-second scale, giving
+a nominal `dt` of `0.012f`. The method is not `NfActor::Refresh(__int64)`: the
+two ABIs have different argument sizes and stack cleanup.
 
 Selected direct call sites:
 
@@ -149,8 +154,8 @@ vtable slot 1 as `Refresh(__int64 delta)`. AirCraft does not override that
 secondary slot: an adjustor thunk reaches `NfActor::Refresh`, which emits one
 of events `0x76`, `0x77`, or `0x78` with the exact 64-bit time payload.
 
-`AfVehicle::ProcessEvent` converts that payload to float using a global scale
-whose unit remains unknown. Its active physics path is:
+`AfVehicle::ProcessEvent` converts that millisecond payload to seconds with an
+exact `0.001f` global scale. Its active physics path is:
 
 1. `CcODE::EulerODE(body+0x238, dt)`;
 2. `CcRigidBody::ResetForceAndTorque`;
@@ -181,10 +186,13 @@ torques for the *next* `EulerODE` call; it is not a force-before-integrate
 stage in the same update. Collision impulses after slot 45 modify current
 momentum/state independently of those next-step accumulators.
 
-The dependant scheduler skips large forward gaps in two observed layers, but
-the thresholds and target masks are not yet promoted to a portable timing
-contract. The default `NfTimeDependant` interval of 1000 also does not prove an
-AirCraft update frequency.
+The QPC clock is integer milliseconds. `NfTimeDependant` initially writes a
+1000 ms interval, then `AfVehicle::AfVehicle` selects 25 ms for a ground unit,
+33 ms for a water unit, or 12 ms for other vehicle types. Both AirCraft type
+predicates route to the shared zero-return implementation, proving the 12 ms
+choice. The dependant scheduler still skips large forward gaps in observed
+layers; those gap and target-mask policies are not yet a portable timing
+contract.
 
 ### Event names and vehicle dispatch
 
@@ -292,17 +300,17 @@ constants without another confirming source.
 
 ## Still unknown
 
-- the unit of the QPC-derived scheduler value and the global integer-to-float
-  time scale;
-- the runtime-configured AirCraft update interval and full target-mask policy;
+- the full scheduler target-mask and large-gap policy;
 - the complete actor-vs-actor slot-29 order outside the shown static/BSP path;
 - the semantic meaning of the `AICONTROL` index enum names;
 - the meaning of AirCraft/AfVehicle fields `+0x98`, `+0x458`, `+0x45C`, and
   `+0x460`;
-- the ten constructor-tuple field meanings;
+- the gameplay meanings of several constructor fields even though every tuple
+  value is now joined to its exact storage and immediate consumers;
 - world distance, mass, force, and torque units;
-- lift, drag, thrust, gravity, stall, and stabilization equations;
-- local aerodynamic axes and dynamic orientation composition;
+- semantic aerodynamic labels for the now-recovered force, torque, contact,
+  throttle, and damping equations;
+- the collision scalar's exact range and meaning;
 - the point at which fire intent spawns a projectile.
 
 ## Portable implementation boundary
@@ -319,4 +327,6 @@ Until those unknowns are resolved, the portable simulation may:
 It must not yet move or rotate the aircraft, apply throttle, spawn a weapon,
 or label provisional constants as original behavior. That narrow state bridge
 provides a deterministic integration seam for the recovered flight law without
-creating false parity.
+creating false parity. The current 60 Hz input publication and recovered
+nominal 12 ms physics cadence are separate clocks and must remain separate in
+the eventual implementation.

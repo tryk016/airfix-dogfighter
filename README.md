@@ -73,7 +73,7 @@ sources.
 | Rendering | Bounded explicit-room assembly, stable texture IDs, atomic RGBA8 upload preparation, CPU diagnostics, two-phase private-room Metal publication, and neutral scene-bound pose transport implemented |
 | Input core | Deterministic semantic router for touch/controller/test sources implemented |
 | Native controls | First UIKit stick/fire/pause overlay and Apple extended-controller slice implemented; complete V1 action set pending |
-| Game simulation | Frozen-pose deterministic player-control state implemented; aircraft control events and update order recovered, while equations, units, and player-actor binding remain under reconstruction |
+| Game simulation | Frozen-pose deterministic player-control state implemented; the complete static 12 ms aircraft force law is documented, while runtime traces, physical units, numeric tolerance, and player-actor binding remain pending |
 | Continuous integration | Portable C++ tests plus unsigned device/simulator iOS builds |
 
 Detailed, frequently updated progress lives in
@@ -201,8 +201,8 @@ and a cross-compiler canonical hash. The recovered reference scheduler consumes
 the previous step's force/torque before resetting and accumulating the next
 step. A separate bounded pose exchange is ready for complete dynamic instance
 transforms, but it deliberately remains unbound until the player actor/spawn
-identity and flight equations are recovered. The complete input contract is
-documented in
+identity and runtime evidence make the statically recovered flight equations
+safe to implement. The complete input contract is documented in
 [docs/systems/INPUT.md](docs/systems/INPUT.md).
 
 ## Build and test the portable code
@@ -293,6 +293,7 @@ Recommended starting points:
 - [Private content format](docs/formats/AFPACK.md)
 - [Input and controller design](docs/systems/INPUT.md)
 - [Aircraft flight reconstruction boundary](docs/re/systems/AIRCRAFT-FLIGHT.md)
+- [Aircraft flight-law static contract](docs/re/systems/AIRCRAFT-FLIGHT-LAW.md)
 - [clangd and LSP code intelligence](docs/toolchain/CODE-INTELLIGENCE.md)
 - [Current status](docs/progress/STATUS.md)
 

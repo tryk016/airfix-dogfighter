@@ -74,9 +74,15 @@ a control-field write.
 integrates the previously accumulated force/torque, resets the accumulators,
 rebuilds auxiliary state, invokes AirCraft slot 45 to accumulate forces for
 the next integration, resolves static collisions through slot 30, and invokes
-slot 44. Units, constructor-field semantics, complete force equations, and
-runtime player-actor/spawn identity remain open. See
-`docs/re/systems/AIRCRAFT-FLIGHT.md`.
+slot 44.
+
+`EV-20260724-004` closes the static flight-law body: AirCraft receives a 12 ms
+dependant interval, AfEngine converts it to `0.012f` seconds, all 21 rigid-body
+force/torque call sites and direct state transitions are mapped, and each
+constructor tuple value is joined to its storage and immediate consumers.
+Physical units, runtime contact traces, and player-actor/spawn identity remain
+open. See `docs/re/systems/AIRCRAFT-FLIGHT.md` and
+`docs/re/systems/AIRCRAFT-FLIGHT-LAW.md`.
 
 ## Confirmed `UDSPACK` interface
 

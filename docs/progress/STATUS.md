@@ -170,8 +170,14 @@
   `EulerODE -> ResetForceAndTorque -> CalcAuxiliary -> slot45 force
   accumulation -> collision/slot30 -> slot44 refresh`. `EulerODE` consumes
   the prior accumulated forces; slot45 prepares the next integration step.
-  The time unit/scale, complete force equations, actor spawn/render identity,
-  and constructor-field semantics remain unknown.
+  AirCraft uses a 12 ms dependant interval converted to `0.012f` seconds.
+  All 21 force/torque sites, direct state transitions, helper transforms, and
+  constructor-field joins in slot45 are now statically mapped. Physical units,
+  runtime contact traces, and actor spawn/render identity remain unknown.
+- Added deterministic headless Ghidra exporters for exact scalar values and
+  instruction listings. The report wrapper can now process a literal program
+  already in the ignored local Ghidra project without requiring or recording
+  the original file path; its import/reuse/error contracts have Windows tests.
 - Established the recovered right-handed CCF basis, row-vector matrix
   convention, reverse-cross winding, degenerate `+Y` normal, and raw UV policy;
   the bounded API-neutral converter validates all 6,995 corpus meshes.
@@ -340,9 +346,9 @@
 
 ## Next
 
-1. Recover and cross-check the branch conditions, constructor-field joins,
-   units, and complete equations inside `AircraftFlightForceStep`; preserve
-   the confirmed one-step force-accumulator order.
+1. Obtain controlled runtime traces for free flight and the ground, inverted,
+   water, and too-high branches; assign field meanings and numeric tolerances
+   before implementing the statically recovered 12 ms flight law.
 2. Extend the native control surface to throttle delta, secondary fire, weapon,
    camera/rear-view, and mission actions before adding persistence, remapping,
    profiles, and haptics.

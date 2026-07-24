@@ -1113,3 +1113,43 @@ superseded evidence.
   dynamic SPSC test also passes repeated stress runs, the public-source boundary
   remains clean, and native Apple compilation remains delegated to GitHub
   Actions.
+
+## 2026-07-24 - complete static aircraft flight-law contract
+
+- `EV-20260724-004`: exact scalar, instruction, constructor, vtable, and
+  scheduler exports closed the static `AircraftFlightForceStep` contract.
+  AirCraft selects a 12 ms dependant interval and `AfVehicle::ProcessEvent`
+  converts its integer-millisecond payload with `0.001f`, yielding nominal
+  `dt = 0.012f` seconds (83 1/3 Hz).
+- Mapped all 15 `ApplyForce`, five `ApplyTorqueOnly`, and one
+  `ApplyForceOnly` sites, including their branch gates, transformed offsets,
+  collision probes, height/water accumulators, throttle smoothing, propeller
+  animation, and final state damping. Instruction evidence confirms the
+  ambiguous indirect force call uses the rigid-body subobject.
+- Joined all ten registration-tuple positions to the type constructor. Nine
+  are stored, one is unused, and the instance constructor links the recovered
+  scale to its rigid-body mass contributions and force equations. Physical
+  units and several gameplay field names remain deliberately unassigned.
+- Resolved the two inherited flight-step vtable calls as
+  `AfVehicle::DisableBsp` and `AfVehicle::EnableBsp`. The original ordering
+  remains integrate previous accumulators, reset, rebuild auxiliary state,
+  accumulate the next forces, then perform collision work.
+- Added deterministic Ghidra scripts for exact four-byte scalar interpretation
+  and instruction listings. Extended the headless wrapper with a validated
+  `ProgramName` mode for existing ignored projects, so repeat reports need no
+  original-file path. Added fake-launcher Windows tests for import, legacy
+  reuse, path rejection, unresolved reports, and native-process failure.
+- No aircraft motion was added to the portable simulation. Runtime traces,
+  collision-scalar meaning, physical units, float tolerance, player spawn
+  identity, and the 60 Hz input versus nominal 12 ms physics-clock bridge
+  remain prerequisites for a parity implementation.
+- A clean CMake/Ninja validation build completed all 122 targets and all 35
+  CTest cases passed. The PowerShell wrapper tests and the 198-file public
+  boundary check also passed.
+- Both new Ghidra exporters compiled and ran under Ghidra 12.1.2. Repeating the
+  scalar export produced the same SHA-256
+  `604e745d828f5378eac151ee78bade04851b9d9b511f5f7cdf60ae3b95e3e5d6`.
+- Two independent read-only reviews caught and corrected an inaccurate force
+  arm, incomplete BSP segment descriptions, implicit state ordering, and
+  overclaimed confidence. Both final re-reviews passed with no remaining
+  blocking findings.

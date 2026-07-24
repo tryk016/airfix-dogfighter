@@ -1,7 +1,11 @@
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName = 'Import')]
 param(
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory = $true, ParameterSetName = 'Import')]
+    [Parameter(Mandatory = $true, ParameterSetName = 'ReuseByInput')]
     [string]$InputFile,
+
+    [Parameter(Mandatory = $true, ParameterSetName = 'ReuseByProgram')]
+    [string]$ProgramName,
 
     [string]$ProjectDirectory = (Join-Path $PSScriptRoot '..\analysis\ghidra-projects'),
 
@@ -15,15 +19,42 @@ param(
 
     [string]$ReportSuffix = 'decomp',
 
+    [Parameter(Mandatory = $true, ParameterSetName = 'ReuseByInput')]
+    [Parameter(ParameterSetName = 'ReuseByProgram')]
     [switch]$ReuseProject
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$resolvedInput = (Resolve-Path -LiteralPath $InputFile).Path
-$repositoryRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $scriptDirectory = Join-Path $PSScriptRoot 'ghidra'
+
+function Assert-NonEmpty {
+    param(
+        [string]$Value,
+        [string]$Name
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        throw "$Name must not be empty."
+    }
+}
+
+function Assert-FileName {
+    param(
+        [string]$Value,
+        [string]$Name
+    )
+
+    Assert-NonEmpty -Value $Value -Name $Name
+    if ([System.IO.Path]::GetFileName($Value) -ne $Value -or
+        $Value.IndexOfAny([System.IO.Path]::GetInvalidFileNameChars()) -ge 0 -or
+        [System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($Value) -or
+        $Value -eq '.' -or
+        $Value -eq '..') {
+        throw "$Name must be a single literal file name."
+    }
+}
 
 function Find-GhidraHeadless {
     if ($env:GHIDRA_HOME) {
@@ -56,18 +87,52 @@ function Set-JavaRuntime {
     }
 }
 
-Set-JavaRuntime
-$headless = Find-GhidraHeadless
 $projectPath = [System.IO.Path]::GetFullPath($ProjectDirectory)
 $reportPath = [System.IO.Path]::GetFullPath($ReportDirectory)
-$reportName = ([System.IO.Path]::GetFileName($resolvedInput)) + ".$ReportSuffix.txt"
+$reuseExisting = $PSBoundParameters.ContainsKey('ProgramName') -or [bool]$ReuseProject
+
+Assert-FileName -Value $ProjectName -Name 'ProjectName'
+Assert-FileName -Value $PostScript -Name 'PostScript'
+Assert-FileName -Value $ReportSuffix -Name 'ReportSuffix'
+
+$postScriptPath = Join-Path $scriptDirectory $PostScript
+if (-not (Test-Path -LiteralPath $postScriptPath -PathType Leaf)) {
+    throw "Ghidra post-script was not found in tools/ghidra: $PostScript"
+}
+
+if ($PSBoundParameters.ContainsKey('ProgramName')) {
+    Assert-FileName -Value $ProgramName -Name 'ProgramName'
+    $programToProcess = $ProgramName
+    $resolvedInput = $null
+}
+else {
+    if (-not (Test-Path -LiteralPath $InputFile -PathType Leaf)) {
+        throw "InputFile must identify an existing file: $InputFile"
+    }
+    $resolvedInput = (Resolve-Path -LiteralPath $InputFile).Path
+    $programToProcess = [System.IO.Path]::GetFileName($resolvedInput)
+}
+
+$reportName = $programToProcess + ".$ReportSuffix.txt"
 $reportFile = Join-Path $reportPath $reportName
 
-New-Item -ItemType Directory -Force -Path $projectPath, $reportPath | Out-Null
+if ($reuseExisting) {
+    $projectFile = Join-Path $projectPath "$ProjectName.gpr"
+    if (-not (Test-Path -LiteralPath $projectFile -PathType Leaf)) {
+        throw "Existing Ghidra project was not found: $projectFile"
+    }
+}
+else {
+    New-Item -ItemType Directory -Force -Path $projectPath | Out-Null
+}
+New-Item -ItemType Directory -Force -Path $reportPath | Out-Null
+
+Set-JavaRuntime
+$headless = Find-GhidraHeadless
 
 $arguments = @($projectPath, $ProjectName)
-if ($ReuseProject) {
-    $arguments += @('-process', [System.IO.Path]::GetFileName($resolvedInput), '-noanalysis')
+if ($reuseExisting) {
+    $arguments += @('-process', $programToProcess, '-noanalysis')
 }
 else {
     $arguments += @(
@@ -93,6 +158,11 @@ if (-not (Test-Path -LiteralPath $reportFile)) {
 $report = Get-Item -LiteralPath $reportFile
 if ($report.Length -eq 0 -or $report.LastWriteTimeUtc -lt $startedAt) {
     throw "Ghidra post-script did not refresh its report: $reportFile"
+}
+$reportText = Get-Content -LiteralPath $reportFile -Raw
+if ($reportText -match '(?m)^unresolvedAddresses=[1-9][0-9]*\r?$' -or
+    $reportText -match '(?m)^DECOMPILATION_FAILED=') {
+    throw "Ghidra post-script reported incomplete output: $reportFile"
 }
 
 Write-Output $reportFile

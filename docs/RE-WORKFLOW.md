@@ -55,6 +55,44 @@ Do not paste large decompiler listings into Markdown. Store concise pseudocode,
 contracts, data layouts, constants, and cross-references. The original binary and
 local Ghidra database remain the source for raw disassembly.
 
+## Reproducible headless reports
+
+`tools/Invoke-GhidraAnalysis.ps1` runs report-producing post-scripts from
+`tools/ghidra` and writes their output under the ignored `artifacts/ghidra`
+directory. To inspect a program already imported into the default local Ghidra
+project, use its Ghidra domain-file name:
+
+```powershell
+./tools/Invoke-GhidraAnalysis.ps1 `
+  -ProgramName 'AirCraft.type' `
+  -PostScript 'ExportFunctionInstructions.java' `
+  -PostScriptArguments @('10003F40') `
+  -ReportSuffix 'flight-instructions'
+```
+
+This mode does not need or accept a path to the original executable. It fails
+before launching Ghidra if the local project is missing, rejects wildcard or
+path-like program names, and treats unresolved-address report markers as a
+failure. `ProjectName` is the `.gpr` project name; `ProgramName` is one literal
+program at the project root.
+
+For the first immutable import, use `-InputFile <private-source-file>` instead.
+The legacy `-InputFile ... -ReuseProject` form remains supported, but
+`-ProgramName` is preferred after import because it does not carry a private
+source path through the command line.
+
+The targeted read-only exporters are:
+
+| Script | Purpose |
+|---|---|
+| `ExportAddressFunctions.java` | decompile functions containing exact addresses |
+| `ExportFunctionInstructions.java` | emit deterministic address/bytes/instruction listings |
+| `ExportMemoryValues.java` | interpret four bytes at exact addresses as integer and `float32` values |
+| `ExportCallersOfNamedFunctions.java` | join selected named callees to their callers |
+
+Reports and Ghidra projects remain local and ignored. Only concise conclusions,
+stable IDs, scripts, and reproducible commands belong in Git.
+
 ## Standard work cycle
 
 ### Start of a session
@@ -144,4 +182,3 @@ system/format IDs and whether parity changed.
 - Automated test exists, or the missing test is recorded as a blocker.
 - Reference comparison is within its stated tolerance.
 - Catalog, status, parity matrix, and log are consistent.
-

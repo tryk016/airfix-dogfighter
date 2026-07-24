@@ -70,6 +70,11 @@ jobs:
       - name: Show toolchain
         run: cmake --version
 
+      - name: Test PowerShell reconstruction tooling
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./tests/Invoke-GhidraAnalysisTests.ps1
+
       - name: Configure
         run: >-
           cmake -S . -B build
