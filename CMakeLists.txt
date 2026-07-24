@@ -116,6 +116,7 @@ add_library(airfix_render
     src/airfix/render/DrawMesh.cpp
     src/airfix/render/DrawSubmissionPlan.cpp
     src/airfix/render/LegacyGeometry.cpp
+    src/airfix/render/SnapshotGpuBudgetLedger.cpp
     src/airfix/render/TextureRuntimeData.cpp
     src/airfix/render/TextureRuntimePlan.cpp
 )
@@ -337,6 +338,13 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_render_tests tests/LegacyGeometryTests.cpp)
     target_link_libraries(airfix_render_tests PRIVATE airfix::render)
     add_test(NAME airfix_render_tests COMMAND airfix_render_tests)
+
+    add_executable(airfix_snapshot_gpu_budget_ledger_tests
+        tests/SnapshotGpuBudgetLedgerTests.cpp)
+    target_link_libraries(airfix_snapshot_gpu_budget_ledger_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_snapshot_gpu_budget_ledger_tests
+        COMMAND airfix_snapshot_gpu_budget_ledger_tests)
 
     add_executable(airfix_draw_mesh_tests tests/DrawMeshTests.cpp)
     target_link_libraries(airfix_draw_mesh_tests PRIVATE airfix::render)

@@ -6,12 +6,15 @@
 #include "airfix/content/WorldRoomLoader.hpp"
 #include "airfix/render/DrawModel.hpp"
 #include "airfix/render/DrawSubmissionPlan.hpp"
+#include "airfix/render/SnapshotGpuBudgetLedger.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -39,15 +42,22 @@ enum class RendererError : NSInteger {
     unexpectedFailure,
 };
 
-constexpr std::size_t kMaximumSyntheticGpuBytes = 64U * 1024U * 1024U;
+constexpr std::size_t kMaximumSyntheticLogicalGpuBytes =
+    64U * 1024U * 1024U;
+constexpr std::size_t kMaximumSyntheticGpuHeapPlanBytes =
+    64U * 1024U * 1024U;
 constexpr std::size_t kMaximumSyntheticCpuPackedBytes =
     64U * 1024U * 1024U;
-constexpr std::size_t kMaximumPrivateRoomGpuBytes =
+constexpr std::size_t kMaximumPrivateRoomLogicalGpuBytes =
+    256U * 1024U * 1024U;
+constexpr std::size_t kMaximumPrivateRoomGpuHeapPlanBytes =
     256U * 1024U * 1024U;
 constexpr std::size_t kMaximumPrivateRoomCpuPackedBytes =
     128U * 1024U * 1024U;
-constexpr std::size_t kMaximumSnapshotTransitionGpuBytes =
-    384U * 1024U * 1024U;
+constexpr MTLResourceOptions kSharedTrackedResourceOptions =
+    static_cast<MTLResourceOptions>(
+        MTLResourceStorageModeShared |
+        MTLResourceHazardTrackingModeTracked);
 
 // This layout is deliberately independent from DrawVertex. It is the sole
 // CPU/GPU ABI shared with AirfixShaders.metal.
@@ -109,7 +119,7 @@ bool checkedAdd64(
 bool accountGpuBytes(
     const std::size_t bytes,
     std::size_t& aggregateBytes,
-    const std::size_t maximumBytes = kMaximumSyntheticGpuBytes) noexcept {
+    const std::size_t maximumBytes) noexcept {
     std::size_t next = 0U;
     if (!checkedAdd(aggregateBytes, bytes, next) ||
         next > maximumBytes) {
@@ -117,6 +127,127 @@ bool accountGpuBytes(
     }
     aggregateBytes = next;
     return true;
+}
+
+bool accountHeapResourcePlacement(
+    const MTLSizeAndAlign allocation,
+    std::size_t& heapBytes,
+    std::size_t& maximumAlignment,
+    const std::size_t maximumBytes) noexcept {
+    const auto size = static_cast<std::size_t>(allocation.size);
+    const auto alignment =
+        static_cast<std::size_t>(allocation.align);
+    if (size == 0U || alignment == 0U) {
+        return false;
+    }
+    const auto remainder = heapBytes % alignment;
+    std::size_t alignedOffset = heapBytes;
+    if (remainder != 0U &&
+        !checkedAdd(
+            heapBytes,
+            alignment - remainder,
+            alignedOffset)) {
+        return false;
+    }
+    std::size_t end = 0U;
+    if (!checkedAdd(alignedOffset, size, end) ||
+        end > maximumBytes) {
+        return false;
+    }
+    heapBytes = end;
+    maximumAlignment =
+        std::max(maximumAlignment, alignment);
+    return true;
+}
+
+bool finalizeHeapPlan(
+    std::size_t& heapBytes,
+    const std::size_t maximumAlignment,
+    const std::size_t maximumBytes) noexcept {
+    if (heapBytes == 0U) {
+        return maximumAlignment == 0U;
+    }
+    if (maximumAlignment == 0U) {
+        return false;
+    }
+    const auto remainder = heapBytes % maximumAlignment;
+    if (remainder != 0U &&
+        !checkedAdd(
+            heapBytes,
+            maximumAlignment - remainder,
+            heapBytes)) {
+        return false;
+    }
+    return heapBytes <= maximumBytes;
+}
+
+bool fitsNSUInteger(std::size_t value) noexcept;
+
+id<MTLHeap> newSharedTrackedHeap(
+    id<MTLDevice> device,
+    const std::size_t bytes,
+    NSString* label) {
+    if (bytes == 0U || !fitsNSUInteger(bytes)) {
+        return nil;
+    }
+    MTLHeapDescriptor* descriptor =
+        [[MTLHeapDescriptor alloc] init];
+    if (descriptor == nil) {
+        return nil;
+    }
+    descriptor.type = MTLHeapTypeAutomatic;
+    descriptor.storageMode = MTLStorageModeShared;
+    descriptor.cpuCacheMode =
+        MTLCPUCacheModeDefaultCache;
+    descriptor.hazardTrackingMode =
+        MTLHazardTrackingModeTracked;
+    descriptor.size = static_cast<NSUInteger>(bytes);
+    id<MTLHeap> heap =
+        [device newHeapWithDescriptor:descriptor];
+    // Metal may page-round descriptor.size, and iOS exposes no documented
+    // pre-creation upper bound for that rounding. The caller immediately
+    // measures currentAllocatedSize and obtains any supplemental admission.
+    if (heap == nil ||
+        heap.size == 0U ||
+        heap.size < static_cast<NSUInteger>(bytes) ||
+        heap.type != MTLHeapTypeAutomatic ||
+        heap.storageMode != MTLStorageModeShared ||
+        heap.cpuCacheMode !=
+            MTLCPUCacheModeDefaultCache ||
+        heap.hazardTrackingMode !=
+            MTLHazardTrackingModeTracked) {
+        return nil;
+    }
+    heap.label = label;
+    return heap;
+}
+
+bool accountCurrentHeapAllocation(
+    id<MTLHeap> heap,
+    std::size_t& aggregateBytes) noexcept {
+    if (heap == nil ||
+        heap.currentAllocatedSize == 0U ||
+        heap.currentAllocatedSize > heap.size) {
+        return false;
+    }
+    return checkedAdd(
+        aggregateBytes,
+        static_cast<std::size_t>(heap.currentAllocatedSize),
+        aggregateBytes);
+}
+
+bool finalizeHeapAllocationReservation(
+    airfix::render::SnapshotGpuBudgetLedger& ledger,
+    airfix::render::SnapshotGpuBudgetReservation& reservation,
+    const std::size_t currentAllocatedBytes) noexcept {
+    if (currentAllocatedBytes <= reservation.bytes()) {
+        return reservation.reconcile(currentAllocatedBytes);
+    }
+    const auto supplementalBytes =
+        currentAllocatedBytes - reservation.bytes();
+    auto supplement = ledger.tryReserve(supplementalBytes);
+    return supplement.has_value() &&
+        reservation.absorb(std::move(*supplement));
 }
 
 bool accountCpuPackedBytes(
@@ -313,16 +444,48 @@ simd_float4x4 aspectCorrection(const CGSize size) {
 }
 @property(nonatomic, strong) NSArray<AirfixMetalMeshBuffers*>* meshBuffers;
 @property(nonatomic, strong) NSArray<id<MTLTexture>>* textures;
+@property(nonatomic, strong) id<MTLHeap> bufferHeap;
+@property(nonatomic, strong) id<MTLHeap> textureHeap;
 @end
 
 @implementation AirfixMetalRoomResources
+
+- (void)dealloc {
+    // Suballocated resources must release before their backing heaps. The
+    // snapshot token is consumed only after this complete owner is destroyed.
+    _meshBuffers = nil;
+    _textures = nil;
+    _bufferHeap = nil;
+    _textureHeap = nil;
+}
+
+@end
+
+@interface AirfixSnapshotGpuBudgetLedgerHolder : NSObject {
+@public
+    std::shared_ptr<airfix::render::SnapshotGpuBudgetLedger> _ledger;
+}
+@end
+
+@implementation AirfixSnapshotGpuBudgetLedgerHolder
+@end
+
+@interface AirfixGpuBudgetReservationHolder : NSObject {
+@public
+    std::optional<airfix::render::SnapshotGpuBudgetReservation>
+        _reservation;
+}
+@end
+
+@implementation AirfixGpuBudgetReservationHolder
 @end
 
 @interface AirfixMetalRoomSnapshot : NSObject {
 @public
     __strong AirfixMetalRoomResources* _resources;
     __strong dispatch_queue_t _releaseQueue;
-    std::size_t _allocatedGpuBytes;
+    __strong AirfixGpuBudgetReservationHolder*
+        _gpuBudgetReservationHolder;
     BOOL _worldRoomInstalled;
 }
 @end
@@ -333,22 +496,96 @@ simd_float4x4 aspectCorrection(const CGSize size) {
     // Snapshot publication/discard is deliberately O(1) on the main thread.
     // Transfer the final ownership token to a serial worker queue so Metal
     // arrays and the potentially large C++ payload are destroyed off-main.
+    // The exact GPU debit remains live until that destruction is complete.
     if (_resources != nil && _releaseQueue != nil) {
+        AirfixGpuBudgetReservationHolder* reservationHolder =
+            _gpuBudgetReservationHolder;
         void* retainedResources =
             (__bridge_retained void*)_resources;
         _resources = nil;
+        _gpuBudgetReservationHolder = nil;
         dispatch_async(_releaseQueue, ^{
             @autoreleasepool {
-                AirfixMetalRoomResources* resources =
+                AirfixMetalRoomResources*
+                    __attribute__((objc_precise_lifetime)) resources =
                     (__bridge_transfer AirfixMetalRoomResources*)
                         retainedResources;
                 (void)resources;
             }
+            if (reservationHolder != nil) {
+                reservationHolder->_reservation.reset();
+            }
         });
+        return;
+    }
+
+    // Construction always installs a release queue before a reservation.
+    // Keep the fallback path ordered as well if that invariant is broken.
+    AirfixGpuBudgetReservationHolder* reservationHolder =
+        _gpuBudgetReservationHolder;
+    _gpuBudgetReservationHolder = nil;
+    @autoreleasepool {
+        AirfixMetalRoomResources*
+            __attribute__((objc_precise_lifetime)) resources =
+            _resources;
+        _resources = nil;
+        (void)resources;
+    }
+    if (reservationHolder != nil) {
+        reservationHolder->_reservation.reset();
     }
 }
 
 @end
+
+@interface AirfixBudgetedMetalTexture : NSObject {
+@public
+    __strong id<MTLTexture> _texture;
+    __strong id<MTLHeap> _heap;
+    __strong AirfixGpuBudgetReservationHolder*
+        _gpuBudgetReservationHolder;
+}
+@end
+
+@implementation AirfixBudgetedMetalTexture
+
+- (void)dealloc {
+    AirfixGpuBudgetReservationHolder* reservationHolder =
+        _gpuBudgetReservationHolder;
+    _gpuBudgetReservationHolder = nil;
+    @autoreleasepool {
+        id<MTLTexture> __attribute__((objc_precise_lifetime)) texture =
+            _texture;
+        _texture = nil;
+        (void)texture;
+    }
+    @autoreleasepool {
+        id<MTLHeap> __attribute__((objc_precise_lifetime)) heap =
+            _heap;
+        _heap = nil;
+        (void)heap;
+    }
+    if (reservationHolder != nil) {
+        reservationHolder->_reservation.reset();
+    }
+}
+
+@end
+
+namespace {
+
+bool hasActiveGpuBudgetReservation(
+    AirfixMetalRoomSnapshot* snapshot) noexcept {
+    if (snapshot == nil ||
+        snapshot->_gpuBudgetReservationHolder == nil) {
+        return false;
+    }
+    const auto& reservation =
+        snapshot->_gpuBudgetReservationHolder->_reservation;
+    return reservation.has_value() && reservation->active();
+}
+
+} // namespace
 
 @interface AirfixPreparedMetalRoom : NSObject {
 @public
@@ -371,6 +608,26 @@ struct PrivateRoomPreflight {
     std::size_t aggregateGpuBytes{};
     std::size_t aggregateCpuPackedBytes{};
 };
+
+void configurePrivateTextureDescriptor(
+    MTLTextureDescriptor* descriptor,
+    const airfix::content::LoadedTextureAsset& source) noexcept {
+    const auto& upload = source.upload;
+    const auto& base = upload.uploadLevels.front();
+    descriptor.textureType = MTLTextureType2D;
+    descriptor.pixelFormat = MTLPixelFormatRGBA8Unorm;
+    descriptor.width = static_cast<NSUInteger>(base.width);
+    descriptor.height = static_cast<NSUInteger>(base.height);
+    descriptor.depth = 1U;
+    descriptor.mipmapLevelCount =
+        static_cast<NSUInteger>(upload.allocatedMipCount);
+    descriptor.sampleCount = 1U;
+    descriptor.arrayLength = 1U;
+    descriptor.usage = MTLTextureUsageShaderRead;
+    descriptor.storageMode = MTLStorageModeShared;
+    descriptor.hazardTrackingMode =
+        MTLHazardTrackingModeTracked;
+}
 
 bool uint64ToSize(
     const std::uint64_t value,
@@ -507,7 +764,7 @@ bool validateTextureAsset(
         accountGpuBytes(
             residentSize,
             aggregateGpuBytes,
-            kMaximumPrivateRoomGpuBytes);
+            kMaximumPrivateRoomLogicalGpuBytes);
 }
 
 bool preflightPrivateRoom(
@@ -557,11 +814,11 @@ bool preflightPrivateRoom(
             !accountGpuBytes(
                 vertexBytes,
                 result.aggregateGpuBytes,
-                kMaximumPrivateRoomGpuBytes) ||
+                kMaximumPrivateRoomLogicalGpuBytes) ||
             !accountGpuBytes(
                 indexBytes,
                 result.aggregateGpuBytes,
-                kMaximumPrivateRoomGpuBytes) ||
+                kMaximumPrivateRoomLogicalGpuBytes) ||
             !accountCpuPackedBytes(
                 vertexBytes,
                 result.aggregateCpuPackedBytes,
@@ -635,10 +892,12 @@ bool preflightPrivateRoom(
 @property(nonatomic, strong) id<MTLRenderPipelineState> pipelineState;
 @property(nonatomic, strong) id<MTLDepthStencilState> depthState;
 @property(nonatomic, strong) id<MTLSamplerState> samplerState;
-@property(nonatomic, strong) id<MTLTexture> fallbackTexture;
+@property(nonatomic, strong) AirfixBudgetedMetalTexture* fallbackResource;
 @property(atomic, strong) AirfixMetalRoomSnapshot* roomSnapshot;
 @property(nonatomic, strong) NSObject* preparationOwnerToken;
 @property(nonatomic, strong) dispatch_queue_t resourceReleaseQueue;
+@property(nonatomic, strong)
+    AirfixSnapshotGpuBudgetLedgerHolder* gpuBudgetHolder;
 @end
 
 @implementation AirfixMetalRenderer
@@ -696,6 +955,18 @@ bool preflightPrivateRoom(
         }
         return nil;
     }
+    AirfixSnapshotGpuBudgetLedgerHolder* gpuBudgetHolder =
+        [[AirfixSnapshotGpuBudgetLedgerHolder alloc] init];
+    if (gpuBudgetHolder == nil) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::unexpectedFailure,
+                @"Metal snapshot GPU accounting could not be created.");
+        }
+        return nil;
+    }
+    gpuBudgetHolder->_ledger =
+        std::make_shared<airfix::render::SnapshotGpuBudgetLedger>();
     dispatch_queue_t resourceReleaseQueue =
         dispatch_queue_create(
             "com.tryk016.airfixdogfighter.metal-resource-release",
@@ -826,8 +1097,14 @@ bool preflightPrivateRoom(
                 mesh.indices.size(), sizeof(std::uint32_t), indexBytes) ||
             vertexBytes > maximumBufferLength ||
             indexBytes > maximumBufferLength ||
-            !accountGpuBytes(vertexBytes, aggregateGpuBytes) ||
-            !accountGpuBytes(indexBytes, aggregateGpuBytes) ||
+            !accountGpuBytes(
+                vertexBytes,
+                aggregateGpuBytes,
+                kMaximumSyntheticLogicalGpuBytes) ||
+            !accountGpuBytes(
+                indexBytes,
+                aggregateGpuBytes,
+                kMaximumSyntheticLogicalGpuBytes) ||
             !accountCpuPackedBytes(
                 vertexBytes, aggregateCpuPackedBytes)) {
             resourcePreflightValid = false;
@@ -840,8 +1117,14 @@ bool preflightPrivateRoom(
     constexpr std::size_t syntheticTextureBytes = 2U * 2U * 4U;
     constexpr std::size_t fallbackTextureBytes = 1U * 1U * 4U;
     if (!resourcePreflightValid ||
-        !accountGpuBytes(syntheticTextureBytes, aggregateGpuBytes) ||
-        !accountGpuBytes(fallbackTextureBytes, aggregateGpuBytes)) {
+        !accountGpuBytes(
+            syntheticTextureBytes,
+            aggregateGpuBytes,
+            kMaximumSyntheticLogicalGpuBytes) ||
+        !accountGpuBytes(
+            fallbackTextureBytes,
+            aggregateGpuBytes,
+            kMaximumSyntheticLogicalGpuBytes)) {
         if (error != nullptr) {
             *error = makeError(
                 RendererError::resourceLimit,
@@ -929,6 +1212,166 @@ bool preflightPrivateRoom(
         packedVertices.push_back(std::move(gpuVertices));
     }
 
+    MTLTextureDescriptor* textureDescriptor =
+        [MTLTextureDescriptor
+            texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+                                         width:2U
+                                        height:2U
+                                     mipmapped:NO];
+    textureDescriptor.usage = MTLTextureUsageShaderRead;
+    textureDescriptor.storageMode = MTLStorageModeShared;
+    textureDescriptor.hazardTrackingMode =
+        MTLHazardTrackingModeTracked;
+    MTLTextureDescriptor* fallbackDescriptor =
+        [MTLTextureDescriptor
+            texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+                                         width:1U
+                                        height:1U
+                                     mipmapped:NO];
+    fallbackDescriptor.usage = MTLTextureUsageShaderRead;
+    fallbackDescriptor.storageMode = MTLStorageModeShared;
+    fallbackDescriptor.hazardTrackingMode =
+        MTLHazardTrackingModeTracked;
+    if (textureDescriptor == nil || fallbackDescriptor == nil) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::textureCreation,
+                @"The public Metal texture descriptors could not be created.");
+        }
+        return nil;
+    }
+
+    std::size_t bufferHeapBytes = 0U;
+    std::size_t bufferHeapAlignment = 0U;
+    bool heapPlanValid = true;
+    for (std::size_t meshSlot = 0U;
+         meshSlot < vertexByteCounts.size();
+         ++meshSlot) {
+        if ((vertexByteCounts[meshSlot] != 0U &&
+                !accountHeapResourcePlacement(
+                    [device
+                        heapBufferSizeAndAlignWithLength:
+                            vertexByteCounts[meshSlot]
+                        options:kSharedTrackedResourceOptions],
+                    bufferHeapBytes,
+                    bufferHeapAlignment,
+                    kMaximumSyntheticGpuHeapPlanBytes)) ||
+            (indexByteCounts[meshSlot] != 0U &&
+                !accountHeapResourcePlacement(
+                    [device
+                        heapBufferSizeAndAlignWithLength:
+                            indexByteCounts[meshSlot]
+                        options:kSharedTrackedResourceOptions],
+                    bufferHeapBytes,
+                    bufferHeapAlignment,
+                    kMaximumSyntheticGpuHeapPlanBytes))) {
+            heapPlanValid = false;
+            break;
+        }
+    }
+    std::size_t textureHeapBytes = 0U;
+    std::size_t textureHeapAlignment = 0U;
+    std::size_t fallbackHeapBytes = 0U;
+    std::size_t fallbackHeapAlignment = 0U;
+    if (!heapPlanValid ||
+        !accountHeapResourcePlacement(
+            [device
+                heapTextureSizeAndAlignWithDescriptor:
+                    textureDescriptor],
+            textureHeapBytes,
+            textureHeapAlignment,
+            kMaximumSyntheticGpuHeapPlanBytes) ||
+        !accountHeapResourcePlacement(
+            [device
+                heapTextureSizeAndAlignWithDescriptor:
+                    fallbackDescriptor],
+            fallbackHeapBytes,
+            fallbackHeapAlignment,
+            kMaximumSyntheticGpuHeapPlanBytes) ||
+        !finalizeHeapPlan(
+            bufferHeapBytes,
+            bufferHeapAlignment,
+            kMaximumSyntheticGpuHeapPlanBytes) ||
+        !finalizeHeapPlan(
+            textureHeapBytes,
+            textureHeapAlignment,
+            kMaximumSyntheticGpuHeapPlanBytes) ||
+        !finalizeHeapPlan(
+            fallbackHeapBytes,
+            fallbackHeapAlignment,
+            kMaximumSyntheticGpuHeapPlanBytes)) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::resourceLimit,
+                @"The public Metal heap plan exceeds its budget.");
+        }
+        return nil;
+    }
+    std::size_t admittedHeapPlanBytes = 0U;
+    if (!accountGpuBytes(
+            bufferHeapBytes,
+            admittedHeapPlanBytes,
+            kMaximumSyntheticGpuHeapPlanBytes) ||
+        !accountGpuBytes(
+            textureHeapBytes,
+            admittedHeapPlanBytes,
+            kMaximumSyntheticGpuHeapPlanBytes) ||
+        !accountGpuBytes(
+            fallbackHeapBytes,
+            admittedHeapPlanBytes,
+            kMaximumSyntheticGpuHeapPlanBytes)) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::resourceLimit,
+                @"The aggregate public Metal heap plan exceeds its budget.");
+        }
+        return nil;
+    }
+
+    // Admit the checked descriptor plan before the first heap exists. Metal's
+    // undocumented page-rounding delta, if any, is measured and admitted
+    // separately before the candidate can publish.
+    auto bootstrapPlanReservation =
+        gpuBudgetHolder->_ledger->tryReserve(
+            admittedHeapPlanBytes);
+    if (!bootstrapPlanReservation.has_value()) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::resourceLimit,
+                @"The public heap plan is unavailable in the aggregate heap-admission budget.");
+        }
+        return nil;
+    }
+
+    // Staging collections and autoreleased Metal command objects drain before
+    // the outer plan reservation can be destroyed on any failure.
+    @autoreleasepool {
+    id<MTLHeap> bufferHeap =
+        newSharedTrackedHeap(
+            device,
+            bufferHeapBytes,
+            @"Airfix public snapshot buffer heap");
+    id<MTLHeap> textureHeap =
+        newSharedTrackedHeap(
+            device,
+            textureHeapBytes,
+            @"Airfix public snapshot texture heap");
+    id<MTLHeap> fallbackHeap =
+        newSharedTrackedHeap(
+            device,
+            fallbackHeapBytes,
+            @"Airfix persistent fallback texture heap");
+    if (bufferHeap == nil ||
+        textureHeap == nil ||
+        fallbackHeap == nil) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::resourceLimit,
+                @"Metal could not create the complete public heap plan.");
+        }
+        return nil;
+    }
+
     NSMutableArray<AirfixMetalMeshBuffers*>* meshBuffers =
         [NSMutableArray
             arrayWithCapacity:
@@ -939,19 +1382,37 @@ bool preflightPrivateRoom(
         id<MTLBuffer> vertexBuffer = nil;
         if (vertexByteCounts[meshSlot] != 0U) {
             vertexBuffer =
-                [device newBufferWithBytes:packedVertices[meshSlot].data()
-                                   length:vertexByteCounts[meshSlot]
-                                  options:MTLResourceStorageModeShared];
+                [bufferHeap
+                    newBufferWithLength:vertexByteCounts[meshSlot]
+                    options:kSharedTrackedResourceOptions];
+            if (vertexBuffer != nil &&
+                vertexBuffer.contents != nullptr) {
+                std::memcpy(
+                    vertexBuffer.contents,
+                    packedVertices[meshSlot].data(),
+                    vertexByteCounts[meshSlot]);
+            }
         }
         id<MTLBuffer> indexBuffer = nil;
         if (indexByteCounts[meshSlot] != 0U) {
             indexBuffer =
-                [device newBufferWithBytes:payload.meshes[meshSlot].indices.data()
-                                   length:indexByteCounts[meshSlot]
-                                  options:MTLResourceStorageModeShared];
+                [bufferHeap
+                    newBufferWithLength:indexByteCounts[meshSlot]
+                    options:kSharedTrackedResourceOptions];
+            if (indexBuffer != nil &&
+                indexBuffer.contents != nullptr) {
+                std::memcpy(
+                    indexBuffer.contents,
+                    payload.meshes[meshSlot].indices.data(),
+                    indexByteCounts[meshSlot]);
+            }
         }
-        if ((vertexByteCounts[meshSlot] != 0U && vertexBuffer == nil) ||
-            (indexByteCounts[meshSlot] != 0U && indexBuffer == nil)) {
+        if ((vertexByteCounts[meshSlot] != 0U &&
+                (vertexBuffer == nil ||
+                 vertexBuffer.contents == nullptr)) ||
+            (indexByteCounts[meshSlot] != 0U &&
+                (indexBuffer == nil ||
+                 indexBuffer.contents == nullptr))) {
             if (error != nullptr) {
                 *error = makeError(RendererError::bufferCreation, @"Metal mesh buffer creation failed.");
             }
@@ -963,15 +1424,9 @@ bool preflightPrivateRoom(
         [meshBuffers addObject:buffers];
     }
 
-    MTLTextureDescriptor* textureDescriptor =
-        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
-                                                          width:2U
-                                                         height:2U
-                                                      mipmapped:NO];
-    textureDescriptor.usage = MTLTextureUsageShaderRead;
-    textureDescriptor.storageMode = MTLStorageModeShared;
     id<MTLTexture> syntheticTexture =
-        [device newTextureWithDescriptor:textureDescriptor];
+        [textureHeap
+            newTextureWithDescriptor:textureDescriptor];
     if (syntheticTexture == nil) {
         if (error != nullptr) {
             *error = makeError(RendererError::textureCreation, @"Metal texture creation failed.");
@@ -990,15 +1445,9 @@ bool preflightPrivateRoom(
                           withBytes:pixels.data()
                         bytesPerRow:2U * 4U];
 
-    MTLTextureDescriptor* fallbackDescriptor =
-        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
-                                                          width:1U
-                                                         height:1U
-                                                      mipmapped:NO];
-    fallbackDescriptor.usage = MTLTextureUsageShaderRead;
-    fallbackDescriptor.storageMode = MTLStorageModeShared;
     id<MTLTexture> fallbackTexture =
-        [device newTextureWithDescriptor:fallbackDescriptor];
+        [fallbackHeap
+            newTextureWithDescriptor:fallbackDescriptor];
     if (fallbackTexture == nil) {
         if (error != nullptr) {
             *error = makeError(RendererError::textureCreation, @"Metal fallback texture creation failed.");
@@ -1015,56 +1464,91 @@ bool preflightPrivateRoom(
     NSArray<AirfixMetalMeshBuffers*>* meshBufferSnapshot =
         [meshBuffers copy];
     NSArray<id<MTLTexture>>* textureSnapshot = @[ syntheticTexture ];
-    std::size_t snapshotAllocatedGpuBytes = 0U;
     for (AirfixMetalMeshBuffers* buffers in meshBufferSnapshot) {
         if ((buffers.vertexBuffer != nil &&
-                (buffers.vertexBuffer.allocatedSize == 0U ||
-                 !accountGpuBytes(
-                     static_cast<std::size_t>(
-                         buffers.vertexBuffer.allocatedSize),
-                     snapshotAllocatedGpuBytes))) ||
+                buffers.vertexBuffer.allocatedSize == 0U) ||
             (buffers.indexBuffer != nil &&
-                (buffers.indexBuffer.allocatedSize == 0U ||
-                 !accountGpuBytes(
-                     static_cast<std::size_t>(
-                         buffers.indexBuffer.allocatedSize),
-                     snapshotAllocatedGpuBytes)))) {
+                buffers.indexBuffer.allocatedSize == 0U)) {
             if (error != nullptr) {
                 *error = makeError(
                     RendererError::resourceLimit,
-                    @"Allocated public mesh buffers exceed the Metal budget.");
+                    @"A public heap buffer has no allocation.");
             }
             return nil;
         }
     }
     if (syntheticTexture.allocatedSize == 0U ||
-        !accountGpuBytes(
-            static_cast<std::size_t>(syntheticTexture.allocatedSize),
-            snapshotAllocatedGpuBytes)) {
+        fallbackTexture.allocatedSize == 0U) {
         if (error != nullptr) {
             *error = makeError(
                 RendererError::resourceLimit,
-                @"The allocated public texture exceeds the Metal budget.");
+                @"A public heap texture has no allocation.");
         }
         return nil;
     }
-    std::size_t totalAllocatedGpuBytes = snapshotAllocatedGpuBytes;
-    if (fallbackTexture.allocatedSize == 0U ||
-        !accountGpuBytes(
-            static_cast<std::size_t>(fallbackTexture.allocatedSize),
-            totalAllocatedGpuBytes)) {
+    std::size_t snapshotHeapCurrentAllocatedBytes = 0U;
+    std::size_t fallbackHeapCurrentAllocatedBytes = 0U;
+    std::size_t totalHeapCurrentAllocatedBytes = 0U;
+    if (!accountCurrentHeapAllocation(
+            bufferHeap,
+            snapshotHeapCurrentAllocatedBytes) ||
+        !accountCurrentHeapAllocation(
+            textureHeap,
+            snapshotHeapCurrentAllocatedBytes) ||
+        !accountCurrentHeapAllocation(
+            fallbackHeap,
+            fallbackHeapCurrentAllocatedBytes) ||
+        !checkedAdd(
+            snapshotHeapCurrentAllocatedBytes,
+            fallbackHeapCurrentAllocatedBytes,
+            totalHeapCurrentAllocatedBytes)) {
         if (error != nullptr) {
             *error = makeError(
                 RendererError::resourceLimit,
-                @"The allocated fallback texture exceeds the Metal budget.");
+                @"The created public heaps have invalid current allocations.");
         }
         return nil;
     }
+    // Descriptor plans are admitted before creation. Metal may page-round a
+    // heap beyond that plan, so the measured current allocation must obtain
+    // any supplemental aggregate admission before this snapshot can publish.
+    if (!finalizeHeapAllocationReservation(
+            *gpuBudgetHolder->_ledger,
+            *bootstrapPlanReservation,
+            totalHeapCurrentAllocatedBytes)) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::resourceLimit,
+                @"The public heaps' current allocation is unavailable in the aggregate admission budget.");
+        }
+        return nil;
+    }
+    auto fallbackReservation =
+        bootstrapPlanReservation->split(
+            fallbackHeapCurrentAllocatedBytes);
+    if (!fallbackReservation.has_value()) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::unexpectedFailure,
+                @"The public fallback GPU debit could not be separated.");
+        }
+        return nil;
+    }
+
     AirfixMetalRoomResources* roomResources =
         [[AirfixMetalRoomResources alloc] init];
     AirfixMetalRoomSnapshot* roomSnapshot =
         [[AirfixMetalRoomSnapshot alloc] init];
-    if (roomResources == nil || roomSnapshot == nil) {
+    AirfixBudgetedMetalTexture* fallbackResource =
+        [[AirfixBudgetedMetalTexture alloc] init];
+    AirfixGpuBudgetReservationHolder* snapshotReservationHolder =
+        [[AirfixGpuBudgetReservationHolder alloc] init];
+    AirfixGpuBudgetReservationHolder* fallbackReservationHolder =
+        [[AirfixGpuBudgetReservationHolder alloc] init];
+    if (roomResources == nil || roomSnapshot == nil ||
+        fallbackResource == nil ||
+        snapshotReservationHolder == nil ||
+        fallbackReservationHolder == nil) {
         if (error != nullptr) {
             *error = makeError(
                 RendererError::unexpectedFailure,
@@ -1077,10 +1561,21 @@ bool preflightPrivateRoom(
     roomResources->_indexOffsets = std::move(indexOffsets);
     roomResources.meshBuffers = meshBufferSnapshot;
     roomResources.textures = textureSnapshot;
+    roomResources.bufferHeap = bufferHeap;
+    roomResources.textureHeap = textureHeap;
     roomSnapshot->_resources = roomResources;
     roomSnapshot->_releaseQueue = resourceReleaseQueue;
-    roomSnapshot->_allocatedGpuBytes = snapshotAllocatedGpuBytes;
     roomSnapshot->_worldRoomInstalled = NO;
+    snapshotReservationHolder->_reservation.emplace(
+        std::move(*bootstrapPlanReservation));
+    fallbackReservationHolder->_reservation.emplace(
+        std::move(*fallbackReservation));
+    roomSnapshot->_gpuBudgetReservationHolder =
+        snapshotReservationHolder;
+    fallbackResource->_texture = fallbackTexture;
+    fallbackResource->_heap = fallbackHeap;
+    fallbackResource->_gpuBudgetReservationHolder =
+        fallbackReservationHolder;
 
     // Publish only after the complete renderer candidate has been validated
     // and every Metal object has been created successfully.
@@ -1088,12 +1583,14 @@ bool preflightPrivateRoom(
     self.pipelineState = pipelineState;
     self.depthState = depthState;
     self.samplerState = samplerState;
-    self.fallbackTexture = fallbackTexture;
+    self.fallbackResource = fallbackResource;
     self.roomSnapshot = roomSnapshot;
     self.preparationOwnerToken = preparationOwnerToken;
     self.resourceReleaseQueue = resourceReleaseQueue;
+    self.gpuBudgetHolder = gpuBudgetHolder;
 
     return self;
+    }
     } catch (...) {
         if (error != nullptr) {
             *error = makeError(
@@ -1131,8 +1628,12 @@ bool preflightPrivateRoom(
         id<MTLDevice> device = commandQueue.device;
         dispatch_queue_t resourceReleaseQueue =
             self.resourceReleaseQueue;
+        AirfixSnapshotGpuBudgetLedgerHolder* gpuBudgetHolder =
+            self.gpuBudgetHolder;
         if (commandQueue == nil || device == nil ||
-            resourceReleaseQueue == nil) {
+            resourceReleaseQueue == nil ||
+            gpuBudgetHolder == nil ||
+            gpuBudgetHolder->_ledger == nullptr) {
             if (error != nullptr) {
                 *error = makeError(
                     RendererError::missingDevice,
@@ -1151,27 +1652,147 @@ bool preflightPrivateRoom(
             return nil;
         }
 
-        // Reject work that is already known to exceed the transition policy
-        // before creating any candidate Metal resource. This is a logical
-        // byte preflight; allocatedSize is still checked after every actual
-        // allocation and again against the current snapshot at publication.
-        std::size_t logicalTransitionGpuBytes = 0U;
-        @autoreleasepool {
-            AirfixMetalRoomSnapshot* publishedSnapshot =
-                self.roomSnapshot;
-            if (publishedSnapshot != nil) {
-                logicalTransitionGpuBytes =
-                    publishedSnapshot->_allocatedGpuBytes;
-            }
-        }
+        // Keep the cheap logical-byte rejection before building allocator
+        // descriptors. It is best-effort; the aligned CAS reservation below
+        // is the authoritative admission decision.
+        std::size_t logicalAggregateGpuBytes =
+            gpuBudgetHolder->_ledger->reservedBytes();
         if (!accountGpuBytes(
                 preflight.aggregateGpuBytes,
-                logicalTransitionGpuBytes,
-                kMaximumSnapshotTransitionGpuBytes)) {
+                logicalAggregateGpuBytes,
+                gpuBudgetHolder->_ledger->maximumBytes())) {
             if (error != nullptr) {
                 *error = makeError(
                     RendererError::resourceLimit,
-                    @"The current and candidate room exceed the logical Metal transition budget.");
+                    @"The live snapshots and candidate exceed the logical Metal aggregate budget.");
+            }
+            return nil;
+        }
+
+        std::size_t bufferHeapBytes = 0U;
+        std::size_t bufferHeapAlignment = 0U;
+        bool heapPlanValid = true;
+        for (std::size_t meshSlot = 0U;
+             meshSlot < preflight.vertexByteCounts.size();
+             ++meshSlot) {
+            if ((preflight.vertexByteCounts[meshSlot] != 0U &&
+                    !accountHeapResourcePlacement(
+                        [device
+                            heapBufferSizeAndAlignWithLength:
+                                preflight.vertexByteCounts[meshSlot]
+                            options:kSharedTrackedResourceOptions],
+                        bufferHeapBytes,
+                        bufferHeapAlignment,
+                        kMaximumPrivateRoomGpuHeapPlanBytes)) ||
+                (preflight.indexByteCounts[meshSlot] != 0U &&
+                    !accountHeapResourcePlacement(
+                        [device
+                            heapBufferSizeAndAlignWithLength:
+                                preflight.indexByteCounts[meshSlot]
+                            options:kSharedTrackedResourceOptions],
+                        bufferHeapBytes,
+                        bufferHeapAlignment,
+                        kMaximumPrivateRoomGpuHeapPlanBytes))) {
+                heapPlanValid = false;
+                break;
+            }
+        }
+        std::size_t textureHeapBytes = 0U;
+        std::size_t textureHeapAlignment = 0U;
+        if (heapPlanValid) {
+            for (const auto& source : room.textures) {
+                MTLTextureDescriptor* descriptor =
+                    [[MTLTextureDescriptor alloc] init];
+                if (descriptor == nil) {
+                    heapPlanValid = false;
+                    break;
+                }
+                configurePrivateTextureDescriptor(
+                    descriptor, source);
+                if (!accountHeapResourcePlacement(
+                        [device
+                            heapTextureSizeAndAlignWithDescriptor:
+                                descriptor],
+                        textureHeapBytes,
+                        textureHeapAlignment,
+                        kMaximumPrivateRoomGpuHeapPlanBytes)) {
+                    heapPlanValid = false;
+                    break;
+                }
+            }
+        }
+        if (!heapPlanValid ||
+            !finalizeHeapPlan(
+                bufferHeapBytes,
+                bufferHeapAlignment,
+                kMaximumPrivateRoomGpuHeapPlanBytes) ||
+            !finalizeHeapPlan(
+                textureHeapBytes,
+                textureHeapAlignment,
+                kMaximumPrivateRoomGpuHeapPlanBytes)) {
+            if (error != nullptr) {
+                *error = makeError(
+                    RendererError::resourceLimit,
+                    @"The private Metal heap plan exceeds its budget.");
+            }
+            return nil;
+        }
+        std::size_t admittedHeapPlanBytes = 0U;
+        if (!accountGpuBytes(
+                bufferHeapBytes,
+                admittedHeapPlanBytes,
+                kMaximumPrivateRoomGpuHeapPlanBytes) ||
+            !accountGpuBytes(
+                textureHeapBytes,
+                admittedHeapPlanBytes,
+                kMaximumPrivateRoomGpuHeapPlanBytes)) {
+            if (error != nullptr) {
+                *error = makeError(
+                    RendererError::resourceLimit,
+                    @"The aggregate private Metal heap plan exceeds its budget.");
+            }
+            return nil;
+        }
+
+        // Admit the checked descriptor plan before the first heap exists.
+        // Any Metal page-rounding delta is measured and admitted separately
+        // before this candidate can leave preparation.
+        auto privatePlanReservation =
+            gpuBudgetHolder->_ledger->tryReserve(
+                admittedHeapPlanBytes);
+        if (!privatePlanReservation.has_value()) {
+            if (error != nullptr) {
+                *error = makeError(
+                    RendererError::resourceLimit,
+                    @"The private heap plan is unavailable in the aggregate heap-admission budget.");
+            }
+            return nil;
+        }
+
+        // The pool owns all autoreleased staging wrappers and Metal command
+        // objects. It drains before the outer plan reservation on every
+        // failure.
+        @autoreleasepool {
+        id<MTLHeap> bufferHeap =
+            bufferHeapBytes != 0U
+            ? newSharedTrackedHeap(
+                  device,
+                  bufferHeapBytes,
+                  @"Airfix private snapshot buffer heap")
+            : nil;
+        id<MTLHeap> textureHeap =
+            textureHeapBytes != 0U
+            ? newSharedTrackedHeap(
+                  device,
+                  textureHeapBytes,
+                  @"Airfix private snapshot texture heap")
+            : nil;
+        if ((bufferHeapBytes != 0U && bufferHeap == nil) ||
+            (textureHeapBytes != 0U && textureHeap == nil)) {
+            if (error != nullptr) {
+                *error = makeError(
+                    RendererError::resourceLimit,
+                    @"Metal could not create the complete private heap plan.");
             }
             return nil;
         }
@@ -1188,7 +1809,6 @@ bool preflightPrivateRoom(
             }
             return nil;
         }
-        std::size_t allocatedGpuBytes = 0U;
         for (std::size_t meshSlot = 0U;
              meshSlot < room.model.meshes.size();
              ++meshSlot) {
@@ -1211,20 +1831,38 @@ bool preflightPrivateRoom(
             id<MTLBuffer> vertexBuffer = nil;
             if (packedBytes != 0U) {
                 vertexBuffer =
-                    [device newBufferWithBytes:packedVertices.data()
-                                       length:packedBytes
-                                      options:MTLResourceStorageModeShared];
+                    [bufferHeap
+                        newBufferWithLength:packedBytes
+                        options:kSharedTrackedResourceOptions];
+                if (vertexBuffer != nil &&
+                    vertexBuffer.contents != nullptr) {
+                    std::memcpy(
+                        vertexBuffer.contents,
+                        packedVertices.data(),
+                        packedBytes);
+                }
             }
             id<MTLBuffer> indexBuffer = nil;
             const auto indexBytes = preflight.indexByteCounts[meshSlot];
             if (indexBytes != 0U) {
                 indexBuffer =
-                    [device newBufferWithBytes:mesh.indices.data()
-                                       length:indexBytes
-                                      options:MTLResourceStorageModeShared];
+                    [bufferHeap
+                        newBufferWithLength:indexBytes
+                        options:kSharedTrackedResourceOptions];
+                if (indexBuffer != nil &&
+                    indexBuffer.contents != nullptr) {
+                    std::memcpy(
+                        indexBuffer.contents,
+                        mesh.indices.data(),
+                        indexBytes);
+                }
             }
-            if ((packedBytes != 0U && vertexBuffer == nil) ||
-                (indexBytes != 0U && indexBuffer == nil)) {
+            if ((packedBytes != 0U &&
+                    (vertexBuffer == nil ||
+                     vertexBuffer.contents == nullptr)) ||
+                (indexBytes != 0U &&
+                    (indexBuffer == nil ||
+                     indexBuffer.contents == nullptr))) {
                 if (error != nullptr) {
                     *error = makeError(
                         RendererError::bufferCreation,
@@ -1233,23 +1871,13 @@ bool preflightPrivateRoom(
                 return nil;
             }
             if ((vertexBuffer != nil &&
-                    (vertexBuffer.allocatedSize == 0U ||
-                     !accountGpuBytes(
-                         static_cast<std::size_t>(
-                             vertexBuffer.allocatedSize),
-                         allocatedGpuBytes,
-                         kMaximumPrivateRoomGpuBytes))) ||
+                    vertexBuffer.allocatedSize == 0U) ||
                 (indexBuffer != nil &&
-                    (indexBuffer.allocatedSize == 0U ||
-                     !accountGpuBytes(
-                         static_cast<std::size_t>(
-                             indexBuffer.allocatedSize),
-                         allocatedGpuBytes,
-                         kMaximumPrivateRoomGpuBytes)))) {
+                    indexBuffer.allocatedSize == 0U)) {
                 if (error != nullptr) {
                     *error = makeError(
                         RendererError::resourceLimit,
-                        @"Allocated private mesh buffers exceed the Metal budget.");
+                        @"A private heap buffer has no allocation.");
                 }
                 return nil;
             }
@@ -1284,7 +1912,6 @@ bool preflightPrivateRoom(
         }
         for (const auto& source : room.textures) {
             const auto& upload = source.upload;
-            const auto& base = upload.uploadLevels.front();
             MTLTextureDescriptor* descriptor =
                 [[MTLTextureDescriptor alloc] init];
             if (descriptor == nil) {
@@ -1295,30 +1922,17 @@ bool preflightPrivateRoom(
                 }
                 return nil;
             }
-            descriptor.textureType = MTLTextureType2D;
-            descriptor.pixelFormat = MTLPixelFormatRGBA8Unorm;
-            descriptor.width = static_cast<NSUInteger>(base.width);
-            descriptor.height = static_cast<NSUInteger>(base.height);
-            descriptor.depth = 1U;
-            descriptor.mipmapLevelCount =
-                static_cast<NSUInteger>(upload.allocatedMipCount);
-            descriptor.sampleCount = 1U;
-            descriptor.arrayLength = 1U;
-            descriptor.usage = MTLTextureUsageShaderRead;
-            descriptor.storageMode = MTLStorageModeShared;
+            configurePrivateTextureDescriptor(descriptor, source);
 
             id<MTLTexture> texture =
-                [device newTextureWithDescriptor:descriptor];
+                [textureHeap
+                    newTextureWithDescriptor:descriptor];
             if (texture == nil ||
                 texture.width != descriptor.width ||
                 texture.height != descriptor.height ||
                 texture.mipmapLevelCount !=
                     descriptor.mipmapLevelCount ||
-                texture.allocatedSize == 0U ||
-                !accountGpuBytes(
-                    static_cast<std::size_t>(texture.allocatedSize),
-                    allocatedGpuBytes,
-                    kMaximumPrivateRoomGpuBytes)) {
+                texture.allocatedSize == 0U) {
                 if (error != nullptr) {
                     *error = makeError(
                         RendererError::textureCreation,
@@ -1395,15 +2009,51 @@ bool preflightPrivateRoom(
             }
         }
 
+        std::size_t currentAllocatedHeapBytes = 0U;
+        if ((bufferHeap != nil &&
+                !accountCurrentHeapAllocation(
+                    bufferHeap,
+                    currentAllocatedHeapBytes)) ||
+            (textureHeap != nil &&
+                !accountCurrentHeapAllocation(
+                    textureHeap,
+                    currentAllocatedHeapBytes))) {
+            if (error != nullptr) {
+                *error = makeError(
+                    RendererError::resourceLimit,
+                    @"The created private heaps have invalid current allocations.");
+            }
+            return nil;
+        }
+
+        // Admission before newHeap covers the descriptor plan. If Metal page
+        // rounding makes the measured current allocation larger, obtain the
+        // exact supplement now; otherwise this unpublished candidate is
+        // destroyed before the plan reservation is consumed.
+        if (!finalizeHeapAllocationReservation(
+                *gpuBudgetHolder->_ledger,
+                *privatePlanReservation,
+                currentAllocatedHeapBytes)) {
+            if (error != nullptr) {
+                *error = makeError(
+                    RendererError::resourceLimit,
+                    @"The private heaps' current allocation is unavailable in the aggregate admission budget.");
+            }
+            return nil;
+        }
+
         AirfixMetalRoomResources* candidateResources =
             [[AirfixMetalRoomResources alloc] init];
         AirfixMetalRoomSnapshot* candidate =
             [[AirfixMetalRoomSnapshot alloc] init];
         AirfixPreparedMetalRoom* preparedRoom =
             [[AirfixPreparedMetalRoom alloc] init];
+        AirfixGpuBudgetReservationHolder* reservationHolder =
+            [[AirfixGpuBudgetReservationHolder alloc] init];
         NSObject* ownerToken = self.preparationOwnerToken;
         if (candidateResources == nil || candidate == nil ||
             preparedRoom == nil ||
+            reservationHolder == nil ||
             ownerToken == nil) {
             if (error != nullptr) {
                 *error = makeError(
@@ -1427,6 +2077,8 @@ bool preflightPrivateRoom(
         }
         candidateResources.meshBuffers = meshBufferSnapshot;
         candidateResources.textures = textureSnapshot;
+        candidateResources.bufferHeap = bufferHeap;
+        candidateResources.textureHeap = textureHeap;
         preparedRoom->_ownerToken = ownerToken;
         preparedRoom->_device = device;
         preparedRoom->_published = NO;
@@ -1438,7 +2090,6 @@ bool preflightPrivateRoom(
             std::move(room.submission);
         candidate->_resources = candidateResources;
         candidate->_releaseQueue = resourceReleaseQueue;
-        candidate->_allocatedGpuBytes = allocatedGpuBytes;
         candidate->_worldRoomInstalled = YES;
 
         // Texture upload bytes are intentionally not retained by the native
@@ -1446,8 +2097,13 @@ bool preflightPrivateRoom(
         std::vector<airfix::content::LoadedTextureAsset>().swap(
             room.textures);
 
+        reservationHolder->_reservation.emplace(
+            std::move(*privatePlanReservation));
+        candidate->_gpuBudgetReservationHolder =
+            reservationHolder;
         preparedRoom->_snapshot = candidate;
         return preparedRoom;
+        }
     }
     catch (...) {
         if (error != nullptr) {
@@ -1492,6 +2148,7 @@ bool preflightPrivateRoom(
         preparedRoom->_device != self.commandQueue.device ||
         preparedRoom->_snapshot == nil ||
         preparedRoom->_snapshot->_resources == nil ||
+        !hasActiveGpuBudgetReservation(preparedRoom->_snapshot) ||
         !preparedRoom->_snapshot->_worldRoomInstalled) {
         if (error != nullptr) {
             *error = makeError(
@@ -1501,28 +2158,13 @@ bool preflightPrivateRoom(
         return NO;
     }
 
-    AirfixMetalRoomSnapshot* previousSnapshot = self.roomSnapshot;
-    std::size_t transitionGpuBytes =
-        previousSnapshot != nil
-        ? previousSnapshot->_allocatedGpuBytes
-        : 0U;
-    if (!accountGpuBytes(
-            preparedRoom->_snapshot->_allocatedGpuBytes,
-            transitionGpuBytes,
-            kMaximumSnapshotTransitionGpuBytes)) {
-        if (error != nullptr) {
-            *error = makeError(
-                RendererError::resourceLimit,
-                @"The old and prepared Metal snapshots exceed the bounded transition budget.");
-        }
-        return NO;
-    }
-
     AirfixMetalRoomSnapshot* candidate = preparedRoom->_snapshot;
     preparedRoom->_published = YES;
     preparedRoom->_snapshot = nil;
-    // The coordinator has already revalidated serial and revision. Exactly
-    // one atomic strong-pointer assignment now publishes the complete room.
+    // The coordinator has already revalidated serial and revision, and the
+    // candidate already owns its aggregate budget debit. Exactly one atomic
+    // strong-pointer assignment publishes the complete room without any
+    // budget mutation.
     self.roomSnapshot = candidate;
     return YES;
 }
@@ -1539,6 +2181,12 @@ bool preflightPrivateRoom(
     }
     AirfixMetalRoomResources* resources = snapshot->_resources;
     if (resources == nil) {
+        return;
+    }
+    AirfixBudgetedMetalTexture* fallbackResource =
+        self.fallbackResource;
+    if (fallbackResource == nil ||
+        fallbackResource->_texture == nil) {
         return;
     }
     MTLRenderPassDescriptor* renderPass = view.currentRenderPassDescriptor;
@@ -1580,7 +2228,7 @@ bool preflightPrivateRoom(
                         atIndex:0U];
         [encoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1U];
 
-        id<MTLTexture> texture = self.fallbackTexture;
+        id<MTLTexture> texture = fallbackResource->_texture;
         if (command.texcoordMode == airfix::render::TexcoordMode::uv0 &&
             command.primary.has_value()) {
             const auto assetIndex =
@@ -1606,6 +2254,7 @@ bool preflightPrivateRoom(
         // Retain the immutable resource owner explicitly until this GPU
         // submission no longer references its buffers or textures.
         (void)snapshot;
+        (void)fallbackResource;
     }];
     [commandBuffer presentDrawable:drawable];
     [commandBuffer commit];

@@ -16,11 +16,18 @@ add_executable(airfix_ios MACOSX_BUNDLE
     AirfixWorldRoomSnapshot.h
     AirfixWorldRoomSnapshot.mm
     AirfixWorldRoomSnapshot+Private.hpp
+    AirfixGameControllerAdapter.h
+    AirfixGameControllerAdapter.mm
     AirfixGameViewController.h
     AirfixGameViewController.mm
+    AirfixIOSInputCoordinator.h
+    AirfixIOSInputCoordinator.mm
+    AirfixIOSInputCoordinator+Private.hpp
     AirfixMetalRenderer.h
     AirfixMetalRenderer.mm
     AirfixShaders.metal
+    AirfixTouchControlsView.h
+    AirfixTouchControlsView.mm
 )
 
 # CMake does not place an otherwise unknown .metal extension in Xcode's Sources
@@ -37,12 +44,15 @@ target_compile_options(airfix_ios PRIVATE
 target_link_libraries(airfix_ios PRIVATE
     airfix::afpack
     airfix::content
+    airfix::input
     airfix::render
     airfix::runtime
     "-framework UIKit"
     "-framework CoreGraphics"
+    "-framework GameController"
     "-framework Metal"
     "-framework MetalKit"
+    "-framework QuartzCore"
     "-framework UniformTypeIdentifiers"
 )
 

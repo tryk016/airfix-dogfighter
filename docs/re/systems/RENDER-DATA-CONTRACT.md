@@ -232,25 +232,68 @@ revalidates the publication ticket and `publishPreparedRoom` performs a single
 atomic strong-pointer assignment. A candidate is tied to its renderer and
 device, can be published once, and cannot partially replace the old room.
 
-Private preparation has a 128 MiB packed-CPU ceiling, a 256 MiB per-snapshot GPU
-ceiling, and per-buffer `device.maxBufferLength` checks. Logical byte preflight
-runs before allocation, but successful accounting is based on every actual
-Metal buffer and texture `allocatedSize`. Publication also charges the actual
-current and candidate snapshot allocations against a 384 MiB transition
-ceiling. The public bootstrap retains its independent checked 64 MiB
-packed-CPU/GPU policy.
+Private preparation has a 128 MiB packed-CPU ceiling, a 256 MiB logical-GPU
+preflight ceiling, a separate 256 MiB descriptor heap-plan ceiling, and
+per-buffer `device.maxBufferLength` checks. Logical byte preflight is a
+best-effort early rejection. Preparation then queries
+`heapBufferSizeAndAlign` and `heapTextureSizeAndAlign` with the exact lengths,
+options, and descriptors that allocation will use. It builds checked
+sequential placement plans, including every reported resource-alignment gap
+and final resource alignment, for separate shared, tracked,
+automatic-placement buffer and texture heaps. The combined descriptor plan is
+admitted by the shared 384 MiB aggregate heap-admission ledger before
+`newHeap` is called. Buffers and textures are allocated only from those heaps;
+shared buffer contents are populated with `memcpy`. The snapshot retains the
+heaps together with their suballocated resources.
+
+The descriptor plan is not claimed as a hard physical ceiling. Apple's Metal
+contract permits `MTLHeapDescriptor.size` to be rounded to a page boundary, but
+exposes no documented pre-creation upper bound for that rounding on the iOS
+16.4 baseline. Aligning a plan to the maximum resource alignment therefore
+does not establish a documented heap-page bound. Immediately after all heap
+resources have been created, preparation reads each retained heap's
+`currentAllocatedSize`. If the measured total is below the admitted plan, the
+move-only token reconciles downward. If it is above the plan, the difference
+must obtain a separate reservation from the same aggregate ledger and is then
+absorbed into the candidate's token without changing the aggregate. A
+candidate whose supplement is unavailable is never returned or published.
+
+Accepted snapshots charge the measured `currentAllocatedSize` of each retained
+heap exactly once. Individual resource `allocatedSize` values are
+validation-only and are not added again. Between `newHeap` and the immediate
+measurement/supplement decision, page rounding can transiently make the Metal
+allocation exceed the admitted descriptor plan. That exposure is bounded in
+lifetime to scoped preparation and in ownership to the unpublished
+candidate's fixed heap set, but no undocumented byte bound is claimed. Every
+failure drains the scoped autorelease pool and destroys staging resources and
+heaps before the plan reservation is consumed. The public bootstrap follows
+the same sequence with a 64 MiB logical and descriptor-plan policy. Its
+fallback texture has its own heap, and the final measured debit is split
+without changing the aggregate so that heap and the bootstrap snapshot have
+independent lifetime tokens.
 
 Each frame reads one immutable snapshot. Its command buffer completion handler
-retains that snapshot until the GPU has finished using the referenced buffers
-and textures. When the final owner releases a retired snapshot, destruction of
-its large Objective-C arrays and C++ payload is dispatched to a serial off-main
-release queue, keeping the main-thread swap constant-time.
-
-The current transition check covers the published and candidate snapshots at
-the swap. It does not yet track the exact aggregate peak across multiple
-retired snapshots that remain alive in GPU in-flight command buffers. Closing
-that accounting gap is an explicit bounded P2 follow-up; it is not claimed
-complete by this checkpoint.
+retains that snapshot and the budgeted persistent fallback owner until the GPU
+has finished using the referenced buffers and textures. When the final owner
+releases a retired snapshot, destruction of its large Objective-C arrays and
+C++ payload is dispatched to a serial off-main release queue. Suballocated
+resources are released before their retained heaps, and the ledger debit is
+released only after both are destroyed and the surrounding autorelease pool
+has drained. Prepared candidates, the published snapshot, retired snapshots,
+and snapshots retained by in-flight command buffers therefore all remain
+charged.
+Discarding a stale prepared candidate follows the same teardown path. The
+snapshot's reservation token retains the ledger state, so deferred teardown
+remains safe after its renderer is gone. Publication transfers the already
+reserved candidate with one atomic strong-pointer assignment; it is
+budget-neutral and constant-time. The closed flag and reserved-byte count
+occupy one atomic CAS word, so close, reserve, reconciliation, and token
+consumption share one linearizable synchronization domain. Reservation tokens
+are move-only and single-consumption; moved-from, repeated, and zero-byte
+consumption are idempotent. Direct upward reconciliation leaves its debit
+charged and permanently closes the ledger to new snapshots; the documented
+post-creation page-rounding path instead obtains and absorbs a separately
+admitted token.
 
 An external private-content smoke run completed the writer, installation,
 inspection, same-handle lease adoption, and full room load. The immutable

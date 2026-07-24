@@ -998,3 +998,54 @@ superseded evidence.
 - The full portable suite passes 32/32. The private full-room smoke remains
   aggregate evidence only—62 meshes, 62 instances, 23 textures, and 167 draw
   commands—and no private content or generated artifact was committed.
+
+## 2026-07-24 — first native iOS input slice
+
+- Added a safe-area-aware UIKit control overlay with a landscape flight stick,
+  primary fire, and pause/resume. Independent touch ownership permits stick plus
+  fire, selective hit testing leaves the rest of the view usable, partial
+  cancellation releases only affected controls, and lifecycle/content
+  boundaries neutralize the whole overlay. Minimum target sizes, pressed
+  visuals, and custom accessibility actions are included.
+- Added a narrow Apple extended-controller adapter for one player. The left
+  stick maps to bank/pitch, the right-trigger value crosses an explicit Q15
+  threshold for primary fire, and Menu/Options map to pause. A fixed 32-edge,
+  generation- and order-tagged FIFO preserves complete digital transitions
+  between input ticks; overflow resets input and forces a recoverable pause.
+- Added the main-thread iOS input coordinator and a fixed 60 Hz input pump that
+  continues while the Metal view is paused. It delivers one immutable
+  `InputFrame` per completed tick to an exception-bounded host sink and publishes
+  rate-limited diagnostics. Empty, throwing, or exhausted pipelines fail closed.
+- Controller disconnect, reconnect, first hot-connect, visibility, room/content
+  changes, application lifecycle, and explicit pause use common source reset and
+  neutral-gate rules. Foreground activation and successful room publication no
+  longer auto-resume; the player must explicitly use pause/menu.
+- Integrated the input slice into the native room smoke view, including a
+  noninteractive diagnostic HUD and forced-pause/error states. The full V1
+  action surface, remapping, profiles, calibration, haptics, and physical-device
+  acceptance remain pending.
+
+## 2026-07-24 — aggregate Metal heap-admission ledger
+
+- Added a thread-safe 384 MiB aggregate admission ledger with move-only,
+  single-consumption reservation tokens. Closed state and reserved bytes share
+  one atomic state word; token move/reset, split, downward reconciliation,
+  supplemental absorption, lifetime, exact boundaries, and concurrent
+  close/reserve behavior have deterministic tests.
+- Converted public bootstrap, persistent fallback, and private-room buffers and
+  textures to retained shared/tracked `MTLHeap` ownership. Checked sequential
+  size/alignment plans are admitted before `newHeap`, and buffers are populated
+  through heap-created shared storage.
+- After every resource and generated mip is complete, each candidate measures
+  its heaps' `currentAllocatedSize`. A smaller debit reconciles downward; Metal
+  page-rounding growth must obtain and absorb a supplemental reservation before
+  the candidate can leave preparation. Failure destroys the unpublished
+  resources and heaps before releasing the plan token, leaving the published
+  room unchanged.
+- Accepted prepared, current, retired, and GPU-in-flight snapshots remain
+  charged until their resources and heaps are destroyed off-main. The contract
+  explicitly does not claim a hard byte ceiling for the short pre-measurement
+  page-rounding window because Metal exposes no documented pre-creation bound.
+- A clean configure/build and the complete portable suite pass 33/33. The
+  public-boundary scanner also passes; unsigned Objective-C++/Metal compilation
+  remains delegated to GitHub Actions.

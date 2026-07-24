@@ -1,6 +1,7 @@
 # Input, controls, and haptics system
 
-**Status:** portable semantic core implemented; platform adapters pending
+**Status:** portable core and first native iOS input slice implemented; complete
+V1 controls pending
 
 **Priority:** P0 for the iOS vertical slice
 
@@ -61,16 +62,49 @@ context changes, and lifecycle reset synthesize releases, and reset requires two
 consecutive neutral ticks before gameplay input is admitted again.
 
 Default semantic bindings cover touch, an extended controller, and minimal
-desktop keyboard testing. UIKit touch capture, Apple Game Controller delivery,
-profile persistence/remapping, glyphs, the visual overlay, and haptic adapters
-remain separate follow-up layers; none of those platform types enter
-`InputFrame`.
+desktop keyboard testing. The first native iOS slice now feeds this core from a
+safe-area-aware UIKit overlay and Apple's Game Controller framework; none of
+those platform types enter `InputFrame`. Profile persistence/remapping,
+controller glyphs, the complete action surface, and haptic adapters remain
+follow-up layers.
 
 `InputRouter` is deliberately single-thread-affine. UIKit and Game Controller
 callbacks must be serialized onto the same input/simulation thread as `tick()`;
 adapters must also submit their complete current state when a device connects.
 After a controller loss, the replacement source is quarantined until two
 consecutive neutral ticks, even if the platform assigns it a new runtime ID.
+
+### Implemented native iOS slice
+
+`AirfixTouchControlsView` supplies a fixed landscape flight stick, primary-fire
+button, and pause/resume control. It captures each finger independently, allows
+stick plus fire, passes touches outside control regions through to the
+underlying UIKit content, respects safe areas and 44-point minimum targets, and
+provides custom accessibility actions. Partial touch cancellation releases only
+the affected control; lifecycle or gameplay-boundary cancellation neutralizes
+the complete overlay.
+
+`AirfixGameControllerAdapter` assigns one extended controller, maps the left
+stick, right trigger, and menu/options buttons, and keeps Bluetooth pairing
+system-managed. A fixed-capacity, generation- and order-tagged edge queue
+preserves a complete trigger or pause press/release occurring between two input
+ticks. Queue overflow resets input and forces a recoverable pause; generation or
+counter exhaustion fails closed. Disconnect resets every source and pauses,
+while reconnect submits a complete state through the neutral gate.
+
+`AirfixIOSInputCoordinator` owns both adapters and the portable `InputRouter` on
+the main thread. A fixed 60 Hz pump remains active while `MTKView` is paused,
+delivers exactly one immutable frame to the installed host consumer per
+completed input tick, and publishes rate-limited diagnostics to UIKit. Content,
+room, visibility, controller-loss, and application lifecycle boundaries reset
+all sources. Foreground activation and room publication never resume gameplay;
+the player must explicitly use pause/menu.
+
+This is an integration and device-smoke slice, not the final control set.
+Throttle delta, secondary fire, weapon selection, camera/rear view, mission
+status, remapping, calibration UI, visibility profiles, and haptics still have
+to be added before the touch-only/controller-only V1 acceptance criteria are
+met.
 
 ## Input contexts
 

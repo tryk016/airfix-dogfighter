@@ -10,7 +10,8 @@ The project is under active development and is **not yet a playable port**.
 It currently provides the portable archive/asset pipeline, deterministic input
 core, private content-package infrastructure, fail-closed render submission and
 texture-upload preparation, diagnostic rendering, and a data-less UIKit/Metal
-application shell with an authenticated private-room loading path.
+application shell with an authenticated private-room loading path and the first
+native touch/controller input slice.
 
 ## Project scope
 
@@ -71,7 +72,7 @@ sources.
 | Runtime content loading | Exact authenticated active lease/session, atomic World → CCF → GTI → draw-submission room loading, and revision/serial-gated one-shot native handoff implemented |
 | Rendering | Bounded explicit-room assembly, stable texture IDs, atomic RGBA8 upload preparation, CPU diagnostics, synthetic bootstrap, and two-phase private-room Metal publication implemented |
 | Input core | Deterministic semantic router for touch/controller/test sources implemented |
-| Native controls | UIKit touch overlay and Apple Game Controller adapters pending |
+| Native controls | First UIKit stick/fire/pause overlay and Apple extended-controller slice implemented; complete V1 action set pending |
 | Game simulation | Reconstruction in progress; no complete playable loop yet |
 | Continuous integration | Portable C++ tests plus unsigned device/simulator iOS builds |
 
@@ -91,13 +92,15 @@ publish stale work.
 Metal publication is two-phase. Complete buffers, RGBA8 textures, and generated
 mips are prepared off the main thread; the main thread rechecks the snapshot
 gate and publishes the complete immutable room with one pointer assignment.
-Actual `MTLResource.allocatedSize` values are checked against per-snapshot and
-current-plus-candidate transition budgets, and submitted command buffers retain
-their snapshot until GPU completion. Unconsumed CPU handoffs and large retired
-Metal snapshots are destroyed on dedicated serial release queues rather than
-on the main thread. Exact peak accounting across multiple retired snapshots
-that remain in flight on the GPU is still a bounded P2 follow-up, not a
-completed guarantee.
+Buffers and textures are suballocated from retained Metal heaps. A checked heap
+descriptor plan is admitted before allocation, then each accepted snapshot is
+charged exactly once by its measured `MTLHeap.currentAllocatedSize` in a shared
+384 MiB ledger. Prepared, published, retired, and command-buffer-retained
+snapshots all remain charged until their resources and heaps are destroyed off
+main. Metal may page-round a heap beyond its descriptor plan without exposing a
+documented pre-creation upper bound; any measured difference needs supplemental
+admission before publication, but that short unpublished allocation window is
+not claimed as a hard physical byte ceiling.
 
 The portable UDSP layer now supports a stable, caller-owned binary stream from
 metadata parsing through indexed entry reads. `Archive::open(path)` uses one
@@ -127,7 +130,7 @@ private package, original-derived bytes, or generated artifacts were committed.
 The public synthetic end-to-end tests include valid texture ID zero, empty
 receiver rooms, multiple CCF candidates, deduplication, cancellation, malformed
 later dependencies, compressed-source peak memory, and exact/one-under limits.
-The portable suite passes 32/32 synthetic tests. Physical-device rendering and
+The portable suite passes 33/33 synthetic tests. Physical-device rendering and
 visual acceptance remain pending.
 
 ## Architecture
@@ -174,17 +177,20 @@ reconstruction strategy.
 The game must remain fully usable with either touch or a supported extended
 controller.
 
-The planned touch layout includes a landscape virtual flight stick, throttle,
-primary and secondary fire, weapon selection, camera/rear view, mission status,
-and pause. It is designed around multi-touch, safe areas, left-handed and
-large-control presets, adjustable opacity/size/position, and reliable release
-of held actions when iOS interrupts or backgrounds the app.
+The implemented first slice provides a landscape virtual flight stick, primary
+fire, and pause/resume. It supports simultaneous stick and fire touches,
+safe-area-aware capture targets, selective hit testing, accessibility actions,
+and complete neutralization on content, visibility, and lifecycle boundaries.
+The final layout still needs throttle, secondary fire, weapon selection,
+camera/rear view, mission status, customization, and haptics.
 
-Bluetooth pairing remains managed by iOS. The native adapter will use Apple's
-Game Controller framework for supported Xbox, PlayStation, and MFi-style
-extended controllers, including hot-plug, disconnect recovery, neutral-state
-gating, calibration, remapping, controller-only menus, and optional rumble.
-Touch stays available when a controller is connected.
+Bluetooth pairing remains managed by iOS. The native Apple Game Controller
+adapter currently maps an extended controller's left stick, right trigger, and
+menu/options controls. It preserves short digital edges between fixed ticks,
+handles hot-plug and disconnect with forced pause, and requires neutral state
+after reconnect. Calibration, remapping, controller-only menus, glyphs, and
+optional rumble remain future work. Touch stays available when a controller is
+connected.
 
 Both platform adapters feed the implemented deterministic semantic input
 router. The simulation sees immutable per-tick actions rather than UIKit or

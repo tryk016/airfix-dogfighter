@@ -187,6 +187,76 @@ void testAxisFallsBackToStillMeaningfulSource() {
         "axis did not fall back to a still-meaningful source");
 }
 
+void testTouchReclaimsControllerAxisAndDriftCannotStealBack() {
+    BindingTable table;
+    require(table.add(Binding::analog(SourceKind::controller, bankControl,
+        AnalogAxis::flightBank, gameplayContext,
+        airfix::input::PhysicalEventKind::analog,
+        airfix::input::q15One, 3000)),
+        "failed to add controller bank binding");
+    require(table.add(Binding::analog(SourceKind::touch, bankControl,
+        AnalogAxis::flightBank, gameplayContext,
+        airfix::input::PhysicalEventKind::analog,
+        airfix::input::q15One, 3000)),
+        "failed to add touch bank binding");
+    InputRouter router(table);
+
+    require(router.enqueue(PhysicalEvent::axis(
+        1U, 0U, controllerOne, bankControl, 20000)),
+        "controller bank event was rejected");
+    require(router.tick(1U).analog(AnalogAxis::flightBank) == 20000,
+        "controller did not initially own bank");
+
+    require(router.enqueue(PhysicalEvent::axis(
+        2U, 0U, touchOne, bankControl, -25000)),
+        "touch bank event was rejected");
+    require(router.tick(2U).analog(AnalogAxis::flightBank) == -25000,
+        "meaningful touch did not reclaim bank");
+
+    require(router.enqueue(PhysicalEvent::axis(
+        3U, 0U, controllerOne, bankControl, 1000)),
+        "controller drift event was rejected");
+    require(router.tick(3U).analog(AnalogAxis::flightBank) == -25000,
+        "sub-threshold controller drift stole bank back from touch");
+
+    require(router.enqueue(PhysicalEvent::axis(
+        4U, 0U, touchOne, bankControl, q15Zero)),
+        "touch neutral event was rejected");
+    require(router.tick(4U).analog(AnalogAxis::flightBank) == q15Zero,
+        "neutral touch owner emitted stale bank");
+    require(router.tick(5U).analog(AnalogAxis::flightBank) == q15Zero,
+        "controller drift became a meaningful fallback owner");
+}
+
+void testPauseAndFireCanShareOneInputFrame() {
+    InputRouter router;
+    require(router.enqueue(PhysicalEvent::button(
+        1U, 0U, touchOne, airfix::input::controls::touch::primaryFire, true)),
+        "same-frame primary-fire press was rejected");
+    require(router.enqueue(PhysicalEvent::button(
+        2U, 0U, touchOne, airfix::input::controls::touch::pause, true)),
+        "same-frame pause press was rejected");
+
+    const auto pressed = router.tick(1U);
+    require(pressed.pressed(DigitalAction::combatPrimaryFire) &&
+            pressed.held(DigitalAction::combatPrimaryFire),
+        "same-frame primary fire was not preserved");
+    require(pressed.pressed(DigitalAction::globalPause) &&
+            pressed.held(DigitalAction::globalPause),
+        "same-frame pause was not preserved");
+
+    require(router.enqueue(PhysicalEvent::button(
+        3U, 0U, touchOne, airfix::input::controls::touch::primaryFire, false)),
+        "same-frame primary-fire release was rejected");
+    require(router.enqueue(PhysicalEvent::button(
+        4U, 0U, touchOne, airfix::input::controls::touch::pause, false)),
+        "same-frame pause release was rejected");
+    const auto released = router.tick(2U);
+    require(released.released(DigitalAction::combatPrimaryFire) &&
+            released.released(DigitalAction::globalPause),
+        "same-frame releases were not preserved");
+}
+
 void testCancelAndDisconnect() {
     InputRouter router(digitalBindings());
     require(router.enqueue(PhysicalEvent::button(
@@ -477,6 +547,8 @@ int main() {
         testMultipleSourcesUseLogicalOr();
         testAxisOwnershipAndDrift();
         testAxisFallsBackToStillMeaningfulSource();
+        testTouchReclaimsControllerAxisAndDriftCannotStealBack();
+        testPauseAndFireCanShareOneInputFrame();
         testCancelAndDisconnect();
         testCancelPreservesAggregateHeldAcrossPendingSource();
         testReconnectRequiresNeutral();

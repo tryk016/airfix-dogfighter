@@ -144,7 +144,11 @@
 - Implemented the portable deterministic input core: stable action IDs, Q15
   axes, bounded sequence ordering, multi-source arbitration, context releases,
   cancellation, lifecycle neutral gating, and default touch/controller/test
-  bindings. Native iOS adapters and the visual touch overlay remain pending.
+  bindings. The first native iOS slice now adds a safe-area-aware multitouch
+  stick/fire/pause overlay, a bounded edge-preserving Apple extended-controller
+  adapter, a renderer-independent fixed 60 Hz input pump, explicit-resume
+  lifecycle policy, diagnostics, and fail-closed gameplay-boundary resets.
+  Complete V1 controls, remapping, profiles, and haptics remain pending.
 - Established the recovered right-handed CCF basis, row-vector matrix
   convention, reverse-cross winding, degenerate `+Y` normal, and raw UV policy;
   the bounded API-neutral converter validates all 6,995 corpus meshes.
@@ -262,15 +266,22 @@
   authored RGBA8 mip levels, generated mip chains, texture arrays, draw offsets,
   payload, and submission state are prepared off-main; only a current snapshot
   is atomically published on main. Preparation checks a 128 MiB packed-CPU
-  ceiling, a 256 MiB private-snapshot GPU ceiling, `device.maxBufferLength`, and
-  every actual buffer/texture `allocatedSize`; publication checks the actual
-  old-plus-candidate allocation against a 384 MiB transition ceiling.
+  ceiling, 256 MiB logical and heap-plan ceilings, and
+  `device.maxBufferLength`. Buffers and textures are created only from retained
+  shared/tracked Metal heaps.
+- A move-only reservation token admits the heap descriptor plan before
+  allocation, then charges each accepted snapshot by the measured
+  `MTLHeap.currentAllocatedSize` exactly once. Page-rounding growth must obtain a
+  supplemental reservation before publication. The 384 MiB aggregate ledger
+  includes candidates, current and retired snapshots, and GPU-in-flight owners.
+  Because Metal publishes no pre-creation upper bound for heap page rounding,
+  the short unpublished creation window is not claimed as a hard physical byte
+  ceiling.
 - Draw submissions retain their immutable snapshot through the Metal command
   buffer completion callback, while final large-resource destruction is
-  dispatched to a serial off-main release queue. Exact aggregate peak
-  accounting across multiple retired snapshots that are still GPU-in-flight is
-  a bounded P2 follow-up and is not claimed complete.
-- The new gate regression target brings the portable suite to 32/32.
+  dispatched to a serial off-main release queue. Resources and heaps are
+  destroyed before their exact measured debit is released.
+- The new GPU-ledger regression target brings the portable suite to 33/33.
 
 ## Confirmed
 
@@ -299,16 +310,15 @@
 
 ## Next
 
-1. Make recovery hand off a move-only active-content lease that binds the
-   authenticated handle and revision, then have the iOS coordinator reject
-   stale request serials/generations before passing an immutable loaded room to
-   the bounded Metal adapter. Add private Metal texture ownership for authored
-   and generated mip chains. Keep BSP culling and portal traversal disabled
-   until their semantics are proven.
-2. Implement native UIKit and Game Controller adapters over the deterministic
-   input router, then add the configurable safe-area-aware touch overlay.
+1. Connect the immutable native `InputFrame` stream to the first deterministic
+   reconstructed player/flight update and add fixed-step simulation tests.
+2. Extend the native control surface to throttle delta, secondary fire, weapon,
+   camera/rear-view, and mission actions before adding persistence, remapping,
+   profiles, and haptics.
 3. Recover the runtime rule that selects a physical CCF room during gameplay;
    do not infer it from the structurally different World `ROOM` catalog.
+4. Keep BSP culling and portal traversal disabled until their runtime semantics
+   are proven against executable evidence.
 
 ## Open questions
 
