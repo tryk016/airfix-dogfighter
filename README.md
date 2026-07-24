@@ -74,7 +74,7 @@ sources.
 | Rendering | Bounded explicit-room assembly, stable texture IDs, atomic RGBA8 upload preparation, CPU diagnostics, two-phase private-room Metal publication, and neutral scene-bound pose transport implemented |
 | Input core | Deterministic semantic router for touch/controller/test sources implemented |
 | Native controls | Full V1 gameplay-action transport implemented for the UIKit overlay and one Apple extended controller; profiles, remapping, haptics, finished menus, and device acceptance remain pending |
-| Game simulation | Frozen-pose deterministic player-control intent state implemented for flight, throttle, combat, camera, mission, and pause actions; the complete static 12 ms aircraft force law is documented, while runtime traces, physical units, numeric tolerance, and player-actor binding remain pending |
+| Game simulation | Frozen-pose deterministic player-control intent state implemented for flight, throttle, combat, camera, mission, and pause actions; the player spawn/primary-actor path, campaign start table and main-CCF normalization, grouped skin hierarchy, and complete static 12 ms aircraft force law are documented, while world-wide room parity, dynamic publication, runtime traces, physical units, and numeric tolerance remain pending |
 | Continuous integration | Portable C++ tests plus unsigned device/simulator iOS builds |
 
 Detailed, frequently updated progress lives in
@@ -131,7 +131,7 @@ private package, original-derived bytes, or generated artifacts were committed.
 The public synthetic end-to-end tests include valid texture ID zero, empty
 receiver rooms, multiple CCF candidates, deduplication, cancellation, malformed
 later dependencies, compressed-source peak memory, and exact/one-under limits.
-The portable suite passes 36/36 synthetic tests. Physical-device rendering and
+The portable suite passes 37/37 synthetic tests. Physical-device rendering and
 visual acceptance remain pending.
 
 ## Architecture
@@ -205,9 +205,11 @@ discrete weapon selection, action counters, its own completed-step count, and
 a cross-compiler canonical hash. The recovered reference scheduler consumes
 the previous step's force/torque before resetting and accumulating the next
 step. A separate bounded pose exchange is ready for complete dynamic instance
-transforms, but it deliberately remains unbound until the player actor/spawn
-identity and runtime evidence make the statically recovered flight equations
-safe to implement. The complete input contract is documented in
+transforms. Static analysis now identifies the player's primary actor, mission
+start room, and complete selected-skin hierarchies; the exchange remains
+unbound until that dynamic actor-to-instance publisher and runtime evidence
+make the statically recovered flight equations safe to implement. The complete
+input contract is documented in
 [docs/systems/INPUT.md](docs/systems/INPUT.md).
 
 ## Build and test the portable code
@@ -299,6 +301,7 @@ Recommended starting points:
 - [Input and controller design](docs/systems/INPUT.md)
 - [Aircraft flight reconstruction boundary](docs/re/systems/AIRCRAFT-FLIGHT.md)
 - [Aircraft flight-law static contract](docs/re/systems/AIRCRAFT-FLIGHT-LAW.md)
+- [Player spawn and visual identity](docs/re/systems/PLAYER-SPAWN.md)
 - [clangd and LSP code intelligence](docs/toolchain/CODE-INTELLIGENCE.md)
 - [Current status](docs/progress/STATUS.md)
 

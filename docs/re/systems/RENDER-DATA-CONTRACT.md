@@ -327,11 +327,14 @@ override by binary search or returns the caller's authored transform
 byte-for-byte. Any `std::span` borrowed from a lease is valid only while that
 same lease remains active.
 
-This primitive intentionally stops before native integration. The current room
-payload represents static placed objects and does not expose a player actor,
-spawn identity, or grouped actor-to-instance binding. No code may select a
-player instance by first index, name similarity, or `sourceNodeReference`.
-Those joins require independent dynamic object/spawn evidence.
+This primitive intentionally stops before native integration. Static evidence
+now identifies the player's primary actor and the selected skin's up to three
+complete blueprint hierarchies; weapons and auxiliary effects in the broader
+owned-UID graph remain separate. The current room payload still represents
+static placed objects and does not publish those dynamic hierarchies as
+instance indices. No code may select a player instance by first index, name
+similarity, `sourceNodeReference`, or the entire owned-UID heap. The remaining
+join requires an explicit dynamic actor-to-instance publisher.
 
 An external private-content smoke run completed the writer, installation,
 inspection, same-handle lease adoption, and full room load. The immutable

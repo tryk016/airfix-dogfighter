@@ -112,6 +112,7 @@ add_library(airfix_assets
     src/airfix/assets/CcfRoomScene.cpp
     src/airfix/assets/LegacyFormats.cpp
     src/airfix/assets/MissionEntryResolver.cpp
+    src/airfix/assets/MissionSetup.cpp
     src/airfix/assets/WorldCcfTextureResolver.cpp
 )
 add_library(airfix::assets ALIAS airfix_assets)
@@ -321,6 +322,12 @@ if(AIRFIX_BUILD_TESTS)
     target_link_libraries(airfix_mission_entry_resolver_tests PRIVATE airfix::assets)
     add_test(NAME airfix_mission_entry_resolver_tests
         COMMAND airfix_mission_entry_resolver_tests)
+
+    add_executable(airfix_mission_setup_tests
+        tests/MissionSetupTests.cpp)
+    target_link_libraries(airfix_mission_setup_tests PRIVATE airfix::assets)
+    add_test(NAME airfix_mission_setup_tests
+        COMMAND airfix_mission_setup_tests)
 
     add_executable(airfix_world_ccf_texture_resolver_tests
         tests/WorldCcfTextureResolverTests.cpp)

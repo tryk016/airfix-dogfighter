@@ -41,7 +41,7 @@ because those plugins do not appear in static import tables.
 | `MODE_DOGFIGHT` | `Game/Modes/Dogfight.mode` | dogfight flow/rules | 2 | What mode factory/export registers it? |
 | `MODE_SINGLEPLAYER` | `Game/Modes/Singleplayer.mode` | campaign/mission flow | 2 | Where are mission transitions and objectives dispatched? |
 | `TYPE_AFFX` | `Game/Types/AfFX.type` | effects actor registrations | 2 | Which effects alter simulation versus rendering only? |
-| `TYPE_AIRCRAFT` | `Game/Types/AirCraft.type` | aircraft registration, force/torque, collision, and AI | 3 | What are the complete flight equations, units, and dynamic actor/spawn rules? |
+| `TYPE_AIRCRAFT` | `Game/Types/AirCraft.type` | aircraft registration, force/torque, collision, and AI | 3 | What are the physical units, runtime tolerances/traces, world-wide room parity, and dynamic actor-to-instance publication rules? |
 | `TYPE_GROUNDUNIT` | `Game/Types/GroundUnit.type` | ground actor registrations | 2 | Which base actor interface is shared? |
 | `TYPE_INTERACTIVE` | `Game/Types/Interactive.type` | interactive scenery actors | 2 | How are triggers/events serialized? |
 | `TYPE_PICKUPS` | `Game/Types/Pickups.type` | pickup actors | 2 | What inventory/effect interface is called? |
@@ -80,9 +80,15 @@ slot 44.
 dependant interval, AfEngine converts it to `0.012f` seconds, all 21 rigid-body
 force/torque call sites and direct state transitions are mapped, and each
 constructor tuple value is joined to its storage and immediate consumers.
-Physical units, runtime contact traces, and player-actor/spawn identity remain
-open. See `docs/re/systems/AIRCRAFT-FLIGHT.md` and
-`docs/re/systems/AIRCRAFT-FLIGHT-LAW.md`.
+`EV-20260724-005` closes the player spawn/type/primary-actor chain, the mission
+start selector, the validated campaign main-CCF normalization, and the selected
+skin's complete hierarchy for every present slot among up to three blueprints.
+Physical units, runtime contact traces, world-wide room lookup parity,
+dynamic actor-to-instance publication, projectile creation, and the original
+roles of the three blueprint slots remain open. See
+`docs/re/systems/AIRCRAFT-FLIGHT.md`,
+`docs/re/systems/AIRCRAFT-FLIGHT-LAW.md`, and
+`docs/re/systems/PLAYER-SPAWN.md`.
 
 ## Confirmed `UDSPACK` interface
 

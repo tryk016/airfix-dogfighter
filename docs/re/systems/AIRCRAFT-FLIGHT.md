@@ -2,7 +2,7 @@
 
 **Status:** observed, not yet specified or implemented for parity
 **Evidence:** `EV-20260724-001`, `EV-20260724-002`,
-`EV-20260724-003`, `EV-20260724-004`
+`EV-20260724-003`, `EV-20260724-004`, `EV-20260724-005`
 **Reference build:** SHA-256 values in `docs/evidence/source-manifest.sha256`
 
 This note records the current clean-room boundary around
@@ -13,6 +13,11 @@ remain in the ignored `artifacts/` tree.
 The complete static equation, constructor-field, and 12 ms timing contract is
 maintained separately in `AIRCRAFT-FLIGHT-LAW.md`. This file retains the wider
 system boundary, event joins, and implementation policy.
+
+The player spawn, primary-actor, mission start-room, and selected-skin
+hierarchy contract is maintained in `PLAYER-SPAWN.md`. That static identity
+does not yet provide the dynamic actor-to-instance publisher needed by the
+renderer.
 
 ## Method
 
@@ -318,8 +323,9 @@ constants without another confirming source.
 Until those unknowns are resolved, the portable simulation may:
 
 - accept the immutable 60 Hz `InputFrame`;
-- preserve bank and pitch as uninterpreted Q15 intentions;
-- preserve primary-fire held state and exact edge counts;
+- preserve flight, absolute/relative thrust, camera, combat, rear-view,
+  weapon-selection, mission-status, and pause intentions;
+- preserve held states and exact discrete edge counts;
 - maintain its own completed-step count;
 - reject invalid or non-increasing input atomically; and
 - produce a canonical cross-compiler diagnostic hash.

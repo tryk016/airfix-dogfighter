@@ -1183,3 +1183,32 @@ superseded evidence.
   Objective-C++ compilation and target-device ergonomics remain delegated to
   unsigned iOS Actions and later physical-device acceptance respectively; no
   original game data or private path is part of these tests.
+
+## 2026-07-24 - player spawn and campaign start normalization
+
+- `EV-20260724-005`: targeted static reports for `NfMain::CreatePlayer`,
+  `NfPlayer::Spawn`/spawn event cases, `NfMission::GetStartPosition`,
+  `NfMission::Call` case 10, `NfPlayer::GetPrimaryActor`, and the vehicle skin
+  path recover the player/type/primary-actor chain, fixed 16-entry start table,
+  selector modulo/fallback rule, and complete hierarchy construction for every
+  present skin blueprint slot. Raw reports and original inputs remain ignored.
+- The authored `AddStartPos` room name is passed to
+  `CcWorld::GetRoomByName`. A private aggregate census covers 20 campaign setup
+  scripts and finds one start per script; all 20 normalize uniquely into their
+  selected main CCF with no parse, missing, ambiguous, or capacity issue, and
+  none selects the primary receiving room. Only aggregate counts are public.
+- Added the bounded, non-executing `MissionSetup` scanner for the exact
+  `AddStartPos` shape plus fail-closed selected-CCF normalization and start
+  selection. Source, room-name, and fixed-table limits, embedded NULs,
+  malformed syntax, non-finite numbers, missing/ambiguous rooms, and forged
+  resolution state are rejected atomically.
+- This checkpoint does not claim full `CcWorld::GetRoomByName` parity. The
+  runtime world may contain rooms contributed by multiple CCF loads, and the
+  exact legacy `CcName` comparison policy remains to be recovered.
+- Two independent read-only reviews found and closed forged logical start
+  indices, embedded-NUL bypasses, an overbroad room-lookup claim, a false
+  function-catalog call edge, and smaller status precision issues.
+- A fresh CMake/Ninja build completes all 128 targets and all 37 CTest cases
+  pass. The Windows Ghidra-wrapper tests, public-boundary scan, and
+  `git diff --check` also pass. Native Apple compilation remains delegated to
+  GitHub Actions; no original game data or private path enters the build.

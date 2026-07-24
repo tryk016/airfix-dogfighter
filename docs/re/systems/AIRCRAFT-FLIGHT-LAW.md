@@ -436,7 +436,7 @@ to another evidence source:
 - controlled traces covering free flight, ground contact, inverted contact,
   water, and too-high branches;
 - the meanings and producers of `+0x564`, `+0x568`, `+0x458`, and `+0x45C`;
-- the player actor/spawn identity and projectile-spawn path; and
+- the dynamic actor-to-render publication and projectile-spawn path; and
 - the required x87-versus-portable-float tolerance for deterministic parity.
 
 The portable iOS input pump currently publishes at 60 Hz, while the recovered

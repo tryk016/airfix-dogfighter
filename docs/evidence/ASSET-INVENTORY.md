@@ -154,6 +154,14 @@ eight physical rooms: counts differ, populated rooms can lack a name match,
 and neither ID, reference, position, nor name is a proven key. The public
 selector therefore names a physical `CcfMetadata::rooms` index explicitly.
 
+A separate mission-start census covers 20 campaign setup scripts and 20
+`AddStartPos` calls, one per script. Exact authored room names resolve all 20
+to unique physical CCF rooms with zero parse, missing, ambiguous, or
+over-capacity issues; none selects the primary receiving room. This is the
+validated main-CCF campaign normalization, not full `CcWorld::GetRoomByName`
+parity and not a join through the World `ROOM` catalog. Only these aggregate
+counts are retained publicly.
+
 One private grouped-aircraft selection contains 46 nodes, 25 mesh instances,
 21 null groups, 663 triangles, and maximum subtree depth 3. Only these anonymous
 aggregates and the successful complete-assembly result are retained publicly;

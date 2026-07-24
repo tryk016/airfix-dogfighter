@@ -120,6 +120,15 @@ constructing runtime rooms during parsing. Scene-load flag bit `0x20` skips the
 complete room section. Bit `0x4000` does not control first-room ownership; it
 only copies the first room's stored name/prefix onto the receiving room.
 
+`EV-20260724-005` provides the gameplay lookup: mission setup
+`AddStartPos("room", ...)` passes the authored name to
+`CcWorld::GetRoomByName`. Rooms from the main and optional background CCF may
+coexist in that world. The portable campaign normalizer maps an exact authored
+name only within one selected `CcfMetadata::rooms` collection and retains its
+physical index; this shipped-content normalization is not yet claimed as full
+world-wide lookup parity. It never interprets the string as a World `ROOM`
+record, CCF reference, or ordinal.
+
 All 392 records across the 286 selected CCF files parse in physical order, with
 one to eight rooms per file and no zero or duplicate references inside a file.
 No private room names or geometry are recorded in the repository.
@@ -261,8 +270,10 @@ playable room, and BSP traversal is still not used to guess visibility.
 
 The World `ROOM` table is a distinct domain and has no proven join to the CCF
 room catalog. The selector's `ccfRoomIndex` always means a physical index into
-`CcfMetadata::rooms`, never a World room position/ID, CCF reference, or name
-match.
+`CcfMetadata::rooms`, never a World room position/ID or CCF reference. Mission
+start setup is a separately proven name lookup on the runtime `CcWorld`; it
+does not create a World-record-to-CCF join. Portable single-CCF normalization
+remains narrower than that runtime lookup.
 
 BSP culling, collision, and portal traversal remain later runtime features; no
 geometry is hidden until those traversal semantics are separately proven.

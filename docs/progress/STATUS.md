@@ -177,7 +177,21 @@
   AirCraft uses a 12 ms dependant interval converted to `0.012f` seconds.
   All 21 force/torque sites, direct state transitions, helper transforms, and
   constructor-field joins in slot45 are now statically mapped. Physical units,
-  runtime contact traces, and actor spawn/render identity remain unknown.
+  runtime contact traces, and dynamic actor-to-render publication remain
+  unknown.
+- Recovered the complete player spawn/type/primary-actor event chain and the
+  fixed 16-entry mission start table. The selector uses requested index modulo
+  count, with the primary receiving CCF room as the empty-table fallback.
+- Added a bounded, non-executing parser for the exact AFS `AddStartPos` call and
+  an atomic exact-name resolver to physical `CcfMetadata::rooms`. A private
+  aggregate census resolves all 20 campaign setup starts uniquely with zero
+  parse, missing, ambiguous, or capacity issues; no original script, room name,
+  or path is published. This is selected-main-CCF normalization, not yet parity
+  with the original lookup across every room loaded into `CcWorld`.
+- Recovered the grouped player-aircraft visual as the selected skin's up to
+  three complete blueprint hierarchies. The broader actor-owned UID graph also
+  includes weapons and auxiliary effects and is not a valid visual selector.
+  The original roles of the three blueprint slots remain deliberately unnamed.
 - Added deterministic headless Ghidra exporters for exact scalar values and
   instruction listings. The report wrapper can now process a literal program
   already in the ignored local Ghidra project without requiring or recording
@@ -320,8 +334,8 @@
   RAII leases plus authored-transform fallback. Its shared control block keeps
   outstanding leases safe after exchange destruction and prevents allocator
   address reuse from reviving stale handles. It is not yet connected to Metal
-  or identified with a player actor.
-- The controller-batch regression target brings the portable suite to 36/36.
+  or connected to the recovered primary-actor/skin-hierarchy contract.
+- The mission-setup regression target brings the portable suite to 37/37.
 
 ## Confirmed
 
@@ -356,10 +370,12 @@
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Recover dynamic player-actor creation/spawn and its grouped visual identity;
-   never bind a player by first mesh, name resemblance, or source-node index.
-4. Recover the runtime rule that selects a physical CCF room during gameplay;
-   do not infer it from the structurally different World `ROOM` catalog.
+3. Implement explicit dynamic publication of the recovered primary actor and
+   its selected-skin hierarchies through the pose exchange, keeping auxiliary
+   weapons/effects separate.
+4. Recover world-wide `CcWorld::GetRoomByName` parity across all room-producing
+   loads, then portal tracing, camera room traversal, and later transitions;
+   the authored start table and shipped main-CCF normalization are now solved.
 5. Keep BSP culling and portal traversal disabled until their runtime semantics
    are proven against executable evidence.
 
