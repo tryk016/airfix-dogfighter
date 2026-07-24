@@ -235,3 +235,8 @@ finally {
         Remove-Item -LiteralPath $resolvedTemporaryRoot -Recurse -Force
     }
 }
+
+# Expected native-process failures leave LASTEXITCODE nonzero even after their
+# exceptions are asserted and handled. GitHub's pwsh wrapper propagates that
+# stale value, so normalize it only after the complete test and cleanup pass.
+$global:LASTEXITCODE = 0
