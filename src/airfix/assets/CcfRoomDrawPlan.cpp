@@ -57,6 +57,19 @@ CcfRoomDrawPlan resolveRoomDrawPlan(
             ccfRoomIndex);
         return result;
     }
+    if (!ccf.roomSections.empty()) {
+        const auto& section = ccf.roomSections.front();
+        if (ccf.roomSections.size() != 1U ||
+            section.firstPhysicalRoomIndex != 0U ||
+            section.physicalRoomCount != ccf.rooms.size() ||
+            !section.firstDirectChildIsRoom) {
+            addIssue(
+                result,
+                CcfRoomDrawPlanIssueKind::
+                    unsupportedRoomSectionLayout);
+            return result;
+        }
+    }
     if (!ccf.rooms.front().primaryBinding) {
         addIssue(result, CcfRoomDrawPlanIssueKind::firstRoomNotPrimary);
         return result;

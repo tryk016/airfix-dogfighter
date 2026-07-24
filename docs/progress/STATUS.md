@@ -186,8 +186,20 @@
   an atomic exact-name resolver to physical `CcfMetadata::rooms`. A private
   aggregate census resolves all 20 campaign setup starts uniquely with zero
   parse, missing, ambiguous, or capacity issues; no original script, room name,
-  or path is published. This is selected-main-CCF normalization, not yet parity
-  with the original lookup across every room loaded into `CcWorld`.
+  or path is published. This legacy helper deliberately remains a
+  selected-main-CCF normalizer; the ordered world catalog below is the
+  multi-source lookup contract.
+- Recovered `CcName` and `CcWorld::GetRoomByName`, the exact mission-root CCF
+  load order/flags, anonymous-root lifetime, newest-first ordinary-room lookup,
+  and the gate that runs `AddStartPos` only after world initialization. Added a
+  bounded ordered multi-CCF catalog with distinct runtime-room indices,
+  source/physical contributor lists, root/full-name and ordinary/name-only
+  matching, ASCII-only parity, and fail-closed world start selection.
+- A private full-sequence census covers 20 main CCFs, seven backgrounds, and
+  2,101 object CCF load calls. All 20 starts resolve uniquely to ordinary main
+  rooms; backgrounds and object CCFs add no named ordinary rooms, and the
+  effective namespace has no non-empty exact/ASCII-fold collision. Only these
+  aggregate counts are published.
 - Recovered the grouped player-aircraft visual as the selected skin's up to
   three complete blueprint hierarchies. The broader actor-owned UID graph also
   includes weapons and auxiliary effects and is not a valid visual selector.
@@ -335,7 +347,7 @@
   outstanding leases safe after exchange destruction and prevents allocator
   address reuse from reviving stale handles. It is not yet connected to Metal
   or connected to the recovered primary-actor/skin-hierarchy contract.
-- The mission-setup regression target brings the portable suite to 37/37.
+- The mission world-room regression target brings the portable suite to 38/38.
 
 ## Confirmed
 
@@ -373,9 +385,9 @@
 3. Implement explicit dynamic publication of the recovered primary actor and
    its selected-skin hierarchies through the pose exchange, keeping auxiliary
    weapons/effects separate.
-4. Recover world-wide `CcWorld::GetRoomByName` parity across all room-producing
-   loads, then portal tracing, camera room traversal, and later transitions;
-   the authored start table and shipped main-CCF normalization are now solved.
+4. Connect every runtime room catalog contributor to combined draw publication,
+   then recover portal tracing, camera room traversal, and later transitions;
+   authored starts and ordered world-wide room lookup are now solved.
 5. Keep BSP culling and portal traversal disabled until their runtime semantics
    are proven against executable evidence.
 

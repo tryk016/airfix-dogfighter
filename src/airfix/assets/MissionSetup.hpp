@@ -104,9 +104,8 @@ struct MissionStartRoomResolution {
 
 // Normalizes authored campaign room names against one selected CCF in physical
 // order. World ROOM records are intentionally outside this join. This is not
-// full CcWorld::GetRoomByName parity: the legacy world may contain rooms from
-// multiple loaded CCFs and its name-comparison policy remains to be recovered.
-// Any missing or ambiguous key clears every resolved start atomically.
+// the ordered multi-CCF lookup implemented by MissionWorldRooms. Any missing or
+// ambiguous key clears every resolved start atomically.
 [[nodiscard]] MissionStartRoomResolution resolveMissionStartRoomsInCcf(
     std::span<const MissionStartPosition> starts,
     const CcfMetadata& ccf);

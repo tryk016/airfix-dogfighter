@@ -465,6 +465,30 @@ void testNoRoomAndInvalidPrimary() {
     requireFailClosed(
         invalidPlan,
         "invalid first-room binding produced a plan");
+
+    auto sectioned = makeOrderedCcf();
+    sectioned.roomSections = {
+        {
+            .firstPhysicalRoomIndex = 0U,
+            .physicalRoomCount = 1U,
+            .firstDirectChildIsRoom = false,
+        },
+        {
+            .firstPhysicalRoomIndex = 1U,
+            .physicalRoomCount = sectioned.rooms.size() - 1U,
+            .firstDirectChildIsRoom = true,
+        },
+    };
+    const auto unsupported =
+        airfix::assets::resolveRoomDrawPlan(sectioned, 1U);
+    require(
+        hasIssue(
+            unsupported,
+            CcfRoomDrawPlanIssueKind::unsupportedRoomSectionLayout),
+        "unsupported multi-section draw plan was accepted");
+    requireFailClosed(
+        unsupported,
+        "unsupported multi-section layout produced a plan");
 }
 
 } // namespace

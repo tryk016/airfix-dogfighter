@@ -1,10 +1,10 @@
 # Player spawn and visual identity
 
 **Status:** player/type/primary-actor and mission start-room paths recovered;
-bounded AFS start parsing and selected-CCF campaign normalization implemented;
-world-wide room parity and dynamic actor publication are pending
+bounded AFS parsing and ordered multi-CCF world-room lookup implemented;
+dynamic actor publication is pending
 
-**Evidence:** `EV-20260724-005`
+**Evidence:** `EV-20260724-005`, `EV-20260724-006`
 
 **Reference build:** SHA-256 values in
 `docs/evidence/source-manifest.sha256`
@@ -77,26 +77,51 @@ stores the resulting room pointer in the orientation, and increments the
 count. An editor call site independently shows that generated setup source
 takes the name from the actual `CcSrtNode` room.
 
-## World lookup and campaign CCF normalization
+## World lookup and ordered CCF publication
 
 The authored room string is passed to `CcWorld::GetRoomByName`. It is not a
 World `ROOM` ID, index, reference, or inferred join. A loaded CCF contributes
-rooms to that runtime world: its first physical record binds the
-receiving/root room and later records find or create rooms by name. Other
-room-producing loads, including an optional background CCF, may contribute to
-the same world.
+rooms to that runtime world: a leading direct room in each room section binds
+the shared receiving/root room, while later room records find or create rooms.
+The mission root begins with a void `CcName`. None of the shipped mission-root
+loads uses flag `0x4000`, so it remains void.
 
-A private aggregate census covered 20 campaign setup scripts. It found 20
-start calls, one per script, and resolved all 20 to unique physical CCF rooms
-with zero missing, ambiguous, malformed, or over-capacity cases. None selected
-the primary receiving room. These are aggregate observations only; no original
-script, room name, asset path, or derived payload is published.
+`CcWorld::GetRoomByName` rejects a void query, then compares the root's full
+name and prefix case-insensitively. It scans ordinary rooms newest-created-first
+and compares only their names case-insensitively; the prefix is not part of an
+ordinary-room lookup key. `CcRoom::LoadSceneCcf` therefore merges a later
+physical room into an existing ordinary room when its name differs only by
+ASCII case. Otherwise `CreateRoom` prepends a new room.
 
-The portable resolver records that shipped-campaign normalization against one
-selected `CcfMetadata::rooms` collection in physical order. It is deliberately
-not presented as full `CcWorld::GetRoomByName` parity: a complete runtime join
-still requires a census across every CCF loaded into the world and recovery of
-the legacy `CcName` comparison policy.
+The synchronous mission load order is:
+
+1. the main World `CCFF`, with flags `0`;
+2. the optional first `BCKD`, with flags `0`;
+3. every object-definition CCF selected by the level's `OBJE` loop, in physical
+   placement order, with flags `0x2000`; and
+4. world initialization, followed only then by successful `AddStartPos`.
+
+Flag `0x2000` does not suppress the room section; only bit `0x20` does. It
+suppresses the placed-node section relevant to object instancing. Scene wrapper
+destruction and mission reset do not destroy the published world rooms; their
+lifetime ends with the mission world.
+
+`AddStartPos` constructs a query with a name but a null prefix. Consequently
+the full root comparison always fails, even if a future root is named.
+The empty-table fallback selects root directly and is a separate path.
+
+A private aggregate census covered all 20 campaign setups and their complete
+mission load sequences. The main CCFs contain 101 physical room records:
+20 primary/root records and 81 ordinary rooms. Seven optional backgrounds
+contribute only seven empty primary records. The 2,101 object CCF load calls
+likewise encounter only one empty primary record per selected CCF, so they
+bind that record to root but publish no ordinary room names. `MODL` records do
+not issue this mission-root scene load. All 20 start calls
+resolve uniquely to ordinary rooms from the main CCF; there are no missing,
+ambiguous, empty, non-ASCII, background-only, object-only, or root matches.
+There are no non-empty exact or ASCII-fold collisions. These are aggregate
+observations only; no original script, room name, asset path, or derived
+payload is published.
 
 ## Grouped aircraft visual
 
@@ -131,18 +156,25 @@ similarity, `sourceNodeReference`, or the entire owned-UID heap.
 ## Portable implementation
 
 `MissionSetup` provides a bounded, non-executing scanner for the exact
-`AddStartPos` call shape. It:
+`AddStartPos` call shape. `MissionWorldRooms` reconstructs ordered room
+publication and world-wide start lookup. Together they:
 
-- treats all other AFS constructs as opaque;
-- ignores comments and unrelated string literals;
-- rejects malformed matching calls atomically;
-- limits source size, room-name size, and start count;
-- accepts only finite locale-independent floats;
-- normalizes exact names only within one selected physical CCF; and
-- fails closed on missing or ambiguous primary/start rooms.
+- treat all other AFS constructs as opaque;
+- ignore comments and unrelated string literals;
+- reject malformed matching calls atomically;
+- limit source size, room-name size, and start count;
+- accept only finite locale-independent floats;
+- retain root separately from ordinary runtime rooms;
+- preserve every source/physical-room contributor without copying geometry;
+- model room-section suppression and optional primary-name copying;
+- merge ordinary names using locale-independent ASCII case folding;
+- reject embedded NUL and non-ASCII names whose legacy CRT behavior is not
+  portable; and
+- fail closed on structural, limit, missing, ambiguous, or forged state.
 
 The implementation deliberately does not execute AFS, convert the recovered
 axis rotation into a portable runtime matrix, create an actor, or publish its
-skin hierarchies to Metal. It also does not emulate the world-wide legacy room
-lookup. Those steps require the dynamic actor-to-instance publication contract
-and runtime validation.
+skin hierarchies to Metal. Connecting the catalog's contributor lists to
+combined room draw publication remains separate from the now-implemented
+lookup contract. Actor creation and Metal publication still require the dynamic
+actor-to-instance contract and runtime validation.

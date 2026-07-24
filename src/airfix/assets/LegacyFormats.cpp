@@ -2026,6 +2026,7 @@ CcfMetadata parseCcf(const std::span<const std::uint8_t> bytes) {
         .rootId = rootId,
         .rootSize = rootSize,
         .topLevelChunks = {},
+        .roomSections = {},
         .rooms = {},
         .materials = {},
         .meshes = {},
@@ -2057,7 +2058,18 @@ CcfMetadata parseCcf(const std::span<const std::uint8_t> bytes) {
             "CCF section",
             budget);
         if (section.id == 0x1000U) {
-            for (auto& room : section.directChildren) {
+            if (metadata.roomSections.size() >= kCcfRoomLimit) {
+                throw ParseError("CCF exceeds the room-section limit");
+            }
+            const std::size_t firstPhysicalRoomIndex =
+                metadata.rooms.size();
+            const bool firstDirectChildIsRoom =
+                !section.directChildren.empty() &&
+                section.directChildren.front().id == 0x1100U;
+            for (std::size_t childIndex = 0U;
+                 childIndex < section.directChildren.size();
+                 ++childIndex) {
+                auto& room = section.directChildren[childIndex];
                 if (room.id != 0x1100U) {
                     continue;
                 }
@@ -2069,8 +2081,15 @@ CcfMetadata parseCcf(const std::span<const std::uint8_t> bytes) {
                     room,
                     budget,
                     spatialBudget,
-                    metadata.rooms.empty()));
+                    childIndex == 0U));
             }
+            metadata.roomSections.push_back({
+                .firstPhysicalRoomIndex = firstPhysicalRoomIndex,
+                .physicalRoomCount =
+                    metadata.rooms.size() - firstPhysicalRoomIndex,
+                .firstDirectChildIsRoom = firstDirectChildIsRoom,
+                .offset = section.offset,
+            });
         }
         else if (section.id == 0x2000U) {
             for (auto& material : section.directChildren) {

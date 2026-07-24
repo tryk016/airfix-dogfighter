@@ -9,7 +9,8 @@ section semantics
 
 **Evidence:** `EV-20260721-017`, `EV-20260721-018`, `EV-20260721-023`,
 `EV-20260721-024`, `EV-20260721-025`, `EV-20260721-033`,
-`EV-20260721-037`, `EV-20260721-038`, `EV-20260721-039`
+`EV-20260721-037`, `EV-20260721-038`, `EV-20260721-039`,
+`EV-20260724-005`, `EV-20260724-006`
 
 ## Evidence
 
@@ -113,21 +114,26 @@ independent `cc-tools` shape map:
   child chunks...
 ```
 
-The first physical room record is special: the loader registers the receiving
-world/root room under its stored reference. Later records find or create named
-rooms. `CcfRoomMetadata::primaryBinding` retains that distinction without
-constructing runtime rooms during parsing. Scene-load flag bit `0x20` skips the
-complete room section. Bit `0x4000` does not control first-room ownership; it
-only copies the first room's stored name/prefix onto the receiving room.
+Each physical `0x1000` room section is independent. Its first direct child
+binds the receiving world/root only when that child is `0x1100`; later
+`0x1100` records find or create named rooms. If an unknown child precedes the
+first room, that room is ordinary rather than primary. `CcfRoomSectionMetadata`
+retains each section boundary and `CcfRoomMetadata::primaryBinding` retains the
+per-section first-child decision without constructing runtime rooms during
+parsing. Scene-load flag bit `0x20` skips every room section. Bit `0x4000` does
+not control first-room ownership; it only copies each primary room's stored
+name/prefix onto the receiving room.
 
-`EV-20260724-005` provides the gameplay lookup: mission setup
-`AddStartPos("room", ...)` passes the authored name to
-`CcWorld::GetRoomByName`. Rooms from the main and optional background CCF may
-coexist in that world. The portable campaign normalizer maps an exact authored
-name only within one selected `CcfMetadata::rooms` collection and retains its
-physical index; this shipped-content normalization is not yet claimed as full
-world-wide lookup parity. It never interprets the string as a World `ROOM`
-record, CCF reference, or ordinal.
+`EV-20260724-005` and `EV-20260724-006` provide the gameplay lookup: mission
+setup `AddStartPos("room", ...)` passes the authored name to
+`CcWorld::GetRoomByName`. The portable world catalog now replays ordered room
+publication from the main, optional background, and every object CCF load.
+It retains the shared root plus every source/physical-room contributor and
+merges ordinary rooms by ASCII case-insensitive name in newest-created-first
+lookup order. The prefix participates only in the root's full `CcName`
+comparison. Mission start lookup excludes root, matching the legacy name-only
+query's null prefix; empty-table fallback selects root directly. The string is
+never interpreted as a World `ROOM` record, CCF reference, or ordinal.
 
 All 392 records across the 286 selected CCF files parse in physical order, with
 one to eight rooms per file and no zero or duplicate references inside a file.
@@ -234,10 +240,14 @@ owning tree. All 332 portal descriptors resolve a nonzero portal-room target.
 
 The portable room plan scans the canonical placed scene in physical CCF order.
 It selects instantiated objects explicitly assigned to one caller-supplied
-physical `CcfMetadata::rooms` index, while omitting null and light nodes. The
-loader-compatible external-receiver fallback belongs only to room index zero.
-Room BSP is deliberately not consulted: an empty, partial, or repeated spatial
-descriptor cannot hide, duplicate, or reorder draw instances.
+physical `CcfMetadata::rooms` index, while omitting null and light nodes. That
+older draw-plan boundary accepts only one canonical room section whose leading
+room is physical index zero; it fails closed on repeated sections or an unknown
+leading child because it cannot yet combine multiple root contributors. Within
+that supported layout, the loader-compatible external-receiver fallback belongs
+only to room index zero. Room BSP is deliberately not consulted: an empty,
+partial, or repeated spatial descriptor cannot hide, duplicate, or reorder draw
+instances.
 
 Meshes are shared by resolved mesh index in first-use order. Materials are
 resolved uniquely by reference across the selected mesh triangles, preserving
@@ -272,8 +282,9 @@ The World `ROOM` table is a distinct domain and has no proven join to the CCF
 room catalog. The selector's `ccfRoomIndex` always means a physical index into
 `CcfMetadata::rooms`, never a World room position/ID or CCF reference. Mission
 start setup is a separately proven name lookup on the runtime `CcWorld`; it
-does not create a World-record-to-CCF join. Portable single-CCF normalization
-remains narrower than that runtime lookup.
+does not create a World-record-to-CCF join. The portable catalog implements
+the ordered multi-CCF room namespace, while combined drawing of all physical
+contributors remains a later runtime integration.
 
 BSP culling, collision, and portal traversal remain later runtime features; no
 geometry is hidden until those traversal semantics are separately proven.

@@ -126,13 +126,22 @@ struct CcfRoomMetadata {
     std::string name;
     std::string prefix;
     std::uint32_t reference{};
-    // The first physical 0x1100 binds the receiver/root room instead of
-    // allocating an ordinary child room.
+    // The first direct 0x1100 in its containing 0x1000 section binds the
+    // receiver/root room instead of allocating an ordinary child room.
     bool primaryBinding{};
     std::optional<CcfFogMetadata> fog;
     std::vector<CcfBspTreeMetadata> staticBspTrees;
     std::vector<CcfBspTreeMetadata> portalBspTrees;
     std::vector<CcfChunk> directChildren;
+    std::uint64_t offset{};
+};
+
+struct CcfRoomSectionMetadata {
+    std::size_t firstPhysicalRoomIndex{};
+    std::size_t physicalRoomCount{};
+    // The legacy loader binds root only when the section's first direct child
+    // is 0x1100. A later first room is an ordinary named room.
+    bool firstDirectChildIsRoom{};
     std::uint64_t offset{};
 };
 
@@ -312,6 +321,8 @@ struct CcfMetadata {
     std::uint16_t rootId{};
     std::uint32_t rootSize{};
     std::vector<CcfChunk> topLevelChunks;
+    // Physical top-level 0x1000 order. Ranges index the flattened rooms vector.
+    std::vector<CcfRoomSectionMetadata> roomSections;
     std::vector<CcfRoomMetadata> rooms;
     std::vector<CcfMaterialMetadata> materials;
     std::vector<CcfMeshMetadata> meshes;

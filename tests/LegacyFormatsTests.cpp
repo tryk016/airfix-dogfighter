@@ -550,6 +550,12 @@ void testCcf() {
         "CCF direct child count mismatch");
     require(metadata.topLevelChunks[0].directChildren[0].id == 0x1100U,
         "CCF direct child id mismatch");
+    require(
+        metadata.roomSections.size() == 1U &&
+        metadata.roomSections[0].firstPhysicalRoomIndex == 0U &&
+        metadata.roomSections[0].physicalRoomCount == 1U &&
+        metadata.roomSections[0].firstDirectChildIsRoom,
+        "CCF room-section metadata mismatch");
     require(metadata.rooms.size() == 1U && metadata.rooms[0].name == "World" &&
             metadata.rooms[0].prefix == "House" &&
             metadata.rooms[0].reference == 77U &&
@@ -577,6 +583,39 @@ void testCcf() {
             twoRooms.rooms[0].primaryBinding &&
             !twoRooms.rooms[1].primaryBinding,
         "CCF primary room binding mismatch");
+
+    Bytes laterRoom = ccfNamed("Later", "House");
+    appendU32(laterRoom, 79U);
+    Bytes secondSectionRoom = ccfNamed("SecondRoot", "House");
+    appendU32(secondSectionRoom, 80U);
+    Bytes firstUnusualSection;
+    appendBytes(firstUnusualSection, ccfChunk(0x1199U, {}));
+    appendBytes(
+        firstUnusualSection,
+        ccfChunk(0x1100U, laterRoom));
+    Bytes unusualSections;
+    appendBytes(
+        unusualSections,
+        ccfChunk(0x1000U, firstUnusualSection));
+    appendBytes(
+        unusualSections,
+        ccfChunk(
+            0x1000U,
+            ccfChunk(0x1100U, secondSectionRoom)));
+    const auto sectioned = airfix::assets::parseCcf(
+        ccfDocument(unusualSections));
+    require(
+        sectioned.roomSections.size() == 2U &&
+        sectioned.roomSections[0].firstPhysicalRoomIndex == 0U &&
+        sectioned.roomSections[0].physicalRoomCount == 1U &&
+        !sectioned.roomSections[0].firstDirectChildIsRoom &&
+        sectioned.roomSections[1].firstPhysicalRoomIndex == 1U &&
+        sectioned.roomSections[1].physicalRoomCount == 1U &&
+        sectioned.roomSections[1].firstDirectChildIsRoom &&
+        sectioned.rooms.size() == 2U &&
+        !sectioned.rooms[0].primaryBinding &&
+        sectioned.rooms[1].primaryBinding,
+        "CCF multiple/non-leading room-section binding mismatch");
 
     auto invalid = bytes;
     invalid[10] = 17U;

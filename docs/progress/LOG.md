@@ -1212,3 +1212,50 @@ superseded evidence.
   pass. The Windows Ghidra-wrapper tests, public-boundary scan, and
   `git diff --check` also pass. Native Apple compilation remains delegated to
   GitHub Actions; no original game data or private path enters the build.
+
+## 2026-07-24 - ordered mission world-room lookup
+
+- `EV-20260724-006`: deterministic reports from the locked Cc/AfEngine
+  programs recover `CcName` null/present state and comparisons,
+  `CcWorld::GetRoomByName`, newest-first `CreateRoom`, the room-section paths
+  in `CcRoom::LoadSceneCcf`, and the complete synchronous mission-root scene
+  order in `NfMission::LoadLevel`. Raw reports and original binaries remain in
+  ignored local storage; module identity is anchored by the public source
+  manifest.
+- Direct observations show main `CCFF` and optional first `BCKD` loads with
+  flags `0`, followed by each `OBJE` object CCF with flags `0x2000`, all into
+  the same initially void root. Only flag `0x20` suppresses room sections.
+  `AddStartPos` is gated until that load and world initialization complete.
+- Each `0x1000` section treats a leading direct `0x1100` as a receiver/root
+  binding. A room after another direct child is ordinary. Root lookup requires
+  both present name and prefix; ordinary lookup compares only the name with
+  MSVCRT case-insensitive semantics. The portable boundary implements exact
+  ASCII parity and rejects embedded NUL or non-ASCII input whose CRT
+  locale/codepage behavior is not proven.
+- A private aggregate census covers 20 setups/main scenes, seven backgrounds,
+  and 2,101 object CCF scene calls. Main scenes contain 101 physical rooms:
+  20 primary and 81 ordinary. Background and object scenes contain no named
+  ordinary rooms in this mission flow. All 20 starts resolve uniquely to
+  ordinary main-scene rooms, with no missing, ambiguous, empty, non-ASCII,
+  root, background-only, object-only, exact-collision, or ASCII-fold-collision
+  result. No original name, path, script, or payload is published.
+- Added `CcfRoomSectionMetadata` so the portable parser preserves repeated
+  room-section boundaries and leading-child semantics instead of flattening
+  them into one assumed primary. Added `MissionWorldRooms`, which replays
+  ordered enabled sections, retains a shared root plus newest-first ordinary
+  rooms and every source/physical contributor, and resolves starts through
+  distinct `worldRoomIndex` types.
+- Source, section, contributor, runtime-room, per-component, aggregate-name,
+  integer, primary-binding, and catalog-structure limits fail closed.
+  Root/full-name and ordinary/name-only matching, repeated sections,
+  unknown-leading children, disabled/empty sections, root renaming/collisions,
+  null versus present-empty names, modulo/fallback selection, non-ASCII/NUL,
+  missing/ambiguous starts, exact limits, and forged public state have
+  synthetic coverage.
+- Two independent read-only reviews found and closed flattened room-section
+  semantics, pre-limit scan and forged-catalog memory growth, a valid ordinary
+  room at physical index zero, accidental draw-plan assumptions, stale
+  documentation, and catalog call-edge precision. Both final re-reviews pass.
+  A fresh CMake/Ninja Release build completes all 131 targets and all 38 CTest
+  cases pass. Windows Ghidra-wrapper tests, the 208-file public-boundary scan,
+  and `git diff --check` also pass.

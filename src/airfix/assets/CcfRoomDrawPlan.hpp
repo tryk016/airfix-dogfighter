@@ -14,6 +14,7 @@ enum class CcfRoomDrawPlanIssueKind : std::uint8_t {
     // Compatibility name for the original first-room-only entry point.
     noRoom = roomIndexOutOfRange,
     firstRoomNotPrimary,
+    unsupportedRoomSectionLayout,
     placedSceneDependency,
     invalidPlacedNode,
     invalidMeshIndex,
