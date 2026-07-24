@@ -70,10 +70,10 @@ sources.
 | Dependency resolution | Object-to-scene, blueprint/placed graphs, BSP polygons, verified world-to-CCF binding, rooms, meshes, portals, materials, and texture edges implemented |
 | Private packaging | AFPACK writer, validation, transactional install/recovery, and native iOS import/rollback UI implemented |
 | Runtime content loading | Exact authenticated active lease/session, atomic World → CCF → GTI → draw-submission room loading, and revision/serial-gated one-shot native handoff implemented |
-| Rendering | Bounded explicit-room assembly, stable texture IDs, atomic RGBA8 upload preparation, CPU diagnostics, synthetic bootstrap, and two-phase private-room Metal publication implemented |
+| Rendering | Bounded explicit-room assembly, stable texture IDs, atomic RGBA8 upload preparation, CPU diagnostics, two-phase private-room Metal publication, and neutral scene-bound pose transport implemented |
 | Input core | Deterministic semantic router for touch/controller/test sources implemented |
 | Native controls | First UIKit stick/fire/pause overlay and Apple extended-controller slice implemented; complete V1 action set pending |
-| Game simulation | Frozen-pose deterministic player-control state implemented; original aircraft force/collision stages observed, but flight equations and update order remain under reconstruction |
+| Game simulation | Frozen-pose deterministic player-control state implemented; aircraft control events and update order recovered, while equations, units, and player-actor binding remain under reconstruction |
 | Continuous integration | Portable C++ tests plus unsigned device/simulator iOS builds |
 
 Detailed, frequently updated progress lives in
@@ -130,7 +130,7 @@ private package, original-derived bytes, or generated artifacts were committed.
 The public synthetic end-to-end tests include valid texture ID zero, empty
 receiver rooms, multiple CCF candidates, deduplication, cancellation, malformed
 later dependencies, compressed-source peak memory, and exact/one-under limits.
-The portable suite passes 34/34 synthetic tests. Physical-device rendering and
+The portable suite passes 35/35 synthetic tests. Physical-device rendering and
 visual acceptance remain pending.
 
 ## Architecture
@@ -197,9 +197,12 @@ router. The simulation sees immutable per-tick actions rather than UIKit or
 controller objects, which keeps gameplay testable and independent of frame
 rate. The first portable consumer now preserves uninterpreted bank/pitch Q15
 intentions, primary-fire state and exact edges, its own completed-step count,
-and a cross-compiler canonical hash. It deliberately keeps the aircraft pose
-frozen until the original flight law is recovered. The complete input contract
-is documented in
+and a cross-compiler canonical hash. The recovered reference scheduler consumes
+the previous step's force/torque before resetting and accumulating the next
+step. A separate bounded pose exchange is ready for complete dynamic instance
+transforms, but it deliberately remains unbound until the player actor/spawn
+identity and flight equations are recovered. The complete input contract is
+documented in
 [docs/systems/INPUT.md](docs/systems/INPUT.md).
 
 ## Build and test the portable code

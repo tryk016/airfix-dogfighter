@@ -7,14 +7,15 @@ Statuses: `not-investigated`, `observed`, `specified`, `implemented`, `verified`
 |---|---:|---|---|---|
 | Bootstrap and resource loading | P0 | not-investigated | SCN-BOOT-001 | Launcher/ICD boundary unknown |
 | Main menu and settings | P1 | not-investigated | SCN-UI-001 | |
-| Level/room loading | P0 | not-investigated | SCN-LEVEL-001 | Blocked by asset formats |
-| Aircraft flight model | P0 | observed | SCN-FLIGHT-001 | Force/torque and collision stages located; update order and equations unknown |
+| Level/room loading | P0 | implemented | SCN-LEVEL-001 | Bounded atomic explicit-room loader; runtime room-selection rule remains unknown |
+| Aircraft flight model | P0 | observed | SCN-FLIGHT-001 | Scheduler and player/AI control fields recovered; equations and units remain unknown |
 | Deterministic player-control state | P0 | implemented | SCN-FLIGHT-001 | Frozen-pose Q15/fire-intent bridge; explicitly not flight parity |
+| Dynamic instance-pose transport | P0 | implemented | SCN-RENDER-001 | Scene-bound atomic SPSC transport; no player visual binding yet |
 | Camera | P0 | not-investigated | SCN-CAMERA-001 | |
-| Collision and damage | P0 | not-investigated | SCN-COLLISION-001 | |
-| Primary and secondary weapons | P0 | not-investigated | SCN-WEAPON-001 | |
+| Collision and damage | P0 | observed | SCN-COLLISION-001 | Static/BSP resolver and rigid-body impulse order located; damage semantics incomplete |
+| Primary and secondary weapons | P0 | observed | SCN-WEAPON-001 | Attack events and setters identified; projectile spawn and damage remain unknown |
 | Ground/water/interactive actors | P1 | not-investigated | SCN-ACTOR-001 | |
-| AI | P1 | not-investigated | SCN-AI-001 | |
+| AI | P1 | observed | SCN-AI-001 | Eight-channel control mapping and event dispatch recovered; behavior logic incomplete |
 | Mission triggers and progression | P0 | not-investigated | SCN-MISSION-001 | |
 | HUD and mission status | P1 | not-investigated | SCN-HUD-001 | |
 | Sound effects and voices | P1 | not-investigated | SCN-AUDIO-001 | |
@@ -25,8 +26,8 @@ Statuses: `not-investigated`, `observed`, `specified`, `implemented`, `verified`
 | Dogfight/multiplayer | P3 | deferred | SCN-DOGFIGHT-001 | Out of v1.0 scope |
 | House Editor | P3 | deferred | SCN-EDITOR-001 | Out of v1.0 scope |
 | Paint Room | P3 | deferred | SCN-PAINT-001 | Out of v1.0 scope |
-| Semantic actions and deterministic input frames | P0 | specified | SCN-INPUT-001 | ADR-0002 |
-| iOS touch flight controls | P0 | specified | SCN-IOS-002 | Stick, throttle, fire, camera |
+| Semantic actions and deterministic input frames | P0 | implemented | SCN-INPUT-001 | Bounded multi-source router plus immutable fixed-tick frames |
+| iOS touch flight controls | P0 | specified | SCN-IOS-002 | Stick/fire/pause slice implemented; throttle, weapons, and camera pending |
 | Touch layout profiles/editor | P1 | specified | SCN-INPUT-004 | Phone/tablet/handedness |
 | Controller gameplay and menus | P1 | specified | SCN-IOS-003 | Bluetooth/USB extended gamepad |
 | Controller hot-plug/disconnect | P1 | specified | SCN-IOS-004 | Release, pause, touch recovery |

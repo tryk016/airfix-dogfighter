@@ -1077,3 +1077,39 @@ superseded evidence.
   step, hash, intentions, and fire counters without moving the rendered model.
 - A clean GCC configure/build passes the complete 34/34 portable suite. The
   Objective-C++ bridge remains delegated to unsigned GitHub Actions builds.
+
+## 2026-07-24 — aircraft event/scheduler join and neutral pose transport
+
+- `EV-20260724-002`: recovered the exact event-name table and the complete
+  AirCraft control dispatch through `AfVehicle::ProcessEvent`. Player commands,
+  analog input, and AI channels converge on `PITCH_SET`, `BANK_SET`,
+  `THRUST_SET/APPLY`, and primary/secondary attack events. The similarly named
+  `THROTTLE_SET/APPLY` values are confirmed no-ops for this inheritance path.
+- Joined signed player command labels and analog dead-zone/nonlinear curves to
+  vehicle fields `+0x440`, `+0x444`, `+0x448`, and `+0x44C`. The flight-force
+  method reads those fields directly; positive pitch is `pitchup`, positive
+  bank is `bankright`, and positive thrust apply is increase. Physical world
+  axes and force units remain unassigned.
+- `EV-20260724-003`: recovered the active dependant scheduler through
+  `NfTimeHeap -> NfActor::Refresh -> AfVehicle::ProcessEvent`. The physics path
+  runs `EulerODE -> ResetForceAndTorque -> CalcAuxiliary -> AirCraft slot45 ->
+  collision/slot30 -> slot44`, followed by cannon and AI refresh.
+- Confirmed that `EulerODE` derives and integrates from the previously
+  accumulated force/torque before the reset. AirCraft slot45 therefore
+  accumulates forces for the next ODE update rather than the current one.
+  Slot30 is the static/BSP collision-list resolver; actor-vs-actor collision is
+  a separate slot-29 hook.
+- Added `ScenePoseExchange`, a neutral bounded dynamic-transform transport with
+  two preallocated SPSC slots, generation-tagged publication, an exclusive
+  writer claim, saturating reader counts, complete frame validation, stable
+  RAII read leases, and exact authored-transform fallback. It contains no
+  aircraft or flight semantics.
+- An independent concurrency/lifetime review found no critical or high issue.
+  Its medium lifetime finding was fixed by replacing raw owner pointers with a
+  private shared control block. Exchange destruction now invalidates handles
+  while outstanding leases remain safely readable/releasable, and allocator
+  address reuse cannot revive a stale scene identity.
+- A fresh GCC configure/build and the complete portable suite pass 35/35. The
+  dynamic SPSC test also passes repeated stress runs, the public-source boundary
+  remains clean, and native Apple compilation remains delegated to GitHub
+  Actions.

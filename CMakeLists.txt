@@ -131,6 +131,7 @@ endif()
 add_library(airfix_render
     src/airfix/render/CcfRoomDrawAssembly.cpp
     src/airfix/render/DiagnosticRasterizer.cpp
+    src/airfix/render/DynamicInstancePose.cpp
     src/airfix/render/DrawMesh.cpp
     src/airfix/render/DrawSubmissionPlan.cpp
     src/airfix/render/LegacyGeometry.cpp
@@ -362,6 +363,15 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_render_tests tests/LegacyGeometryTests.cpp)
     target_link_libraries(airfix_render_tests PRIVATE airfix::render)
     add_test(NAME airfix_render_tests COMMAND airfix_render_tests)
+
+    add_executable(airfix_dynamic_instance_pose_tests
+        tests/DynamicInstancePoseTests.cpp)
+    target_link_libraries(airfix_dynamic_instance_pose_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_dynamic_instance_pose_tests
+        COMMAND airfix_dynamic_instance_pose_tests)
+    set_tests_properties(airfix_dynamic_instance_pose_tests
+        PROPERTIES TIMEOUT 30)
 
     add_executable(airfix_snapshot_gpu_budget_ledger_tests
         tests/SnapshotGpuBudgetLedgerTests.cpp)

@@ -160,8 +160,18 @@
   by automatic analysis. The per-step method at `0x10003F40` consumes a float
   time delta and contains 15 force, five torque-only, and one force-only call
   sites. The static-collision method at `0x10007920` consumes collided polygons
-  and calls `CalcAuxiliary` twice. Player-control application, scheduler order,
-  units, and the complete flight equations remain unknown.
+  and resolves static/BSP contact lists.
+- Recovered the complete player/AI control-event join. Player commands and
+  analog input emit signed `PITCH_SET`, `BANK_SET`, and
+  `THRUST_SET/APPLY` payloads into four `AfVehicle` fields read directly by
+  the flight-force step. The similarly named `THROTTLE_SET/APPLY` events are
+  confirmed no-ops for the AirCraft inheritance path.
+- Recovered the scheduler-visible aircraft order:
+  `EulerODE -> ResetForceAndTorque -> CalcAuxiliary -> slot45 force
+  accumulation -> collision/slot30 -> slot44 refresh`. `EulerODE` consumes
+  the prior accumulated forces; slot45 prepares the next integration step.
+  The time unit/scale, complete force equations, actor spawn/render identity,
+  and constructor-field semantics remain unknown.
 - Established the recovered right-handed CCF basis, row-vector matrix
   convention, reverse-cross winding, degenerate `+Y` normal, and raw UV policy;
   the bounded API-neutral converter validates all 6,995 corpus meshes.
@@ -294,7 +304,14 @@
   buffer completion callback, while final large-resource destruction is
   dispatched to a serial off-main release queue. Resources and heaps are
   destroyed before their exact measured debit is released.
-- The player-state regression target brings the portable suite to 34/34.
+- Added a neutral scene-bound dynamic pose exchange. It publishes bounded,
+  sorted absolute instance transforms through two preallocated SPSC slots,
+  rejects stale identities and malformed frames atomically, and uses stable
+  RAII leases plus authored-transform fallback. Its shared control block keeps
+  outstanding leases safe after exchange destruction and prevents allocator
+  address reuse from reviving stale handles. It is not yet connected to Metal
+  or identified with a player actor.
+- The dynamic-pose regression target brings the portable suite to 35/35.
 
 ## Confirmed
 
@@ -323,15 +340,17 @@
 
 ## Next
 
-1. Recover the scheduler and event/control path that feeds player input into
-   `AircraftFlightForceStep`; do not assign axis names or signs from AI indices
-   alone.
+1. Recover and cross-check the branch conditions, constructor-field joins,
+   units, and complete equations inside `AircraftFlightForceStep`; preserve
+   the confirmed one-step force-accumulator order.
 2. Extend the native control surface to throttle delta, secondary fire, weapon,
    camera/rear-view, and mission actions before adding persistence, remapping,
    profiles, and haptics.
-3. Recover the runtime rule that selects a physical CCF room during gameplay;
+3. Recover dynamic player-actor creation/spawn and its grouped visual identity;
+   never bind a player by first mesh, name resemblance, or source-node index.
+4. Recover the runtime rule that selects a physical CCF room during gameplay;
    do not infer it from the structurally different World `ROOM` catalog.
-4. Keep BSP culling and portal traversal disabled until their runtime semantics
+5. Keep BSP culling and portal traversal disabled until their runtime semantics
    are proven against executable evidence.
 
 ## Open questions

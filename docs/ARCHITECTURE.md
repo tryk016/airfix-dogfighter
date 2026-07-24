@@ -68,8 +68,9 @@ Portable deterministic state and update rules. It depends on semantic
 render math. The first implemented slice is a frozen-pose player-control state:
 it carries uninterpreted Q15 bank/pitch intentions, exact primary-fire state and
 edge counts, a completed-step counter, and a canonical field encoding. Recovered
-flight equations will replace the frozen-pose boundary only after their
-scheduler, units, signs, and constants are evidence-backed.
+flight equations will replace the frozen-pose boundary only after their units,
+branch conditions, constants, and dynamic actor binding are evidence-backed.
+The reference scheduler order and player command signs are already recovered.
 
 ### `assets`
 
@@ -95,6 +96,15 @@ supports rapid desktop development; the shipping iOS backend uses Metal.
 The faithful pipeline is implemented first. Modern lighting, shadows,
 post-processing, higher-resolution textures, and upscaling are optional feature
 layers with independent toggles and performance budgets.
+
+Static room payloads and GPU resources remain immutable after publication.
+Future actor motion enters through a separate bounded
+`ScenePoseExchange`: complete absolute instance transforms are published
+atomically by simulation and acquired through stable read leases by the
+renderer. The exchange is tied to one scene identity, never mutates
+`LoadedWorldRoom`, and returns the authored transform when an instance has no
+override. It deliberately does not decide which instances belong to a player;
+that binding awaits the recovered dynamic actor/spawn pipeline.
 
 ### `platform`
 

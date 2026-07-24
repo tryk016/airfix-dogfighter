@@ -1,8 +1,9 @@
 # Module map
 
 **Build key:** SHA-256 values in `docs/evidence/source-manifest.sha256`  
-**State:** archive, startup/plugin, asset, and first aircraft-flight call paths
-recovered; remaining modules await targeted reports
+**State:** archive, startup/plugin, asset, aircraft control-event, scheduler,
+and first flight/collision call paths recovered; remaining modules await
+targeted reports
 
 ## Confirmed static import layers
 
@@ -40,7 +41,7 @@ because those plugins do not appear in static import tables.
 | `MODE_DOGFIGHT` | `Game/Modes/Dogfight.mode` | dogfight flow/rules | 2 | What mode factory/export registers it? |
 | `MODE_SINGLEPLAYER` | `Game/Modes/Singleplayer.mode` | campaign/mission flow | 2 | Where are mission transitions and objectives dispatched? |
 | `TYPE_AFFX` | `Game/Types/AfFX.type` | effects actor registrations | 2 | Which effects alter simulation versus rendering only? |
-| `TYPE_AIRCRAFT` | `Game/Types/AirCraft.type` | aircraft registration, force/torque, collision, and AI | 2 | Which scheduler stage feeds player controls into the recovered force step? |
+| `TYPE_AIRCRAFT` | `Game/Types/AirCraft.type` | aircraft registration, force/torque, collision, and AI | 3 | What are the complete flight equations, units, and dynamic actor/spawn rules? |
 | `TYPE_GROUNDUNIT` | `Game/Types/GroundUnit.type` | ground actor registrations | 2 | Which base actor interface is shared? |
 | `TYPE_INTERACTIVE` | `Game/Types/Interactive.type` | interactive scenery actors | 2 | How are triggers/events serialized? |
 | `TYPE_PICKUPS` | `Game/Types/Pickups.type` | pickup actors | 2 | What inventory/effect interface is called? |
@@ -58,15 +59,23 @@ because those plugins do not appear in static import tables.
 ## Confirmed aircraft boundary
 
 `EV-20260724-001` recovered 22 methods from the `AirCraft.type` vtable,
-including a force-producing aircraft method at `0x10003F40`, a
-collision/rigid-body auxiliary method at `0x10007920`, and separate AI control
-logic at `0x1000A370`. The plugin registers 17 aircraft records through one
-common constructor.
+including a force-producing aircraft method at `0x10003F40`, a static/BSP
+collision resolver at `0x10007920`, and separate AI control logic. The plugin
+registers 17 aircraft records through one common constructor.
 
-The force method calls `CcRigidBody::ApplyForce`, `ApplyForceOnly`, and
-`ApplyTorqueOnly`; the collision-oriented method calls `CalcAuxiliary`.
-Scheduler order, player-control application, units, constructor-field
-semantics, and the complete flight law remain open. See
+`EV-20260724-002` joins player commands, analog input, and AI channels to the
+vehicle event dispatcher and exact control fields read by the force method.
+Aircraft use `EVENT_THRUST_SET/APPLY`; the similarly named
+`EVENT_THROTTLE_SET/APPLY` values fall through this inheritance chain without
+a control-field write.
+
+`EV-20260724-003` recovers the active scheduler:
+`NfTimeHeap -> NfActor::Refresh -> AfVehicle::ProcessEvent`. Each physics path
+integrates the previously accumulated force/torque, resets the accumulators,
+rebuilds auxiliary state, invokes AirCraft slot 45 to accumulate forces for
+the next integration, resolves static collisions through slot 30, and invokes
+slot 44. Units, constructor-field semantics, complete force equations, and
+runtime player-actor/spawn identity remain open. See
 `docs/re/systems/AIRCRAFT-FLIGHT.md`.
 
 ## Confirmed `UDSPACK` interface

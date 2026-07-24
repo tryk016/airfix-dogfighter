@@ -295,6 +295,44 @@ charged and permanently closes the ledger to new snapshots; the documented
 post-creation page-rounding path instead obtains and absorbs a separately
 admitted token.
 
+## Dynamic instance-pose boundary
+
+`airfix::render::ScenePoseExchange` is the portable transport seam for future
+dynamic actors. It does not mutate `LoadedWorldRoom`, rebuild a Metal resource
+snapshot, or identify any instance as the player. One published frame contains
+only a simulation step and a sorted, unique, bounded list of absolute
+runtime-world `Mat3`/`Vec3` overrides keyed by the exact instance index of one
+scene.
+
+Every exchange mints an opaque handle for one scene generation. A private
+shared control block is the identity: an equivalent content revision or a new
+allocator object at the same address cannot revive a stale handle. Beginning a
+new scene invalidates the earlier generation. Destroying the exchange closes
+its handles, while an already acquired lease keeps its slot storage alive and
+readable until the lease releases it.
+
+Two slots are allocated to their configured maximum at construction. Publish
+and acquire perform no allocation, explicit mutex operation, or wait. A
+generation-tagged front plus a per-slot exclusive writer-claim bit prevents an
+older reader from registering against a slot while it is being reused. Reader
+counts saturate rather than wrap. If the required back slot is leased, publish
+returns `busy`; simulation continues and the renderer retains the last
+complete frame. It never consumes a partial transform list.
+
+Before claiming a slot, publish validates the scene identity, strictly
+increasing simulation step, override and byte ceilings, in-range indices,
+strict index order, and finite matrix/translation values. Any rejection leaves
+the previous front and step domain unchanged. A read lease resolves an exact
+override by binary search or returns the caller's authored transform
+byte-for-byte. Any `std::span` borrowed from a lease is valid only while that
+same lease remains active.
+
+This primitive intentionally stops before native integration. The current room
+payload represents static placed objects and does not expose a player actor,
+spawn identity, or grouped actor-to-instance binding. No code may select a
+player instance by first index, name similarity, or `sourceNodeReference`.
+Those joins require independent dynamic object/spawn evidence.
+
 An external private-content smoke run completed the writer, installation,
 inspection, same-handle lease adoption, and full room load. The immutable
 result contained 62 meshes, 62 instances, 23 dense textures, and 167 validated

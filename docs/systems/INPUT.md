@@ -78,6 +78,16 @@ counter exhaustion fail without partial mutation. A canonical field-by-field
 hash supports cross-compiler replay diagnostics. No flight motion, throttle,
 or weapon spawn semantics are claimed yet.
 
+Reference event recovery now confirms that positive pitch corresponds to the
+original `pitchup` command, positive bank to `bankright`, and positive thrust
+apply to increase. Aircraft use `EVENT_THRUST_SET/APPLY`; the similarly named
+`EVENT_THROTTLE_SET/APPLY` values do not modify AirCraft control fields.
+Keyboard thrust applies signed `+255/-255` persistent deltas, while analog
+pitch/bank use recovered dead zones and nonlinear `SET` curves. These facts are
+documented in `docs/re/systems/AIRCRAFT-FLIGHT.md`; they are not yet applied by
+`PlayerAircraftState` because scheduler time units, the complete force law, and
+the actor binding remain incomplete.
+
 `InputRouter` is deliberately single-thread-affine. UIKit and Game Controller
 callbacks must be serialized onto the same input/simulation thread as `tick()`;
 adapters must also submit their complete current state when a device connects.
