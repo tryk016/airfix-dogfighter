@@ -1,11 +1,11 @@
 #include "airfix/assets/MissionSetup.hpp"
 
 #include <algorithm>
-#include <charconv>
 #include <cmath>
 #include <iterator>
+#include <locale>
+#include <sstream>
 #include <string_view>
-#include <system_error>
 #include <utility>
 
 namespace airfix::assets {
@@ -304,12 +304,12 @@ private:
                    normalized[0] == '-' && normalized[1] == '.') {
             normalized.insert(normalized.begin() + 1, '0');
         }
-        const auto* const first = normalized.data();
-        const auto* const last = first + normalized.size();
         float result{};
-        const auto conversion =
-            std::from_chars(first, last, result, std::chars_format::general);
-        if (conversion.ec != std::errc{} || conversion.ptr != last ||
+        std::istringstream conversion{normalized};
+        conversion.imbue(std::locale::classic());
+        conversion >> std::noskipws >> result;
+        if (conversion.fail() ||
+            conversion.peek() != std::char_traits<char>::eof() ||
             !std::isfinite(result)) {
             fail(
                 MissionSetupParseErrorCode::invalidNumber,
