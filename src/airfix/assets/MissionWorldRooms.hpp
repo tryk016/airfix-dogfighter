@@ -28,6 +28,9 @@ struct MissionCcfRoomLoadSource {
     // Load flag 0x4000 copies each section's primary CcName to the receiver;
     // repeated sections overwrite it in load order.
     bool copyPrimaryNameToRoot{false};
+    // Load flag 0x2000 suppresses the independent placed-node scene while
+    // leaving room-section publication enabled.
+    bool placedSceneEnabled{true};
 };
 
 struct MissionWorldRoomBuildInput {
@@ -88,6 +91,9 @@ struct MissionWorldRoomBuildLimits {
 struct MissionWorldRoomCatalog {
     std::size_t sourceCount{};
     std::vector<std::size_t> sourcePhysicalRoomCounts;
+    // Retained so downstream consumers can replay and authenticate the exact
+    // catalog from the same ordered source list.
+    CcNameState initialRootName;
     // Root is index zero. Non-root rooms are newest-created-first, matching
     // the legacy linked-list lookup order.
     std::vector<MissionRuntimeRoom> rooms;

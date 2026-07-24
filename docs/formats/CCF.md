@@ -10,7 +10,7 @@ section semantics
 **Evidence:** `EV-20260721-017`, `EV-20260721-018`, `EV-20260721-023`,
 `EV-20260721-024`, `EV-20260721-025`, `EV-20260721-033`,
 `EV-20260721-037`, `EV-20260721-038`, `EV-20260721-039`,
-`EV-20260724-005`, `EV-20260724-006`
+`EV-20260724-005`, `EV-20260724-006`, `EV-20260724-007`
 
 ## Evidence
 
@@ -124,7 +124,8 @@ parsing. Scene-load flag bit `0x20` skips every room section. Bit `0x4000` does
 not control first-room ownership; it only copies each primary room's stored
 name/prefix onto the receiving room.
 
-`EV-20260724-005` and `EV-20260724-006` provide the gameplay lookup: mission
+`EV-20260724-005`, `EV-20260724-006`, and `EV-20260724-007` provide the
+gameplay lookup and publication contract: mission
 setup `AddStartPos("room", ...)` passes the authored name to
 `CcWorld::GetRoomByName`. The portable world catalog now replays ordered room
 publication from the main, optional background, and every object CCF load.
@@ -283,8 +284,51 @@ room catalog. The selector's `ccfRoomIndex` always means a physical index into
 `CcfMetadata::rooms`, never a World room position/ID or CCF reference. Mission
 start setup is a separately proven name lookup on the runtime `CcWorld`; it
 does not create a World-record-to-CCF join. The portable catalog implements
-the ordered multi-CCF room namespace, while combined drawing of all physical
-contributors remains a later runtime integration.
+the ordered multi-CCF room namespace. The source-aware plan described below
+combines its physical contributors without changing this older explicit-room
+API.
+
+### Source-aware mission-room draw assembly
+
+`EV-20260724-007` establishes that room, mesh, material, and placed references
+inside `CcLoadedScene` are per-load rather than global. Loading a later physical
+record that maps to the same runtime room removes the earlier room wrapper from
+that scene's reference list; only the last wrapper remains referenceable.
+Missing room references fall back to the receiving root. Placed object records
+are suppressed by flags masked with `0x2440`; the observed mission object loads
+use `0x2000`, which publishes rooms and resources but no placed scene. Flag
+`0x20` suppresses room sections while leaving placed publication active; its
+room lookups therefore miss the empty per-load room table and fall back once
+per record to the receiver/root.
+
+`resolveMissionWorldRoomDrawPlan` replays that transient reference table for
+each source, scans sources in load order and placed nodes in physical order,
+and maps active room references through `MissionWorldRoomCatalog`. It therefore
+does not group instances by contributor. A missing or displaced room reference
+is emitted to root once during the one source scan, independent of the number
+of primary room records. Global first-use mesh identity is the pair
+`{sourceIndex, physicalMeshIndex}`; material and texture dependencies retain
+the same source index, so equal numeric references in different CCF loads do
+not collide. Parser-retained top-level order is validated as effective
+`0x1000* -> 0x2000* -> 0x3000* -> 0x4000*`; a section suppressed by its load
+flag does not advance that phase. Every raw room section is still correlated
+by offset, direct-room count, leading-child state, flattened index, and room
+offset. A late effective section or forged flattened metadata fails closed
+instead of approximating the loader's time-dependent binding.
+
+`buildMissionWorldRoomDrawAssembly` re-resolves that plan from the canonical
+catalog and exact load-source list before producing one atomic
+`DrawModelPayload`; each draw-source CCF pointer must match. Mesh and instance
+provenance are parallel numeric arrays, and fallback instances deliberately
+have no physical-room/contributor identity. All transforms remain
+authored-world transforms applied exactly once. Aggregate limits cover every
+physical room processed by room publication or placed resolution and every mesh
+scanned by enabled placed scenes, in addition to output mesh, instance,
+material, vertex, index, range, binding, and byte limits. All fail closed.
+The result passes unchanged through the existing `DrawSubmissionPlan`; no
+shader or Metal draw algorithm change is required. Global multi-source
+texture-ID assignment and an authenticated mission loader remain separate
+integration steps.
 
 BSP culling, collision, and portal traversal remain later runtime features; no
 geometry is hidden until those traversal semantics are separately proven.
@@ -529,8 +573,9 @@ alternate roots nor treats an existing extension specially.
 
 ## Placed scene records (`0x4000`)
 
-`EV-20260721-037` recovers the complete loader-read prefix and observed direct
-children for the independent placed-node table. Every record begins with
+`EV-20260721-037` and `EV-20260724-007` recover the complete loader-read prefix,
+publication masks, and observed direct children for the independent
+placed-node table. Every record begins with
 `0xF010 CcName`, a current reference, room reference, parent reference, an
 `0xF040` position, one raw float32 scalar, and `0xF070` orientation. Object
 records (`0x4100`) additionally store a mesh reference, one raw byte, a portal
@@ -592,6 +637,13 @@ parent edges, with maximum depth 7 and no cycles, missing dependencies, or
 ambiguities. All 6,995 object mesh references resolve uniquely. Seven parent
 edges cross room boundaries, so room binding is resolved per node rather than
 inherited from its parent.
+
+The immutable single-CCF graph above intentionally keeps all parsed room
+records. Mission publication adds the exact `CcLoadedScene` lifetime rule:
+room wrappers are source-local and a later physical record for the same
+runtime room removes the earlier wrapper/reference before placed records are
+processed. The mission draw plan models that transient table separately rather
+than mutating parser metadata.
 
 ## Portable implementation and next step
 

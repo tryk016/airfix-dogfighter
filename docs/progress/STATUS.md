@@ -200,6 +200,18 @@
   rooms; backgrounds and object CCFs add no named ordinary rooms, and the
   effective namespace has no non-empty exact/ASCII-fold collision. Only these
   aggregate counts are published.
+- Recovered the per-load `CcLoadedScene` room-reference lifetime, placed record
+  masks, source-local mesh/material identity, receiver fallback, room content
+  ownership, and `FreezeAll` rebuild boundary. A bounded source-aware mission
+  draw plan now scans each enabled source once in load/physical order, applies
+  transient last-wrapper room-reference rebinding, emits root fallback exactly
+  once per placed record, and suppresses all placed geometry for flag `0x2000`.
+- Added atomic multi-CCF runtime-room assembly with global first-use mesh slots,
+  per-source material binding, parallel numeric provenance, aggregate limits,
+  and direct compatibility with the existing `DrawSubmissionPlan`. Repeated
+  room sections, two CCFs contributing one ordinary room, cross-source local-ID
+  collisions, same-source mesh reuse, disabled placed scenes, late failures,
+  forged state, and exact/one-under limits have synthetic coverage.
 - Recovered the grouped player-aircraft visual as the selected skin's up to
   three complete blueprint hierarchies. The broader actor-owned UID graph also
   includes weapons and auxiliary effects and is not a valid visual selector.
@@ -347,7 +359,7 @@
   outstanding leases safe after exchange destruction and prevents allocator
   address reuse from reviving stale handles. It is not yet connected to Metal
   or connected to the recovered primary-actor/skin-hierarchy contract.
-- The mission world-room regression target brings the portable suite to 38/38.
+- The mission world-room regression target brings the portable suite to 39/39.
 
 ## Confirmed
 
@@ -385,9 +397,10 @@
 3. Implement explicit dynamic publication of the recovered primary actor and
    its selected-skin hierarchies through the pose exchange, keeping auxiliary
    weapons/effects separate.
-4. Connect every runtime room catalog contributor to combined draw publication,
-   then recover portal tracing, camera room traversal, and later transitions;
-   authored starts and ordered world-wide room lookup are now solved.
+4. Add authenticated mission load-manifest and global multi-source texture
+   binding around the completed source-aware room draw seam, then connect it to
+   native publication. Recover portal tracing, camera room traversal, and later
+   transitions afterward.
 5. Keep BSP culling and portal traversal disabled until their runtime semantics
    are proven against executable evidence.
 

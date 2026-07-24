@@ -85,9 +85,13 @@ start selector, the retained single-CCF normalization helper, and the selected
 skin's complete hierarchy for every present slot among up to three blueprints.
 `EV-20260724-006` closes the mission-root load order, `CcName` comparison,
 `CcWorld::GetRoomByName`, root lifetime, and ordered multi-CCF room publication.
-Physical units, runtime contact traces, combined contributor drawing,
-dynamic actor-to-instance publication, projectile creation, and the original
-roles of the three blueprint slots remain open. See
+`EV-20260724-007` closes per-load `CcLoadedScene` reference rebinding, placed
+publication masks, receiver fallback, source-local resource identity, room
+ownership, and `FreezeAll` static-BSP rebuilding. The portable source-aware
+plan/assembly now combines all contributors without treating BSP as geometry.
+Physical units, runtime contact traces, authenticated mission/global-texture
+loading, dynamic actor-to-instance publication, projectile creation, and the
+original roles of the three blueprint slots remain open. See
 `docs/re/systems/AIRCRAFT-FLIGHT.md`,
 `docs/re/systems/AIRCRAFT-FLIGHT-LAW.md`, and
 `docs/re/systems/PLAYER-SPAWN.md`.

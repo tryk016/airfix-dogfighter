@@ -172,6 +172,36 @@ metadata-only result contains 6,995 instances, 170,039 triangles, and 20,211
 ordered ranges. These payloads are validated in memory only; no private
 geometry is exported.
 
+## Source-aware mission-room boundary
+
+The mission-level seam does not concatenate explicit physical-room assemblies.
+`resolveMissionWorldRoomDrawPlan` scans each ordered `LoadSceneCcf` source once
+and preserves physical placed-node order inside it. A transient source-local
+room-reference table models `CcLoadedRoom` rebinding: when multiple physical
+records resolve to one runtime room, only the last wrapper remains addressable.
+Unresolved references select the receiving root once during that source scan.
+This prevents both contributor-group reordering and fallback duplication.
+
+`MissionCcfRoomLoadSource::placedSceneEnabled` records the observed `0x2000`
+mask behavior. Definition CCF loads still contribute room records but their
+placed tables publish no instances. Mesh, material, node, and room references
+never cross a `sourceIndex`. Equal local values in two sources remain distinct,
+and aggregate preflight covers all rooms and meshes scanned even when `0x20`
+suppresses room publication but leaves placed resolution active.
+while one physical mesh reused by several selected nodes in the same source
+receives one global first-use mesh slot.
+
+`buildMissionWorldRoomDrawAssembly` consumes caller-supplied per-source material
+bindings whose texture IDs already share one global namespace. It produces one
+`DrawModelPayload` plus parallel numeric mesh/instance provenance and fails
+atomically on a late source, transform, binding, limit, or forged-catalog
+error. Assembly re-resolves the plan from the canonical catalog and exact load
+sources and requires every draw-source CCF identity to match that list before
+allocation. The existing `DrawSubmissionPlan` accepts the combined model
+directly. The authenticated mission load manifest and global multi-source
+texture binding are not yet connected to `WorldRoomLoader` or the native
+coordinator.
+
 ## Metal handoff
 
 The data-less iOS shell now exercises a bounded multi-mesh/multi-instance

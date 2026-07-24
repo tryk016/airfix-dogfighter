@@ -1259,3 +1259,50 @@ superseded evidence.
   A fresh CMake/Ninja Release build completes all 131 targets and all 38 CTest
   cases pass. Windows Ghidra-wrapper tests, the 208-file public-boundary scan,
   and `git diff --check` also pass.
+
+## 2026-07-24 - source-aware mission room drawing
+
+- `EV-20260724-007`: targeted instruction/decompilation passes over the locked
+  Cc program recover `CcLoadedScene`/`CcLoadedEntity`/`CcLoadedRoom` lifetime,
+  per-load reference lookup, fresh mesh/material/object publication, exact
+  placed masks, room ownership, and `FreezeAll` static-BSP rebuilding. Raw
+  reports and original binaries remain in ignored local storage; no private
+  name, path, payload, or hash is published.
+- Each load owns a transient room-reference table. When a later physical room
+  record resolves to the same runtime room, its wrapper replaces the earlier
+  wrapper in that loaded scene; the runtime room and already attached content
+  survive. Placed lookup sees only the active per-load wrappers. A missing room
+  reference selects the receiving root. References never cross source/load
+  boundaries.
+- Placed object, null, and light publication use masks `0x2440`, `0x3000`, and
+  `0x2800` respectively. The mission's object-definition loads use `0x2000`,
+  so they contribute room records and resources but publish no placed scene.
+  The source-aware portable contract records this independently from flag
+  `0x20`, which suppresses room sections.
+- Added `MissionWorldRoomDrawPlan`, which scans enabled sources once in load
+  order and objects in physical order. It replays active room-reference
+  rebinding, maps through the ordered runtime catalog, emits receiver fallback
+  once per placed record, preserves source-local mesh/material/texture identity,
+  and assigns global mesh slots by `{sourceIndex, physicalMeshIndex}` first use.
+- Added atomic `MissionWorldRoomDrawAssembly` with per-source material binding,
+  authored-world transforms, aggregate resource/byte limits, and parallel
+  numeric mesh/instance provenance. Its output crosses the unchanged
+  `DrawSubmissionPlan` boundary. Global multi-source texture-ID assignment and
+  an authenticated mission loader remain the next integration.
+- Synthetic coverage includes repeated room sections, two sources contributing
+  one ordinary runtime room, same-source wrapper replacement, root fallback,
+  physical-order preservation, source-local numeric collisions, same-source
+  mesh reuse, `0x20` fallback, `0x2000` suppression, late-source atomic
+  failure, forged catalog/source identity, top-level reordering, exact limits,
+  and one-under aggregate bytes.
+- `FreezeAll` calls each room's `Freeze`, discards accumulated static BSP chains,
+  and rebuilds one derived static tree from the accumulated ordinary and portal
+  object lists. It does not delete objects or meshes; BSP remains a rebuildable
+  spatial index rather than another geometry source. Portal-BSP rebuilding is
+  a separate path and is not claimed as active in this mission flow.
+- Both final independent re-reviews pass after canonical catalog replay,
+  internal plan re-resolution, exact CCF source-identity binding, pre-allocation
+  aggregate limits, and expanded forged/one-under coverage. A fresh
+  CMake/Ninja Release build completes all 135 targets and all 39 CTest cases
+  pass. Windows Ghidra-wrapper tests, the 213-file public-boundary scan, and
+  `git diff --check` also pass.

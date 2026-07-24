@@ -229,6 +229,7 @@ MissionWorldRoomCatalog buildMissionWorldRoomCatalog(
     const MissionWorldRoomBuildLimits& limits) {
     MissionWorldRoomCatalog result;
     result.sourceCount = input.sources.size();
+    result.initialRootName = input.initialRootName;
     if (input.sources.size() > limits.maximumSources) {
         failBuild(
             result,

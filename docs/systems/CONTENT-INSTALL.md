@@ -250,7 +250,8 @@ Synthetic tests contain no game assets and cover:
 
 Linux, Windows, ARM64 macOS, `iphoneos`, and `iphonesimulator` targets compile
 the portable installer and recovery service because AFPACK is linked into the
-iOS application target. The complete portable suite currently passes 32/32.
+iOS application target. The repository-wide validation result is recorded in
+`docs/progress/LOG.md` rather than duplicated here.
 Physical-device tests later add document-provider permissions,
 background/foreground interruption, force termination at checkpoints,
 insufficient-space behavior, file protection while locked, large-package
