@@ -4,10 +4,12 @@
 /out/
 /DerivedData/
 /.cache/
+**/compile_commands.json
 
 # IDE and local configuration
 /.idea/
 /.vscode/
+/CMakeUserPresets.json
 *.user
 *.suo
 *.xcuserstate

@@ -223,6 +223,21 @@ cmake --build build --config Release --parallel
 ctest --test-dir build --build-config Release --output-on-failure
 ```
 
+For clangd, VS Code, CLion, and other LSP clients, the repository also provides
+a reproducible Ninja preset that generates `compile_commands.json`:
+
+```bash
+cmake --preset code-intelligence
+cmake --build --preset code-intelligence
+ctest --preset code-intelligence
+```
+
+See
+[docs/toolchain/CODE-INTELLIGENCE.md](docs/toolchain/CODE-INTELLIGENCE.md) for
+editor setup, local toolchain overrides, refresh instructions, and the
+Windows/Objective-C++/UIKit/Metal limitations. The generated compilation
+database is machine-specific and must not be committed.
+
 Tests use synthetic fixtures and do not require proprietary game files. The
 read-only archive inspector can be run against a privately supplied archive:
 
@@ -278,6 +293,7 @@ Recommended starting points:
 - [Private content format](docs/formats/AFPACK.md)
 - [Input and controller design](docs/systems/INPUT.md)
 - [Aircraft flight reconstruction boundary](docs/re/systems/AIRCRAFT-FLIGHT.md)
+- [clangd and LSP code intelligence](docs/toolchain/CODE-INTELLIGENCE.md)
 - [Current status](docs/progress/STATUS.md)
 
 ## Contributing safely

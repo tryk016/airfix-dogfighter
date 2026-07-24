@@ -14,6 +14,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  code-intelligence-preset:
+    name: clangd preset / ubuntu-24.04
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Show toolchain
+        run: |
+          cmake --version
+          ninja --version
+
+      - name: Configure code-intelligence preset
+        run: cmake --preset code-intelligence
+
+      - name: Validate compilation database
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          database_path = Path("build/code-intelligence/compile_commands.json")
+          entries = json.loads(database_path.read_text(encoding="utf-8"))
+          if not entries:
+              raise SystemExit("compile_commands.json is empty")
+          if any(Path(entry["file"]).suffix.lower() in {".m", ".mm", ".metal"} for entry in entries):
+              raise SystemExit("portable compilation database contains Apple-only sources")
+
+      - name: Build code-intelligence preset
+        run: cmake --build --preset code-intelligence --parallel
+
+      - name: Test code-intelligence preset
+        run: ctest --preset code-intelligence
+
   build-and-test:
     name: ${{ matrix.os }}
     strategy:

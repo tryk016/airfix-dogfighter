@@ -27,6 +27,7 @@ be on `PATH`.
 |---|---|
 | Language | C++20 |
 | Build | CMake plus Ninja |
+| Editor/LSP | clangd with a generated CMake compilation database |
 | Windows compiler | MSVC or clang-cl, selected after warning/sanitizer spike |
 | Tests | lightweight C++ test runner selected with the skeleton |
 | iOS platform/input/controller | UIKit and Game Controller behind Objective-C++ adapters |
@@ -37,6 +38,10 @@ be on `PATH`.
 The native iOS adapters are the first implementation path. SDL3 remains a later
 desktop/common-layer option; neither Apple nor SDL types may leak into the
 portable game core.
+
+The shared `code-intelligence` CMake preset and editor setup are documented in
+[toolchain/CODE-INTELLIGENCE.md](toolchain/CODE-INTELLIGENCE.md). Generated
+compilation databases and machine-specific compiler paths remain local.
 
 ## Installation policy
 
