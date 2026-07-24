@@ -8,10 +8,10 @@ and modern lighting without changing faithful-mode gameplay.
 
 The project is under active development and is **not yet a playable port**.
 It currently provides the portable archive/asset pipeline, deterministic input
-core, private content-package infrastructure, fail-closed render submission and
-texture-upload preparation, diagnostic rendering, and a data-less UIKit/Metal
-application shell with an authenticated private-room loading path and the first
-native touch/controller input slice.
+and player-control state, private content-package infrastructure, fail-closed
+render submission and texture-upload preparation, diagnostic rendering, and a
+data-less UIKit/Metal application shell with an authenticated private-room
+loading path and the first native touch/controller-to-simulation slice.
 
 ## Project scope
 
@@ -73,7 +73,7 @@ sources.
 | Rendering | Bounded explicit-room assembly, stable texture IDs, atomic RGBA8 upload preparation, CPU diagnostics, synthetic bootstrap, and two-phase private-room Metal publication implemented |
 | Input core | Deterministic semantic router for touch/controller/test sources implemented |
 | Native controls | First UIKit stick/fire/pause overlay and Apple extended-controller slice implemented; complete V1 action set pending |
-| Game simulation | Reconstruction in progress; no complete playable loop yet |
+| Game simulation | Frozen-pose deterministic player-control state implemented; original aircraft force/collision stages observed, but flight equations and update order remain under reconstruction |
 | Continuous integration | Portable C++ tests plus unsigned device/simulator iOS builds |
 
 Detailed, frequently updated progress lives in
@@ -130,7 +130,7 @@ private package, original-derived bytes, or generated artifacts were committed.
 The public synthetic end-to-end tests include valid texture ID zero, empty
 receiver rooms, multiple CCF candidates, deduplication, cancellation, malformed
 later dependencies, compressed-source peak memory, and exact/one-under limits.
-The portable suite passes 33/33 synthetic tests. Physical-device rendering and
+The portable suite passes 34/34 synthetic tests. Physical-device rendering and
 visual acceptance remain pending.
 
 ## Architecture
@@ -195,7 +195,11 @@ connected.
 Both platform adapters feed the implemented deterministic semantic input
 router. The simulation sees immutable per-tick actions rather than UIKit or
 controller objects, which keeps gameplay testable and independent of frame
-rate. The complete contract is documented in
+rate. The first portable consumer now preserves uninterpreted bank/pitch Q15
+intentions, primary-fire state and exact edges, its own completed-step count,
+and a cross-compiler canonical hash. It deliberately keeps the aircraft pose
+frozen until the original flight law is recovered. The complete input contract
+is documented in
 [docs/systems/INPUT.md](docs/systems/INPUT.md).
 
 ## Build and test the portable code
@@ -255,6 +259,7 @@ src/airfix/io/         Cross-platform durable file primitives
 src/airfix/package/    Private AFPACK format, validation, and installation
 src/airfix/render/     Geometry, texture preparation, draw plans, diagnostics
 src/airfix/runtime/    Platform-neutral application/session state
+src/airfix/simulation/ Deterministic reconstructed gameplay state and rules
 tests/                 Synthetic unit and malformed-input tests
 tools/                 Read-only inspectors, converters, and CI checks
 docs/                  Plans, ADRs, format notes, evidence, and progress logs
@@ -269,6 +274,7 @@ Recommended starting points:
 - [Reverse-engineering workflow](docs/RE-WORKFLOW.md)
 - [Private content format](docs/formats/AFPACK.md)
 - [Input and controller design](docs/systems/INPUT.md)
+- [Aircraft flight reconstruction boundary](docs/re/systems/AIRCRAFT-FLIGHT.md)
 - [Current status](docs/progress/STATUS.md)
 
 ## Contributing safely

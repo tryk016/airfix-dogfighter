@@ -67,6 +67,24 @@ else()
     target_compile_options(airfix_input PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+add_library(airfix_simulation
+    src/airfix/simulation/PlayerAircraftSimulation.cpp
+)
+add_library(airfix::simulation ALIAS airfix_simulation)
+
+target_include_directories(airfix_simulation
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+)
+target_compile_features(airfix_simulation PUBLIC cxx_std_20)
+target_link_libraries(airfix_simulation PUBLIC airfix::input)
+
+if(MSVC)
+    target_compile_options(airfix_simulation PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(airfix_simulation PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
 add_library(airfix_udsp
     src/airfix/archive/UdspArchive.cpp
 )
@@ -334,6 +352,12 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_input_tests tests/InputRouterTests.cpp)
     target_link_libraries(airfix_input_tests PRIVATE airfix::input)
     add_test(NAME airfix_input_tests COMMAND airfix_input_tests)
+
+    add_executable(airfix_simulation_tests
+        tests/PlayerAircraftSimulationTests.cpp)
+    target_link_libraries(airfix_simulation_tests
+        PRIVATE airfix::simulation)
+    add_test(NAME airfix_simulation_tests COMMAND airfix_simulation_tests)
 
     add_executable(airfix_render_tests tests/LegacyGeometryTests.cpp)
     target_link_libraries(airfix_render_tests PRIVATE airfix::render)

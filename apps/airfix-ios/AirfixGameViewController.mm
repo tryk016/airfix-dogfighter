@@ -11,6 +11,7 @@
 #include "AirfixWorldRoomSnapshot+Private.hpp"
 #include "AirfixIOSInputCoordinator+Private.hpp"
 #include "airfix/runtime/AppSession.hpp"
+#include "airfix/simulation/PlayerAircraftSimulation.hpp"
 
 #include <utility>
 
@@ -26,6 +27,7 @@ constexpr NSUInteger kInitialPhysicalRoom = 1U;
 @interface AirfixGameViewController ()
     <AirfixContentCoordinatorDelegate, AirfixIOSInputCoordinatorDelegate> {
     airfix::runtime::AppSession _session;
+    airfix::simulation::PlayerAircraftState _playerAircraftState;
     dispatch_queue_t _rendererPreparationQueue;
 }
 @property(nonatomic, strong) AirfixMetalRenderer* renderer;
@@ -35,6 +37,10 @@ constexpr NSUInteger kInitialPhysicalRoom = 1U;
 @property(nonatomic, strong) AirfixTouchControlsView* touchControlsView;
 @property(nonatomic, strong) AirfixIOSInputCoordinator* inputCoordinator;
 @property(nonatomic) BOOL inputPipelineReady;
+@property(nonatomic) BOOL simulationPipelineReady;
+
+- (void)updateDiagnosticsLabelWithInputDiagnostics:
+    (AirfixInputDiagnostics*)diagnostics;
 @end
 
 @implementation AirfixGameViewController
@@ -75,7 +81,7 @@ constexpr NSUInteger kInitialPhysicalRoom = 1U;
 
     UILabel* inputDiagnosticsLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     inputDiagnosticsLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    inputDiagnosticsLabel.numberOfLines = 2;
+    inputDiagnosticsLabel.numberOfLines = 4;
     inputDiagnosticsLabel.textAlignment = NSTextAlignmentCenter;
     inputDiagnosticsLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.82];
     inputDiagnosticsLabel.font = [UIFont monospacedDigitSystemFontOfSize:12.0
@@ -120,6 +126,7 @@ constexpr NSUInteger kInitialPhysicalRoom = 1U;
     self.inputCoordinator = [[AirfixIOSInputCoordinator alloc]
         initWithTouchControlsView:touchControlsView];
     self.inputCoordinator.delegate = self;
+    self.simulationPipelineReady = YES;
 
     __weak AirfixGameViewController* weakSelf = self;
     self.inputPipelineReady = airfix::ios::setInputFrameConsumer(
@@ -137,11 +144,45 @@ constexpr NSUInteger kInitialPhysicalRoom = 1U;
             if (meaningful) {
                 strongSelf->_session.noteInputActivity();
             }
+
+            // The input pump can emit more than one fixed frame after a
+            // display stall. This bridge never infers or replays missing
+            // simulation ticks: every eligible delivered frame advances the
+            // deterministic state exactly once.
+            if (!strongSelf->_session.simulationRunning() ||
+                frame.pressed(
+                    airfix::input::DigitalAction::globalPause)) {
+                return;
+            }
+
+            const auto advanced = airfix::simulation::advance(
+                strongSelf->_playerAircraftState, frame);
+            if (advanced) {
+                strongSelf->_playerAircraftState = advanced.state;
+                return;
+            }
+
+            // A rejected deterministic transition is terminal for this
+            // controller instance. Keep the last accepted world state intact,
+            // neutralize physical input, and refuse later pause-button resume.
+            strongSelf.simulationPipelineReady = NO;
+            strongSelf->_session.pause();
+            [strongSelf.inputCoordinator resetForGameplayBoundary];
+            ((MTKView*)strongSelf.view).paused = YES;
+            strongSelf.touchControlsView.hidden = YES;
+            strongSelf.statusLabel.text =
+                @"Airfix Dogfighter reconstruction\n"
+                 @"Simulation halted after an invalid deterministic step";
+            [strongSelf
+                updateDiagnosticsLabelWithInputDiagnostics:
+                    strongSelf.inputCoordinator.diagnostics];
         });
     if (!self.inputPipelineReady) {
         label.text =
             @"Airfix Dogfighter reconstruction\nInput initialization failed";
     }
+    [self updateDiagnosticsLabelWithInputDiagnostics:
+        self.inputCoordinator.diagnostics];
 
     UILayoutGuide* safeArea = metalView.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
@@ -234,6 +275,7 @@ constexpr NSUInteger kInitialPhysicalRoom = 1U;
     ((MTKView*)self.view).paused = YES;
     if (_session.contentState() == airfix::runtime::ContentState::ready &&
         self.inputPipelineReady &&
+        self.simulationPipelineReady &&
         self.inputCoordinator.isOperational) {
         self.statusLabel.text =
             @"Airfix Dogfighter reconstruction\n"
@@ -277,7 +319,12 @@ constexpr NSUInteger kInitialPhysicalRoom = 1U;
     (void)worldLogicalPath;
     (void)physicalRoom;
     _session.setContentState(airfix::runtime::ContentState::validating);
+    // A newly requested world owns a fresh deterministic gameplay state.
+    // Lifecycle and input-source resets do not otherwise erase this state.
+    _playerAircraftState = {};
     [self.inputCoordinator resetForGameplayBoundary];
+    [self updateDiagnosticsLabelWithInputDiagnostics:
+        self.inputCoordinator.diagnostics];
     ((MTKView*)self.view).paused = YES;
     self.touchControlsView.hidden = YES;
     self.statusLabel.text =
@@ -380,6 +427,7 @@ constexpr NSUInteger kInitialPhysicalRoom = 1U;
             [strongSelf.inputCoordinator resetForGameplayBoundary];
             const BOOL inputOperational =
                 strongSelf.inputPipelineReady &&
+                strongSelf.simulationPipelineReady &&
                 strongSelf.inputCoordinator.isOperational;
             strongSelf.touchControlsView.hidden = !inputOperational;
             if (inputOperational) {
@@ -390,6 +438,11 @@ constexpr NSUInteger kInitialPhysicalRoom = 1U;
                     static_cast<unsigned long>(snapshot.meshCount),
                     static_cast<unsigned long>(snapshot.textureCount),
                     static_cast<unsigned long>(snapshot.drawCommandCount)];
+            }
+            else if (!strongSelf.simulationPipelineReady) {
+                strongSelf.statusLabel.text =
+                    @"Airfix Dogfighter reconstruction\n"
+                     @"Simulation halted; gameplay cannot resume";
             }
             else {
                 strongSelf.statusLabel.text =
@@ -457,6 +510,7 @@ constexpr NSUInteger kInitialPhysicalRoom = 1U;
         UIApplication.sharedApplication.applicationState ==
             UIApplicationStateActive &&
         self.inputPipelineReady &&
+        self.simulationPipelineReady &&
         self.inputCoordinator.isOperational &&
         self.renderer.worldRoomInstalled;
     const bool resumed = mayResume && _session.resume();
@@ -480,6 +534,14 @@ constexpr NSUInteger kInitialPhysicalRoom = 1U;
     if (coordinator != self.inputCoordinator) {
         return;
     }
+    [self updateDiagnosticsLabelWithInputDiagnostics:diagnostics];
+}
+
+- (void)updateDiagnosticsLabelWithInputDiagnostics:
+    (AirfixInputDiagnostics*)diagnostics {
+    if (diagnostics == nil) {
+        return;
+    }
     NSString* source = @"none";
     if (diagnostics.lastMeaningfulSource == AirfixInputSourceTouch) {
         source = @"touch";
@@ -492,15 +554,32 @@ constexpr NSUInteger kInitialPhysicalRoom = 1U;
     NSString* controller = diagnostics.isControllerConnected
         ? @"connected"
         : @"none";
+    const auto& simulation = _playerAircraftState;
+    const std::uint64_t simulationHash =
+        airfix::simulation::canonicalHash(simulation);
+    NSString* simulationStatus =
+        self.simulationPipelineReady ? @"ok" : @"failed";
     self.inputDiagnosticsLabel.text = [NSString stringWithFormat:
         @"INPUT T%llu  B %+d  P %+d  FIRE %@\n"
-         @"CONTROLLER %@  SOURCE %@",
+         @"CONTROLLER %@  SOURCE %@\n"
+         @"SIM STEP %llu  HASH %016llX  %@\n"
+         @"INTENT B %+d  P %+d  FIRE %@  PRESS %llu  RELEASE %llu",
         static_cast<unsigned long long>(diagnostics.tick),
         diagnostics.bank,
         diagnostics.pitch,
         fire,
         controller,
-        source];
+        source,
+        static_cast<unsigned long long>(simulation.completedSteps),
+        static_cast<unsigned long long>(simulationHash),
+        simulationStatus,
+        static_cast<int>(simulation.bankIntentQ15),
+        static_cast<int>(simulation.pitchIntentQ15),
+        simulation.primaryFireHeld ? @"down" : @"up",
+        static_cast<unsigned long long>(
+            simulation.primaryFirePressCount),
+        static_cast<unsigned long long>(
+            simulation.primaryFireReleaseCount)];
 }
 
 @end

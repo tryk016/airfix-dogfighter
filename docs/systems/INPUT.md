@@ -68,6 +68,16 @@ those platform types enter `InputFrame`. Profile persistence/remapping,
 controller glyphs, the complete action surface, and haptic adapters remain
 follow-up layers.
 
+The first portable simulation consumer is also implemented.
+`airfix::simulation::PlayerAircraftState` accepts one eligible `InputFrame` at
+a time, preserves bank/pitch as uninterpreted Q15 intentions, records
+primary-fire held state and exact press/release counts, and maintains a
+completed-step count separate from the input tick. Tick gaps are accepted;
+duplicates, backward ticks, invalid Q15 values, incompatible schemas, and
+counter exhaustion fail without partial mutation. A canonical field-by-field
+hash supports cross-compiler replay diagnostics. No flight motion, throttle,
+or weapon spawn semantics are claimed yet.
+
 `InputRouter` is deliberately single-thread-affine. UIKit and Game Controller
 callbacks must be serialized onto the same input/simulation thread as `tick()`;
 adapters must also submit their complete current state when a device connects.

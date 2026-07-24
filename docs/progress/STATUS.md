@@ -1,6 +1,6 @@
 # Project status
 
-**Updated:** 2026-07-23
+**Updated:** 2026-07-24
 **Stage:** Phase 1 — static analysis and archive recovery in progress
 
 ## Now
@@ -149,6 +149,19 @@
   adapter, a renderer-independent fixed 60 Hz input pump, explicit-resume
   lifecycle policy, diagnostics, and fail-closed gameplay-boundary resets.
   Complete V1 controls, remapping, profiles, and haptics remain pending.
+- Added the first deterministic simulation consumer. The portable
+  `PlayerAircraftState` preserves uninterpreted bank/pitch Q15 intentions,
+  primary-fire held state and exact edge counts, its own completed-step count,
+  monotonic source tick, and an explicit canonical hash. Invalid schema, Q15,
+  tick, and counter transitions are rejected without partial mutation. The iOS
+  bridge advances it exactly once per eligible running frame and fails closed;
+  pose, movement, throttle, and weapon spawning remain intentionally absent.
+- Recovered the 63-slot `AirCraft.type` vtable and 16 function entries missed
+  by automatic analysis. The per-step method at `0x10003F40` consumes a float
+  time delta and contains 15 force, five torque-only, and one force-only call
+  sites. The static-collision method at `0x10007920` consumes collided polygons
+  and calls `CalcAuxiliary` twice. Player-control application, scheduler order,
+  units, and the complete flight equations remain unknown.
 - Established the recovered right-handed CCF basis, row-vector matrix
   convention, reverse-cross winding, degenerate `+Y` normal, and raw UV policy;
   the bounded API-neutral converter validates all 6,995 corpus meshes.
@@ -281,7 +294,7 @@
   buffer completion callback, while final large-resource destruction is
   dispatched to a serial off-main release queue. Resources and heaps are
   destroyed before their exact measured debit is released.
-- The new GPU-ledger regression target brings the portable suite to 33/33.
+- The player-state regression target brings the portable suite to 34/34.
 
 ## Confirmed
 
@@ -310,8 +323,9 @@
 
 ## Next
 
-1. Connect the immutable native `InputFrame` stream to the first deterministic
-   reconstructed player/flight update and add fixed-step simulation tests.
+1. Recover the scheduler and event/control path that feeds player input into
+   `AircraftFlightForceStep`; do not assign axis names or signs from AI indices
+   alone.
 2. Extend the native control surface to throttle delta, secondary fire, weapon,
    camera/rear-view, and mission actions before adding persistence, remapping,
    profiles, and haptics.

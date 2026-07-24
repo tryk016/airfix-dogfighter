@@ -1049,3 +1049,31 @@ superseded evidence.
 - A clean configure/build and the complete portable suite pass 33/33. The
   public-boundary scanner also passes; unsigned Objective-C++/Metal compilation
   remains delegated to GitHub Actions.
+
+## 2026-07-24 — aircraft flight boundary and deterministic player state
+
+- `EV-20260724-001`: targeted import, vtable, caller, and address passes over
+  `Game/Types/AirCraft.type` recovered its 63-slot aircraft vtable. Sixteen
+  executable entries missed by automatic function analysis were created only
+  at vtable-proven addresses before decompilation.
+- Vtable slot 45 at `0x10003F40` is a per-step aircraft force method accepting
+  `float dt`. Its branch-dependent body contains 15 `ApplyForce`, five
+  `ApplyTorqueOnly`, and one `ApplyForceOnly` call sites. It contains neither
+  `ResetForceAndTorque` nor `CalcAuxiliary`; the only reset observed in this
+  module is construction-time.
+- Vtable slot 30 at `0x10007920` consumes collided polygons, builds static
+  collision constraints, and calls `CcRigidBody::CalcAuxiliary` twice. Separate
+  AI logic exposes numeric control indices/ranges and event mappings, but the
+  player-control join, axis names/signs, scheduler order, units, and complete
+  flight equations remain unresolved.
+- Added `airfix::simulation`, a platform-independent frozen-pose
+  `PlayerAircraftState`. One accepted `InputFrame` preserves uninterpreted Q15
+  bank/pitch intentions, exact primary-fire held/edge state, a distinct
+  completed-step count, monotonic source tick, and an explicit little-endian
+  canonical hash. Invalid transitions are atomic.
+- The native iOS bridge advances the state exactly once for each eligible frame
+  while the session is running, never catches up from tick gaps, skips the
+  pause-press frame, and fails closed on an invalid transition. The HUD exposes
+  step, hash, intentions, and fire counters without moving the rendered model.
+- A clean GCC configure/build passes the complete 34/34 portable suite. The
+  Objective-C++ bridge remains delegated to unsigned GitHub Actions builds.

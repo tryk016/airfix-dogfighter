@@ -1,7 +1,7 @@
 # Target architecture
 
-**Status:** proposed baseline  
-**Last updated:** 2026-07-21
+**Status:** active target architecture
+**Last updated:** 2026-07-24
 
 ## Constraints
 
@@ -60,6 +60,16 @@ Reconstructed actors and rules: aircraft, ground and water units, projectiles,
 pickups, effects, interaction, AI, missions, dogfight, and single-player flow.
 Subsystems initially mirror the original `.type` and `.mode` module boundaries;
 they may be refactored only after parity tests protect behavior.
+
+### `simulation`
+
+Portable deterministic state and update rules. It depends on semantic
+`airfix::input`, not UIKit, Game Controller, Metal, wall-clock timestamps, or
+render math. The first implemented slice is a frozen-pose player-control state:
+it carries uninterpreted Q15 bank/pitch intentions, exact primary-fire state and
+edge counts, a completed-step counter, and a canonical field encoding. Recovered
+flight equations will replace the frozen-pose boundary only after their
+scheduler, units, signs, and constants are evidence-backed.
 
 ### `assets`
 

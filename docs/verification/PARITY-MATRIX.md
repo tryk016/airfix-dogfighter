@@ -8,7 +8,8 @@ Statuses: `not-investigated`, `observed`, `specified`, `implemented`, `verified`
 | Bootstrap and resource loading | P0 | not-investigated | SCN-BOOT-001 | Launcher/ICD boundary unknown |
 | Main menu and settings | P1 | not-investigated | SCN-UI-001 | |
 | Level/room loading | P0 | not-investigated | SCN-LEVEL-001 | Blocked by asset formats |
-| Aircraft flight model | P0 | not-investigated | SCN-FLIGHT-001 | |
+| Aircraft flight model | P0 | observed | SCN-FLIGHT-001 | Force/torque and collision stages located; update order and equations unknown |
+| Deterministic player-control state | P0 | implemented | SCN-FLIGHT-001 | Frozen-pose Q15/fire-intent bridge; explicitly not flight parity |
 | Camera | P0 | not-investigated | SCN-CAMERA-001 | |
 | Collision and damage | P0 | not-investigated | SCN-COLLISION-001 | |
 | Primary and secondary weapons | P0 | not-investigated | SCN-WEAPON-001 | |
