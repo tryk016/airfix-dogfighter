@@ -1153,3 +1153,33 @@ superseded evidence.
   arm, incomplete BSP segment descriptions, implicit state ordering, and
   overclaimed confidence. Both final re-reviews passed with no remaining
   blocking findings.
+
+## 2026-07-24 - complete native gameplay-action transport
+
+- Expanded the UIKit gameplay overlay from the first stick/fire/pause slice to
+  independent flight stick, latching throttle and held thrust adjustment,
+  camera look, both fire actions, next/direct weapon selection, rear view,
+  camera cycle/recenter, mission status, and pause. Capture regions respect safe
+  areas and 44-point targets, touches outside controls pass through, and explicit
+  VoiceOver actions cover held and discrete controls.
+- Expanded the one-player Apple extended-controller adapter to both sticks,
+  triggers, D-pad thrust, shoulders, face buttons, optional right-stick click,
+  and combined menu/options pause. A 64-edge native FIFO preserves short taps.
+- Added the allocation-free portable `ControllerInputBatchBridge`. It validates
+  generation, Q15 samples, edge capacity/order/control transitions, starting
+  state, and final reconciliation atomically before emitting bounded portable
+  events. Deterministic deadzone and change thresholds prevent idle drift while
+  preserving all digital edges.
+- Completed default touch/controller gameplay mappings plus controller
+  confirm/cancel/tab menu actions. The native coordinator now exposes explicit
+  gameplay/menu/modal/control-editor contexts and resets sources before
+  transitions. A latched absolute throttle target does not block the two-tick
+  lifecycle neutral gate and is restored deterministically afterward.
+- Expanded frozen `PlayerAircraftState` intent capture to flight, throttle,
+  camera, primary/secondary fire, rear view, weapon/camera/mission/pause
+  actions, and direct weapon slots `1–8`. Canonical hash version 2 covers every
+  field, while invalid selections and counter overflow remain atomic.
+- The new controller-batch target brings the portable suite to 36/36. Native
+  Objective-C++ compilation and target-device ergonomics remain delegated to
+  unsigned iOS Actions and later physical-device acceptance respectively; no
+  original game data or private path is part of these tests.

@@ -1,7 +1,7 @@
 # Input, controls, and haptics system
 
-**Status:** portable core and first native iOS input slice implemented; complete
-V1 controls pending
+**Status:** portable core and native V1 gameplay-action transport implemented;
+profiles, remapping, haptics, menu UI, and device acceptance pending
 
 **Priority:** P0 for the iOS vertical slice
 
@@ -62,21 +62,23 @@ context changes, and lifecycle reset synthesize releases, and reset requires two
 consecutive neutral ticks before gameplay input is admitted again.
 
 Default semantic bindings cover touch, an extended controller, and minimal
-desktop keyboard testing. The first native iOS slice now feeds this core from a
-safe-area-aware UIKit overlay and Apple's Game Controller framework; none of
-those platform types enter `InputFrame`. Profile persistence/remapping,
-controller glyphs, the complete action surface, and haptic adapters remain
-follow-up layers.
+desktop keyboard testing. The native iOS layer feeds the complete current
+gameplay-action surface from a safe-area-aware UIKit overlay and Apple's Game
+Controller framework; none of those platform types enter `InputFrame`. Profile
+persistence/remapping, controller glyphs, finished menu UI, and haptic adapters
+remain follow-up layers.
 
-The first portable simulation consumer is also implemented.
+The portable simulation consumer is also implemented.
 `airfix::simulation::PlayerAircraftState` accepts one eligible `InputFrame` at
-a time, preserves bank/pitch as uninterpreted Q15 intentions, records
-primary-fire held state and exact press/release counts, and maintains a
-completed-step count separate from the input tick. Tick gaps are accepted;
-duplicates, backward ticks, invalid Q15 values, incompatible schemas, and
-counter exhaustion fail without partial mutation. A canonical field-by-field
-hash supports cross-compiler replay diagnostics. No flight motion, throttle,
-or weapon spawn semantics are claimed yet.
+a time and preserves flight, throttle, and camera axes as uninterpreted Q15
+intentions. It also records primary/secondary fire and rear-view held state,
+exact press/release counts, weapon/camera/mission/pause action counts, direct
+weapon selection, and a completed-step count separate from the input tick. Tick
+gaps are accepted; duplicates, backward ticks, invalid Q15 or weapon values,
+incompatible schemas, and counter exhaustion fail without partial mutation. A
+canonical field-by-field hash supports cross-compiler replay diagnostics. No
+flight motion, throttle integration, camera behavior, or weapon spawn semantics
+are claimed yet.
 
 Reference event recovery now confirms that positive pitch corresponds to the
 original `pitchup` command, positive bank to `bankright`, and positive thrust
@@ -96,35 +98,45 @@ consecutive neutral ticks, even if the platform assigns it a new runtime ID.
 
 ### Implemented native iOS slice
 
-`AirfixTouchControlsView` supplies a fixed landscape flight stick, primary-fire
-button, and pause/resume control. It captures each finger independently, allows
-stick plus fire, passes touches outside control regions through to the
-underlying UIKit content, respects safe areas and 44-point minimum targets, and
-provides custom accessibility actions. Partial touch cancellation releases only
-the affected control; lifecycle or gameplay-boundary cancellation neutralizes
-the complete overlay.
+`AirfixTouchControlsView` supplies a landscape flight stick, latching throttle,
+held thrust adjustment, primary and secondary fire, next/direct weapon
+selection, camera look/cycle/recenter, rear view, mission status, and
+pause/resume. It captures each finger independently, permits simultaneous
+flight/combat/camera combinations, passes touches outside active regions
+through to underlying UIKit content, respects safe areas and 44-point minimum
+targets, and provides explicit VoiceOver actions. Partial touch cancellation
+releases only the affected control. Full cancellation releases every held
+control while preserving the absolute throttle target.
 
-`AirfixGameControllerAdapter` assigns one extended controller, maps the left
-stick, right trigger, and menu/options buttons, and keeps Bluetooth pairing
-system-managed. A fixed-capacity, generation- and order-tagged edge queue
-preserves a complete trigger or pause press/release occurring between two input
-ticks. Queue overflow resets input and forces a recoverable pause; generation or
-counter exhaustion fails closed. Disconnect resets every source and pauses,
-while reconnect submits a complete state through the neutral gate.
+`AirfixGameControllerAdapter` assigns one extended controller and maps both
+sticks, both triggers, D-pad up/down, shoulders, face buttons, optional
+right-stick click, and combined menu/options pause while leaving Bluetooth
+pairing system-managed. Its fixed-capacity, generation- and order-tagged FIFO
+preserves complete digital taps between input ticks. The portable
+`ControllerInputBatchBridge` validates each batch atomically, checks Q15 values
+and edge ordering, maps all controls to portable IDs, applies deterministic
+stick deadzone/change thresholds, and reconciles the ordered edges with the
+final sampled state. Queue overflow or malformed reconciliation resets input
+and forces a recoverable pause; generation or counter exhaustion fails closed.
+Disconnect resets every source and pauses, while reconnect submits a complete
+state through the neutral gate.
 
 `AirfixIOSInputCoordinator` owns both adapters and the portable `InputRouter` on
 the main thread. A fixed 60 Hz pump remains active while `MTKView` is paused,
 delivers exactly one immutable frame to the installed host consumer per
 completed input tick, and publishes rate-limited diagnostics to UIKit. Content,
 room, visibility, controller-loss, and application lifecycle boundaries reset
-all sources. Foreground activation and room publication never resume gameplay;
+all sources. Its public context API transitions between gameplay, menu, modal,
+and control-editor bindings only after cancellation, so held physical controls
+cannot leak across a context boundary. The absolute touch throttle target is
+excluded from neutral-gate blocking and is restored only after the required two
+safe ticks. Foreground activation and room publication never resume gameplay;
 the player must explicitly use pause/menu.
 
-This is an integration and device-smoke slice, not the final control set.
-Throttle delta, secondary fire, weapon selection, camera/rear view, mission
-status, remapping, calibration UI, visibility profiles, and haptics still have
-to be added before the touch-only/controller-only V1 acceptance criteria are
-met.
+This completes action transport, not control-system acceptance. Remapping,
+calibration UI, persistent layout/visibility profiles, prompt glyphs, haptics,
+finished touch/controller menus, and runtime validation on both target iPhones
+remain pending.
 
 ## Input contexts
 
@@ -187,11 +199,12 @@ Flight-assist actions, if later added, are a separate enhanced gameplay mode and
 must not silently alter faithful-mode parity.
 
 `ThrottleSet` is a control-layer convenience, not permission to change the
-original flight model. Until reference analysis proves an absolute engine
-throttle contract, the binding layer converts the slider target into the same
-increase/decrease intent and timing used by `ThrottleDelta`. If analysis proves
-that the game already stores an absolute throttle command, both sources may
-resolve directly to that recovered value.
+original flight model. Static reference analysis confirms that AirCraft accepts
+both absolute `THRUST_SET` and signed `THRUST_APPLY` payloads. `InputFrame`
+therefore transports an absolute slider target and a held delta independently.
+The future flight-law bridge must translate their Q15 values into the recovered
+reference payload domain and scheduler timing; this input layer does not invent
+engine or acceleration behavior.
 
 ## Semantic state and deterministic sampling
 
@@ -337,14 +350,14 @@ destruction all synthesize releases.
   available, and controller profile changes.
 - Bluetooth pairing remains system-managed; the game shows instructions and
   connection state but does not implement its own pairing stack.
-- Use a narrow Apple Game Controller adapter for the first iOS vertical slice,
-  including connection state, normalized controls, capability discovery, and
-  platform glyph metadata. A later SDL3 desktop/common adapter must emit the
+- Use a narrow Apple Game Controller adapter including connection state,
+  normalized controls, and bounded edge capture. Capability-specific glyph
+  metadata remains pending. A later SDL3 desktop/common adapter must emit the
   same portable physical-event contract rather than changing simulation input.
 - Poll stable analog/button state at the game update boundary; use connection
   events and explicit edges to manage device lifecycle.
 
-### Proposed default mapping
+### Implemented baseline mapping
 
 | Game action | Extended controller input |
 |---|---|
@@ -355,16 +368,17 @@ destruction all synthesize releases.
 | Primary fire | right trigger |
 | Secondary fire | left trigger |
 | Next weapon | right shoulder |
-| Weapon wheel/direct selection | hold face-top, choose with stick/D-pad |
+| Direct weapon selection | touch selector; no dedicated controller binding in the baseline |
 | Rear view | left shoulder, hold |
 | Camera cycle | face-left |
 | Mission status | face-top tap when wheel is not invoked |
 | Confirm/cancel | platform-appropriate face buttons |
 | Pause | menu/options button |
 
-The mapping is provisional until reference scenarios establish action timing and
-an on-device usability test approves conflicts. All gameplay actions are
-remappable. The UI displays action symbols and detects conflicts.
+The transport mapping is implemented, but remains provisional until reference
+scenarios establish action timing and on-device usability tests approve its
+conflicts. User remapping, action glyphs, and conflict detection are specified
+but not yet implemented.
 
 ### Connection and loss
 

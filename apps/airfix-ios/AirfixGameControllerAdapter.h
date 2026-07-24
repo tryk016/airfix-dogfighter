@@ -23,18 +23,40 @@ NS_ASSUME_NONNULL_BEGIN
 typedef struct AirfixGameControllerSample {
     int16_t bank;
     int16_t pitch;
+    int16_t lookX;
+    int16_t lookY;
     int16_t primaryTrigger;
+    int16_t secondaryTrigger;
+    BOOL dpadUpPressed;
+    BOOL dpadDownPressed;
+    BOOL rightShoulderPressed;
+    BOOL leftShoulderPressed;
+    BOOL faceLeftPressed;
+    BOOL faceTopPressed;
+    BOOL facePrimaryPressed;
+    BOOL faceSecondaryPressed;
+    BOOL rightStickClickPressed;
     BOOL menuPressed;
     BOOL optionsPressed;
 } AirfixGameControllerSample;
 
 typedef NS_ENUM(uint8_t, AirfixGameControllerDigitalControl) {
-    AirfixGameControllerDigitalControlPrimaryTrigger,
-    AirfixGameControllerDigitalControlPause,
+    AirfixGameControllerDigitalControlPrimaryTrigger = 0,
+    AirfixGameControllerDigitalControlPause = 1,
+    AirfixGameControllerDigitalControlSecondaryTrigger = 2,
+    AirfixGameControllerDigitalControlDpadUp = 3,
+    AirfixGameControllerDigitalControlDpadDown = 4,
+    AirfixGameControllerDigitalControlRightShoulder = 5,
+    AirfixGameControllerDigitalControlLeftShoulder = 6,
+    AirfixGameControllerDigitalControlFaceLeft = 7,
+    AirfixGameControllerDigitalControlFaceTop = 8,
+    AirfixGameControllerDigitalControlFacePrimary = 9,
+    AirfixGameControllerDigitalControlFaceSecondary = 10,
+    AirfixGameControllerDigitalControlRightStickClick = 11,
 };
 
 enum {
-    AirfixGameControllerDigitalEdgeCapacity = 32,
+    AirfixGameControllerDigitalEdgeCapacity = 64,
 };
 
 typedef struct AirfixGameControllerDigitalEdge {

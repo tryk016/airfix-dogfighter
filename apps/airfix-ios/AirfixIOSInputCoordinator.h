@@ -31,6 +31,13 @@ typedef NS_ENUM(NSInteger, AirfixInputPauseReason) {
     AirfixInputPauseReasonInputPipelineFailure,
 };
 
+typedef NS_ENUM(NSInteger, AirfixNativeInputContext) {
+    AirfixNativeInputContextGameplay,
+    AirfixNativeInputContextMenu,
+    AirfixNativeInputContextModal,
+    AirfixNativeInputContextControlEditor,
+};
+
 // Immutable Objective-C projection of the most recent portable InputFrame.
 // It is intentionally narrow: simulation code continues to consume the C++
 // frame, while UIKit can render input diagnostics without seeing C++ types.
@@ -79,6 +86,7 @@ typedef NS_ENUM(NSInteger, AirfixInputPauseReason) {
 // Main-thread status. NO is terminal for this coordinator instance; gameplay
 // must remain paused and a new coordinator is required.
 @property(nonatomic, readonly, getter=isOperational) BOOL operational;
+@property(nonatomic, readonly) AirfixNativeInputContext inputContext;
 
 - (instancetype)initWithTouchControlsView:
     (AirfixTouchControlsView*)touchControlsView NS_DESIGNATED_INITIALIZER;
@@ -91,6 +99,11 @@ typedef NS_ENUM(NSInteger, AirfixInputPauseReason) {
 - (void)applicationDidEnterBackground;
 - (void)applicationWillEnterForeground;
 - (void)applicationDidBecomeActive;
+
+// Changes the semantic binding context after cancelling every physical source.
+// Controls that remain held must return to neutral before they can act again.
+// This method never resumes gameplay and must be called on main.
+- (void)setInputContext:(AirfixNativeInputContext)inputContext;
 
 // Clears all physical sources and closes the router's neutral gate at content,
 // room, mission, or explicit gameplay boundaries. It never resumes gameplay

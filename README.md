@@ -11,7 +11,8 @@ It currently provides the portable archive/asset pipeline, deterministic input
 and player-control state, private content-package infrastructure, fail-closed
 render submission and texture-upload preparation, diagnostic rendering, and a
 data-less UIKit/Metal application shell with an authenticated private-room
-loading path and the first native touch/controller-to-simulation slice.
+loading path and full native gameplay-action transport into the frozen
+simulation boundary.
 
 ## Project scope
 
@@ -72,8 +73,8 @@ sources.
 | Runtime content loading | Exact authenticated active lease/session, atomic World → CCF → GTI → draw-submission room loading, and revision/serial-gated one-shot native handoff implemented |
 | Rendering | Bounded explicit-room assembly, stable texture IDs, atomic RGBA8 upload preparation, CPU diagnostics, two-phase private-room Metal publication, and neutral scene-bound pose transport implemented |
 | Input core | Deterministic semantic router for touch/controller/test sources implemented |
-| Native controls | First UIKit stick/fire/pause overlay and Apple extended-controller slice implemented; complete V1 action set pending |
-| Game simulation | Frozen-pose deterministic player-control state implemented; the complete static 12 ms aircraft force law is documented, while runtime traces, physical units, numeric tolerance, and player-actor binding remain pending |
+| Native controls | Full V1 gameplay-action transport implemented for the UIKit overlay and one Apple extended controller; profiles, remapping, haptics, finished menus, and device acceptance remain pending |
+| Game simulation | Frozen-pose deterministic player-control intent state implemented for flight, throttle, combat, camera, mission, and pause actions; the complete static 12 ms aircraft force law is documented, while runtime traces, physical units, numeric tolerance, and player-actor binding remain pending |
 | Continuous integration | Portable C++ tests plus unsigned device/simulator iOS builds |
 
 Detailed, frequently updated progress lives in
@@ -130,7 +131,7 @@ private package, original-derived bytes, or generated artifacts were committed.
 The public synthetic end-to-end tests include valid texture ID zero, empty
 receiver rooms, multiple CCF candidates, deduplication, cancellation, malformed
 later dependencies, compressed-source peak memory, and exact/one-under limits.
-The portable suite passes 35/35 synthetic tests. Physical-device rendering and
+The portable suite passes 36/36 synthetic tests. Physical-device rendering and
 visual acceptance remain pending.
 
 ## Architecture
@@ -177,27 +178,31 @@ reconstruction strategy.
 The game must remain fully usable with either touch or a supported extended
 controller.
 
-The implemented first slice provides a landscape virtual flight stick, primary
-fire, and pause/resume. It supports simultaneous stick and fire touches,
-safe-area-aware capture targets, selective hit testing, accessibility actions,
-and complete neutralization on content, visibility, and lifecycle boundaries.
-The final layout still needs throttle, secondary fire, weapon selection,
-camera/rear view, mission status, customization, and haptics.
+The implemented gameplay overlay provides a landscape virtual flight stick,
+latching throttle plus held thrust adjustment, primary and secondary fire,
+weapon cycling and direct slots `1–8`, camera look/cycle/recenter, rear view,
+mission status, and pause/resume. It supports independent multitouch,
+safe-area-aware targets, selective hit testing, VoiceOver actions, and complete
+held-control neutralization on content, visibility, and lifecycle boundaries.
+Layout profiles, user customization, prompt visibility policy, haptics, and
+physical-device usability acceptance remain pending.
 
 Bluetooth pairing remains managed by iOS. The native Apple Game Controller
-adapter currently maps an extended controller's left stick, right trigger, and
-menu/options controls. It preserves short digital edges between fixed ticks,
-handles hot-plug and disconnect with forced pause, and requires neutral state
-after reconnect. Calibration, remapping, controller-only menus, glyphs, and
-optional rumble remain future work. Touch stays available when a controller is
-connected.
+adapter maps both sticks, both triggers, D-pad thrust, shoulders, face buttons,
+right-stick click where present, and menu/options. A bounded portable bridge
+reconciles ordered digital edges with the sampled final state, so complete taps
+between fixed ticks are preserved. Hot-plug and disconnect fail closed with
+forced pause, and a replacement controller must return to neutral. Calibration,
+remapping, finished controller-only menus, glyphs, and optional rumble remain
+future work. Touch stays available when a controller is connected.
 
 Both platform adapters feed the implemented deterministic semantic input
 router. The simulation sees immutable per-tick actions rather than UIKit or
 controller objects, which keeps gameplay testable and independent of frame
-rate. The first portable consumer now preserves uninterpreted bank/pitch Q15
-intentions, primary-fire state and exact edges, its own completed-step count,
-and a cross-compiler canonical hash. The recovered reference scheduler consumes
+rate. The portable consumer now preserves uninterpreted flight/throttle/camera
+Q15 intentions, exact held and edge state for combat/rear-view controls,
+discrete weapon selection, action counters, its own completed-step count, and
+a cross-compiler canonical hash. The recovered reference scheduler consumes
 the previous step's force/torque before resetting and accumulating the next
 step. A separate bounded pose exchange is ready for complete dynamic instance
 transforms, but it deliberately remains unbound until the player actor/spawn

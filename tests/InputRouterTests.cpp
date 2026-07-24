@@ -367,6 +367,32 @@ void testResetNeutralGate() {
         "neutral gate did not reopen after two neutral ticks");
 }
 
+void testLatchedThrottleDoesNotBlockNeutralGate() {
+    InputRouter router;
+    router.lifecycleReset();
+    require(router.enqueue(PhysicalEvent::axis(
+        1U, 0U, touchOne, airfix::input::controls::touch::throttleSet,
+        17000)), "latched throttle state was rejected after reset");
+
+    require(router.tick(1U).analog(AnalogAxis::flightThrottleSet) == 0,
+        "latched throttle bypassed the first neutral-gate tick");
+    require(!router.neutralGateOpen(),
+        "latched throttle opened the gate before two safe ticks");
+    require(router.tick(2U).analog(AnalogAxis::flightThrottleSet) == 0,
+        "latched throttle acquired ownership before the gate opened");
+    require(router.neutralGateOpen(),
+        "absolute throttle target blocked the global neutral gate");
+    require(router.tick(3U).analog(AnalogAxis::flightThrottleSet) == 17000,
+        "latched throttle target was not restored after the gate opened");
+
+    router.setContext(InputContext::menu);
+    require(router.tick(4U).analog(AnalogAxis::flightThrottleSet) == 0,
+        "gameplay throttle leaked into menu context");
+    router.setContext(InputContext::gameplay);
+    require(router.tick(5U).analog(AnalogAxis::flightThrottleSet) == 17000,
+        "absolute throttle target was blocked across a context round-trip");
+}
+
 void testContextSwitchNeutralizesGameplay() {
     InputRouter router(digitalBindings());
     require(router.enqueue(PhysicalEvent::button(
@@ -500,6 +526,114 @@ void testDiscreteWeaponSelection() {
         "weapon selection missing from frame");
     require(!router.tick(2U).hasWeaponSelection(),
         "weapon selection incorrectly persisted into next frame");
+    require(router.enqueue(PhysicalEvent::selectWeapon(
+        2U, 124U, touchOne, weaponControl,
+        airfix::input::weaponSlotCount)),
+        "out-of-range weapon event was rejected before bounded processing");
+    require(!router.tick(3U).hasWeaponSelection(),
+        "out-of-range weapon selection reached the deterministic frame");
+}
+
+void testDefaultBindingsCoverNativeV1Surface() {
+    constexpr SourceHandle touch{SourceKind::touch, 7U};
+    InputRouter touchRouter;
+    std::uint64_t sequence = 1U;
+
+    const auto enqueueTouchAxis = [&](const ControlId control,
+                                      const airfix::input::Q15 value) {
+        require(touchRouter.enqueue(PhysicalEvent::axis(
+            sequence++, 0U, touch, control, value)),
+            "default touch axis event was rejected");
+    };
+    const auto enqueueTouchButton = [&](const ControlId control) {
+        require(touchRouter.enqueue(PhysicalEvent::button(
+            sequence++, 0U, touch, control, true)),
+            "default touch button event was rejected");
+    };
+
+    enqueueTouchAxis(airfix::input::controls::touch::bank, 12000);
+    enqueueTouchAxis(airfix::input::controls::touch::pitch, -13000);
+    enqueueTouchAxis(airfix::input::controls::touch::throttleSet, 17000);
+    enqueueTouchAxis(airfix::input::controls::touch::lookX, 9000);
+    enqueueTouchAxis(airfix::input::controls::touch::lookY, -8000);
+    enqueueTouchButton(airfix::input::controls::touch::primaryFire);
+    enqueueTouchButton(airfix::input::controls::touch::secondaryFire);
+    enqueueTouchButton(airfix::input::controls::touch::weaponNext);
+    enqueueTouchButton(airfix::input::controls::touch::rearView);
+    enqueueTouchButton(airfix::input::controls::touch::cameraCycle);
+    enqueueTouchButton(airfix::input::controls::touch::cameraRecenter);
+    enqueueTouchButton(airfix::input::controls::touch::missionStatus);
+    enqueueTouchButton(airfix::input::controls::touch::pause);
+    require(touchRouter.enqueue(PhysicalEvent::selectWeapon(
+        sequence++, 0U, touch,
+        airfix::input::controls::touch::weaponSelection, 6U)),
+        "default touch weapon selection was rejected");
+
+    const auto touchFrame = touchRouter.tick(1U);
+    require(touchFrame.analog(AnalogAxis::flightBank) == 12000 &&
+            touchFrame.analog(AnalogAxis::flightPitch) == -13000 &&
+            touchFrame.analog(AnalogAxis::flightThrottleSet) == 17000 &&
+            touchFrame.analog(AnalogAxis::cameraLookX) == 9000 &&
+            touchFrame.analog(AnalogAxis::cameraLookY) == -8000,
+        "default touch axes did not reach their semantic targets");
+    for (const auto action : {
+             DigitalAction::combatPrimaryFire,
+             DigitalAction::combatSecondaryFire,
+             DigitalAction::combatWeaponNext,
+             DigitalAction::cameraRearView,
+             DigitalAction::cameraCycle,
+             DigitalAction::cameraRecenter,
+             DigitalAction::missionStatus,
+             DigitalAction::globalPause,
+         }) {
+        require(touchFrame.pressed(action) && touchFrame.held(action),
+            "default touch button did not reach its semantic target");
+    }
+    require(touchFrame.hasWeaponSelection() &&
+            touchFrame.weaponSelection == 6U,
+        "default touch direct weapon selection was not transported");
+
+    InputRouter touchThrottleRouter;
+    require(touchThrottleRouter.enqueue(PhysicalEvent::button(
+        1U, 0U, touch, airfix::input::controls::touch::throttleIncrease,
+        true)), "touch throttle-increase press was rejected");
+    require(touchThrottleRouter.tick(1U).analog(
+            AnalogAxis::flightThrottleDelta) == airfix::input::q15One,
+        "touch throttle-increase did not produce positive delta");
+    require(touchThrottleRouter.enqueue(PhysicalEvent::button(
+        2U, 0U, touch, airfix::input::controls::touch::throttleIncrease,
+        false)), "touch throttle-increase release was rejected");
+    require(touchThrottleRouter.enqueue(PhysicalEvent::button(
+        3U, 0U, touch, airfix::input::controls::touch::throttleDecrease,
+        true)), "touch throttle-decrease press was rejected");
+    require(touchThrottleRouter.tick(2U).analog(
+            AnalogAxis::flightThrottleDelta) == airfix::input::q15Min,
+        "touch throttle-decrease did not produce negative delta");
+
+    InputRouter menuRouter;
+    menuRouter.setContext(InputContext::menu);
+    require(menuRouter.enqueue(PhysicalEvent::button(
+        1U, 0U, controllerOne,
+        airfix::input::controls::controller::facePrimary, true)),
+        "controller menu confirm was rejected");
+    require(menuRouter.enqueue(PhysicalEvent::button(
+        2U, 0U, controllerOne,
+        airfix::input::controls::controller::faceSecondary, true)),
+        "controller menu cancel was rejected");
+    require(menuRouter.enqueue(PhysicalEvent::button(
+        3U, 0U, controllerOne,
+        airfix::input::controls::controller::leftShoulder, true)),
+        "controller previous-tab event was rejected");
+    require(menuRouter.enqueue(PhysicalEvent::button(
+        4U, 0U, controllerOne,
+        airfix::input::controls::controller::rightShoulder, true)),
+        "controller next-tab event was rejected");
+    const auto menuFrame = menuRouter.tick(1U);
+    require(menuFrame.pressed(DigitalAction::uiConfirm) &&
+            menuFrame.pressed(DigitalAction::uiCancel) &&
+            menuFrame.pressed(DigitalAction::uiTabPrevious) &&
+            menuFrame.pressed(DigitalAction::uiTabNext),
+        "default controller menu actions are incomplete");
 }
 
 void testDefaultBindingsAreBounded() {
@@ -553,6 +687,7 @@ int main() {
         testCancelPreservesAggregateHeldAcrossPendingSource();
         testReconnectRequiresNeutral();
         testResetNeutralGate();
+        testLatchedThrottleDoesNotBlockNeutralGate();
         testContextSwitchNeutralizesGameplay();
         testContextSwitchConsumesPendingInputInOldContext();
         testContextSwitchDropsRetainedUnsampledPress();
@@ -560,6 +695,7 @@ int main() {
         testUnboundEventsDoNotConsumeSourceCapacity();
         testTimestampDoesNotAffectFrame();
         testDiscreteWeaponSelection();
+        testDefaultBindingsCoverNativeV1Surface();
         testDefaultBindingsAreBounded();
         testInvalidBindingThresholdIsRejected();
         testInvalidBindingKindsAreRejected();

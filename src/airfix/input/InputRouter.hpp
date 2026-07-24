@@ -105,6 +105,7 @@ struct Binding final {
     ContextMask contexts{};
     Q15 scale{q15One};
     Q15 meaningfulThreshold{1};
+    bool blocksNeutralGate{true};
 
     [[nodiscard]] static constexpr Binding digital(
         const SourceKind sourceKind,
@@ -115,7 +116,7 @@ struct Binding final {
         const Q15 actuationThreshold = 1) noexcept {
         return {sourceKind, control, physicalKind, BindingTargetKind::digital,
             static_cast<std::uint8_t>(action), contexts, q15One,
-            actuationThreshold};
+            actuationThreshold, true};
     }
 
     [[nodiscard]] static constexpr Binding analog(
@@ -125,10 +126,11 @@ struct Binding final {
         const ContextMask contexts,
         const PhysicalEventKind physicalKind = PhysicalEventKind::analog,
         const Q15 scale = q15One,
-        const Q15 meaningfulThreshold = 4096) noexcept {
+        const Q15 meaningfulThreshold = 4096,
+        const bool blocksNeutralGate = true) noexcept {
         return {sourceKind, control, physicalKind, BindingTargetKind::analog,
             static_cast<std::uint8_t>(axis), contexts, scale,
-            meaningfulThreshold};
+            meaningfulThreshold, blocksNeutralGate};
     }
 
     [[nodiscard]] static constexpr Binding weaponSelection(
@@ -136,7 +138,8 @@ struct Binding final {
         const ControlId control,
         const ContextMask contexts) noexcept {
         return {sourceKind, control, PhysicalEventKind::weaponSelection,
-            BindingTargetKind::weaponSelection, 0U, contexts, q15One, 1};
+            BindingTargetKind::weaponSelection, 0U, contexts, q15One, 1,
+            false};
     }
 };
 
@@ -354,6 +357,10 @@ inline constexpr ControlId missionStatus{13U};
 inline constexpr ControlId pause{14U};
 inline constexpr ControlId confirm{15U};
 inline constexpr ControlId cancel{16U};
+inline constexpr ControlId throttleIncrease{17U};
+inline constexpr ControlId throttleDecrease{18U};
+inline constexpr ControlId tabPrevious{19U};
+inline constexpr ControlId tabNext{20U};
 } // namespace touch
 
 namespace controller {

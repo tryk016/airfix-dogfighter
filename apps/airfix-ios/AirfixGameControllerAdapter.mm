@@ -41,8 +41,79 @@ constexpr int16_t kControllerTriggerActuation = 16384;
 }
 
 [[nodiscard]] BOOL triggerPressed(
-    const AirfixGameControllerSample& sample) noexcept {
-    return sample.primaryTrigger >= kControllerTriggerActuation;
+    const int16_t value) noexcept {
+    return value >= kControllerTriggerActuation;
+}
+
+[[nodiscard]] BOOL digitalControlPressed(
+    const AirfixGameControllerSample& sample,
+    const AirfixGameControllerDigitalControl control) noexcept {
+    switch (control) {
+    case AirfixGameControllerDigitalControlPrimaryTrigger:
+        return triggerPressed(sample.primaryTrigger);
+    case AirfixGameControllerDigitalControlPause:
+        return pausePressed(sample);
+    case AirfixGameControllerDigitalControlSecondaryTrigger:
+        return triggerPressed(sample.secondaryTrigger);
+    case AirfixGameControllerDigitalControlDpadUp:
+        return sample.dpadUpPressed;
+    case AirfixGameControllerDigitalControlDpadDown:
+        return sample.dpadDownPressed;
+    case AirfixGameControllerDigitalControlRightShoulder:
+        return sample.rightShoulderPressed;
+    case AirfixGameControllerDigitalControlLeftShoulder:
+        return sample.leftShoulderPressed;
+    case AirfixGameControllerDigitalControlFaceLeft:
+        return sample.faceLeftPressed;
+    case AirfixGameControllerDigitalControlFaceTop:
+        return sample.faceTopPressed;
+    case AirfixGameControllerDigitalControlFacePrimary:
+        return sample.facePrimaryPressed;
+    case AirfixGameControllerDigitalControlFaceSecondary:
+        return sample.faceSecondaryPressed;
+    case AirfixGameControllerDigitalControlRightStickClick:
+        return sample.rightStickClickPressed;
+    }
+    return NO;
+}
+
+void setDigitalControlPressed(
+    AirfixGameControllerSample& sample,
+    const AirfixGameControllerDigitalControl control,
+    const BOOL pressed) noexcept {
+    switch (control) {
+    case AirfixGameControllerDigitalControlDpadUp:
+        sample.dpadUpPressed = pressed;
+        break;
+    case AirfixGameControllerDigitalControlDpadDown:
+        sample.dpadDownPressed = pressed;
+        break;
+    case AirfixGameControllerDigitalControlRightShoulder:
+        sample.rightShoulderPressed = pressed;
+        break;
+    case AirfixGameControllerDigitalControlLeftShoulder:
+        sample.leftShoulderPressed = pressed;
+        break;
+    case AirfixGameControllerDigitalControlFaceLeft:
+        sample.faceLeftPressed = pressed;
+        break;
+    case AirfixGameControllerDigitalControlFaceTop:
+        sample.faceTopPressed = pressed;
+        break;
+    case AirfixGameControllerDigitalControlFacePrimary:
+        sample.facePrimaryPressed = pressed;
+        break;
+    case AirfixGameControllerDigitalControlFaceSecondary:
+        sample.faceSecondaryPressed = pressed;
+        break;
+    case AirfixGameControllerDigitalControlRightStickClick:
+        sample.rightStickClickPressed = pressed;
+        break;
+    case AirfixGameControllerDigitalControlPrimaryTrigger:
+    case AirfixGameControllerDigitalControlSecondaryTrigger:
+    case AirfixGameControllerDigitalControlPause:
+        break;
+    }
 }
 
 [[nodiscard]] AirfixGameControllerSample sampleProfile(
@@ -53,7 +124,24 @@ constexpr int16_t kControllerTriggerActuation = 16384;
     }
     sample.bank = signedQ15(profile.leftThumbstick.xAxis.value);
     sample.pitch = signedQ15(profile.leftThumbstick.yAxis.value);
+    sample.lookX = signedQ15(profile.rightThumbstick.xAxis.value);
+    sample.lookY = signedQ15(profile.rightThumbstick.yAxis.value);
     sample.primaryTrigger = positiveQ15(profile.rightTrigger.value);
+    sample.secondaryTrigger = positiveQ15(profile.leftTrigger.value);
+    sample.dpadUpPressed = profile.dpad.up.isPressed;
+    sample.dpadDownPressed = profile.dpad.down.isPressed;
+    sample.rightShoulderPressed = profile.rightShoulder.isPressed;
+    sample.leftShoulderPressed = profile.leftShoulder.isPressed;
+    sample.faceLeftPressed = profile.buttonX.isPressed;
+    sample.faceTopPressed = profile.buttonY.isPressed;
+    sample.facePrimaryPressed = profile.buttonA.isPressed;
+    sample.faceSecondaryPressed = profile.buttonB.isPressed;
+    if ([profile respondsToSelector:@selector(rightThumbstickButton)]) {
+        GCControllerButtonInput* rightStickClick =
+            profile.rightThumbstickButton;
+        sample.rightStickClickPressed =
+            rightStickClick != nil && rightStickClick.isPressed;
+    }
     sample.menuPressed = profile.buttonMenu.isPressed;
     if ([profile respondsToSelector:@selector(buttonOptions)]) {
         GCControllerButtonInput* options = profile.buttonOptions;
@@ -122,8 +210,13 @@ constexpr int16_t kControllerTriggerActuation = 16384;
 - (void)recordContinuousStateForGeneration:(uint64_t)generation
                                     profile:(GCExtendedGamepad*)profile;
 - (void)recordTriggerForGeneration:(uint64_t)generation
+                            control:(AirfixGameControllerDigitalControl)control
                               value:(int16_t)value
                             pressed:(BOOL)pressed;
+- (void)recordDigitalButtonForGeneration:(uint64_t)generation
+                                  control:
+    (AirfixGameControllerDigitalControl)control
+                                  pressed:(BOOL)pressed;
 - (void)recordPauseButtonForGeneration:(uint64_t)generation
                                 options:(BOOL)options
                                 pressed:(BOOL)pressed;
@@ -275,6 +368,10 @@ constexpr int16_t kControllerTriggerActuation = 16384;
                 signedQ15(profile.leftThumbstick.xAxis.value);
             _bridgeLatest.pitch =
                 signedQ15(profile.leftThumbstick.yAxis.value);
+            _bridgeLatest.lookX =
+                signedQ15(profile.rightThumbstick.xAxis.value);
+            _bridgeLatest.lookY =
+                signedQ15(profile.rightThumbstick.yAxis.value);
         }
     }
 
@@ -390,52 +487,108 @@ constexpr int16_t kControllerTriggerActuation = 16384;
         [adapter recordContinuousStateForGeneration:assignmentGeneration
                                             profile:changedProfile];
     };
-    profile.rightTrigger.valueChangedHandler = ^(
-        GCControllerButtonInput* button, float value, BOOL pressed) {
-        (void)pressed;
-        AirfixGameControllerAdapter* adapter = weakSelf;
-        GCController* assigned = weakController;
-        if (adapter == nil || assigned == nil ||
-            button != assigned.extendedGamepad.rightTrigger) {
+    void (^installTrigger)(
+        GCControllerButtonInput*,
+        AirfixGameControllerDigitalControl) =
+        ^(GCControllerButtonInput* trigger,
+            AirfixGameControllerDigitalControl control) {
+        if (trigger == nil) {
             return;
         }
-        const int16_t triggerValue = positiveQ15(value);
-        const BOOL isTriggerPressed =
-            triggerValue >= kControllerTriggerActuation;
-        [adapter recordTriggerForGeneration:assignmentGeneration
-                                      value:triggerValue
-                                    pressed:isTriggerPressed];
+        __weak GCControllerButtonInput* weakTrigger = trigger;
+        trigger.valueChangedHandler = ^(
+            GCControllerButtonInput* button, float value, BOOL pressed) {
+            (void)pressed;
+            AirfixGameControllerAdapter* adapter = weakSelf;
+            GCController* assigned = weakController;
+            GCControllerButtonInput* installedTrigger = weakTrigger;
+            if (adapter == nil || assigned == nil ||
+                installedTrigger == nil || button != installedTrigger) {
+                return;
+            }
+            const int16_t triggerValue = positiveQ15(value);
+            const BOOL isTriggerPressed =
+                triggerValue >= kControllerTriggerActuation;
+            [adapter recordTriggerForGeneration:assignmentGeneration
+                                        control:control
+                                          value:triggerValue
+                                        pressed:isTriggerPressed];
+        };
     };
-    profile.buttonMenu.pressedChangedHandler = ^(
-        GCControllerButtonInput* button, float value, BOOL pressed) {
-        (void)value;
-        AirfixGameControllerAdapter* adapter = weakSelf;
-        GCController* assigned = weakController;
-        if (adapter == nil || assigned == nil ||
-            button != assigned.extendedGamepad.buttonMenu) {
+    installTrigger(profile.rightTrigger,
+        AirfixGameControllerDigitalControlPrimaryTrigger);
+    installTrigger(profile.leftTrigger,
+        AirfixGameControllerDigitalControlSecondaryTrigger);
+
+    void (^installDigitalButton)(
+        GCControllerButtonInput*,
+        AirfixGameControllerDigitalControl) =
+        ^(GCControllerButtonInput* input,
+            AirfixGameControllerDigitalControl control) {
+        if (input == nil) {
             return;
         }
-        [adapter recordPauseButtonForGeneration:assignmentGeneration
-                                        options:NO
-                                        pressed:pressed];
-    };
-    if ([profile respondsToSelector:@selector(buttonOptions)]) {
-        GCControllerButtonInput* optionsButton = profile.buttonOptions;
-        __weak GCControllerButtonInput* weakOptionsButton = optionsButton;
-        optionsButton.pressedChangedHandler = ^(
+        __weak GCControllerButtonInput* weakInput = input;
+        input.pressedChangedHandler = ^(
             GCControllerButtonInput* button, float value, BOOL pressed) {
             (void)value;
             AirfixGameControllerAdapter* adapter = weakSelf;
             GCController* assigned = weakController;
-            GCControllerButtonInput* installedButton = weakOptionsButton;
+            GCControllerButtonInput* installedInput = weakInput;
             if (adapter == nil || assigned == nil ||
-                installedButton == nil || button != installedButton) {
+                installedInput == nil || button != installedInput) {
+                return;
+            }
+            [adapter recordDigitalButtonForGeneration:assignmentGeneration
+                                              control:control
+                                              pressed:pressed];
+        };
+    };
+    installDigitalButton(profile.dpad.up,
+        AirfixGameControllerDigitalControlDpadUp);
+    installDigitalButton(profile.dpad.down,
+        AirfixGameControllerDigitalControlDpadDown);
+    installDigitalButton(profile.rightShoulder,
+        AirfixGameControllerDigitalControlRightShoulder);
+    installDigitalButton(profile.leftShoulder,
+        AirfixGameControllerDigitalControlLeftShoulder);
+    installDigitalButton(profile.buttonX,
+        AirfixGameControllerDigitalControlFaceLeft);
+    installDigitalButton(profile.buttonY,
+        AirfixGameControllerDigitalControlFaceTop);
+    installDigitalButton(profile.buttonA,
+        AirfixGameControllerDigitalControlFacePrimary);
+    installDigitalButton(profile.buttonB,
+        AirfixGameControllerDigitalControlFaceSecondary);
+    if ([profile respondsToSelector:@selector(rightThumbstickButton)]) {
+        installDigitalButton(profile.rightThumbstickButton,
+            AirfixGameControllerDigitalControlRightStickClick);
+    }
+
+    void (^installPauseButton)(GCControllerButtonInput*, BOOL) =
+        ^(GCControllerButtonInput* input, BOOL options) {
+        if (input == nil) {
+            return;
+        }
+        __weak GCControllerButtonInput* weakInput = input;
+        input.pressedChangedHandler = ^(
+            GCControllerButtonInput* button, float value, BOOL pressed) {
+            (void)value;
+            AirfixGameControllerAdapter* adapter = weakSelf;
+            GCController* assigned = weakController;
+            GCControllerButtonInput* installedInput = weakInput;
+            if (adapter == nil || assigned == nil ||
+                installedInput == nil || button != installedInput) {
                 return;
             }
             [adapter recordPauseButtonForGeneration:assignmentGeneration
-                                            options:YES
+                                            options:options
                                             pressed:pressed];
         };
+    };
+    installPauseButton(profile.buttonMenu, NO);
+    if ([profile respondsToSelector:@selector(buttonOptions)]) {
+        installPauseButton(profile.buttonOptions, YES);
     }
     [self publishCurrentState];
 }
@@ -473,9 +626,21 @@ constexpr int16_t kControllerTriggerActuation = 16384;
     }
     profile.valueChangedHandler = nil;
     profile.rightTrigger.valueChangedHandler = nil;
+    profile.leftTrigger.valueChangedHandler = nil;
+    profile.dpad.up.pressedChangedHandler = nil;
+    profile.dpad.down.pressedChangedHandler = nil;
+    profile.rightShoulder.pressedChangedHandler = nil;
+    profile.leftShoulder.pressedChangedHandler = nil;
+    profile.buttonX.pressedChangedHandler = nil;
+    profile.buttonY.pressedChangedHandler = nil;
+    profile.buttonA.pressedChangedHandler = nil;
+    profile.buttonB.pressedChangedHandler = nil;
     profile.buttonMenu.pressedChangedHandler = nil;
     if ([profile respondsToSelector:@selector(buttonOptions)]) {
         profile.buttonOptions.pressedChangedHandler = nil;
+    }
+    if ([profile respondsToSelector:@selector(rightThumbstickButton)]) {
+        profile.rightThumbstickButton.pressedChangedHandler = nil;
     }
 }
 
@@ -493,9 +658,12 @@ constexpr int16_t kControllerTriggerActuation = 16384;
     // complete press/release pair.
     _bridgeLatest.bank = signedQ15(profile.leftThumbstick.xAxis.value);
     _bridgeLatest.pitch = signedQ15(profile.leftThumbstick.yAxis.value);
+    _bridgeLatest.lookX = signedQ15(profile.rightThumbstick.xAxis.value);
+    _bridgeLatest.lookY = signedQ15(profile.rightThumbstick.yAxis.value);
 }
 
 - (void)recordTriggerForGeneration:(uint64_t)generation
+                            control:(AirfixGameControllerDigitalControl)control
                               value:(int16_t)value
                             pressed:(BOOL)pressed {
     std::scoped_lock lock(_inputBridgeMutex);
@@ -504,11 +672,60 @@ constexpr int16_t kControllerTriggerActuation = 16384;
             _publishedGeneration.load(std::memory_order_acquire)) {
         return;
     }
-    const BOOL wasPressed = triggerPressed(_bridgeLatest);
-    _bridgeLatest.primaryTrigger = value;
+    int16_t* storedValue = nullptr;
+    switch (control) {
+    case AirfixGameControllerDigitalControlPrimaryTrigger:
+        storedValue = &_bridgeLatest.primaryTrigger;
+        break;
+    case AirfixGameControllerDigitalControlSecondaryTrigger:
+        storedValue = &_bridgeLatest.secondaryTrigger;
+        break;
+    default:
+        _inputOverflowed = YES;
+        _digitalEdgeHead = 0U;
+        _digitalEdgeCount = 0U;
+        return;
+    }
+    const BOOL wasPressed = triggerPressed(*storedValue);
+    *storedValue = value;
     if (wasPressed != pressed) {
-        [self enqueueDigitalControlLocked:
-                AirfixGameControllerDigitalControlPrimaryTrigger
+        [self enqueueDigitalControlLocked:control
+                                  pressed:pressed
+                               generation:generation];
+    }
+}
+
+- (void)recordDigitalButtonForGeneration:(uint64_t)generation
+                                  control:
+    (AirfixGameControllerDigitalControl)control
+                                  pressed:(BOOL)pressed {
+    std::scoped_lock lock(_inputBridgeMutex);
+    if (_generationExhausted.load(std::memory_order_acquire) ||
+        generation !=
+            _publishedGeneration.load(std::memory_order_acquire)) {
+        return;
+    }
+    switch (control) {
+    case AirfixGameControllerDigitalControlDpadUp:
+    case AirfixGameControllerDigitalControlDpadDown:
+    case AirfixGameControllerDigitalControlRightShoulder:
+    case AirfixGameControllerDigitalControlLeftShoulder:
+    case AirfixGameControllerDigitalControlFaceLeft:
+    case AirfixGameControllerDigitalControlFaceTop:
+    case AirfixGameControllerDigitalControlFacePrimary:
+    case AirfixGameControllerDigitalControlFaceSecondary:
+    case AirfixGameControllerDigitalControlRightStickClick:
+        break;
+    default:
+        _inputOverflowed = YES;
+        _digitalEdgeHead = 0U;
+        _digitalEdgeCount = 0U;
+        return;
+    }
+    const BOOL wasPressed = digitalControlPressed(_bridgeLatest, control);
+    setDigitalControlPressed(_bridgeLatest, control, pressed);
+    if (wasPressed != pressed) {
+        [self enqueueDigitalControlLocked:control
                                   pressed:pressed
                                generation:generation];
     }

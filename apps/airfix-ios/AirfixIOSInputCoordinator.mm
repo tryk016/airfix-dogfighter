@@ -6,9 +6,11 @@
 #import <QuartzCore/QuartzCore.h>
 #import <UIKit/UIKit.h>
 
+#include "airfix/input/ControllerInputBatchBridge.hpp"
 #include "airfix/input/InputRouter.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -22,8 +24,13 @@ constexpr CFTimeInterval kMaximumAccumulatedSeconds =
     kInputStepSeconds * 8.0;
 constexpr std::uint64_t kDiagnosticHeartbeatTicks = 6U;
 constexpr std::int32_t kControllerStickDeadzone = 4096;
-constexpr std::int32_t kControllerAxisDelta = 1024;
 constexpr std::int32_t kControllerTriggerActuation = 16384;
+constexpr std::size_t kTouchAxisCount =
+    static_cast<std::size_t>(AirfixTouchAxisCameraLookY) + 1U;
+constexpr std::size_t kTouchButtonCount =
+    static_cast<std::size_t>(AirfixTouchButtonCount);
+constexpr std::size_t kTouchThrottleAxisIndex =
+    static_cast<std::size_t>(AirfixTouchAxisThrottleSet);
 
 constexpr airfix::input::SourceHandle kTouchSource{
     airfix::input::SourceKind::touch, 1U};
@@ -47,23 +54,138 @@ constexpr airfix::input::SourceHandle kControllerSource{
     return airfix::input::clampQ15(static_cast<std::int32_t>(value));
 }
 
-[[nodiscard]] int16_t stableStick(const int16_t value) noexcept {
-    const auto wide = static_cast<std::int32_t>(value);
-    return std::abs(wide) < kControllerStickDeadzone ? 0 : value;
+[[nodiscard]] airfix::input::ControlId touchAxisControl(
+    const AirfixTouchAxis axis) noexcept {
+    switch (axis) {
+    case AirfixTouchAxisBank:
+        return airfix::input::controls::touch::bank;
+    case AirfixTouchAxisPitch:
+        return airfix::input::controls::touch::pitch;
+    case AirfixTouchAxisThrottleSet:
+        return airfix::input::controls::touch::throttleSet;
+    case AirfixTouchAxisCameraLookX:
+        return airfix::input::controls::touch::lookX;
+    case AirfixTouchAxisCameraLookY:
+        return airfix::input::controls::touch::lookY;
+    }
+    return {};
 }
 
-[[nodiscard]] bool shouldSubmitAxis(
-    const int16_t previous, const int16_t current) noexcept {
-    if (previous == current) {
-        return false;
+[[nodiscard]] airfix::input::ControlId touchButtonControl(
+    const AirfixTouchButton button) noexcept {
+    switch (button) {
+    case AirfixTouchButtonThrottleIncrease:
+        return airfix::input::controls::touch::throttleIncrease;
+    case AirfixTouchButtonThrottleDecrease:
+        return airfix::input::controls::touch::throttleDecrease;
+    case AirfixTouchButtonPrimaryFire:
+        return airfix::input::controls::touch::primaryFire;
+    case AirfixTouchButtonSecondaryFire:
+        return airfix::input::controls::touch::secondaryFire;
+    case AirfixTouchButtonWeaponNext:
+        return airfix::input::controls::touch::weaponNext;
+    case AirfixTouchButtonRearView:
+        return airfix::input::controls::touch::rearView;
+    case AirfixTouchButtonCameraCycle:
+        return airfix::input::controls::touch::cameraCycle;
+    case AirfixTouchButtonCameraRecenter:
+        return airfix::input::controls::touch::cameraRecenter;
+    case AirfixTouchButtonMissionStatus:
+        return airfix::input::controls::touch::missionStatus;
+    case AirfixTouchButtonPause:
+        return airfix::input::controls::touch::pause;
+    case AirfixTouchButtonCount:
+        break;
     }
-    if (previous == 0 || current == 0) {
-        return true;
-    }
-    return std::abs(
-        static_cast<std::int32_t>(current) -
-        static_cast<std::int32_t>(previous)) >= kControllerAxisDelta;
+    return {};
 }
+
+[[nodiscard]] airfix::input::ControllerSample controllerSample(
+    const AirfixGameControllerSample& sample) noexcept {
+    airfix::input::ControllerSample result{};
+    result.bank = q15(sample.bank);
+    result.pitch = q15(sample.pitch);
+    result.lookX = q15(sample.lookX);
+    result.lookY = q15(sample.lookY);
+    result.primaryTriggerPressed =
+        sample.primaryTrigger >= kControllerTriggerActuation;
+    result.pausePressed = sample.menuPressed || sample.optionsPressed;
+    result.secondaryTriggerPressed =
+        sample.secondaryTrigger >= kControllerTriggerActuation;
+    result.throttleUpPressed = sample.dpadUpPressed;
+    result.throttleDownPressed = sample.dpadDownPressed;
+    result.weaponNextPressed = sample.rightShoulderPressed;
+    result.rearViewPressed = sample.leftShoulderPressed;
+    result.cameraCyclePressed = sample.faceLeftPressed;
+    result.missionStatusPressed = sample.faceTopPressed;
+    result.uiConfirmPressed = sample.facePrimaryPressed;
+    result.uiCancelPressed = sample.faceSecondaryPressed;
+    result.cameraRecenterPressed = sample.rightStickClickPressed;
+    return result;
+}
+
+[[nodiscard]] airfix::input::ControllerInputBatch controllerBatch(
+    const AirfixGameControllerInputBatch& batch) noexcept {
+    airfix::input::ControllerInputBatch result{};
+    result.generation = batch.generation;
+    result.startingState = controllerSample(batch.startingState);
+    result.finalState = controllerSample(batch.finalState);
+    result.edgeCount = static_cast<std::size_t>(batch.edgeCount);
+    result.overflowed = batch.overflowed;
+    const auto copyCount = std::min(
+        result.edgeCount,
+        airfix::input::ControllerInputBatch::edgeCapacity);
+    for (std::size_t index = 0U; index < copyCount; ++index) {
+        const auto& edge = batch.edges[index];
+        result.edges[index] = {
+            edge.generation,
+            edge.order,
+            static_cast<airfix::input::ControllerDigitalControl>(
+                edge.control),
+            static_cast<bool>(edge.pressed),
+        };
+    }
+    return result;
+}
+
+static_assert(AirfixGameControllerDigitalEdgeCapacity ==
+    airfix::input::ControllerInputBatch::edgeCapacity);
+static_assert(AirfixGameControllerDigitalControlPrimaryTrigger ==
+    static_cast<std::uint8_t>(
+        airfix::input::ControllerDigitalControl::primaryTrigger));
+static_assert(AirfixGameControllerDigitalControlPause ==
+    static_cast<std::uint8_t>(
+        airfix::input::ControllerDigitalControl::pause));
+static_assert(AirfixGameControllerDigitalControlSecondaryTrigger ==
+    static_cast<std::uint8_t>(
+        airfix::input::ControllerDigitalControl::secondaryTrigger));
+static_assert(AirfixGameControllerDigitalControlDpadUp ==
+    static_cast<std::uint8_t>(
+        airfix::input::ControllerDigitalControl::throttleUp));
+static_assert(AirfixGameControllerDigitalControlDpadDown ==
+    static_cast<std::uint8_t>(
+        airfix::input::ControllerDigitalControl::throttleDown));
+static_assert(AirfixGameControllerDigitalControlRightShoulder ==
+    static_cast<std::uint8_t>(
+        airfix::input::ControllerDigitalControl::weaponNext));
+static_assert(AirfixGameControllerDigitalControlLeftShoulder ==
+    static_cast<std::uint8_t>(
+        airfix::input::ControllerDigitalControl::rearView));
+static_assert(AirfixGameControllerDigitalControlFaceLeft ==
+    static_cast<std::uint8_t>(
+        airfix::input::ControllerDigitalControl::cameraCycle));
+static_assert(AirfixGameControllerDigitalControlFaceTop ==
+    static_cast<std::uint8_t>(
+        airfix::input::ControllerDigitalControl::missionStatus));
+static_assert(AirfixGameControllerDigitalControlFacePrimary ==
+    static_cast<std::uint8_t>(
+        airfix::input::ControllerDigitalControl::uiConfirm));
+static_assert(AirfixGameControllerDigitalControlFaceSecondary ==
+    static_cast<std::uint8_t>(
+        airfix::input::ControllerDigitalControl::uiCancel));
+static_assert(AirfixGameControllerDigitalControlRightStickClick ==
+    static_cast<std::uint8_t>(
+        airfix::input::ControllerDigitalControl::cameraRecenter));
 
 } // namespace
 
@@ -130,18 +252,14 @@ constexpr airfix::input::SourceHandle kControllerSource{
     CFTimeInterval _lastDisplayTimestamp;
     CFTimeInterval _inputAccumulator;
 
-    int16_t _touchBank;
-    int16_t _touchPitch;
-    BOOL _touchPrimaryPressed;
-    BOOL _touchPausePressed;
+    std::array<int16_t, kTouchAxisCount> _touchAxes;
+    std::array<BOOL, kTouchButtonCount> _touchButtons;
 
-    BOOL _hasControllerSample;
-    std::uint64_t _controllerSampleGeneration;
-    std::uint64_t _lastControllerEdgeOrder;
-    int16_t _controllerBank;
-    int16_t _controllerPitch;
-    BOOL _controllerTriggerPressed;
-    BOOL _controllerPausePressed;
+    airfix::input::ControllerInputBatchBridge _controllerBridge;
+    std::array<
+        airfix::input::ControllerInputEmission,
+        airfix::input::ControllerInputBatchBridge::maximumEmissionCount>
+        _controllerEmissions;
 
     AirfixInputSource _lastMeaningfulSource;
     BOOL _started;
@@ -165,6 +283,9 @@ constexpr airfix::input::SourceHandle kControllerSource{
 - (BOOL)enqueueButton:(BOOL)pressed
                source:(airfix::input::SourceHandle)source
               control:(airfix::input::ControlId)control;
+- (BOOL)enqueueWeaponSelection:(uint8_t)selection
+                        source:(airfix::input::SourceHandle)source
+                       control:(airfix::input::ControlId)control;
 - (BOOL)takeNextSequence:(std::uint64_t*)sequence;
 - (void)resetAllSources;
 - (void)handleInputFailureTerminal:(BOOL)terminal;
@@ -304,6 +425,51 @@ constexpr airfix::input::SourceHandle kControllerSource{
 - (void)resetForGameplayBoundary {
     NSAssert(NSThread.isMainThread, @"Gameplay input boundary belongs to main");
     [self resetAllSources];
+}
+
+- (AirfixNativeInputContext)inputContext {
+    NSAssert(NSThread.isMainThread, @"Input context belongs to main");
+    switch (_router.context()) {
+    case airfix::input::InputContext::gameplay:
+        return AirfixNativeInputContextGameplay;
+    case airfix::input::InputContext::menu:
+        return AirfixNativeInputContextMenu;
+    case airfix::input::InputContext::modal:
+        return AirfixNativeInputContextModal;
+    case airfix::input::InputContext::controlEditor:
+        return AirfixNativeInputContextControlEditor;
+    case airfix::input::InputContext::count:
+        break;
+    }
+    NSAssert(NO, @"Portable input context is invalid");
+    return AirfixNativeInputContextGameplay;
+}
+
+- (void)setInputContext:(AirfixNativeInputContext)inputContext {
+    NSAssert(NSThread.isMainThread, @"Input context belongs to main");
+    airfix::input::InputContext portableContext{};
+    switch (inputContext) {
+    case AirfixNativeInputContextGameplay:
+        portableContext = airfix::input::InputContext::gameplay;
+        break;
+    case AirfixNativeInputContextMenu:
+        portableContext = airfix::input::InputContext::menu;
+        break;
+    case AirfixNativeInputContextModal:
+        portableContext = airfix::input::InputContext::modal;
+        break;
+    case AirfixNativeInputContextControlEditor:
+        portableContext = airfix::input::InputContext::controlEditor;
+        break;
+    default:
+        NSAssert(NO, @"Native input context is invalid");
+        return;
+    }
+    if (_router.context() == portableContext) {
+        return;
+    }
+    [self resetAllSources];
+    _router.setContext(portableContext);
 }
 
 - (BOOL)isOperational {
@@ -466,151 +632,51 @@ lastMeaningfulSource:_lastMeaningfulSource];
     if (!self.controllerState.isConnected) {
         return YES;
     }
-    const AirfixGameControllerInputBatch batch =
+    const AirfixGameControllerInputBatch nativeBatch =
         [_controllerAdapter drainInputBatch];
-    if (batch.overflowed ||
-        batch.edgeCount >
-            static_cast<NSUInteger>(
-                AirfixGameControllerDigitalEdgeCapacity) ||
-        batch.generation == 0U ||
-        batch.generation != self.controllerState.generation) {
+    if (nativeBatch.generation != self.controllerState.generation) {
         [self handleInputFailureTerminal:NO];
         return NO;
     }
 
-    const int16_t bank = stableStick(batch.finalState.bank);
-    const int16_t pitch = stableStick(batch.finalState.pitch);
-    const BOOL startingTrigger =
-        batch.startingState.primaryTrigger >= kControllerTriggerActuation;
-    const BOOL startingPause =
-        batch.startingState.menuPressed ||
-        batch.startingState.optionsPressed;
-    const BOOL finalTrigger =
-        batch.finalState.primaryTrigger >= kControllerTriggerActuation;
-    const BOOL finalPause =
-        batch.finalState.menuPressed || batch.finalState.optionsPressed;
-    const BOOL fullState =
-        !_hasControllerSample ||
-        _controllerSampleGeneration != batch.generation;
+    const auto portableBatch = controllerBatch(nativeBatch);
+    const bool fullState =
+        _controllerBridge.currentGeneration() != portableBatch.generation;
+    const auto result = _controllerBridge.process(
+        portableBatch, _controllerEmissions);
+    if (!result.accepted()) {
+        [self handleInputFailureTerminal:NO];
+        return NO;
+    }
+
     BOOL meaningful = NO;
-
-    if (fullState || shouldSubmitAxis(_controllerBank, bank)) {
-        const BOOL changed = !fullState || bank != 0;
-        if (![self enqueueAxis:bank
-                        source:kControllerSource
-                       control:
-            airfix::input::controls::controller::leftStickX]) {
-            [self handleInputFailureTerminal:_nextSequence == 0U];
-            return NO;
-        }
-        _controllerBank = bank;
-        meaningful = meaningful || changed;
-    }
-    if (fullState || shouldSubmitAxis(_controllerPitch, pitch)) {
-        const BOOL changed = !fullState || pitch != 0;
-        if (![self enqueueAxis:pitch
-                        source:kControllerSource
-                       control:
-            airfix::input::controls::controller::leftStickY]) {
-            [self handleInputFailureTerminal:_nextSequence == 0U];
-            return NO;
-        }
-        _controllerPitch = pitch;
-        meaningful = meaningful || changed;
-    }
-
-    if (fullState) {
-        if (![self enqueueAxis:(startingTrigger ? 32767 : 0)
-                        source:kControllerSource
-                       control:
-            airfix::input::controls::controller::rightTrigger] ||
-            ![self enqueueButton:startingPause
-                          source:kControllerSource
-                         control:
-            airfix::input::controls::controller::menu]) {
-            [self handleInputFailureTerminal:_nextSequence == 0U];
-            return NO;
-        }
-        _controllerSampleGeneration = batch.generation;
-        _lastControllerEdgeOrder = 0U;
-        _controllerTriggerPressed = startingTrigger;
-        _controllerPausePressed = startingPause;
-        meaningful = meaningful || startingTrigger || startingPause;
-    }
-    else if (
-        _controllerTriggerPressed != startingTrigger ||
-        _controllerPausePressed != startingPause) {
-        // The adapter and coordinator must agree on the state from which the
-        // drained edge sequence begins; otherwise replay could duplicate or
-        // omit a transition.
-        [self handleInputFailureTerminal:NO];
-        return NO;
-    }
-
-    for (NSUInteger index = 0U; index < batch.edgeCount; ++index) {
-        const AirfixGameControllerDigitalEdge edge = batch.edges[index];
-        if (edge.generation != batch.generation || edge.order == 0U ||
-            edge.order <= _lastControllerEdgeOrder) {
+    for (std::size_t index = 0U; index < result.emissionCount; ++index) {
+        const auto& emission = _controllerEmissions[index];
+        BOOL accepted = NO;
+        switch (emission.kind) {
+        case airfix::input::PhysicalEventKind::analog:
+            accepted = [self enqueueAxis:
+                static_cast<int16_t>(emission.value)
+                                      source:kControllerSource
+                                     control:emission.control];
+            break;
+        case airfix::input::PhysicalEventKind::digital:
+            accepted = [self enqueueButton:emission.value != 0
+                                    source:kControllerSource
+                                   control:emission.control];
+            break;
+        case airfix::input::PhysicalEventKind::weaponSelection:
+        case airfix::input::PhysicalEventKind::count:
             [self handleInputFailureTerminal:NO];
             return NO;
         }
-        _lastControllerEdgeOrder = edge.order;
-        switch (edge.control) {
-        case AirfixGameControllerDigitalControlPrimaryTrigger:
-            if (_controllerTriggerPressed == edge.pressed ||
-                ![self enqueueAxis:(edge.pressed ? 32767 : 0)
-                            source:kControllerSource
-                           control:
-                airfix::input::controls::controller::rightTrigger]) {
-                [self handleInputFailureTerminal:_nextSequence == 0U];
-                return NO;
-            }
-            _controllerTriggerPressed = edge.pressed;
-            break;
-        case AirfixGameControllerDigitalControlPause:
-            if (_controllerPausePressed == edge.pressed ||
-                ![self enqueueButton:edge.pressed
-                              source:kControllerSource
-                             control:
-                airfix::input::controls::controller::menu]) {
-                [self handleInputFailureTerminal:_nextSequence == 0U];
-                return NO;
-            }
-            _controllerPausePressed = edge.pressed;
-            break;
-        default:
-            [self handleInputFailureTerminal:NO];
+        if (!accepted) {
+            [self handleInputFailureTerminal:_nextSequence == 0U];
             return NO;
         }
-        meaningful = YES;
     }
 
-    // Synchronized final-state reconciliation covers a platform state change
-    // observed during the drain. It emits only when the FIFO did not already
-    // arrive at that state, so edges are never duplicated.
-    if (_controllerTriggerPressed != finalTrigger) {
-        if (![self enqueueAxis:(finalTrigger ? 32767 : 0)
-                        source:kControllerSource
-                       control:
-            airfix::input::controls::controller::rightTrigger]) {
-            [self handleInputFailureTerminal:_nextSequence == 0U];
-            return NO;
-        }
-        _controllerTriggerPressed = finalTrigger;
-        meaningful = YES;
-    }
-    if (_controllerPausePressed != finalPause) {
-        if (![self enqueueButton:finalPause
-                          source:kControllerSource
-                         control:
-            airfix::input::controls::controller::menu]) {
-            [self handleInputFailureTerminal:_nextSequence == 0U];
-            return NO;
-        }
-        _controllerPausePressed = finalPause;
-        meaningful = YES;
-    }
-    _hasControllerSample = YES;
+    meaningful = !fullState && result.emissionCount != 0U;
     if (meaningful) {
         _lastMeaningfulSource = AirfixInputSourceController;
     }
@@ -638,6 +704,21 @@ lastMeaningfulSource:_lastMeaningfulSource];
     }
     const auto event = airfix::input::PhysicalEvent::button(
         sequence, diagnosticTimestamp(), source, control, pressed);
+    return _router.enqueue(event);
+}
+
+- (BOOL)enqueueWeaponSelection:(uint8_t)selection
+                        source:(airfix::input::SourceHandle)source
+                       control:(airfix::input::ControlId)control {
+    if (selection >= airfix::input::weaponSlotCount) {
+        return NO;
+    }
+    std::uint64_t sequence = 0U;
+    if (![self takeNextSequence:&sequence]) {
+        return NO;
+    }
+    const auto event = airfix::input::PhysicalEvent::selectWeapon(
+        sequence, diagnosticTimestamp(), source, control, selection);
     return _router.enqueue(event);
 }
 
@@ -673,21 +754,16 @@ lastMeaningfulSource:_lastMeaningfulSource];
     }
     _resettingSources = YES;
     [_touchControlsView cancelAllTouches];
+    const int16_t latchedTouchThrottle =
+        _touchAxes[kTouchThrottleAxisIndex];
     _router.cancelSource(kTouchSource);
     _router.cancelSource(kControllerSource);
     [_controllerAdapter resetInputBridge];
     _router.lifecycleReset();
-    _touchBank = 0;
-    _touchPitch = 0;
-    _touchPrimaryPressed = NO;
-    _touchPausePressed = NO;
-    _hasControllerSample = NO;
-    _controllerSampleGeneration = self.controllerState.generation;
-    _lastControllerEdgeOrder = 0U;
-    _controllerBank = 0;
-    _controllerPitch = 0;
-    _controllerTriggerPressed = NO;
-    _controllerPausePressed = NO;
+    _touchAxes.fill(0);
+    _touchAxes[kTouchThrottleAxisIndex] = latchedTouchThrottle;
+    _touchButtons.fill(NO);
+    _controllerBridge.reset();
     _lastMeaningfulSource = AirfixInputSourceNone;
     self.diagnostics = [[AirfixInputDiagnostics alloc]
         initWithTick:_inputTick
@@ -702,6 +778,13 @@ lastMeaningfulSource:AirfixInputSourceNone];
     _lastDisplayTimestamp = 0.0;
     _inputAccumulator = 0.0;
     _resettingSources = NO;
+    if (!_terminalInputFailure && latchedTouchThrottle != 0 &&
+        ![self enqueueAxis:latchedTouchThrottle
+                    source:kTouchSource
+                   control:airfix::input::controls::touch::throttleSet]) {
+        [self handleInputFailureTerminal:YES];
+        return;
+    }
     if (resetEpochExhausted) {
         _displayLink.paused = YES;
         if (!_handlingInputFailure) {
@@ -825,54 +908,33 @@ lastMeaningfulSource:AirfixInputSourceNone];
         if (coordinator == nil || view != coordinator->_touchControlsView) {
             return;
         }
-        if (coordinator->_resettingSources ||
-            coordinator->_terminalInputFailure) {
+        if (coordinator->_terminalInputFailure) {
             return;
         }
-        switch (axis) {
-        case AirfixTouchAxisBank: {
-            if (coordinator->_touchBank == value) {
-                return;
+        if (coordinator->_resettingSources) {
+            if (axis == AirfixTouchAxisThrottleSet) {
+                coordinator->_touchAxes[kTouchThrottleAxisIndex] = value;
             }
-            const int16_t previous = coordinator->_touchBank;
-            coordinator->_touchBank = value;
-            if (![coordinator enqueueAxis:value
-                                   source:kTouchSource
-                                  control:
-                airfix::input::controls::touch::bank]) {
-                [coordinator handleInputFailureTerminal:
-                    coordinator->_nextSequence == 0U];
-                return;
-            }
-            if ((value == 0 && previous != 0) ||
-                std::abs(static_cast<std::int32_t>(value)) >=
-                    kControllerStickDeadzone) {
-                coordinator->_lastMeaningfulSource = AirfixInputSourceTouch;
-            }
-            break;
+            return;
         }
-        case AirfixTouchAxisPitch: {
-            if (coordinator->_touchPitch == value) {
-                return;
-            }
-            const int16_t previous = coordinator->_touchPitch;
-            coordinator->_touchPitch = value;
-            if (![coordinator enqueueAxis:value
-                                   source:kTouchSource
-                                  control:
-                airfix::input::controls::touch::pitch]) {
-                [coordinator handleInputFailureTerminal:
-                    coordinator->_nextSequence == 0U];
-                return;
-            }
-            if ((value == 0 && previous != 0) ||
-                std::abs(static_cast<std::int32_t>(value)) >=
-                    kControllerStickDeadzone) {
-                coordinator->_lastMeaningfulSource = AirfixInputSourceTouch;
-            }
-            break;
+        const auto control = touchAxisControl(axis);
+        const auto axisIndex = static_cast<std::size_t>(axis);
+        if (!control.valid() || axisIndex >= coordinator->_touchAxes.size()) {
+            NSAssert(NO, @"Touch axis is invalid");
+            return;
         }
+        if (coordinator->_touchAxes[axisIndex] == value) {
+            return;
         }
+        coordinator->_touchAxes[axisIndex] = value;
+        if (![coordinator enqueueAxis:value
+                               source:kTouchSource
+                              control:control]) {
+            [coordinator handleInputFailureTerminal:
+                coordinator->_nextSequence == 0U];
+            return;
+        }
+        coordinator->_lastMeaningfulSource = AirfixInputSourceTouch;
     }];
 }
 
@@ -889,35 +951,51 @@ lastMeaningfulSource:AirfixInputSourceNone];
             coordinator->_terminalInputFailure) {
             return;
         }
-        switch (button) {
-        case AirfixTouchButtonPrimaryFire:
-            if (coordinator->_touchPrimaryPressed == pressed) {
-                return;
-            }
-            coordinator->_touchPrimaryPressed = pressed;
-            if (![coordinator enqueueButton:pressed
-                                     source:kTouchSource
-                                    control:
-                airfix::input::controls::touch::primaryFire]) {
-                [coordinator handleInputFailureTerminal:
-                    coordinator->_nextSequence == 0U];
-                return;
-            }
-            break;
-        case AirfixTouchButtonPause:
-            if (coordinator->_touchPausePressed == pressed) {
-                return;
-            }
-            coordinator->_touchPausePressed = pressed;
-            if (![coordinator enqueueButton:pressed
-                                     source:kTouchSource
-                                    control:
-                airfix::input::controls::touch::pause]) {
-                [coordinator handleInputFailureTerminal:
-                    coordinator->_nextSequence == 0U];
-                return;
-            }
-            break;
+        const auto control = touchButtonControl(button);
+        const auto buttonIndex = static_cast<std::size_t>(button);
+        if (!control.valid() ||
+            buttonIndex >= coordinator->_touchButtons.size()) {
+            NSAssert(NO, @"Touch button is invalid");
+            return;
+        }
+        if (coordinator->_touchButtons[buttonIndex] == pressed) {
+            return;
+        }
+        coordinator->_touchButtons[buttonIndex] = pressed;
+        if (![coordinator enqueueButton:pressed
+                                 source:kTouchSource
+                                control:control]) {
+            [coordinator handleInputFailureTerminal:
+                coordinator->_nextSequence == 0U];
+            return;
+        }
+        coordinator->_lastMeaningfulSource = AirfixInputSourceTouch;
+    }];
+}
+
+- (void)touchControlsView:(AirfixTouchControlsView*)view
+      didSelectWeaponSlot:(uint8_t)slot {
+    __weak AirfixIOSInputCoordinator* weakSelf = self;
+    [self performOnMain:^{
+        AirfixIOSInputCoordinator* coordinator = weakSelf;
+        if (coordinator == nil || view != coordinator->_touchControlsView) {
+            return;
+        }
+        if (coordinator->_resettingSources ||
+            coordinator->_terminalInputFailure) {
+            return;
+        }
+        if (slot >= airfix::input::weaponSlotCount) {
+            NSAssert(NO, @"Touch weapon slot is invalid");
+            return;
+        }
+        if (![coordinator enqueueWeaponSelection:slot
+                                         source:kTouchSource
+                                        control:
+            airfix::input::controls::touch::weaponSelection]) {
+            [coordinator handleInputFailureTerminal:
+                coordinator->_nextSequence == 0U];
+            return;
         }
         coordinator->_lastMeaningfulSource = AirfixInputSourceTouch;
     }];
@@ -933,11 +1011,21 @@ lastMeaningfulSource:AirfixInputSourceNone];
         if (coordinator->_resettingSources) {
             return;
         }
+        const int16_t latchedTouchThrottle =
+            coordinator->_touchAxes[kTouchThrottleAxisIndex];
         coordinator->_router.cancelSource(kTouchSource);
-        coordinator->_touchBank = 0;
-        coordinator->_touchPitch = 0;
-        coordinator->_touchPrimaryPressed = NO;
-        coordinator->_touchPausePressed = NO;
+        coordinator->_touchAxes.fill(0);
+        coordinator->_touchAxes[kTouchThrottleAxisIndex] =
+            latchedTouchThrottle;
+        coordinator->_touchButtons.fill(NO);
+        if (!coordinator->_terminalInputFailure &&
+            latchedTouchThrottle != 0 &&
+            ![coordinator enqueueAxis:latchedTouchThrottle
+                               source:kTouchSource
+                              control:
+                airfix::input::controls::touch::throttleSet]) {
+            [coordinator handleInputFailureTerminal:YES];
+        }
     }];
 }
 
@@ -956,13 +1044,7 @@ lastMeaningfulSource:AirfixInputSourceNone];
         // including a first hot-connect after the global gate has opened.
         _router.cancelSource(kControllerSource);
     }
-    _hasControllerSample = NO;
-    _controllerSampleGeneration = state.generation;
-    _lastControllerEdgeOrder = 0U;
-    _controllerBank = 0;
-    _controllerPitch = 0;
-    _controllerTriggerPressed = NO;
-    _controllerPausePressed = NO;
+    _controllerBridge.reset();
 
     if (wasConnected && !state.isConnected) {
         [self resetAllSources];

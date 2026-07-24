@@ -84,7 +84,13 @@ BindingTable makeDefaultBindings() noexcept {
         AnalogAxis::flightPitch, gameplay));
     add(Binding::analog(SourceKind::touch, controls::touch::throttleSet,
         AnalogAxis::flightThrottleSet, gameplay, PhysicalEventKind::analog,
-        q15One, 512));
+        q15One, 512, false));
+    add(Binding::analog(SourceKind::touch, controls::touch::throttleIncrease,
+        AnalogAxis::flightThrottleDelta, gameplay, PhysicalEventKind::digital,
+        q15One, 1));
+    add(Binding::analog(SourceKind::touch, controls::touch::throttleDecrease,
+        AnalogAxis::flightThrottleDelta, gameplay, PhysicalEventKind::digital,
+        q15Min, 1));
     add(Binding::analog(SourceKind::touch, controls::touch::lookX,
         AnalogAxis::cameraLookX, gameplay));
     add(Binding::analog(SourceKind::touch, controls::touch::lookY,
@@ -111,6 +117,10 @@ BindingTable makeDefaultBindings() noexcept {
         DigitalAction::uiConfirm, menus));
     add(Binding::digital(SourceKind::touch, controls::touch::cancel,
         DigitalAction::uiCancel, menus));
+    add(Binding::digital(SourceKind::touch, controls::touch::tabPrevious,
+        DigitalAction::uiTabPrevious, menus));
+    add(Binding::digital(SourceKind::touch, controls::touch::tabNext,
+        DigitalAction::uiTabNext, menus));
     add(Binding::digital(SourceKind::touch, controls::touch::cancel,
         DigitalAction::globalBack, gameplay));
 
@@ -157,6 +167,15 @@ BindingTable makeDefaultBindings() noexcept {
         controls::controller::facePrimary, DigitalAction::uiConfirm, menus));
     add(Binding::digital(SourceKind::controller,
         controls::controller::faceSecondary, DigitalAction::uiCancel, menus));
+    add(Binding::digital(SourceKind::controller,
+        controls::controller::leftShoulder, DigitalAction::uiTabPrevious,
+        menus));
+    add(Binding::digital(SourceKind::controller,
+        controls::controller::rightShoulder, DigitalAction::uiTabNext,
+        menus));
+    add(Binding::digital(SourceKind::controller,
+        controls::controller::faceSecondary, DigitalAction::globalBack,
+        gameplay));
 
     add(Binding::digital(SourceKind::keyboard, controls::keyboard::space,
         DigitalAction::combatPrimaryFire, gameplay));
@@ -336,8 +355,10 @@ void InputRouter::setContext(const InputContext context) noexcept {
         }
         for (std::size_t bindingIndex = 0U;
              bindingIndex < bindings_.size(); ++bindingIndex) {
-            source.blockedUntilNeutral[bindingIndex] = !bindingNeutral(
-                bindings_[bindingIndex], source.values[bindingIndex]);
+            source.blockedUntilNeutral[bindingIndex] =
+                bindings_[bindingIndex].blocksNeutralGate &&
+                !bindingNeutral(
+                    bindings_[bindingIndex], source.values[bindingIndex]);
         }
     }
 }
@@ -422,6 +443,7 @@ bool InputRouter::sourcePhysicalInputsNeutral(
          bindingIndex < bindings_.size(); ++bindingIndex) {
         const auto& binding = bindings_[bindingIndex];
         if (binding.sourceKind == source.handle.kind &&
+            binding.blocksNeutralGate &&
             !bindingNeutral(binding, source.values[bindingIndex])) {
             return false;
         }
@@ -553,7 +575,7 @@ void InputRouter::processEvent(
         if (binding.targetKind == BindingTargetKind::weaponSelection) {
             if (neutralGate_.isOpen() && source.neutralGate.isOpen() &&
                 bindingActive(binding) &&
-                event.value >= 0 && event.value < noWeaponSelection) {
+                event.value >= 0 && event.value < weaponSlotCount) {
                 weaponSelection = static_cast<std::uint8_t>(event.value);
             }
             continue;

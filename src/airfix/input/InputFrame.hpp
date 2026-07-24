@@ -28,6 +28,7 @@ inline constexpr Q15 q15One = 32767;
 inline constexpr std::uint16_t inputFrameSchemaVersion = 1U;
 inline constexpr std::uint8_t noWeaponSelection =
     std::numeric_limits<std::uint8_t>::max();
+inline constexpr std::uint8_t weaponSlotCount = 8U;
 inline constexpr std::size_t digitalBitWordCount = (digitalActionCount + 63U) / 64U;
 
 struct InputFrame final {
@@ -58,6 +59,10 @@ struct InputFrame final {
 
     [[nodiscard]] constexpr bool hasWeaponSelection() const noexcept {
         return weaponSelection != noWeaponSelection;
+    }
+
+    [[nodiscard]] constexpr bool hasValidWeaponSelection() const noexcept {
+        return !hasWeaponSelection() || weaponSelection < weaponSlotCount;
     }
 
     [[nodiscard]] friend constexpr bool operator==(

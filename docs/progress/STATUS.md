@@ -144,18 +144,22 @@
 - Implemented the portable deterministic input core: stable action IDs, Q15
   axes, bounded sequence ordering, multi-source arbitration, context releases,
   cancellation, lifecycle neutral gating, and default touch/controller/test
-  bindings. The first native iOS slice now adds a safe-area-aware multitouch
-  stick/fire/pause overlay, a bounded edge-preserving Apple extended-controller
-  adapter, a renderer-independent fixed 60 Hz input pump, explicit-resume
-  lifecycle policy, diagnostics, and fail-closed gameplay-boundary resets.
-  Complete V1 controls, remapping, profiles, and haptics remain pending.
-- Added the first deterministic simulation consumer. The portable
-  `PlayerAircraftState` preserves uninterpreted bank/pitch Q15 intentions,
-  primary-fire held state and exact edge counts, its own completed-step count,
-  monotonic source tick, and an explicit canonical hash. Invalid schema, Q15,
+  bindings. Native iOS now transports the full baseline gameplay-action surface:
+  a safe-area-aware multitouch flight/throttle/combat/camera/weapon overlay and
+  a bounded Apple extended-controller adapter feed a validated portable batch
+  reconciler and renderer-independent fixed 60 Hz pump. Context transitions,
+  controller generations, FIFO overflow, lifecycle and gameplay boundaries
+  reset fail closed. Remapping, profiles, menu UI, glyphs, haptics, and device
+  acceptance remain pending.
+- Expanded the deterministic simulation consumer. Portable
+  `PlayerAircraftState` preserves uninterpreted flight/throttle/camera Q15
+  intentions, primary/secondary/rear-view held state and exact edges, discrete
+  weapon selection, action counters, its own completed-step count, monotonic
+  source tick, and an explicit canonical hash. Invalid schema, Q15, weapon,
   tick, and counter transitions are rejected without partial mutation. The iOS
   bridge advances it exactly once per eligible running frame and fails closed;
-  pose, movement, throttle, and weapon spawning remain intentionally absent.
+  pose, movement, throttle integration, camera behavior, and weapon spawning
+  remain intentionally absent.
 - Recovered the 63-slot `AirCraft.type` vtable and 16 function entries missed
   by automatic analysis. The per-step method at `0x10003F40` consumes a float
   time delta and contains 15 force, five torque-only, and one force-only call
@@ -317,7 +321,7 @@
   outstanding leases safe after exchange destruction and prevents allocator
   address reuse from reviving stale handles. It is not yet connected to Metal
   or identified with a player actor.
-- The dynamic-pose regression target brings the portable suite to 35/35.
+- The controller-batch regression target brings the portable suite to 36/36.
 
 ## Confirmed
 
@@ -349,9 +353,9 @@
 1. Obtain controlled runtime traces for free flight and the ground, inverted,
    water, and too-high branches; assign field meanings and numeric tolerances
    before implementing the statically recovered 12 ms flight law.
-2. Extend the native control surface to throttle delta, secondary fire, weapon,
-   camera/rear-view, and mission actions before adding persistence, remapping,
-   profiles, and haptics.
+2. Add persistent layout/visibility profiles, calibration and remapping,
+   controller glyphs, haptics, and finished menu bindings; then run touch-only
+   and controller-only acceptance on both target iPhones.
 3. Recover dynamic player-actor creation/spawn and its grouped visual identity;
    never bind a player by first mesh, name resemblance, or source-node index.
 4. Recover the runtime rule that selects a physical CCF room during gameplay;
