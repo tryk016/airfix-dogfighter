@@ -140,6 +140,7 @@ add_library(airfix_render
     src/airfix/render/DynamicInstancePose.cpp
     src/airfix/render/DrawMesh.cpp
     src/airfix/render/DrawSubmissionPlan.cpp
+    src/airfix/render/LegacyCameraTransform.cpp
     src/airfix/render/LegacyGeometry.cpp
     src/airfix/render/LegacyScreenProjection.cpp
     src/airfix/render/ObjectVisualDrawAssembly.cpp
@@ -422,6 +423,13 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_render_tests tests/LegacyGeometryTests.cpp)
     target_link_libraries(airfix_render_tests PRIVATE airfix::render)
     add_test(NAME airfix_render_tests COMMAND airfix_render_tests)
+
+    add_executable(airfix_legacy_camera_transform_tests
+        tests/LegacyCameraTransformTests.cpp)
+    target_link_libraries(airfix_legacy_camera_transform_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_legacy_camera_transform_tests
+        COMMAND airfix_legacy_camera_transform_tests)
 
     add_executable(airfix_legacy_screen_projection_tests
         tests/LegacyScreenProjectionTests.cpp)
