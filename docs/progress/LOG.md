@@ -1314,8 +1314,10 @@ superseded evidence.
   and the x32dbg executable from x64dbg 2026.05.27. Ghidra 12.1.2 remains the
   canonical static tool. The owner accepted the Binary Ninja Free 5.3 R2
   license and confirmed the official installer hash; installed build
-  `5.3.9757` has a valid Vector 35 signature. Offline settings and the manual
-  comparison remain pending.
+  `5.3.9757` has a valid Vector 35 signature. Network-facing settings are
+  disabled and a program-specific outbound firewall rule is enabled. The
+  optional manual comparison remains pending an operator-scheduled GUI window
+  and does not block the automated Ghidra/Rizin path.
 - Added an explicit-manifest working-copy builder. It rechecks source and copy
   hashes, rejects traversal and reparse points, never overwrites a conflicting
   copy, and stores no source path in public output. Original files remain
@@ -1339,3 +1341,25 @@ superseded evidence.
 - No game binary, original resource, tool archive, decompiler database, local
   path, pseudocode dump, debugger trace, or vendor-licensed file is included
   in the repository.
+
+## 2026-07-27 - global mission texture binding
+
+- Added `MissionWorldRoomTextureBindings`, the missing portable producer for
+  the global texture namespace consumed by source-aware room assembly. It
+  replays the canonical mission draw plan and requires each texture-source CCF
+  pointer to match the exact ordered load source.
+- Every supplied CCF logical path is resolved against its UDSP file index
+  before binding. This is a metadata-only identity check; the caller must parse
+  each CCF and bind its index in the same immutable authenticated load
+  transaction. Each source retains its own `TEXU` and local material-reference
+  namespace, while global dense `TextureAssetId` values are assigned by
+  canonical first use and deduplicated only by unique archive file index across
+  sources and texture roles. GTI payloads are not read.
+- All renderer-facing output is atomic. Source-count/pointer/index mismatches,
+  a forged catalog, missing or ambiguous late textures, dependency failures,
+  overflow, and aggregate or per-source exact/one-under limit failures have
+  synthetic coverage.
+- The result feeds `MissionWorldRoomDrawAssembly` and `DrawSubmissionPlan`
+  without an adapter. A complete Windows CMake/Ninja build and all 40 portable
+  CTest targets pass. The authenticated mission manifest/loader remains the
+  next content integration; no private game data or local path was added.

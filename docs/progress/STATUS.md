@@ -373,7 +373,18 @@
   outstanding leases safe after exchange destruction and prevents allocator
   address reuse from reviving stale handles. It is not yet connected to Metal
   or connected to the recovered primary-actor/skin-hierarchy contract.
-- The mission world-room regression target brings the portable suite to 39/39.
+- Added global source-aware mission texture binding. It replays the canonical
+  room plan, validates every supplied CCF logical-path/file-index pair against
+  the same UDSP metadata, resolves each source-local `TEXU`, preserves
+  `{sourceIndex, materialReference}` isolation, and assigns dense global IDs by
+  first authenticated archive-file use. The same GTI is deduplicated across
+  sources and roles without reading its payload. The caller must bind parsed
+  metadata and the entry index in one immutable load transaction; the binder
+  does not prove independently constructed metadata provenance. Late-source,
+  ambiguous, forged, overflow, and exact/one-under limit failures clear all
+  output.
+- The mission texture-binding regression target brings the portable suite to
+  40/40.
 
 ## Confirmed
 
@@ -411,10 +422,10 @@
 3. Implement explicit dynamic publication of the recovered primary actor and
    its selected-skin hierarchies through the pose exchange, keeping auxiliary
    weapons/effects separate.
-4. Add authenticated mission load-manifest and global multi-source texture
-   binding around the completed source-aware room draw seam, then connect it to
-   native publication. Recover portal tracing, camera room traversal, and later
-   transitions afterward.
+4. Add the authenticated mission load manifest around the completed
+   multi-source room, texture-binding, draw, and submission seams, then connect
+   the aggregate result to native publication. Recover portal tracing, camera
+   room traversal, and later transitions afterward.
 5. Keep BSP culling and portal traversal disabled until their runtime semantics
    are proven against executable evidence.
 

@@ -155,6 +155,6 @@ normalized PE32/x86 boundaries, calls, data references, and optional
 Rizin-family pseudocode. `EV-20260727-002` cross-checked representative
 rendering, input, and aircraft-flight routines; the complete comparison is in
 [`EXP-20260727-001`](../experiments/EXP-20260727-001-static-tool-crosscheck.md).
-Binary Ninja Free comparison remains pending confirmed offline settings and
-manual inspection.
+Binary Ninja Free's offline controls are confirmed. Its optional manual
+comparison remains pending an operator-scheduled GUI window.
 x32dbg has been verified and staged locally but has not executed a game binary.

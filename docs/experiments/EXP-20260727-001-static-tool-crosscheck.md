@@ -12,7 +12,8 @@ debugging, write mode, patching, symbol download, or cloud service
 **Tools:** Ghidra 12.1.2; Rizin 0.9.1 commit
 `c3a90e9226d977f58f4e9c75f78fa6b07afe13c7`; `rzpipe` 0.6.2; Cutter 2.5.0
 bundled `rz-ghidra` pseudocode; Binary Ninja Free 5.3 R2 installed with
-offline configuration and manual comparison pending
+network features disabled and outbound traffic blocked; optional manual
+comparison pending
 **Evidence:** `EV-20260727-002`
 **Related functions:** `FN-CC-0001FDD0`,
 `FN-DOGFIGHTER-00011BB0`, `FN-AIRCRAFT-00003F40`
@@ -62,7 +63,7 @@ scripts.
 
 | Field | Ghidra 12.1.2 | Rizin 0.9.1 / `rz-ghidra` | Binary Ninja Free |
 |---|---|---|---|
-| Automatic discovery | Export symbol and complete function found | Complete function found automatically | Pending owner acceptance |
+| Automatic discovery | Export symbol and complete function found | Complete function found automatically | Pending manual review |
 | Boundary | `[0x1001FDD0, 0x10020AFA)`, final `RET 0xC` | Exact same range, size `0xD2A`; `.text`, file offset `0x0001FDD0`; 838 instructions | Pending |
 | Signature / ABI | `void __thiscall CcObject::AddVisiblePolygonsToRenderList(CcCamera*, CcRenderList*, bool)` | Export text preserves the `__thiscall` declaration, but Rizin proposes `cdecl` and three explicit stack arguments; this is contradicted by ECX receiver use and `RET 0xC` | Pending |
 | Direct calls | `operator new(0xC)`, `CcLight::GetCameraRelation` twice, `_CIacos`, `fsin`, `ftol`, and local allocation/construction helpers at RVAs `0x3980`/`0x39D0` | Seven direct call sites at the same raw addresses; several import names are not recovered | Pending |
@@ -86,7 +87,7 @@ and draw-contract conclusions remain unchanged.
 
 | Field | Ghidra 12.1.2 | Rizin 0.9.1 / `rz-ghidra` | Binary Ninja Free |
 |---|---|---|---|
-| Automatic discovery | Complete function found | Complete function found automatically | Pending owner acceptance |
+| Automatic discovery | Complete function found | Complete function found automatically | Pending manual review |
 | Boundary | `[0x00411BB0, 0x0041221A)`, final `RET 0x4` | Exact same range, size `0x66A`; `.text`, file offset `0x00011BB0`; 510 instructions | Pending |
 | Signature / ABI | `void __thiscall (dispatcher*, input-source*)`; Ghidra initially types the explicit parameter as `int*` | Proposes `cdecl` with two explicit arguments; ECX receiver use and `RET 0x4` instead support the Ghidra `__thiscall` shape | Pending |
 | Direct calls | 37 direct calls covering input iteration, active-window/console dispatch, command routes, event construction/processing/destruction, and local helpers | The same 37 raw direct call sites are listed; most imported/local names remain unresolved | Pending |
@@ -110,7 +111,7 @@ result supports the rename. Existing analog curve claims remain unchanged.
 
 | Field | Ghidra 12.1.2 | Rizin 0.9.1 / `rz-ghidra` | Binary Ninja Free |
 |---|---|---|---|
-| Automatic discovery | Function recovered at the exact vtable target | `aaa` did **not** create a function at the requested RVA; explicit read-only `af @ 0x10003F40` is required for the bounded comparison | Pending owner acceptance |
+| Automatic discovery | Function recovered at the exact vtable target | `aaa` did **not** create a function at the requested RVA; explicit read-only `af @ 0x10003F40` is required for the bounded comparison | Pending manual review |
 | Boundary | `[0x10003F40, 0x100065A3)`, final `RET 0x4` | After the explicit `af`, exact same range, size `0x2663`; `.text`, file offset `0x00003F40`; 2,227 instructions | Pending |
 | Signature / ABI | `void __thiscall AircraftFlightForceStep(AirCraft*, float dt)`; Ghidra's raw type remains the base `AfVehicle*` | Proposes `cdecl` with 19 arguments derived incorrectly from receiver-relative field offsets; ECX use, the single stack `float`, and `RET 0x4` contradict it | Pending |
 | Direct calls | Local vector helpers; 15 `ApplyForce`, five `ApplyTorqueOnly`, one `ApplyForceOnly`; relation, BSP collision, room/mesh, height/water, notification, and vtable BSP enable/disable paths | Lists 63 raw direct call sites including three calls to RVA `0x3F20`, 29 calls to RVA `0x65B0`, import thunks, and other helpers; without the Ghidra import/type recovery it does not classify the 15/5/1 force-family split | Pending |
@@ -139,9 +140,9 @@ to raise confidence.
   discovery.
 - Cutter's `rz-ghidra` output is useful for manual navigation but shares the
   Rizin analysis database and is not counted as an independent third tool.
-- Binary Ninja Free remains the required manual independent decompiler check.
-  No claim below can say "three tools agree" until that local review is
-  completed.
+- Binary Ninja Free remains an optional manual independent decompiler check.
+  No claim may say "three tools agree" until that local review is completed,
+  but Ghidra/Rizin automation and reconstruction do not depend on it.
 - No static-only agreement changes confidence 3 policy. In particular,
   `FN-AIRCRAFT-00003F40` remains confidence 2 pending runtime/parity evidence.
 
@@ -160,7 +161,8 @@ to raise confidence.
 
 The owner accepted the Binary Ninja Free license, confirmed the official
 installer hash, and installed build `5.3.9757`; the installed executable has a
-valid Vector 35 signature. The remaining step before opening a working copy is
-to confirm that network and crash-report settings are disabled and restart the
-application. This does not block Ghidra/Rizin automation, documentation,
-portable builds, or CI.
+valid Vector 35 signature. Network/update/plugin/PDB/external-link/WARP/crash
+reporting features are disabled, and a program-specific outbound firewall rule
+is enabled. The remaining manual comparison is intentionally postponed until
+the owner schedules a short GUI window. It does not block Ghidra/Rizin
+automation, documentation, portable builds, or CI.

@@ -110,8 +110,10 @@ never uses write mode, debugger mode, a remote server, or a symbol downloader.
 Use Ghidra as the canonical decompiler and compare Rizin's independently found
 boundaries, calls, and data references. Optional pseudocode from Cutter's
 bundled `rz-ghidra` plugin remains a Rizin-family result, not a third independent
-source. Binary Ninja Free is a manual third check after its offline settings
-are confirmed; its Free edition is not an automation dependency.
+source. Binary Ninja Free is an optional manual third check; its network
+features are disabled and outbound traffic is blocked, but its Free edition is
+not an automation dependency and GUI review must be scheduled so it does not
+interrupt other work on the computer.
 
 The complete setup, safe working-copy procedure, report commands, and
 cross-check protocol are in

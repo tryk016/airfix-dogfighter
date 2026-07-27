@@ -135,6 +135,7 @@ endif()
 add_library(airfix_render
     src/airfix/render/CcfRoomDrawAssembly.cpp
     src/airfix/render/MissionWorldRoomDrawAssembly.cpp
+    src/airfix/render/MissionWorldRoomTextureBindings.cpp
     src/airfix/render/DiagnosticRasterizer.cpp
     src/airfix/render/DynamicInstancePose.cpp
     src/airfix/render/DrawMesh.cpp
@@ -428,6 +429,14 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_mission_world_room_draw_tests
         COMMAND airfix_mission_world_room_draw_tests)
+
+    add_executable(airfix_mission_world_room_texture_binding_tests
+        tests/MissionWorldRoomTextureBindingTests.cpp)
+    target_link_libraries(
+        airfix_mission_world_room_texture_binding_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_mission_world_room_texture_binding_tests
+        COMMAND airfix_mission_world_room_texture_binding_tests)
 
     add_executable(airfix_texture_runtime_plan_tests
         tests/TextureRuntimePlanTests.cpp)

@@ -326,9 +326,15 @@ physical room processed by room publication or placed resolution and every mesh
 scanned by enabled placed scenes, in addition to output mesh, instance,
 material, vertex, index, range, binding, and byte limits. All fail closed.
 The result passes unchanged through the existing `DrawSubmissionPlan`; no
-shader or Metal draw algorithm change is required. Global multi-source
-texture-ID assignment and an authenticated mission loader remain separate
-integration steps.
+shader or Metal draw algorithm change is required.
+`buildMissionWorldRoomTextureBindings` now replays the canonical plan, validates
+each supplied CCF logical-path/file-index pair against the same UDSP metadata,
+resolves each source-local `TEXU`, and assigns one deterministic global
+texture-ID namespace. This check is metadata-only: the future loader must parse
+the CCF and bind its entry index in one immutable transaction. Identical archive
+file indices deduplicate across sources and roles while equal local material
+references remain isolated. An authenticated mission loader remains the next
+integration step.
 
 BSP culling, collision, and portal traversal remain later runtime features; no
 geometry is hidden until those traversal semantics are separately proven.

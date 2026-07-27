@@ -7,7 +7,7 @@ Statuses: `not-investigated`, `observed`, `specified`, `implemented`, `verified`
 |---|---:|---|---|---|
 | Bootstrap and resource loading | P0 | not-investigated | SCN-BOOT-001 | Launcher/ICD boundary unknown |
 | Main menu and settings | P1 | not-investigated | SCN-UI-001 | |
-| Level/room loading | P0 | implemented | SCN-LEVEL-001 | Bounded atomic explicit-room loader plus ordered multi-CCF room catalog/start lookup and source-aware aggregate draw seam; authenticated mission loader global texture binding and portal transitions pending |
+| Level/room loading | P0 | implemented | SCN-LEVEL-001 | Bounded atomic explicit-room loader plus ordered multi-CCF room catalog/start lookup, source-aware aggregate draw seam, and global multi-source texture binding; authenticated mission loader and portal transitions pending |
 | Aircraft flight model | P0 | observed | SCN-FLIGHT-001 | Scheduler, controls, and complete static equations recovered; physical units, runtime traces, and numeric tolerance remain unknown |
 | Deterministic player-control state | P0 | implemented | SCN-FLIGHT-001 | Frozen-pose flight/throttle/combat/camera/mission intent bridge; explicitly not behavior parity |
 | Player spawn and visual identity | P0 | observed | SCN-SPAWN-001 | Primary actor, start room, and complete selected-skin hierarchies recovered; dynamic publication pending |

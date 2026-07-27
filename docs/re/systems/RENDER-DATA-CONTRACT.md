@@ -198,15 +198,28 @@ suppresses room publication but leaves placed resolution active.
 while one physical mesh reused by several selected nodes in the same source
 receives one global first-use mesh slot.
 
-`buildMissionWorldRoomDrawAssembly` consumes caller-supplied per-source material
-bindings whose texture IDs already share one global namespace. It produces one
-`DrawModelPayload` plus parallel numeric mesh/instance provenance and fails
-atomically on a late source, transform, binding, limit, or forged-catalog
-error. Assembly re-resolves the plan from the canonical catalog and exact load
-sources and requires every draw-source CCF identity to match that list before
-allocation. The existing `DrawSubmissionPlan` accepts the combined model
-directly. The authenticated mission load manifest and global multi-source
-texture binding are not yet connected to `WorldRoomLoader` or the native
+`buildMissionWorldRoomTextureBindings` re-resolves the canonical room plan and
+requires every texture-source CCF identity to match the exact load-source list.
+It authenticates each supplied logical CCF path against its UDSP file index,
+resolves every source with its own `TEXU`, and then remaps the existing
+single-source binding plans into one dense global `TextureAssetId` namespace.
+IDs follow canonical first use; an identical archive file index from the
+authenticated session is deduplicated across sources, materials, and roles.
+Equal local material references in different CCFs remain separate. This is a
+metadata-only identity check: the caller must parse each CCF and bind its
+logical path/file index in the same immutable load transaction. The binder
+does not prove the provenance of independently constructed `CcfMetadata`.
+It reads no payload and any late identity, resolution, binding, overflow, or
+limit failure clears all renderer-facing output atomically.
+
+`buildMissionWorldRoomDrawAssembly` consumes those per-source bindings and
+produces one `DrawModelPayload` plus parallel numeric mesh/instance provenance.
+It fails atomically on a late source, transform, binding, limit, or
+forged-catalog error, re-resolves the plan from the canonical catalog and exact
+load sources, and requires every draw-source CCF identity to match that list
+before allocation. The existing `DrawSubmissionPlan` accepts the combined
+model directly. The authenticated mission load manifest is not yet connected
+to this completed metadata/binding/draw path, `WorldRoomLoader`, or the native
 coordinator.
 
 ## Metal handoff

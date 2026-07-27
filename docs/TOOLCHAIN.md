@@ -13,7 +13,7 @@ required because LLVM supplies the PE reporting tools.
 | Primary static analysis/decompiler | Ghidra 12.1 | Canonical PE import, types, disassembly, decompilation, and repeatable headless reports |
 | Scriptable independent static analysis | Rizin 0.9 | PE32/x86 metadata, function discovery, references, signatures, search, diff, and `rzpipe` reports |
 | Rizin graphical client | Cutter 2.5 | Manual graph, disassembly, and bundled Ghidra-decompiler views; not independent evidence from Rizin |
-| Manual independent decompiler | Binary Ninja Free 5.3 | Difficult-function cross-check after the owner personally accepts its license; local Desktop use only |
+| Manual independent decompiler | Binary Ninja Free 5.3 | Optional difficult-function cross-check in an operator-scheduled GUI window; local Desktop use only, with network features disabled and outbound traffic blocked |
 | Ghidra runtime | 64-bit JDK 21 | Required by the current official Ghidra guide |
 | Ghidra scripting/debug bridge | Python 3.14 | Within the supported PyGhidra range for the locked release |
 | PE command-line reports | LLVM tools | Reproducible sections/imports/exports/disassembly |
