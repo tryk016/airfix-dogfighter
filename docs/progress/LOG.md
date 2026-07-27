@@ -1876,3 +1876,29 @@ superseded evidence.
   CTest targets pass. The public-boundary scan checks 288 files; its synthetic
   suite now also protects local Ghidra application data. Ghidra/Rizin wrapper
   tests, Rizin normalization tests, `actionlint`, and `git diff --check` pass.
+
+## 2026-07-27 - vehicle quaternion camera adapter
+
+- Recovered `CcMatrixRot::FromQuat` at `Cc.dll` RVA
+  `[0x2E50,0x2F2A)`: `(w,x,y,z)` fields, exact element order, pairwise
+  product/sum/doubling grouping, and one final binary32 spill per matrix
+  element. The function does not normalize or validate its input.
+- Added `LegacyQuaternionRotation`, an allocation-free `noexcept` adapter that
+  publishes the recovered mathematical column matrix for
+  `applyRuntimeColumn`. It preserves zero and non-unit quaternion behavior and
+  fails atomically on non-finite input or final matrix overflow. Portable
+  `double` staging avoids premature binary32 rounding but deliberately does
+  not claim universal bit identity with x87 extended precision.
+- A deeper event-5 audit also corrected the previous negative finding about
+  chase-axis factors. `AirCraft.type` RVA `0x2F60` regenerates each factor
+  toward one using `refreshArgument * 0.25`, clamps to `[0,1]`, or clears it
+  when the two recovered gates fail. The refresh argument's physical unit and
+  behavior of other vehicle types remain open.
+- Independent review found and resolved a pre-cast range-check gap and an
+  overstrong x87 precision claim; focused re-review reports no remaining
+  P0-P3 issue. A separate numerical audit supplied counterexamples proving why
+  the portable `double` approximation must remain explicitly distinct from
+  universal x87 bit identity. A fresh release Ninja build completed all 187
+  steps and all 56 CTest targets pass. The public-boundary scan checks 291
+  files; wrapper tests, report normalization, `actionlint`, and
+  `git diff --check` are clean.

@@ -294,6 +294,42 @@ second form above is the recovered instruction order and is retained by the
 portable implementation so it does not introduce a different float-rounding
 boundary.
 
+### Vehicle quaternion to chase matrix
+
+`CcMatrixRot::FromQuat` at `Cc.dll` RVA `[0x2E50,0x2F2A)` consumes the
+vehicle fields in `(w,x,y,z)` order and writes the matrix in this exact field
+order:
+
+```text
+m00 = 1 - ((y*y + z*z) + (y*y + z*z))
+m10 =      (x*y + w*z) + (x*y + w*z)
+m20 =      (x*z - w*y) + (x*z - w*y)
+
+m01 =      (x*y - w*z) + (x*y - w*z)
+m11 = 1 - ((x*x + z*z) + (x*x + z*z))
+m21 =      (x*w + z*y) + (x*w + z*y)
+
+m02 =      (x*z + w*y) + (x*z + w*y)
+m12 =      (z*y - x*w) + (z*y - x*w)
+m22 = 1 - ((x*x + y*y) + (x*x + y*y))
+```
+
+The portable mathematical column matrix is:
+
+```text
+columns = {(m00,m10,m20), (m01,m11,m21), (m02,m12,m22)}
+```
+
+Each original expression remains in x87 extended precision until its final
+binary32 field store. The function neither validates nor normalizes the
+quaternion: `(0,0,0,0)` produces identity, while a finite non-unit quaternion
+can produce a non-orthogonal matrix. `LegacyQuaternionRotation` preserves
+those semantics, widens each short binary32 expression to deterministic
+`double`, checks representability before the final cast, and rejects
+non-finite input or final binary32 output. `double` avoids premature
+binary32 rounding on the target toolchains but does not claim bit-identical
+x87 extended precision for every possible input.
+
 The recovered nonlinear error adjustment is:
 
 ```text
@@ -359,11 +395,23 @@ stage:
 
 This makes the final camera face the vehicle for chase and rear-view tuples.
 
-The audited code initializes the three axis factors to one and contains the
-listed collision-driven reductions. No recovery/increase write was found in
-the examined constructor and event function. Their long-term behavior should
-therefore be preserved cautiously and verified dynamically before assigning
-a higher-level name such as collision spring.
+The base constructor initializes all three axis factors to one and the event-5
+path performs the listed collision reductions. A follow-up audit found the
+aircraft-specific recovery in `AirCraft.type` RVA `0x2F60`, reached through
+vehicle vtable slot `+0xB0` before the chase update:
+
+```text
+if vehicleField_98 <= 0 or vehicleFlag_460 != 0:
+    factor = 0
+else:
+    if factor < 1:
+        factor += refreshArgument * 0.25
+    factor = clamp(factor, 0, 1)
+```
+
+This applies independently to X, Y, and Z. The constants and ordering are
+confidence **3/3** for `AirCraft`; the physical unit of `refreshArgument` and
+the equivalent behavior of other vehicle types remain unverified.
 
 ## SRT and pose mutation
 
@@ -564,7 +612,9 @@ Confidence is **3/3** for:
 - relevant `AfVehicle` field offsets and initial values;
 - initial camera Y lift `4.0`;
 - the nonlinear smoothing constants `0.001` and `0.99`;
+- the quaternion field order, matrix formulas, and lack of normalization;
 - collision-sphere multiplier `1.1`;
+- aircraft-specific collision-factor recovery and clamping;
 - direct camera position/matrix writes and notification order; and
 - exact boundaries of the five cross-checked functions.
 
@@ -608,6 +658,10 @@ rejects non-finite input or derived output atomically. It accepts the finite
 matrix supplied by the caller without silently normalizing it; the later
 quaternion adapter must preserve the original `CcMatrixRot::FromQuat`
 behavior.
+
+`LegacyQuaternionRotation` implements that adapter. It publishes the recovered
+matrix directly in the runtime column-vector convention and deliberately
+preserves zero and non-unit quaternion behavior without normalization.
 
 The implementation deliberately does not claim bit-identical x87 extended
 precision on every modern target. Algebra and instruction grouping are

@@ -516,9 +516,10 @@
   is now separated from the House Editor: it uses a full-current-screen
   viewport, projection defaults `0.25/200/90`, three persistent chase tuples,
   and a held rear tuple. Preset selection/cycling is implemented as another
-  fail-closed portable contract; the recovered per-refresh smoothing,
-  portal/collision correction, and look-at pose are documented but not yet
-  implemented. Metal remains explicitly diagnostic and no full parity matrix
+  fail-closed portable contract. The exact vehicle quaternion matrix plus
+  stateless per-refresh target/smoothing recurrence are also implemented.
+  Portal/collision correction and look-at pose remain documented but not yet
+  integrated. Metal remains explicitly diagnostic and no full parity matrix
   has been introduced.
 - The authenticated setup-to-room provenance chain now crosses the native iOS
   publication boundary together with an immutable `PlayerSpawnPose`. Ghidra
@@ -568,12 +569,13 @@
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Add the exact vehicle-quaternion adapter, then implement the portal/collision
-   join and look-at pose before introducing a Metal camera matrix or performing
+3. Implement the portal/collision join, aircraft axis-factor recovery, and
+   look-at pose before introducing a Metal camera matrix or performing
    physical-device visual acceptance. World-to-camera, scalar projection with
-   reciprocal depth, exact zero clear, depth modes, camera presets, stateless
-   chase target/smoothing, and parity-first 4:3 presentation are recovered and
-   implemented. Auxiliary weapons and effects remain separate.
+   reciprocal depth, exact zero clear, depth modes, camera presets, quaternion
+   matrix, stateless chase target/smoothing, and parity-first 4:3 presentation
+   are recovered and implemented. Auxiliary weapons and effects remain
+   separate.
 4. Introduce a retained CCF/catalogue arena when runtime room switching is
    implemented; recover portal tracing, camera room traversal, and later
    transitions afterward.

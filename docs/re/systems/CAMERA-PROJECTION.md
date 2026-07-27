@@ -1,8 +1,8 @@
 # Camera and projection contract
 
 **Status:** legacy scalar projection, world-to-view, depth presets, gameplay
-camera presets, stateless chase smoothing, and 4:3 layout implemented;
-portal/collision/look-at pose and Metal join remain
+camera presets, quaternion adapter, stateless chase smoothing, and 4:3 layout
+implemented; portal/collision/look-at pose and Metal join remain
 
 This document separates confirmed legacy behavior from reconstruction
 decisions. The complete evidence record is
@@ -214,6 +214,15 @@ results fail atomically. The returned candidate is not a final camera pose:
 portal mutation, sphere/line collision correction, look-at rotation, and pose
 publication remain deliberately outside this contract.
 
+`LegacyQuaternionRotation.cpp` supplies the preceding vehicle-pose adapter.
+It consumes `(w,x,y,z)`, preserves the recovered pairwise-product expression
+grouping without premature binary32 rounding, and publishes the mathematical
+column matrix used by `applyRuntimeColumn`. The legacy routine does not
+normalize: zero produces identity and finite non-unit input is retained.
+Non-finite input or an unrepresentable final binary32 matrix fails atomically.
+The portable `double` staging does not claim bit-identical x87 extended
+precision for every possible input.
+
 See
 [EXP-20260727-010](../../experiments/EXP-20260727-010-gameplay-camera-modes.md)
 for field offsets, input bindings, formulas, collision order, SRT mutation,
@@ -354,7 +363,9 @@ current diagnostic Metal renderer or decide batching/encoder policy.
 
 ## Still unknown
 
-- runtime parity of the recovered chase recurrence and collision-axis factors;
+- runtime parity of the recovered chase recurrence and collision-axis factors,
+  including the still-unverified physical unit of the aircraft refresh
+  argument used for factor recovery;
 - first/third-person pose differences in actor plugins other than the examined
   aircraft path;
 - final Metal clip-matrix packaging and raster-space Y convention;
