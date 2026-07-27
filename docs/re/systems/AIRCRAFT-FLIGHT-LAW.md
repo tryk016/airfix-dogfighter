@@ -4,7 +4,7 @@
 implemented for parity
 
 **Evidence:** `EV-20260724-001`, `EV-20260724-002`,
-`EV-20260724-003`, `EV-20260724-004`
+`EV-20260724-003`, `EV-20260724-004`, `EV-20260727-002`
 
 **Reference build:** SHA-256 values in
 `docs/evidence/source-manifest.sha256`
@@ -31,6 +31,13 @@ The main result is:
 
 Raw decompilation, instruction listings, and scalar exports stay in the ignored
 `artifacts/` tree. Only the concise contract is versioned.
+
+[EXP-20260727-001](../../experiments/EXP-20260727-001-static-tool-crosscheck.md)
+records an independent Rizin cross-check. Rizin's automatic analysis misses the
+vtable target, but a guarded read-only function creation at the confirmed RVA
+matches Ghidra's exact end boundary. Its ABI, argument, call-role, and global
+recovery are materially weaker, so this static agreement does not raise the
+function above confidence 2.
 
 ## Timing and lifecycle
 

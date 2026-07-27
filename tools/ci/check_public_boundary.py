@@ -29,6 +29,27 @@ BLOCKED_SUFFIXES = {
     ".cer",
     ".mobileprovision",
     ".provisionprofile",
+    ".bndb",
+    ".rzdb",
+    ".dd32",
+    ".dd64",
+    ".trace32",
+    ".trace64",
+}
+
+BLOCKED_PATH_PREFIXES = {
+    "analysis/tool-cache/",
+    "analysis/tools/",
+    "analysis/work-copies/",
+    "analysis/rizin-projects/",
+    "analysis/cutter-projects/",
+    "analysis/binary-ninja-projects/",
+    "analysis/x64dbg-workspace/",
+}
+
+BLOCKED_FILE_ENDINGS = {
+    ".dd32.bak",
+    ".dd64.bak",
 }
 
 BLOCKED_DIRECTORY_NAMES = {
@@ -72,11 +93,16 @@ def inspect(root: Path) -> list[str]:
     resolved_root = root.resolve()
     for relative in repository_paths(root):
         normalized = relative.replace("\\", "/")
+        lowered = normalized.lower()
         parts = [part.lower() for part in normalized.split("/")]
         suffix = Path(normalized).suffix.lower()
 
         if suffix in BLOCKED_SUFFIXES:
             issues.append(f"forbidden file type: {normalized}")
+        if any(lowered.endswith(ending) for ending in BLOCKED_FILE_ENDINGS):
+            issues.append(f"forbidden file type: {normalized}")
+        if any(lowered.startswith(prefix) for prefix in BLOCKED_PATH_PREFIXES):
+            issues.append(f"forbidden local-analysis directory: {normalized}")
         if any(part in BLOCKED_DIRECTORY_NAMES for part in parts[:-1]):
             issues.append(f"forbidden source directory: {normalized}")
 

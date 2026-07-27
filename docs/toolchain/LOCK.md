@@ -1,10 +1,14 @@
-# Local analysis toolchain lock
+# Local development and analysis toolchain lock
+
+This document distinguishes software that is installed and verified from
+software that is only approved and awaiting an owner action. Paths are
+deliberately omitted because all installations are machine-local.
+
+## Windows baseline
 
 **Captured:** 2026-07-21
-
 **Install method:** Scoop, 64-bit packages
-
-**Purpose:** reproducible static analysis and portable C++ development on Windows
+**Purpose:** primary Ghidra analysis and portable C++ development on Windows
 
 The SHA-256 values below are the download hashes from the installed Scoop
 manifests. Installation completed with Scoop's hash verification enabled.
@@ -40,3 +44,58 @@ Bucket sources at capture time:
 
 The installed packages are local tooling only. Production/CI dependencies must
 still be declared by the repository and must not assume these absolute paths.
+
+## Portable reverse-engineering tools
+
+**Captured and verified:** 2026-07-27
+**Install method:** official release archives expanded into ignored,
+non-elevated, project-local directories
+
+| Tool | Version | Status | License | Official source | SHA-256 / signature |
+|---|---:|---|---|---|---|
+| Rizin Windows shared64 | 0.9.1 (`c3a90e9226d977f58f4e9c75f78fa6b07afe13c7`) | Installed; `rizin -v` and `rz-bin -v` verified | LGPL-3.0-or-later core with GPL-3.0-or-later components; see upstream files | [release](https://github.com/rizinorg/rizin/releases/tag/v0.9.1), [archive](https://github.com/rizinorg/rizin/releases/download/v0.9.1/rizin-windows-shared64-v0.9.1.zip) | `45ffa004e26653eaee8d262b8e6eeae09402a7d319c1f20a2ba794bd6af1cc28`; upstream archive digest matched; executables are not Authenticode-signed |
+| Cutter Windows x86_64 | 2.5.0, bundled Rizin 0.9.1 | Installed as a portable GUI; not launched during setup | GPL-3.0 | [release](https://github.com/rizinorg/cutter/releases/tag/v2.5.0), [archive](https://github.com/rizinorg/cutter/releases/download/v2.5.0/Cutter-v2.5.0-Windows-x86_64.zip) | `a04154a03a392dbf5886a629938582f7d23a93636fa0611c3e1c34905b197e69`; upstream archive digest matched; executable is not Authenticode-signed |
+| x64dbg portable snapshot (`x32dbg`) | 2026.05.27 | Installed; only the x86 executable was signature-checked and has not been run | GPL-3.0 | [release](https://github.com/x64dbg/x64dbg/releases/tag/2026.05.27), [archive](https://github.com/x64dbg/x64dbg/releases/download/2026.05.27/snapshot_2026-05-27_12-11.zip) | `d41966dfc5b435a372798245300ca0ab7bb8e48bdbf48512c6fb20fcca427697`; `x32dbg.exe` Authenticode status `Valid`, signer `Open Source Developer, Duncan Ogilvie`, certificate thumbprint `CF70E6336E3B49973A0E85AA8E8EA8936A6FFB70` |
+| `rzpipe` Python wheel | 0.6.2 | Installed in an ignored dedicated Python 3.14 virtual environment | MIT | [PyPI project](https://pypi.org/project/rzpipe/0.6.2/), [Rizin scripting guide](https://book.rizin.re/src/scripting/rz-pipe.html) | `a620e2547e54f901233be6e1eb283fd7c499f6d9bd1651795c2ff53e5fab1d77`; verified before offline venv installation |
+
+Cutter's `rz-ghidra` plugin and Sleigh definitions are part of the verified
+Cutter archive. They may provide optional pseudocode to the Rizin report, but
+they do not make Cutter an independent evidence source from Rizin. Ghidra
+12.1.2 remains the canonical decompiler and report generator.
+
+### Binary Ninja Free Desktop
+
+| Tool | Version | Status | License / use restriction | Official source | Published artifact digest |
+|---|---:|---|---|---|---|
+| Binary Ninja Free Desktop for Windows | 5.3 R2 (`5.3.9757`) | Installed from the owner-accepted, hash-verified official installer; executable version and signature verified; offline settings and manual pilot pending | Single designated user; non-commercial/internal evaluation under the current Free license; Free has no API or plugin support | [Free download](https://binary.ninja/free/), [Free license](https://docs.binary.ninja/about/license/free.html), [release](https://github.com/Vector35/binaryninja-api/releases/tag/stable/5.3.9757) | official installer `binaryninja_free_win64.exe`: `5f6096acb03dd70d1a0572257c44471a0b62653788348cf69dc829212882a618`; installed executable Authenticode status `Valid`, signer `Vector 35 Inc`, certificate thumbprint `0E164C61A81A1BD5E52964AA44E454047020EF02` |
+
+The Free Desktop installer was fetched and run only after the owner personally
+accepted Vector 35's current terms and confirmed its official SHA-256. Keep all
+`.bndb` files local. Binary Ninja Cloud and every other upload-based analysis
+service are prohibited for original files and derived binaries.
+
+The workshop does not install dnSpy, ILSpy, or W32Dasm: the reference program is
+native PE32/x86, so those tools add no material value to this workflow.
+
+## Isolated WSL2 Linux toolchain
+
+**Captured and verified:** 2026-07-27
+**Distribution:** dedicated `Airfix-Dev`, Ubuntu 24.04 on WSL2
+**Package source:** official Ubuntu archives over HTTPS with APT signature and
+package-hash verification
+
+| Component | Verified version |
+|---|---:|
+| CMake | 3.28.3 |
+| Ninja | 1.11.1 |
+| GCC/G++ | 13.3.0 |
+| Clang / clangd | 18.1.3 |
+| Git | 2.43.0 |
+| Python | 3.12.3 |
+
+`dpkg --audit` is clean. Automount and Windows interop are disabled inside this
+distribution, so it neither builds on a mounted Windows worktree nor inherits
+Windows executables. A clean native-filesystem configure/build produced all 135
+targets and CTest passed 39/39 tests at commit `db3730d`. Other distributions,
+the default distribution selection, and global `.wslconfig` were not changed.
+See [WSL2.md](WSL2.md) for the operating runbook.

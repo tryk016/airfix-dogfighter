@@ -19,6 +19,23 @@
 /analysis/dumps/
 /analysis/traces/
 /analysis/screenshots/
+/analysis/tool-cache/
+/analysis/tools/
+/analysis/work-copies/
+/analysis/rizin-projects/
+/analysis/cutter-projects/
+/analysis/binary-ninja-projects/
+/analysis/x64dbg-workspace/
+__pycache__/
+*.py[cod]
+*.bndb
+*.rzdb
+*.dd32
+*.dd32.bak
+*.dd64
+*.dd64.bak
+*.trace32
+*.trace64
 
 # Original copyrighted game data must remain outside this repository
 /original/

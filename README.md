@@ -309,6 +309,8 @@ Recommended starting points:
 - [Aircraft flight reconstruction boundary](docs/re/systems/AIRCRAFT-FLIGHT.md)
 - [Aircraft flight-law static contract](docs/re/systems/AIRCRAFT-FLIGHT-LAW.md)
 - [Player spawn and visual identity](docs/re/systems/PLAYER-SPAWN.md)
+- [Offline reverse-engineering workbench](docs/toolchain/RE-WORKBENCH.md)
+- [Isolated WSL2 Linux builds](docs/toolchain/WSL2.md)
 - [clangd and LSP code intelligence](docs/toolchain/CODE-INTELLIGENCE.md)
 - [Current status](docs/progress/STATUS.md)
 
@@ -316,6 +318,8 @@ Recommended starting points:
 
 - Never commit or attach original game files, converted assets, memory dumps,
   decompiler projects, signed IPAs, certificates, profiles, or device IDs.
+- Never upload original files, extracted modules, converted content, or memory
+  captures to Binary Ninja Cloud or any other online analysis service.
 - Use synthetic fixtures for tests and report corpus findings only as bounded
   aggregate facts.
 - Keep parsers defensive: validate sizes and limits before allocation or reads.

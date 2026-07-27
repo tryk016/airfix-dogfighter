@@ -1,6 +1,6 @@
 # Project status
 
-**Updated:** 2026-07-24
+**Updated:** 2026-07-27
 **Stage:** Phase 1 — static analysis and archive recovery in progress
 
 ## Now
@@ -16,6 +16,20 @@
   published.
 - Phase 1 toolchain installed and pinned: Ghidra 12.1.2, Temurin JDK 21.0.11,
   Python 3.14.6, CMake 4.4.0, Ninja 1.13.2, LLVM 22.1.8, and GCC 15.2.0.
+- Added a local-only reverse-engineering workbench around canonical Ghidra
+  headless reports, scriptable Rizin/rzpipe reports, Cutter inspection, and a
+  prepared but not yet executed x32dbg dynamic-analysis stage. Verified
+  archives, databases, traces, working copies, and original-derived reports
+  remain outside Git.
+- Established a dedicated, isolated `Airfix-Dev` WSL2 distribution. Automount
+  and Windows interop are disabled; a native Linux CMake/Ninja build completed
+  135 targets and passed all 39 tests without modifying other WSL
+  distributions.
+- Cross-checked one rendering, one input, and one aircraft-flight function.
+  Ghidra produced the most reliable ABI and pseudocode; Rizin independently
+  matched exact boundaries and useful call/data sites, but misclassified
+  calling conventions and needed an explicit, recorded function creation for
+  the large flight routine.
 - Initial LLVM report for `UdsPack.dll` found 44 named C++ exports covering
   `UpPackage`, `UpFile`, `UpFileInfo`, and `UpHashTable`.
 - Recovered the complete header layout, both 24-byte record layouts, legacy

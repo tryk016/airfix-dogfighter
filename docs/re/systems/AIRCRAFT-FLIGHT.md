@@ -254,7 +254,9 @@ This confirms signs relative to the original command labels: positive pitch is
 `pitchup`, positive bank is `bankright`, and positive thrust apply is
 increase. It does not by itself define the physical world-axis handedness.
 
-The analog dispatcher at `0x00411BB0` uses only `SET` events:
+The broader input-event dispatcher at `0x00411BB0`
+(`FN-DOGFIGHTER-00011BB0`, working name `DispatchInputEvents`) uses only `SET`
+events in its three analog cases:
 
 - bank: raw dead zone `abs(raw) < 20`, emission threshold
   `abs(previous - raw) > 9`, payload
@@ -266,6 +268,9 @@ The analog dispatcher at `0x00411BB0` uses only `SET` events:
 
 No explicit local clamp was found on the thrust analog payload. The downstream
 flight step clamps the resulting `+0x444` value to `[0,1]` in its gated update.
+Ghidra and Rizin independently agree on this function's exact range and all
+three analog-history globals; see
+[EXP-20260727-001](../../experiments/EXP-20260727-001-static-tool-crosscheck.md).
 
 ### AI control surface
 

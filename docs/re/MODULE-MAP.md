@@ -148,3 +148,13 @@ graphics adapter.
 bootstrap imports, readable game strings, and the same 2001 timestamp family as
 the v1.01 modules. Static reconstruction therefore uses `Dogfighter.exe` as the
 v1.01 executable reference and retains `.icd` only as corroborating metadata.
+
+`tools/Invoke-GhidraAnalysis.ps1` remains the canonical deterministic
+decompiler/report path. `tools/Invoke-RizinAnalysis.ps1` independently records
+normalized PE32/x86 boundaries, calls, data references, and optional
+Rizin-family pseudocode. `EV-20260727-002` cross-checked representative
+rendering, input, and aircraft-flight routines; the complete comparison is in
+[`EXP-20260727-001`](../experiments/EXP-20260727-001-static-tool-crosscheck.md).
+Binary Ninja Free comparison remains pending confirmed offline settings and
+manual inspection.
+x32dbg has been verified and staged locally but has not executed a game binary.

@@ -1306,3 +1306,36 @@ superseded evidence.
   CMake/Ninja Release build completes all 135 targets and all 39 CTest cases
   pass. Windows Ghidra-wrapper tests, the 213-file public-boundary scan, and
   `git diff --check` also pass.
+
+## 2026-07-27 - offline reverse-engineering workbench
+
+- `EV-20260727-001`: verified official releases, current licenses, and
+  published hashes or signatures for Rizin 0.9.1, Cutter 2.5.0, rzpipe 0.6.2,
+  and the x32dbg executable from x64dbg 2026.05.27. Ghidra 12.1.2 remains the
+  canonical static tool. The owner accepted the Binary Ninja Free 5.3 R2
+  license and confirmed the official installer hash; installed build
+  `5.3.9757` has a valid Vector 35 signature. Offline settings and the manual
+  comparison remain pending.
+- Added an explicit-manifest working-copy builder. It rechecks source and copy
+  hashes, rejects traversal and reparse points, never overwrites a conflicting
+  copy, and stores no source path in public output. Original files remain
+  read-only and outside Git.
+- Added a deterministic Rizin/rzpipe exporter and safety wrapper. Reports are
+  path-free, schema-checked, double-hash-bound, atomically published, and
+  read-only with user startup configuration disabled. Missing automatic
+  function discovery fails closed; the analyst must explicitly request an
+  in-memory function at a separately confirmed RVA, and the report records
+  that provenance.
+- `EV-20260727-002` / `EXP-20260727-001`: fresh Ghidra and Rizin analyses
+  cross-check representative rendering, input, and flight-law functions.
+  Rizin matched all confirmed boundaries and exposed useful raw call/data
+  sites, but its inferred x86 ABIs were unreliable and its automatic analysis
+  missed the large flight function. Ghidra remains authoritative for
+  signatures and structured pseudocode.
+- Created the isolated `Airfix-Dev` WSL2 distribution with automount and
+  Windows interop disabled. A native ext4 CMake/Ninja build completed all 135
+  targets and CTest passed 39/39 at commit `db3730d`; other distributions and
+  global WSL settings were left unchanged.
+- No game binary, original resource, tool archive, decompiler database, local
+  path, pseudocode dump, debugger trace, or vendor-licensed file is included
+  in the repository.

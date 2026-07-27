@@ -44,6 +44,14 @@ jobs:
           if any(Path(entry["file"]).suffix.lower() in {".m", ".mm", ".metal"} for entry in entries):
               raise SystemExit("portable compilation database contains Apple-only sources")
 
+      - name: Test public-source boundary
+        run: |
+          python3 tests/PublicBoundaryTests.py
+          python3 tools/ci/check_public_boundary.py .
+
+      - name: Test deterministic Rizin report normalization
+        run: python3 tests/RizinExportTests.py
+
       - name: Build code-intelligence preset
         run: cmake --build --preset code-intelligence --parallel
 
@@ -70,10 +78,14 @@ jobs:
       - name: Show toolchain
         run: cmake --version
 
-      - name: Test PowerShell reconstruction tooling
+      - name: Test reverse-engineering tooling
         if: runner.os == 'Windows'
         shell: pwsh
-        run: ./tests/Invoke-GhidraAnalysisTests.ps1
+        run: |
+          ./tests/Invoke-GhidraAnalysisTests.ps1
+          ./tests/Prepare-ReWorkingCopyTests.ps1
+          ./tests/Invoke-RizinAnalysisTests.ps1
+          python tests/RizinExportTests.py
 
       - name: Configure
         run: >-

@@ -39,6 +39,10 @@ looks plausible” is not the same as “understood.”
 Confidence applies to individual claims. Avoid assigning one blanket confidence
 to an entire function when only its name is understood.
 
+Agreement between Ghidra, Rizin, and Binary Ninja is corroboration among static
+analyses, not dynamic evidence. It may resolve a decompiler ambiguity or support
+confidence 2, but it does not alone establish confidence 3.
+
 ## Evidence rules
 
 Every nontrivial claim records:
@@ -93,6 +97,26 @@ The targeted read-only exporters are:
 Reports and Ghidra projects remain local and ignored. Only concise conclusions,
 stable IDs, scripts, and reproducible commands belong in Git.
 
+## Reproducible Rizin reports
+
+Rizin and `rzpipe` provide the independent scripted static-analysis path. The
+wrapper accepts only a hash-verified file below the ignored
+`analysis/work-copies` boundary, anchors the requested function by canonical
+RVA, records the PE image base and Rizin's VA observations, and writes
+deterministic JSON below the ignored `artifacts/rizin` directory. It disables
+user startup configuration, verifies the input hash again after analysis, and
+never uses write mode, debugger mode, a remote server, or a symbol downloader.
+
+Use Ghidra as the canonical decompiler and compare Rizin's independently found
+boundaries, calls, and data references. Optional pseudocode from Cutter's
+bundled `rz-ghidra` plugin remains a Rizin-family result, not a third independent
+source. Binary Ninja Free is a manual third check after its offline settings
+are confirmed; its Free edition is not an automation dependency.
+
+The complete setup, safe working-copy procedure, report commands, and
+cross-check protocol are in
+[toolchain/RE-WORKBENCH.md](toolchain/RE-WORKBENCH.md).
+
 ## Standard work cycle
 
 ### Start of a session
@@ -112,12 +136,22 @@ stable IDs, scripts, and reproducible commands belong in Git.
 4. When static analysis is ambiguous, design the smallest controlled runtime or
    file experiment.
 5. Never edit, patch, unpack into, or launch directly from the original folder.
+6. Run every analysis on a verified copy and keep all tools offline from the
+   input. Never upload original or derived binaries to a cloud decompiler.
+7. Record each tool's boundary, proposed ABI, calls, data references, and
+   pseudocode summary before resolving disagreements.
 
 ### Before implementation
 
 Write a behavioral contract containing inputs, outputs, state read/written,
 ordering, numeric units/precision, error behavior, ownership/lifetime, and known
 unknowns. Link the contract from the function catalog.
+
+Promote knowledge into portable C++20 only when the observation is expressed as
+a platform-neutral behavioral contract and a synthetic test or an explicit
+missing-evidence item exists. Do not transliterate decompiler output, preserve
+x86 ABI artifacts, reproduce undefined behavior, or copy vendor code structure
+when the required behavior can be expressed independently.
 
 ### End of a session
 

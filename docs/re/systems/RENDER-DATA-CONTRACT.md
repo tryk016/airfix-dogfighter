@@ -6,7 +6,14 @@ submission, private CPU diagnostic, public synthetic Metal bootstrap, and
 two-phase private asset-backed Metal room publication implemented; physical
 device visual acceptance pending
 
-**Evidence:** `EV-20260721-030` through `EV-20260721-034`
+**Evidence:** `EV-20260721-030` through `EV-20260721-034`,
+`EV-20260727-002`
+
+The representative static cross-check in
+[EXP-20260727-001](../../experiments/EXP-20260727-001-static-tool-crosscheck.md)
+confirms that Ghidra and Rizin independently select the exact
+`FN-CC-0001FDD0` instruction range and direct calls. Ghidra remains canonical
+for its MSVC `__thiscall` signature, named globals, and recovered types.
 
 ## Texture lookup
 
