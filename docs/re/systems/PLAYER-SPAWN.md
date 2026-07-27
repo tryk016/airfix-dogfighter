@@ -1,11 +1,13 @@
 # Player spawn and visual identity
 
-**Status:** player/type/primary-actor and mission start-room paths recovered;
-authenticated bounded AFS loading, ordered multi-CCF lookup, and atomic
-portable start-pose publication implemented; dynamic actor publication is
+**Status:** player/type/primary-actor, mission start-room, and visible
+slot-0 visual construction recovered; authenticated bounded AFS loading,
+ordered multi-CCF lookup, atomic portable start-pose publication, and generic
+object visual assembly implemented; authenticated actor publication is
 pending
 
-**Evidence:** `EV-20260724-005`, `EV-20260724-006`, `EV-20260727-003`
+**Evidence:** `EV-20260724-005`, `EV-20260724-006`, `EV-20260727-003`,
+`EV-20260727-004`
 
 **Reference build:** SHA-256 values in
 `docs/evidence/source-manifest.sha256`
@@ -15,10 +17,9 @@ primary actor, selecting its starting room, and identifying the actor's
 grouped visual. Raw disassembly, decompiler output, original scripts, and
 private filenames remain in the ignored `artifacts/` tree.
 
-Confidence is high (3/3) for the player/type/primary-actor links and start
-selector. Confidence is medium (2/3) for the three skin blueprint roles:
-their ownership and complete hierarchy construction are proven, but their
-original semantic names are not.
+Confidence is high (3/3) for the player/type/primary-actor links, start
+selector, three skin blueprint roles, initial visibility, and root-local
+transform.
 
 ## Spawn event flow
 
@@ -152,28 +153,45 @@ payload is published.
 
 ## Grouped aircraft visual
 
-The authoritative visual path is:
+The authoritative visual path is separate from the mission's placed `0x4000`
+scene:
 
 ```text
 primary actor UID
   -> actor type
-  -> object definition
   -> selected skin
+  -> model CCF
   -> blueprint slot 0, 1, and 2
   -> complete instantiated hierarchy for every present slot
 ```
 
 `AfVehicleType::GetSkinByName` selects a skin. `AfVehicle::SetSkin` stores it
-at actor offset `+0x3F0`. The skin owns up to three blueprint pointers at
-`+0x24`, `+0x28`, and `+0x2C`; each present blueprint creates its complete
-hierarchy in the actor's room. The resulting roots are stored at actor offsets
-`+0x3D0`, `+0x3D4`, and `+0x3D8` and parented to the actor transform. A skin
-change deletes the old complete hierarchies before replacing them.
+at actor offset `+0x3F0`. The skin owns blueprint pointers named
+`thirdperson`, `damaged`, and `destroyed` at `+0x24`, `+0x28`, and `+0x2C`.
+Slot 0 is mandatory; each present blueprint creates its complete hierarchy in
+the actor's room. The resulting roots are stored at actor offsets `+0x3D0`,
+`+0x3D4`, and `+0x3D8` and parented to the actor transform. A skin change
+deletes the old complete hierarchies before replacing them.
 
 The AirCraft override calls the base skin setter, then searches the first
-root for sticker and vapor anchor nodes. The original semantic roles of the
-three blueprint slots remain unknown, so public APIs must use neutral
-`blueprint0`, `blueprint1`, and `blueprint2` terminology.
+root for sticker and vapor anchor nodes. `SetSkin` first hides every present
+hierarchy recursively. It then creates a dynamic BSP for slot 0, unhides only
+that slot, and recursively assigns the actor UID only to its mesh objects.
+Slots 1 and 2 remain dormant until a separately recovered visibility
+transition selects them.
+
+Every cloned root receives local translation zero and a legacy Y-axis rotation
+of pi. Descendants retain transforms derived relative to the selected authored
+root. In the portable column-vector convention:
+
+```text
+relative_i   = inverse(authored_selected_root) * authored_i
+actorLocal_i = recovered_root_Y_pi * relative_i
+world_i      = player_spawn_world * actorLocal_i
+```
+
+All terms use the same runtime basis. A selected root is not assumed to have an
+identity authored transform.
 
 The actor-owned UID graph also contains weapons and auxiliary effects. Those
 objects are not part of the grouped aircraft visual merely because the actor
@@ -230,6 +248,11 @@ ready. A new request, stale callback, preparation failure, or validation
 failure leaves the previously committed player state intact.
 
 The implementation deliberately does not execute AFS or infer a setup path. It
-does not yet instantiate the recovered primary actor or publish its selected
-skin hierarchies to Metal. That explicit actor-to-instance join remains the
-next dynamic runtime boundary.
+does not yet publish the recovered primary actor to Metal. The reusable
+`ObjectVisualDrawAssembly` now resolves one complete selected blueprint
+subtree, shares physical meshes by first use, retains mesh/instance provenance,
+and publishes only an atomic bounded result. It deliberately stops at
+converted authored-world transforms. The slot-0 actor adapter derives the
+root-relative transforms described above; the remaining boundary is to source
+that visual through the authenticated manifest, append it with tagged
+provenance, and compose the selected spawn pose exactly once.

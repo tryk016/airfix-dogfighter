@@ -93,9 +93,14 @@ plan/assembly now combines all contributors without treating BSP as geometry.
 radians, mode zero, exact Z-X-Y matrix construction, and absolute-world
 position/matrix semantics with separate room membership. The portable
 publication now derives and atomically commits that authenticated pose.
+`EV-20260727-004` closes the initially visible actor visual: the literal
+`thirdperson`, `damaged`, and `destroyed` blueprint slots, complete subtree
+cloning, slot-0 visibility/object-ID assignment, and the root-local zero plus
+Y(pi) override. It also proves that every descendant must be derived relative
+to the selected authored root before the player world pose is applied once.
 Physical units, runtime contact traces, a retained runtime-room catalogue,
 dynamic actor-to-instance publication, projectile creation, and the original
-roles of the three blueprint slots remain open. See
+damaged/destroyed visibility transitions remain open. See
 `docs/re/systems/AIRCRAFT-FLIGHT.md`,
 `docs/re/systems/AIRCRAFT-FLIGHT-LAW.md`, and
 `docs/re/systems/PLAYER-SPAWN.md`.

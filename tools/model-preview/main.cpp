@@ -6,6 +6,7 @@
 #include "airfix/render/DrawModel.hpp"
 #include "airfix/render/DrawMesh.hpp"
 #include "airfix/render/LegacyGeometry.hpp"
+#include "airfix/render/ObjectVisualDrawAssembly.hpp"
 
 #include <algorithm>
 #include <array>
@@ -20,6 +21,7 @@
 #include <string>
 #include <system_error>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #if defined(_WIN32)
@@ -299,21 +301,24 @@ int main(const int argc, const char* const* argv) {
             }
         }
 
-        airfix::render::DrawModelPayload model;
-        model.meshes.reserve(dependencies.meshes.size());
-        model.instances.reserve(dependencies.meshes.size());
+        auto assembly = airfix::render::buildObjectVisualDrawAssembly(
+            object, ccf, materials);
+        if (!assembly.issues.empty() ||
+            assembly.model.meshes.empty() ||
+            assembly.model.instances.empty()) {
+            throw std::runtime_error(
+                "object visual assembly did not produce a complete model");
+        }
+        auto model = std::move(assembly.model);
         std::size_t triangleCount = 0U;
         std::size_t drawVertexCount = 0U;
         std::size_t rangeCount = 0U;
-        for (const auto& meshDependency : dependencies.meshes) {
-            const auto converted = airfix::render::convertLegacyGeometry(
-                ccf.meshes.at(meshDependency.meshIndex));
-            const auto meshSlot = model.meshes.size();
-            if (meshSlot > std::numeric_limits<std::uint32_t>::max()) {
-                throw std::runtime_error("model mesh slot exceeds runtime ID range");
+        for (const auto& instance : model.instances) {
+            if (instance.meshSlot >= model.meshes.size()) {
+                throw std::runtime_error(
+                    "object visual assembly produced an invalid mesh slot");
             }
-            model.meshes.push_back(airfix::render::buildDrawMesh(converted, materials));
-            const auto& drawMesh = model.meshes.back();
+            const auto& drawMesh = model.meshes[instance.meshSlot];
             const auto meshTriangles = drawMesh.indices.size() / 3U;
             if (meshTriangles > std::numeric_limits<std::size_t>::max() - triangleCount ||
                 drawMesh.vertices.size() >
@@ -325,13 +330,6 @@ int main(const int argc, const char* const* argv) {
             triangleCount += meshTriangles;
             drawVertexCount += drawMesh.vertices.size();
             rangeCount += drawMesh.ranges.size();
-            model.instances.push_back({
-                .meshSlot = static_cast<std::uint32_t>(meshSlot),
-                .sourceNodeReference =
-                    ccf.blueprints.at(meshDependency.blueprintIndex).reference,
-                .modelLinear = converted.orientation,
-                .modelTranslation = converted.translation,
-            });
         }
         std::vector<airfix::render::DiagnosticTextureView> textureViews;
         textureViews.reserve(loadedTextures.size());

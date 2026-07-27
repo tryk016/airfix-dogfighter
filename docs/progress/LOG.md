@@ -1554,3 +1554,45 @@ superseded evidence.
   Computer Use approval expired before any binary was opened; the empty
   session was closed and contributed no evidence. No private path, game
   binary, tool database, or original-derived payload was committed.
+
+## 2026-07-27 - recovered player actor visual transforms
+
+- A focused Ghidra Headless pass closed the player visual construction path.
+  The actor model is separate from mission placed nodes. The three recovered
+  skin roots are `thirdperson`, `damaged`, and `destroyed`; every present root
+  clones its complete subtree, receives local translation zero plus legacy
+  Y(pi), and starts hidden. Only slot zero is initially unhidden, receives a
+  dynamic BSP, and receives the actor UID recursively. Binary Ninja and the
+  game executable were not used.
+- Added a bounded `ObjectVisualDrawAssembly`. It independently resolves the
+  selected blueprint subtree, shares physical meshes in first-use order,
+  retains mesh-bearing DFS instance order, preserves converted authored-world
+  transforms, and publishes parallel source provenance only on complete
+  success. The diagnostic model preview now consumes this production builder
+  instead of duplicating its geometry assembly.
+- Added a separate visible-slot `PlayerActorVisualDrawAssembly`. It derives
+  every mesh node relative to a potentially nonidentity selected authored
+  root, applies the recovered zero plus Y(pi) root-local pose, and deliberately
+  stops before absolute spawn placement. Tests prove the later player-world
+  pose is composed exactly once and cover null/mesh roots, a nontrivial basis,
+  malformed dependencies/graphs, non-finite and singular transforms, material
+  failures, first-use sharing, DFS provenance, and atomic limits.
+- Independent review found that the first adapter revision inherited byte
+  accounting based on the smaller generic provenance. The final revision
+  recounts the complete model and larger actor provenance from zero with
+  checked multiplication/addition. Exact-limit succeeds and limit-minus-one
+  fails atomically; the re-review approved the correction with no remaining
+  findings.
+- Incremental and fresh Windows GCC Release builds complete; all 45 portable
+  tests pass. The fresh tree builds 154 steps, the actual public-boundary scan
+  passes 251 files, and the function catalogue retains a valid 14-column
+  schema. A private read-only before/after diagnostic produced identical
+  counts, RGBA hash, and byte-identical PPM output; those images and all
+  original-derived artifacts remain ignored. Local Clang linking is unavailable
+  because the machine lacks Windows SDK libraries, so Clang/macOS/iOS remain
+  CI validation responsibilities.
+- No private path, original asset, binary, decompiler output, project database,
+  or generated diagnostic was added. The next boundary is an explicit
+  authenticated player object-definition source in the mission manifest,
+  followed by tagged actor provenance in the combined room model and Metal
+  publication.
