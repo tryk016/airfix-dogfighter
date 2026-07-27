@@ -50,6 +50,9 @@ Implemented foundations include:
   scene-placement, and publication integration in the mission-world loader;
 - a preallocated per-scene pose runtime that publishes authenticated actor
   frames for accepted simulation steps and is resolved once per Metal frame;
+- a retained, pointer-free mission BSP arena with source-aware runtime-room
+  bindings, bounded allocation-free static/portal line tracing, and the
+  recovered portal mesh/type/visibility transition gate;
 - validated, allocation-free reconstructions of the legacy world-to-camera
   point transform and camera-space screen projection, including the recovered
   reverse-depth scalar, four depth presets, gameplay camera preset selection,
@@ -58,10 +61,12 @@ Implemented foundations include:
   a parity-first 640x480 aspect-fit layout kept separate from Metal.
 
 The portable authenticated load now produces one validated room-and-player
-draw model. The actor still remains at its authenticated spawn transform until
-the recovered movement law supplies a changing world pose. Full gameplay
-simulation, campaign flow, audio, finished menus, physical-device rendering,
-and visual acceptance remain future milestones.
+draw model plus a mission-lifetime BSP arena for every runtime room. The actor
+still remains at its authenticated spawn transform until the recovered
+movement law supplies a changing world pose. Sphere collision resolution,
+stateful camera/room publication, full gameplay simulation, campaign flow,
+audio, finished menus, physical-device rendering, and visual acceptance remain
+future milestones.
 
 For frequently updated details, use
 [project status](docs/progress/STATUS.md) and the

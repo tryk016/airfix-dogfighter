@@ -521,9 +521,16 @@
   Backend-neutral camera collision primitives now cover the exact sphere
   radius, per-axis collision reduction, aircraft-specific recovery, line-hit
   interpolation, raw portal arguments, and final look-at matrix. The actual
-  BSP/sphere/line queries, room transitions, stateful pose publication, and
-  Metal join remain unimplemented. Metal remains explicitly diagnostic and no
-  full parity matrix has been introduced.
+  retained all-room BSP arena now survives CCF-cache destruction and supplies
+  bounded allocation-free static/portal line tracing, exact legacy list/tie
+  order including binary32 spills and unordered traversal, portal
+  mesh/type/visibility gates, and source-aware runtime-room targets. Catalog
+  replay, pre-allocation aggregate limits, exact publication topology, and a
+  hard 256-transition safety ceiling protect the retained backend.
+  Sphere/contact resolution, runtime-basis and stateful camera publication,
+  dynamic-object collision, and the Metal join remain unimplemented. Metal
+  remains explicitly diagnostic and no full parity matrix has been
+  introduced.
 - The authenticated setup-to-room provenance chain now crosses the native iOS
   publication boundary together with an immutable `PlayerSpawnPose`. Ghidra
   Headless and Rizin independently confirm x/y/z radians, mode zero, exact
@@ -531,8 +538,8 @@
   the room's basis and unit policy for both geometry and pose; native
   publication recomputes the pose, consumes the exact ticket, commits Metal,
   then assigns pose and a fresh input-intention state before readiness.
-  Runtime room switching still requires retaining the CCF/catalogue arena
-  rather than reconstructing it from the published static room.
+  Runtime room switching now has retained pointer-free BSP and portal-room
+  data; applying it to the stateful simulation/camera coordinator remains.
 - Added optional build-generated initial mission configuration. Public defaults
   are empty/data-less. A future protected private workflow may supply Base64
   setup, Level, and optional player-object logical paths plus a decimal
@@ -572,18 +579,17 @@
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Implement the retained BSP/portal collision backend and stateful camera
-   publication join before introducing a Metal camera matrix or performing
+3. Implement sphere/contact resolution plus the runtime-basis and stateful
+   camera publication join before introducing a Metal camera matrix or performing
    physical-device visual acceptance. World-to-camera, scalar projection with
    reciprocal depth, exact zero clear, depth modes, camera presets, quaternion
    matrix, stateless chase target/smoothing, collision/factor/line primitives,
    look-at pose math, and parity-first 4:3 presentation are recovered and
    implemented. Auxiliary weapons and effects remain separate.
-4. Introduce a retained CCF/catalogue arena when runtime room switching is
-   implemented; recover portal tracing, camera room traversal, and later
-   transitions afterward.
-5. Keep BSP culling and portal traversal disabled until their runtime semantics
-   are proven against executable evidence.
+4. Join the retained portal traversal to camera/simulation room state, then
+   validate multi-room movement against controlled executable traces.
+5. Keep BSP render culling disabled until its separate runtime semantics are
+   proven against executable evidence.
 
 ## Open questions
 

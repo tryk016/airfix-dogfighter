@@ -9,8 +9,8 @@
 namespace airfix::render {
 
 // Exact third arguments passed to SetPosAndTracePortals after the sphere and
-// line stages. Their numeric role inside every portal implementation is not
-// yet proven, so the public names deliberately avoid guessing a unit.
+// line stages. CcRoom::TracePortals does not read this parameter in the
+// analyzed game build; the values remain part of the recovered caller ABI.
 inline constexpr float legacyGameplayCameraSpherePortalTraceArgument =
     std::bit_cast<float>(std::uint32_t{0x3E4CCCCDU});
 inline constexpr float legacyGameplayCameraLinePortalTraceArgument =

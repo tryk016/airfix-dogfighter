@@ -1,11 +1,13 @@
 #include "airfix/content/MissionWorldRoomPublication.hpp"
 
+#include "airfix/content/MissionWorldRoomLoaderDetail.hpp"
 #include "airfix/content/PlayerSpawnPoseBuilder.hpp"
 
 #include <array>
 #include <bit>
 #include <cmath>
 #include <limits>
+#include <string>
 
 namespace airfix::content {
 namespace {
@@ -77,6 +79,434 @@ indexedIssue(const MissionWorldRoomPublicationIssueKind kind,
     }
     result = left + right;
     return true;
+}
+
+[[nodiscard]] bool rangeWithin(
+    const std::size_t first,
+    const std::size_t count,
+    const std::size_t size) noexcept {
+    return first <= size && count <= size - first;
+}
+
+[[nodiscard]] bool finite(
+    const assets::CcfVector3& value) noexcept {
+    for (const auto component : value) {
+        if (!std::isfinite(component)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool validFaceNormal(
+    const assets::CcfVector3& value) noexcept {
+    if (finite(value)) {
+        return true;
+    }
+    for (const auto component : value) {
+        if (std::bit_cast<std::uint32_t>(component) !=
+            0xFFC00000U) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool addPayloadBytes(
+    std::uint64_t& total,
+    const std::size_t count,
+    const std::size_t elementSize) noexcept {
+    std::uint64_t bytes = 0U;
+    return detail::checkedMissionWorldRoomByteProduct(
+               count, elementSize, bytes) &&
+        detail::checkedMissionWorldRoomByteAdd(total, bytes);
+}
+
+[[nodiscard]] bool addPublishedCount(
+    std::uint64_t& total,
+    const std::size_t count,
+    const std::size_t elementSize) noexcept {
+    std::uint64_t bytes = 0U;
+    return detail::checkedMissionWorldRoomByteProduct(
+               count, elementSize, bytes) &&
+        detail::checkedMissionWorldRoomByteAdd(total, bytes);
+}
+
+[[nodiscard]] bool addPublishedString(
+    std::uint64_t& total,
+    const std::string& value) noexcept {
+    return addPublishedCount(total, value.size(), sizeof(char));
+}
+
+[[nodiscard]] bool recalculatePublishedCpuBytes(
+    const LoadedMissionWorldRoom& room,
+    std::uint64_t& total) noexcept {
+    total = sizeof(LoadedMissionWorldRoom);
+    if (!addPublishedString(total, room.setupEntry.logicalPath) ||
+        !addPublishedCount(
+            total, room.textures.size(), sizeof(LoadedTextureAsset)) ||
+        !addPublishedCount(
+            total,
+            room.ccfCacheIndexByLoadSource.size(),
+            sizeof(std::size_t)) ||
+        !detail::checkedMissionWorldRoomByteAdd(
+            total, room.retainedSpatialBytes)) {
+        return false;
+    }
+
+    if (room.playerVisual.has_value()) {
+        const auto& player = *room.playerVisual;
+        if (!addPublishedString(
+                total,
+                player.objectDefinitionSource.logicalPath) ||
+            !addPublishedString(
+                total, player.modelCcfSource.logicalPath) ||
+            !addPublishedString(total, player.blueprintSelector) ||
+            (player.textureRoot.has_value() &&
+             !addPublishedString(total, *player.textureRoot))) {
+            return false;
+        }
+    }
+    if (room.selectedStart.has_value() &&
+        !addPublishedString(total, room.selectedStart->roomName)) {
+        return false;
+    }
+
+    for (const auto& texture : room.textures) {
+        if (!addPublishedCount(
+                total,
+                texture.upload.uploadLevels.size(),
+                sizeof(render::GtiUploadLevel)) ||
+            !addPublishedCount(
+                total,
+                texture.uploadLevels.size(),
+                sizeof(assets::RgbaImage))) {
+            return false;
+        }
+        for (const auto& level : texture.uploadLevels) {
+            if (!addPublishedCount(
+                    total, level.pixels.size(), sizeof(std::uint8_t))) {
+                return false;
+            }
+        }
+    }
+
+    if (!addPublishedCount(
+            total,
+            room.model.meshes.size(),
+            sizeof(render::DrawMeshPayload)) ||
+        !addPublishedCount(
+            total,
+            room.model.instances.size(),
+            sizeof(render::DrawMeshInstance))) {
+        return false;
+    }
+    for (const auto& mesh : room.model.meshes) {
+        if (!addPublishedCount(
+                total,
+                mesh.vertices.size(),
+                sizeof(render::DrawVertex)) ||
+            !addPublishedCount(
+                total,
+                mesh.indices.size(),
+                sizeof(std::uint32_t)) ||
+            !addPublishedCount(
+                total,
+                mesh.materials.size(),
+                sizeof(render::DrawMaterial)) ||
+            !addPublishedCount(
+                total,
+                mesh.ranges.size(),
+                sizeof(render::DrawRange))) {
+            return false;
+        }
+    }
+
+    return addPublishedCount(
+               total,
+               room.meshProvenance.size(),
+               sizeof(render::MissionWorldRoomMeshProvenance)) &&
+        addPublishedCount(
+               total,
+               room.instanceProvenance.size(),
+               sizeof(render::MissionWorldRoomInstanceProvenance)) &&
+        addPublishedCount(
+               total,
+               room.playerActorMeshProvenance.size(),
+               sizeof(render::PlayerActorSceneMeshProvenance)) &&
+        addPublishedCount(
+               total,
+               room.playerActorInstanceProvenance.size(),
+               sizeof(render::PlayerActorSceneInstanceProvenance)) &&
+        addPublishedCount(
+               total,
+               room.submission.meshUploads.size(),
+               sizeof(render::DrawMeshUploadMetadata)) &&
+        addPublishedCount(
+               total,
+               room.submission.commands.size(),
+               sizeof(render::DrawSubmissionCommand));
+}
+
+[[nodiscard]] std::optional<MissionWorldRoomPublicationIssue>
+validateSpatialArena(const LoadedMissionWorldRoom& room) noexcept {
+    const auto& arena = room.spatialArena;
+    if (!arena.complete()) {
+        return issue(
+            MissionWorldRoomPublicationIssueKind::
+                spatialArenaIncomplete);
+    }
+    if (room.startSelection.worldRoomIndex >= arena.rooms.size()) {
+        return issue(
+            MissionWorldRoomPublicationIssueKind::
+                spatialStartRoomOutOfRange);
+    }
+
+    std::uint64_t payloadBytes = 0U;
+    if (!addPayloadBytes(
+            payloadBytes,
+            arena.rooms.size(),
+            sizeof(assets::MissionWorldSpatialRoom)) ||
+        !addPayloadBytes(
+            payloadBytes,
+            arena.treeReferences.size(),
+            sizeof(std::size_t)) ||
+        !addPayloadBytes(
+            payloadBytes,
+            arena.trees.size(),
+            sizeof(assets::MissionWorldSpatialTree)) ||
+        !addPayloadBytes(
+            payloadBytes,
+            arena.nodes.size(),
+            sizeof(assets::MissionWorldSpatialNode)) ||
+        !addPayloadBytes(
+            payloadBytes,
+            arena.polygons.size(),
+            sizeof(assets::MissionWorldSpatialPolygon)) ||
+        payloadBytes != arena.retainedPayloadBytes ||
+        payloadBytes != room.retainedSpatialBytes) {
+        return issue(
+            MissionWorldRoomPublicationIssueKind::
+                spatialPayloadByteMismatch);
+    }
+
+    std::size_t expectedReference = 0U;
+    for (std::size_t roomIndex = 0U;
+         roomIndex < arena.rooms.size();
+         ++roomIndex) {
+        const auto& spatialRoom = arena.rooms[roomIndex];
+        if (spatialRoom.firstStaticTreeReference !=
+                expectedReference ||
+            !rangeWithin(
+                spatialRoom.firstStaticTreeReference,
+                spatialRoom.staticTreeCount,
+                arena.treeReferences.size())) {
+            return indexedIssue(
+                MissionWorldRoomPublicationIssueKind::
+                    spatialRoomRangeInvalid,
+                roomIndex);
+        }
+        expectedReference += spatialRoom.staticTreeCount;
+        if (spatialRoom.firstPortalTreeReference !=
+                expectedReference ||
+            !rangeWithin(
+                spatialRoom.firstPortalTreeReference,
+                spatialRoom.portalTreeCount,
+                arena.treeReferences.size())) {
+            return indexedIssue(
+                MissionWorldRoomPublicationIssueKind::
+                    spatialRoomRangeInvalid,
+                roomIndex);
+        }
+        expectedReference += spatialRoom.portalTreeCount;
+
+        for (const auto kind :
+             {assets::CcfBspTreeKind::staticTree,
+              assets::CcfBspTreeKind::portalTree}) {
+            const auto first =
+                kind == assets::CcfBspTreeKind::staticTree
+                ? spatialRoom.firstStaticTreeReference
+                : spatialRoom.firstPortalTreeReference;
+            const auto count =
+                kind == assets::CcfBspTreeKind::staticTree
+                ? spatialRoom.staticTreeCount
+                : spatialRoom.portalTreeCount;
+            std::optional<std::size_t> previousTreeIndex;
+            for (std::size_t local = 0U; local < count; ++local) {
+                const auto treeIndex =
+                    arena.treeReferences[first + local];
+                if (treeIndex >= arena.trees.size()) {
+                    return indexedIssue(
+                        MissionWorldRoomPublicationIssueKind::
+                            spatialTreeInvalid,
+                        treeIndex);
+                }
+                if (previousTreeIndex.has_value() &&
+                    treeIndex >= *previousTreeIndex) {
+                    return indexedIssue(
+                        MissionWorldRoomPublicationIssueKind::
+                            spatialTreeInvalid,
+                        treeIndex);
+                }
+                previousTreeIndex = treeIndex;
+                const auto& tree = arena.trees[treeIndex];
+                if (tree.kind != kind ||
+                    tree.worldRoomIndex != roomIndex ||
+                    tree.sourceIndex >=
+                        room.semanticCcfSourceCount) {
+                    return indexedIssue(
+                        MissionWorldRoomPublicationIssueKind::
+                            spatialTreeInvalid,
+                        treeIndex);
+                }
+            }
+        }
+    }
+    if (expectedReference != arena.treeReferences.size() ||
+        arena.treeReferences.size() != arena.trees.size()) {
+        return issue(
+            MissionWorldRoomPublicationIssueKind::
+                spatialRoomRangeInvalid);
+    }
+
+    std::size_t expectedNode = 0U;
+    std::size_t expectedPolygon = 0U;
+    for (std::size_t treeIndex = 0U;
+         treeIndex < arena.trees.size();
+         ++treeIndex) {
+        const auto& tree = arena.trees[treeIndex];
+        if (tree.firstNodeIndex != expectedNode ||
+            tree.nodeCount == 0U ||
+            !rangeWithin(
+                tree.firstNodeIndex,
+                tree.nodeCount,
+                arena.nodes.size()) ||
+            tree.rootNodeIndex != tree.firstNodeIndex ||
+            tree.worldRoomIndex >= arena.rooms.size()) {
+            return indexedIssue(
+                MissionWorldRoomPublicationIssueKind::
+                    spatialTreeInvalid,
+                treeIndex);
+        }
+        expectedNode += tree.nodeCount;
+
+        std::array<
+            std::size_t,
+            assets::kMissionWorldSpatialMaximumTraceDepth>
+            traversalStack{};
+        std::size_t traversalDepth = 1U;
+        std::size_t visitedNodeCount = 0U;
+        traversalStack[0] = tree.rootNodeIndex;
+        while (traversalDepth != 0U) {
+            const auto nodeIndex =
+                traversalStack[--traversalDepth];
+            if (nodeIndex !=
+                tree.firstNodeIndex + visitedNodeCount) {
+                return indexedIssue(
+                    MissionWorldRoomPublicationIssueKind::
+                        spatialNodeInvalid,
+                    nodeIndex);
+            }
+            ++visitedNodeCount;
+            const auto& node = arena.nodes[nodeIndex];
+            const auto pushChild =
+                [&traversalStack,
+                 &traversalDepth,
+                 &tree](
+                    const std::optional<std::size_t> child) noexcept {
+                    if (!child.has_value()) {
+                        return true;
+                    }
+                    if (*child < tree.firstNodeIndex ||
+                        *child >=
+                            tree.firstNodeIndex + tree.nodeCount ||
+                        traversalDepth >= traversalStack.size()) {
+                        return false;
+                    }
+                    traversalStack[traversalDepth++] = *child;
+                    return true;
+                };
+            // LIFO push B before A reproduces the serialized preorder.
+            if (!pushChild(node.childBIndex) ||
+                !pushChild(node.childAIndex)) {
+                return indexedIssue(
+                    MissionWorldRoomPublicationIssueKind::
+                        spatialNodeInvalid,
+                    nodeIndex);
+            }
+        }
+        if (visitedNodeCount != tree.nodeCount) {
+            return indexedIssue(
+                MissionWorldRoomPublicationIssueKind::
+                    spatialNodeInvalid,
+                tree.rootNodeIndex);
+        }
+
+        for (std::size_t nodeIndex = tree.firstNodeIndex;
+             nodeIndex < expectedNode;
+             ++nodeIndex) {
+            const auto& node = arena.nodes[nodeIndex];
+            const auto validChild =
+                [&tree](
+                    const std::optional<std::size_t> child) noexcept {
+                    return !child.has_value() ||
+                        (*child >= tree.firstNodeIndex &&
+                         *child <
+                             tree.firstNodeIndex +
+                                 tree.nodeCount);
+                };
+            if (!validChild(node.childAIndex) ||
+                !validChild(node.childBIndex) ||
+                !finite(node.splitNormal) ||
+                !finite(node.pointOnPlane) ||
+                node.firstPolygonIndex != expectedPolygon ||
+                !rangeWithin(
+                    node.firstPolygonIndex,
+                    node.polygonCount,
+                    arena.polygons.size())) {
+                return indexedIssue(
+                    MissionWorldRoomPublicationIssueKind::
+                        spatialNodeInvalid,
+                    nodeIndex);
+            }
+            expectedPolygon += node.polygonCount;
+            for (std::size_t polygonIndex =
+                     node.firstPolygonIndex;
+                 polygonIndex < expectedPolygon;
+                 ++polygonIndex) {
+                const auto& polygon = arena.polygons[polygonIndex];
+                const bool portal =
+                    tree.kind ==
+                    assets::CcfBspTreeKind::portalTree;
+                if (!finite(polygon.faceCross) ||
+                    !validFaceNormal(polygon.faceNormal) ||
+                    !finite(polygon.point0) ||
+                    !finite(polygon.edge01) ||
+                    !finite(polygon.edge12) ||
+                    (portal &&
+                     (!polygon.portalWorldRoomIndex.has_value() ||
+                      *polygon.portalWorldRoomIndex >=
+                          arena.rooms.size())) ||
+                    (!portal &&
+                     (polygon.portalWorldRoomIndex.has_value() ||
+                      polygon.portalMeshSelectionFlagB ||
+                      polygon.portalType != 0U ||
+                      polygon.portalObjectVisible))) {
+                    return indexedIssue(
+                        MissionWorldRoomPublicationIssueKind::
+                            spatialPolygonInvalid,
+                        polygonIndex);
+                }
+            }
+        }
+    }
+    if (expectedNode != arena.nodes.size() ||
+        expectedPolygon != arena.polygons.size()) {
+        return issue(
+            MissionWorldRoomPublicationIssueKind::
+                spatialTreeInvalid);
+    }
+    return std::nullopt;
 }
 
 [[nodiscard]] bool sameVecBits(const render::Vec3 &left,
@@ -224,6 +654,10 @@ validateMissionWorldRoomPublication(
                 };
             }
         }
+    }
+    if (const auto spatialIssue = validateSpatialArena(room);
+        spatialIssue.has_value()) {
+        return spatialIssue;
     }
     const auto expectedPose = buildPlayerSpawnPose(
         room.startSelection, room.selectedStart, room.runtimeBasis);
@@ -418,27 +852,30 @@ validateMissionWorldRoomPublication(
                         playerActorTransformMismatch,
                     actorInstanceIndex);
             }
-            try {
-                const auto expected =
-                    render::composeNodeTransforms(
-                        actorWorld, provenance.actorLocal);
-                if (!sameMatBits(
-                        expected.linear, instance.modelLinear) ||
-                    !sameVecBits(
-                        expected.translation,
-                        instance.modelTranslation)) {
-                    return indexedIssue(
-                        MissionWorldRoomPublicationIssueKind::
-                            playerActorTransformMismatch,
-                        actorInstanceIndex);
-                }
-            } catch (...) {
+            const auto expected =
+                render::tryComposeNodeTransforms(
+                    actorWorld, provenance.actorLocal);
+            if (!expected.has_value() ||
+                !sameMatBits(
+                    expected->linear, instance.modelLinear) ||
+                !sameVecBits(
+                    expected->translation,
+                    instance.modelTranslation)) {
                 return indexedIssue(
                     MissionWorldRoomPublicationIssueKind::
                         playerActorTransformMismatch,
                     actorInstanceIndex);
             }
         }
+    }
+
+    std::uint64_t expectedPublishedCpuBytes = 0U;
+    if (!recalculatePublishedCpuBytes(
+            room, expectedPublishedCpuBytes) ||
+        room.publishedCpuBytes != expectedPublishedCpuBytes) {
+        return issue(
+            MissionWorldRoomPublicationIssueKind::
+                publishedCpuBytesMismatch);
     }
 
     return std::nullopt;

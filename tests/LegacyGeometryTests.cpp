@@ -201,6 +201,22 @@ void testParentRelativeRoundTripAndOrder() {
     };
 
     const auto childWorld = airfix::render::composeNodeTransforms(parent, local);
+    const auto noThrowChildWorld =
+        airfix::render::tryComposeNodeTransforms(parent, local);
+    require(
+        noThrowChildWorld.has_value(),
+        "allocation-free node composition rejected a valid result");
+    requireMatrix(
+        noThrowChildWorld->linear,
+        childWorld.linear,
+        "allocation-free node composition changed the linear result");
+    requireVec(
+        noThrowChildWorld->translation,
+        childWorld.translation,
+        "allocation-free node composition changed the translation result");
+    require(
+        noThrowChildWorld->rawScalar == childWorld.rawScalar,
+        "allocation-free node composition changed a valid result");
     const Mat3 expectedChildLinear{{
         Vec3{0.0F, 1.0F, 0.0F},
         Vec3{0.0F, 0.0F, 1.0F},
@@ -314,6 +330,14 @@ void testNodeTransformValidationFailures() {
     requireGeometryError(GeometryErrorCode::nonFiniteValue, [&] {
         (void)airfix::render::composeNodeTransforms(identityChild, nonFiniteLocal);
     }, "node composition accepted a non-finite local transform");
+    require(
+        !airfix::render::tryComposeNodeTransforms(
+             singularParent, identityChild)
+             .has_value() &&
+            !airfix::render::tryComposeNodeTransforms(
+                 identityChild, nonFiniteLocal)
+                 .has_value(),
+        "allocation-free node composition accepted invalid input");
 }
 
 void testAsymmetricDefaultIdentity() {

@@ -422,6 +422,39 @@ ConvertedNodeTransform composeNodeTransforms(
     return result;
 }
 
+std::optional<ConvertedNodeTransform>
+tryComposeNodeTransforms(
+    const ConvertedNodeTransform& parentWorld,
+    const ConvertedNodeTransform& local) noexcept {
+    const auto validTransform =
+        [](const ConvertedNodeTransform& transform) noexcept {
+            if (!finite(transform.linear) ||
+                !finite(transform.translation) ||
+                !finite(transform.rawScalar)) {
+                return false;
+            }
+            const float linearDeterminant =
+                determinant(transform.linear);
+            return finite(linearDeterminant) &&
+                linearDeterminant != 0.0F;
+        };
+    if (!validTransform(parentWorld) || !validTransform(local)) {
+        return std::nullopt;
+    }
+
+    ConvertedNodeTransform result{
+        .linear = multiply(parentWorld.linear, local.linear),
+        .translation = add(
+            applyRuntimeColumn(parentWorld.linear, local.translation),
+            parentWorld.translation),
+        .rawScalar = local.rawScalar,
+    };
+    if (!validTransform(result)) {
+        return std::nullopt;
+    }
+    return result;
+}
+
 Mat3 toRuntimeColumnMatrix(
     const Mat3& rawLegacyMatrix,
     const Mat3& sourceToRuntime) {

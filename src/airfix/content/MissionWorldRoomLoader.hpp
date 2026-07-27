@@ -1,5 +1,6 @@
 #pragma once
 
+#include "airfix/assets/MissionWorldSpatialArena.hpp"
 #include "airfix/assets/MissionWorldRooms.hpp"
 #include "airfix/content/LoadedTextureAsset.hpp"
 #include "airfix/content/MissionLoadManifest.hpp"
@@ -30,6 +31,7 @@ struct MissionWorldRoomLoadRequest {
 
 struct MissionWorldRoomLoadLimits {
     assets::MissionWorldRoomBuildLimits catalog{};
+    assets::MissionWorldSpatialArenaLimits spatialArena{};
     assets::MissionWorldStartResolutionLimits starts{};
     render::MissionWorldRoomTextureBindingLimits textureBindings{};
     render::MissionWorldRoomDrawLimits draw{};
@@ -66,6 +68,7 @@ enum class MissionWorldRoomLoadPhase : std::uint8_t {
     preflightingCcfSources,
     loadingCcfSources,
     buildingRoomCatalog,
+    buildingSpatialArena,
     resolvingStart,
     planningTextureBindings,
     preflightingTextures,
@@ -106,6 +109,7 @@ enum class MissionWorldRoomLoadIssueKind : std::uint8_t {
     ccfParseFailure,
     retainedCcfMetadataLimitExceeded,
     catalogFailure,
+    spatialArenaFailure,
     startResolutionFailure,
     startSelectionFailure,
     textureBindingFailure,
@@ -137,9 +141,14 @@ struct MissionWorldRoomLoadIssue {
         MissionWorldRoomLoadIssueKind::internalFailure};
     std::optional<std::size_t> sourceIndex;
     std::optional<std::size_t> sourceFileIndex;
+    std::optional<std::size_t> physicalRoomIndex;
+    std::optional<std::size_t> worldRoomIndex;
     std::optional<std::size_t> startPositionIndex;
     std::optional<render::TextureAssetId> textureAssetId;
     std::optional<assets::MissionWorldRoomBuildIssueKind> catalogIssue;
+    std::optional<assets::MissionWorldSpatialArenaIssueKind>
+        spatialArenaIssue;
+    std::optional<assets::RoomSceneIssueKind> roomSceneIssue;
     std::optional<assets::MissionWorldStartIssueKind> startIssue;
     std::optional<render::MissionWorldRoomTextureBindingIssueKind>
         textureBindingIssue;
@@ -162,6 +171,9 @@ struct LoadedMissionWorldRoom {
     std::optional<assets::MissionStartPosition> selectedStart;
     render::BasisTransform runtimeBasis;
     simulation::PlayerSpawnPose playerSpawnPose;
+    // Pointer-free source-world BSP retained for room collision and portal
+    // transitions after the parsed CCF cache is destroyed.
+    assets::MissionWorldSpatialArena spatialArena;
     render::DrawModelPayload model;
     // Static room provenance remains a stable prefix of the final model.
     std::vector<render::MissionWorldRoomMeshProvenance> meshProvenance;
@@ -183,6 +195,7 @@ struct LoadedMissionWorldRoom {
     std::size_t uniqueCcfSourceCount{};
     std::uint64_t uniqueCcfSourceFootprintBytes{};
     std::uint64_t retainedCcfMetadataBytes{};
+    std::uint64_t retainedSpatialBytes{};
     std::uint64_t textureSourceFootprintBytes{};
     std::uint64_t decodedRgbaBytes{};
     std::uint64_t uploadRgbaBytes{};
