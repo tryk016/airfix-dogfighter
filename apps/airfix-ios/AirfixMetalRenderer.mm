@@ -7,7 +7,7 @@
 #include "airfix/content/MissionWorldRoomPublication.hpp"
 #include "airfix/render/DrawModel.hpp"
 #include "airfix/render/DrawSubmissionPlan.hpp"
-#include "airfix/render/PlayerActorPoseFrame.hpp"
+#include "airfix/render/PlayerActorPoseRuntime.hpp"
 #include "airfix/render/SnapshotGpuBudgetLedger.hpp"
 
 #include <algorithm>
@@ -473,54 +473,6 @@ simd_float4x4 aspectCorrection(const CGSize size) {
         sameVecBits(left.columns[2], right.columns[2]);
 }
 
-// This pilot has one immutable scene identity and one initial publication.
-// The object is deliberately immovable so its handle remains embedded at one
-// stable address for the complete native snapshot lifetime.
-class ScenePoseRuntime final {
-public:
-    ScenePoseRuntime(const ScenePoseRuntime&) = delete;
-    ScenePoseRuntime& operator=(const ScenePoseRuntime&) = delete;
-    ScenePoseRuntime(ScenePoseRuntime&&) = delete;
-    ScenePoseRuntime& operator=(ScenePoseRuntime&&) = delete;
-
-    [[nodiscard]] static std::unique_ptr<ScenePoseRuntime> create(
-        const airfix::render::DynamicInstancePoseLimits& limits,
-        const airfix::render::PlayerActorPoseFrame& frame) {
-        auto runtime = std::unique_ptr<ScenePoseRuntime>(
-            new ScenePoseRuntime(limits));
-        auto scene =
-            runtime->_exchange.tryBeginScene(limits.maximumInstances);
-        if (!scene.has_value()) {
-            return nullptr;
-        }
-        runtime->_scene.emplace(std::move(*scene));
-        if (runtime->_exchange.tryPublish(
-                *runtime->_scene,
-                frame.frameView()) !=
-            airfix::render::DynamicInstancePosePublishResult::published) {
-            return nullptr;
-        }
-        return runtime;
-    }
-
-    [[nodiscard]] std::optional<
-        airfix::render::DynamicInstancePoseLease>
-    tryAcquire() noexcept {
-        if (!_scene.has_value()) {
-            return std::nullopt;
-        }
-        return _exchange.tryAcquire(*_scene);
-    }
-
-private:
-    explicit ScenePoseRuntime(
-        const airfix::render::DynamicInstancePoseLimits& limits)
-        : _exchange(limits) {}
-
-    airfix::render::ScenePoseExchange _exchange;
-    std::optional<airfix::render::ScenePoseHandle> _scene;
-};
-
 enum class ScenePoseRuntimePreparationStatus : std::uint8_t {
     noPlayer,
     ready,
@@ -531,7 +483,7 @@ enum class ScenePoseRuntimePreparationStatus : std::uint8_t {
 struct ScenePoseRuntimePreparation {
     ScenePoseRuntimePreparationStatus status{
         ScenePoseRuntimePreparationStatus::noPlayer};
-    std::unique_ptr<ScenePoseRuntime> runtime;
+    std::shared_ptr<airfix::render::PlayerActorPoseRuntime> runtime;
 };
 
 struct ScenePoseRuntimePlan {
@@ -573,8 +525,18 @@ struct ScenePoseRuntimePlan {
         };
     }
 
+    std::size_t sourceBytes = 0U;
+    std::size_t retainedOverrideBytes = 0U;
     std::size_t retainedPoseBytes = 0U;
-    if (!checkedMultiply(frameBytes, 2U, retainedPoseBytes)) {
+    if (!checkedMultiply(
+            binding.instanceCount,
+            sizeof(airfix::render::PlayerActorPoseRuntimeSource),
+            sourceBytes) ||
+        !checkedMultiply(frameBytes, 3U, retainedOverrideBytes) ||
+        !checkedAdd(
+            sourceBytes,
+            retainedOverrideBytes,
+            retainedPoseBytes)) {
         return {
             .status =
                 ScenePoseRuntimePreparationStatus::resourceLimit,
@@ -615,59 +577,86 @@ struct ScenePoseRuntimePlan {
     const auto& binding = *room.playerActorBinding;
 
     try {
-        auto frame = airfix::render::buildPlayerActorPoseFrame(
+        auto built = airfix::render::PlayerActorPoseRuntime::create(
             room.playerActorBinding,
             room.playerActorInstanceProvenance,
+            room.model.instances.size(),
             actorWorldFrom(room.playerSpawnPose),
             0U,
             plan.exactLimits);
-        if (!frame.complete() ||
-            frame.overrides.size() != binding.instanceCount) {
+        if (!built.complete()) {
+            const bool allocationFailure =
+                built.issue.has_value() &&
+                built.issue->kind ==
+                    airfix::render::
+                        PlayerActorPoseRuntimeBuildIssueKind::
+                            allocationFailure;
+            return {
+                allocationFailure
+                    ? ScenePoseRuntimePreparationStatus::resourceLimit
+                    : ScenePoseRuntimePreparationStatus::invalidPayload,
+                nullptr,
+            };
+        }
+        if (built.retainedBytes != plan.retainedPoseBytes ||
+            built.runtime->retainedBytes() != plan.retainedPoseBytes) {
             return {
                 ScenePoseRuntimePreparationStatus::invalidPayload,
                 nullptr,
             };
         }
 
-        for (std::size_t index = 0U;
-             index < frame.overrides.size();
-             ++index) {
-            const auto& poseOverride = frame.overrides[index];
-            std::size_t expectedInstanceIndex = 0U;
-            if (!checkedAdd(
-                    binding.firstInstanceIndex,
-                    index,
-                    expectedInstanceIndex) ||
-                expectedInstanceIndex >= room.model.instances.size() ||
-                static_cast<std::size_t>(poseOverride.instanceIndex) !=
-                    expectedInstanceIndex) {
+        {
+            auto initialLease = built.runtime->tryAcquire();
+            if (!initialLease.has_value() ||
+                initialLease->simulationStep() != 0U ||
+                initialLease->overrides().size() !=
+                    binding.instanceCount) {
                 return {
                     ScenePoseRuntimePreparationStatus::invalidPayload,
                     nullptr,
                 };
             }
-            const auto& authored =
-                room.model.instances[expectedInstanceIndex];
-            if (!sameMatBits(
-                    poseOverride.modelLinear, authored.modelLinear) ||
-                !sameVecBits(
-                    poseOverride.modelTranslation,
-                    authored.modelTranslation)) {
-                return {
-                    ScenePoseRuntimePreparationStatus::invalidPayload,
-                    nullptr,
-                };
+            const auto initialOverrides = initialLease->overrides();
+            for (std::size_t index = 0U;
+                 index < initialOverrides.size();
+                 ++index) {
+                const auto& poseOverride = initialOverrides[index];
+                std::size_t expectedInstanceIndex = 0U;
+                if (!checkedAdd(
+                        binding.firstInstanceIndex,
+                        index,
+                        expectedInstanceIndex) ||
+                    expectedInstanceIndex >=
+                        room.model.instances.size() ||
+                    static_cast<std::size_t>(
+                        poseOverride.instanceIndex) !=
+                        expectedInstanceIndex) {
+                    return {
+                        ScenePoseRuntimePreparationStatus::
+                            invalidPayload,
+                        nullptr,
+                    };
+                }
+                const auto& authored =
+                    room.model.instances[expectedInstanceIndex];
+                if (!sameMatBits(
+                        poseOverride.modelLinear,
+                        authored.modelLinear) ||
+                    !sameVecBits(
+                        poseOverride.modelTranslation,
+                        authored.modelTranslation)) {
+                    return {
+                        ScenePoseRuntimePreparationStatus::
+                            invalidPayload,
+                        nullptr,
+                    };
+                }
             }
         }
 
-        auto runtime =
-            ScenePoseRuntime::create(plan.exactLimits, frame);
-        if (runtime == nullptr) {
-            return {
-                ScenePoseRuntimePreparationStatus::invalidPayload,
-                nullptr,
-            };
-        }
+        std::shared_ptr<airfix::render::PlayerActorPoseRuntime> runtime(
+            std::move(built.runtime));
         return {
             ScenePoseRuntimePreparationStatus::ready,
             std::move(runtime),
@@ -707,7 +696,8 @@ struct ScenePoseRuntimePlan {
     airfix::render::DrawSubmissionPlan _submissionPlan;
     std::optional<airfix::content::LoadedMissionWorldRoom> _missionRoom;
     std::vector<NSUInteger> _indexOffsets;
-    std::unique_ptr<ScenePoseRuntime> _scenePoseRuntime;
+    std::shared_ptr<airfix::render::PlayerActorPoseRuntime>
+        _scenePoseRuntime;
 }
 @property(nonatomic, strong) NSArray<AirfixMetalMeshBuffers*>* meshBuffers;
 @property(nonatomic, strong) NSArray<id<MTLTexture>>* textures;
@@ -2434,6 +2424,36 @@ bool preflightPrivateRoom(
     }
 }
 
+- (AirfixPlayerActorPoseRuntimeEndpoint)
+    playerActorPoseRuntimeEndpointForPreparedRoom:
+        (AirfixPreparedMetalRoom*)preparedRoom {
+    // An engaged empty weak pointer is an invalid candidate sentinel. The
+    // authenticated no-player path is the only path returning nullopt.
+    if (!NSThread.isMainThread ||
+        preparedRoom == nil ||
+        preparedRoom->_published ||
+        preparedRoom->_ownerToken != self.preparationOwnerToken ||
+        preparedRoom->_device != self.commandQueue.device ||
+        preparedRoom->_snapshot == nil ||
+        preparedRoom->_snapshot->_resources == nil ||
+        !hasActiveGpuBudgetReservation(preparedRoom->_snapshot) ||
+        !preparedRoom->_snapshot->_worldRoomInstalled) {
+        return AirfixPlayerActorPoseRuntimeEndpoint{
+            std::in_place,
+            std::weak_ptr<
+                airfix::render::PlayerActorPoseRuntime>{}};
+    }
+    const auto& runtime =
+        preparedRoom->_snapshot->_resources->_scenePoseRuntime;
+    if (runtime == nullptr) {
+        return std::nullopt;
+    }
+    return AirfixPlayerActorPoseRuntimeEndpoint{
+        std::in_place,
+        std::weak_ptr<airfix::render::PlayerActorPoseRuntime>{
+            runtime}};
+}
+
 - (BOOL)validatePreparedRoomForCommit:(AirfixPreparedMetalRoom*)preparedRoom
                                 error:(NSError* _Nullable* _Nullable)error {
     if (error != nullptr) {
@@ -2540,9 +2560,9 @@ bool preflightPrivateRoom(
     [encoder setCullMode:MTLCullModeNone];
     [encoder setFragmentSamplerState:self.samplerState atIndex:0U];
 
-    // One lease covers the whole encoded frame. This pilot has no producer
-    // endpoint after the immutable step-zero publication; failed acquisition
-    // therefore safely falls back to the authored instance transforms.
+    // One lease covers the whole encoded frame. The SPSC producer may publish
+    // between frames; failed acquisition safely falls back to the immutable
+    // authored instance transforms without acquiring per draw command.
     std::optional<airfix::render::DynamicInstancePoseLease> poseLease;
     if (resources->_scenePoseRuntime != nullptr) {
         poseLease = resources->_scenePoseRuntime->tryAcquire();

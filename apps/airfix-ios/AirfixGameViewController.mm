@@ -11,10 +11,13 @@
 #include "AirfixPrivateMissionConfig.h"
 #include "AirfixMissionWorldRoomSnapshot+Private.hpp"
 #include "AirfixIOSInputCoordinator+Private.hpp"
+#include "airfix/render/PlayerActorPoseRuntime.hpp"
 #include "airfix/runtime/AppSession.hpp"
 #include "airfix/simulation/PlayerAircraftSimulation.hpp"
 #include "airfix/simulation/PlayerSpawnPose.hpp"
 
+#include <array>
+#include <memory>
 #include <optional>
 #include <string_view>
 #include <utility>
@@ -48,6 +51,26 @@ namespace {
     return logicalPath;
 }
 
+[[nodiscard]] airfix::render::ConvertedNodeTransform actorWorldFrom(
+    const airfix::simulation::PlayerSpawnPose& pose) noexcept {
+    const auto vectorAt = [](const std::array<float, 3U>& value) {
+        return airfix::render::Vec3{value[0], value[1], value[2]};
+    };
+    return {
+        .linear =
+            {
+                .columns =
+                    {
+                        vectorAt(pose.runtimeWorldRotationColumns[0]),
+                        vectorAt(pose.runtimeWorldRotationColumns[1]),
+                        vectorAt(pose.runtimeWorldRotationColumns[2]),
+                    },
+            },
+        .translation = vectorAt(pose.runtimeWorldPosition),
+        .rawScalar = 1.0F,
+    };
+}
+
 } // namespace
 
 @interface AirfixGameViewController ()
@@ -55,6 +78,7 @@ namespace {
     airfix::runtime::AppSession _session;
     airfix::simulation::PlayerAircraftState _playerAircraftState;
     std::optional<airfix::simulation::PlayerSpawnPose> _playerSpawnPose;
+    AirfixPlayerActorPoseRuntimeEndpoint _playerActorPoseRuntime;
     dispatch_queue_t _rendererPreparationQueue;
 }
 @property(nonatomic, strong) AirfixMetalRenderer* renderer;
@@ -230,12 +254,36 @@ namespace {
 
             const auto advanced = airfix::simulation::advance(
                 strongSelf->_playerAircraftState, frame);
-            if (advanced) {
+            bool acceptAdvancedState = advanced.accepted();
+            if (acceptAdvancedState &&
+                strongSelf->_playerActorPoseRuntime.has_value()) {
+                auto poseRuntime =
+                    strongSelf->_playerActorPoseRuntime->lock();
+                if (poseRuntime == nullptr ||
+                    !strongSelf->_playerSpawnPose.has_value()) {
+                    acceptAdvancedState = false;
+                }
+                else {
+                    const auto poseResult = poseRuntime->tryPublish(
+                        actorWorldFrom(*strongSelf->_playerSpawnPose),
+                        advanced.state.completedSteps);
+                    acceptAdvancedState =
+                        poseResult.result ==
+                            airfix::render::
+                                PlayerActorPoseRuntimePublishResult::
+                                    published ||
+                        poseResult.result ==
+                            airfix::render::
+                                PlayerActorPoseRuntimePublishResult::busy;
+                }
+            }
+            if (acceptAdvancedState) {
                 strongSelf->_playerAircraftState = advanced.state;
                 return;
             }
 
-            // A rejected deterministic transition is terminal for this
+            // A rejected deterministic transition, an expired actor endpoint,
+            // or a non-busy pose publication failure is terminal for this
             // controller instance. Keep the last accepted world state intact,
             // neutralize physical input, and refuse later pause-button resume.
             strongSelf.simulationPipelineReady = NO;
@@ -510,6 +558,25 @@ namespace {
                 return;
             }
 
+            const auto playerActorPoseRuntime =
+                [renderer
+                    playerActorPoseRuntimeEndpointForPreparedRoom:
+                        preparedRoom];
+            if (playerActorPoseRuntime.has_value() &&
+                playerActorPoseRuntime->expired()) {
+                [strongSelf.contentCoordinator
+                    abandonMissionWorldRoomSnapshot:snapshot];
+                strongSelf->_session.setContentState(
+                    airfix::runtime::ContentState::rejected);
+                [strongSelf.inputCoordinator resetForGameplayBoundary];
+                ((MTKView*)strongSelf.view).paused = YES;
+                strongSelf.touchControlsView.hidden = YES;
+                strongSelf.statusLabel.text =
+                    @"Airfix Dogfighter reconstruction\n"
+                     @"Player pose runtime publication failed";
+                return;
+            }
+
             // Main owns this complete transaction. Validation is read-only;
             // consuming the exact ticket is immediately followed by the
             // renderer's no-fail constant-time pointer swap.
@@ -520,6 +587,8 @@ namespace {
                 return;
             }
             [renderer commitValidatedPreparedRoom:preparedRoom];
+            strongSelf->_playerActorPoseRuntime =
+                playerActorPoseRuntime;
             strongSelf->_playerSpawnPose = *playerSpawnPose;
             strongSelf->_playerAircraftState = {};
 

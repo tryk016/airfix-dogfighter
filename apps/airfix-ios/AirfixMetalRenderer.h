@@ -1,9 +1,18 @@
 #import <MetalKit/MetalKit.h>
 
 #ifdef __cplusplus
+#include <memory>
+#include <optional>
+
 namespace airfix::content {
 struct LoadedMissionWorldRoom;
 }
+namespace airfix::render {
+class PlayerActorPoseRuntime;
+}
+using AirfixPlayerActorPoseRuntimeEndpoint =
+    std::optional<
+        std::weak_ptr<airfix::render::PlayerActorPoseRuntime>>;
 #endif
 
 NS_ASSUME_NONNULL_BEGIN
@@ -27,6 +36,13 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable AirfixPreparedMetalRoom*)prepareLoadedMissionRoom:
     (airfix::content::LoadedMissionWorldRoom&&)room
     error:(NSError* _Nullable* _Nullable)error;
+
+// Read-only candidate identity. An empty optional is the authenticated
+// no-player path. An engaged weak pointer names only this prepared candidate;
+// callers must never retain strong ownership across a main-thread boundary.
+- (AirfixPlayerActorPoseRuntimeEndpoint)
+    playerActorPoseRuntimeEndpointForPreparedRoom:
+        (AirfixPreparedMetalRoom*)preparedRoom;
 #endif
 
 // Read-only main-thread validation. The coordinator consumes the exact
