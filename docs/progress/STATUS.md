@@ -518,9 +518,12 @@
   and a held rear tuple. Preset selection/cycling is implemented as another
   fail-closed portable contract. The exact vehicle quaternion matrix plus
   stateless per-refresh target/smoothing recurrence are also implemented.
-  Portal/collision correction and look-at pose remain documented but not yet
-  integrated. Metal remains explicitly diagnostic and no full parity matrix
-  has been introduced.
+  Backend-neutral camera collision primitives now cover the exact sphere
+  radius, per-axis collision reduction, aircraft-specific recovery, line-hit
+  interpolation, raw portal arguments, and final look-at matrix. The actual
+  BSP/sphere/line queries, room transitions, stateful pose publication, and
+  Metal join remain unimplemented. Metal remains explicitly diagnostic and no
+  full parity matrix has been introduced.
 - The authenticated setup-to-room provenance chain now crosses the native iOS
   publication boundary together with an immutable `PlayerSpawnPose`. Ghidra
   Headless and Rizin independently confirm x/y/z radians, mode zero, exact
@@ -569,13 +572,13 @@
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Implement the portal/collision join, aircraft axis-factor recovery, and
-   look-at pose before introducing a Metal camera matrix or performing
+3. Implement the retained BSP/portal collision backend and stateful camera
+   publication join before introducing a Metal camera matrix or performing
    physical-device visual acceptance. World-to-camera, scalar projection with
    reciprocal depth, exact zero clear, depth modes, camera presets, quaternion
-   matrix, stateless chase target/smoothing, and parity-first 4:3 presentation
-   are recovered and implemented. Auxiliary weapons and effects remain
-   separate.
+   matrix, stateless chase target/smoothing, collision/factor/line primitives,
+   look-at pose math, and parity-first 4:3 presentation are recovered and
+   implemented. Auxiliary weapons and effects remain separate.
 4. Introduce a retained CCF/catalogue arena when runtime room switching is
    implemented; recover portal tracing, camera room traversal, and later
    transitions afterward.
