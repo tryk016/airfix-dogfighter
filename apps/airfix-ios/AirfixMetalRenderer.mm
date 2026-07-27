@@ -7,16 +7,20 @@
 #include "airfix/content/MissionWorldRoomPublication.hpp"
 #include "airfix/render/DrawModel.hpp"
 #include "airfix/render/DrawSubmissionPlan.hpp"
+#include "airfix/render/PlayerActorPoseFrame.hpp"
 #include "airfix/render/SnapshotGpuBudgetLedger.hpp"
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <new>
 #include <optional>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -426,6 +430,266 @@ simd_float4x4 aspectCorrection(const CGSize size) {
     return matrix;
 }
 
+[[nodiscard]] airfix::render::ConvertedNodeTransform actorWorldFrom(
+    const airfix::simulation::PlayerSpawnPose& pose) noexcept {
+    const auto vectorAt = [](const std::array<float, 3U>& value) {
+        return airfix::render::Vec3{value[0], value[1], value[2]};
+    };
+    return {
+        .linear =
+            {
+                .columns =
+                    {
+                        vectorAt(pose.runtimeWorldRotationColumns[0]),
+                        vectorAt(pose.runtimeWorldRotationColumns[1]),
+                        vectorAt(pose.runtimeWorldRotationColumns[2]),
+                    },
+            },
+        .translation = vectorAt(pose.runtimeWorldPosition),
+        .rawScalar = 1.0F,
+    };
+}
+
+[[nodiscard]] bool sameFloatBits(
+    const float left,
+    const float right) noexcept {
+    return std::bit_cast<std::uint32_t>(left) ==
+        std::bit_cast<std::uint32_t>(right);
+}
+
+[[nodiscard]] bool sameVecBits(
+    const airfix::render::Vec3& left,
+    const airfix::render::Vec3& right) noexcept {
+    return sameFloatBits(left.x, right.x) &&
+        sameFloatBits(left.y, right.y) &&
+        sameFloatBits(left.z, right.z);
+}
+
+[[nodiscard]] bool sameMatBits(
+    const airfix::render::Mat3& left,
+    const airfix::render::Mat3& right) noexcept {
+    return sameVecBits(left.columns[0], right.columns[0]) &&
+        sameVecBits(left.columns[1], right.columns[1]) &&
+        sameVecBits(left.columns[2], right.columns[2]);
+}
+
+// This pilot has one immutable scene identity and one initial publication.
+// The object is deliberately immovable so its handle remains embedded at one
+// stable address for the complete native snapshot lifetime.
+class ScenePoseRuntime final {
+public:
+    ScenePoseRuntime(const ScenePoseRuntime&) = delete;
+    ScenePoseRuntime& operator=(const ScenePoseRuntime&) = delete;
+    ScenePoseRuntime(ScenePoseRuntime&&) = delete;
+    ScenePoseRuntime& operator=(ScenePoseRuntime&&) = delete;
+
+    [[nodiscard]] static std::unique_ptr<ScenePoseRuntime> create(
+        const airfix::render::DynamicInstancePoseLimits& limits,
+        const airfix::render::PlayerActorPoseFrame& frame) {
+        auto runtime = std::unique_ptr<ScenePoseRuntime>(
+            new ScenePoseRuntime(limits));
+        auto scene =
+            runtime->_exchange.tryBeginScene(limits.maximumInstances);
+        if (!scene.has_value()) {
+            return nullptr;
+        }
+        runtime->_scene.emplace(std::move(*scene));
+        if (runtime->_exchange.tryPublish(
+                *runtime->_scene,
+                frame.frameView()) !=
+            airfix::render::DynamicInstancePosePublishResult::published) {
+            return nullptr;
+        }
+        return runtime;
+    }
+
+    [[nodiscard]] std::optional<
+        airfix::render::DynamicInstancePoseLease>
+    tryAcquire() noexcept {
+        if (!_scene.has_value()) {
+            return std::nullopt;
+        }
+        return _exchange.tryAcquire(*_scene);
+    }
+
+private:
+    explicit ScenePoseRuntime(
+        const airfix::render::DynamicInstancePoseLimits& limits)
+        : _exchange(limits) {}
+
+    airfix::render::ScenePoseExchange _exchange;
+    std::optional<airfix::render::ScenePoseHandle> _scene;
+};
+
+enum class ScenePoseRuntimePreparationStatus : std::uint8_t {
+    noPlayer,
+    ready,
+    invalidPayload,
+    resourceLimit,
+};
+
+struct ScenePoseRuntimePreparation {
+    ScenePoseRuntimePreparationStatus status{
+        ScenePoseRuntimePreparationStatus::noPlayer};
+    std::unique_ptr<ScenePoseRuntime> runtime;
+};
+
+struct ScenePoseRuntimePlan {
+    ScenePoseRuntimePreparationStatus status{
+        ScenePoseRuntimePreparationStatus::noPlayer};
+    airfix::render::DynamicInstancePoseLimits exactLimits{};
+    std::size_t retainedPoseBytes{};
+};
+
+[[nodiscard]] ScenePoseRuntimePlan planScenePoseRuntime(
+    const airfix::content::LoadedMissionWorldRoom& room) noexcept {
+    if (!room.playerActorBinding.has_value()) {
+        return {};
+    }
+
+    const airfix::render::DynamicInstancePoseLimits platformCeiling;
+    if (room.model.instances.size() >
+            static_cast<std::size_t>(platformCeiling.maximumInstances) ||
+        room.model.instances.size() >
+            static_cast<std::size_t>(
+                std::numeric_limits<std::uint32_t>::max())) {
+        return {
+            .status =
+                ScenePoseRuntimePreparationStatus::resourceLimit,
+        };
+    }
+
+    const auto& binding = *room.playerActorBinding;
+    std::size_t frameBytes = 0U;
+    if (binding.instanceCount > platformCeiling.maximumOverrides ||
+        !checkedMultiply(
+            binding.instanceCount,
+            sizeof(airfix::render::DynamicInstancePoseOverride),
+            frameBytes) ||
+        frameBytes > platformCeiling.maximumFrameBytes) {
+        return {
+            .status =
+                ScenePoseRuntimePreparationStatus::resourceLimit,
+        };
+    }
+
+    std::size_t retainedPoseBytes = 0U;
+    if (!checkedMultiply(frameBytes, 2U, retainedPoseBytes)) {
+        return {
+            .status =
+                ScenePoseRuntimePreparationStatus::resourceLimit,
+        };
+    }
+
+    return {
+        .status = ScenePoseRuntimePreparationStatus::ready,
+        .exactLimits =
+            {
+                .maximumInstances = static_cast<std::uint32_t>(
+                    room.model.instances.size()),
+                .maximumOverrides = binding.instanceCount,
+                .maximumFrameBytes = frameBytes,
+            },
+        .retainedPoseBytes = retainedPoseBytes,
+    };
+}
+
+[[nodiscard]] ScenePoseRuntimePreparation prepareScenePoseRuntime(
+    const airfix::content::LoadedMissionWorldRoom& room,
+    const ScenePoseRuntimePlan& plan) noexcept {
+    if (plan.status == ScenePoseRuntimePreparationStatus::noPlayer) {
+        return {};
+    }
+    if (plan.status != ScenePoseRuntimePreparationStatus::ready) {
+        return {
+            plan.status,
+            nullptr,
+        };
+    }
+    if (!room.playerActorBinding.has_value()) {
+        return {
+            ScenePoseRuntimePreparationStatus::invalidPayload,
+            nullptr,
+        };
+    }
+    const auto& binding = *room.playerActorBinding;
+
+    try {
+        auto frame = airfix::render::buildPlayerActorPoseFrame(
+            room.playerActorBinding,
+            room.playerActorInstanceProvenance,
+            actorWorldFrom(room.playerSpawnPose),
+            0U,
+            plan.exactLimits);
+        if (!frame.complete() ||
+            frame.overrides.size() != binding.instanceCount) {
+            return {
+                ScenePoseRuntimePreparationStatus::invalidPayload,
+                nullptr,
+            };
+        }
+
+        for (std::size_t index = 0U;
+             index < frame.overrides.size();
+             ++index) {
+            const auto& poseOverride = frame.overrides[index];
+            std::size_t expectedInstanceIndex = 0U;
+            if (!checkedAdd(
+                    binding.firstInstanceIndex,
+                    index,
+                    expectedInstanceIndex) ||
+                expectedInstanceIndex >= room.model.instances.size() ||
+                static_cast<std::size_t>(poseOverride.instanceIndex) !=
+                    expectedInstanceIndex) {
+                return {
+                    ScenePoseRuntimePreparationStatus::invalidPayload,
+                    nullptr,
+                };
+            }
+            const auto& authored =
+                room.model.instances[expectedInstanceIndex];
+            if (!sameMatBits(
+                    poseOverride.modelLinear, authored.modelLinear) ||
+                !sameVecBits(
+                    poseOverride.modelTranslation,
+                    authored.modelTranslation)) {
+                return {
+                    ScenePoseRuntimePreparationStatus::invalidPayload,
+                    nullptr,
+                };
+            }
+        }
+
+        auto runtime =
+            ScenePoseRuntime::create(plan.exactLimits, frame);
+        if (runtime == nullptr) {
+            return {
+                ScenePoseRuntimePreparationStatus::invalidPayload,
+                nullptr,
+            };
+        }
+        return {
+            ScenePoseRuntimePreparationStatus::ready,
+            std::move(runtime),
+        };
+    } catch (const std::bad_alloc&) {
+        return {
+            ScenePoseRuntimePreparationStatus::resourceLimit,
+            nullptr,
+        };
+    } catch (const std::length_error&) {
+        return {
+            ScenePoseRuntimePreparationStatus::resourceLimit,
+            nullptr,
+        };
+    } catch (...) {
+        return {
+            ScenePoseRuntimePreparationStatus::invalidPayload,
+            nullptr,
+        };
+    }
+}
+
 } // namespace
 
 @interface AirfixMetalMeshBuffers : NSObject
@@ -443,6 +707,7 @@ simd_float4x4 aspectCorrection(const CGSize size) {
     airfix::render::DrawSubmissionPlan _submissionPlan;
     std::optional<airfix::content::LoadedMissionWorldRoom> _missionRoom;
     std::vector<NSUInteger> _indexOffsets;
+    std::unique_ptr<ScenePoseRuntime> _scenePoseRuntime;
 }
 @property(nonatomic, strong) NSArray<AirfixMetalMeshBuffers*>* meshBuffers;
 @property(nonatomic, strong) NSArray<id<MTLTexture>>* textures;
@@ -455,6 +720,7 @@ simd_float4x4 aspectCorrection(const CGSize size) {
 - (void)dealloc {
     // Suballocated resources must release before their backing heaps. The
     // snapshot token is consumed only after this complete owner is destroyed.
+    _scenePoseRuntime.reset();
     _meshBuffers = nil;
     _textures = nil;
     _bufferHeap = nil;
@@ -1656,6 +1922,55 @@ bool preflightPrivateRoom(
             return nil;
         }
 
+        const auto scenePosePlan = planScenePoseRuntime(room);
+        if (scenePosePlan.status ==
+            ScenePoseRuntimePreparationStatus::resourceLimit) {
+            if (error != nullptr) {
+                *error = makeError(
+                    RendererError::resourceLimit,
+                    @"The private room pose runtime exceeds its bounded resources.");
+            }
+            return nil;
+        }
+        if (!accountCpuPackedBytes(
+                scenePosePlan.retainedPoseBytes,
+                preflight.aggregateCpuPackedBytes,
+                kMaximumPrivateRoomCpuPackedBytes)) {
+            if (error != nullptr) {
+                *error = makeError(
+                    RendererError::resourceLimit,
+                    @"The private room pose runtime exceeds the retained CPU budget.");
+            }
+            return nil;
+        }
+
+        auto scenePosePreparation =
+            prepareScenePoseRuntime(room, scenePosePlan);
+        if (scenePosePreparation.status ==
+            ScenePoseRuntimePreparationStatus::resourceLimit) {
+            if (error != nullptr) {
+                *error = makeError(
+                    RendererError::resourceLimit,
+                    @"The private room pose runtime could not reserve its bounded storage.");
+            }
+            return nil;
+        }
+        if (scenePosePreparation.status ==
+                ScenePoseRuntimePreparationStatus::invalidPayload ||
+            (scenePosePreparation.status ==
+                 ScenePoseRuntimePreparationStatus::ready &&
+             scenePosePreparation.runtime == nullptr) ||
+            (scenePosePreparation.status ==
+                 ScenePoseRuntimePreparationStatus::noPlayer &&
+             scenePosePreparation.runtime != nullptr)) {
+            if (error != nullptr) {
+                *error = makeError(
+                    RendererError::invalidPayload,
+                    @"The private room pose runtime is inconsistent.");
+            }
+            return nil;
+        }
+
         // Keep the cheap logical-byte rejection before building allocator
         // descriptors. It is best-effort; the aligned CAS reservation below
         // is the authoritative admission decision.
@@ -2089,6 +2404,8 @@ bool preflightPrivateRoom(
         candidateResources->_indexOffsets =
             std::move(preflight.indexOffsets);
         candidateResources->_revision = room.revision;
+        candidateResources->_scenePoseRuntime =
+            std::move(scenePosePreparation.runtime);
         candidate->_resources = candidateResources;
         candidate->_releaseQueue = resourceReleaseQueue;
         candidate->_worldRoomInstalled = YES;
@@ -2223,6 +2540,14 @@ bool preflightPrivateRoom(
     [encoder setCullMode:MTLCullModeNone];
     [encoder setFragmentSamplerState:self.samplerState atIndex:0U];
 
+    // One lease covers the whole encoded frame. This pilot has no producer
+    // endpoint after the immutable step-zero publication; failed acquisition
+    // therefore safely falls back to the authored instance transforms.
+    std::optional<airfix::render::DynamicInstancePoseLease> poseLease;
+    if (resources->_scenePoseRuntime != nullptr) {
+        poseLease = resources->_scenePoseRuntime->tryAcquire();
+    }
+
     const simd_float4x4 viewport = aspectCorrection(view.drawableSize);
     for (std::size_t commandIndex = 0U;
          commandIndex < submissionPlan.commands.size();
@@ -2231,8 +2556,20 @@ bool preflightPrivateRoom(
             submissionPlan.commands[commandIndex];
         const auto& instance =
             payload.instances[command.instanceIndex];
+        const auto resolvedPose =
+            poseLease.has_value()
+            ? poseLease->resolve(
+                  command.instanceIndex,
+                  instance.modelLinear,
+                  instance.modelTranslation)
+            : airfix::render::ResolvedInstancePose{
+                  .modelLinear = instance.modelLinear,
+                  .modelTranslation = instance.modelTranslation,
+              };
         const simd_float4x4 model =
-            toSimdMatrix(instance.modelLinear, instance.modelTranslation);
+            toSimdMatrix(
+                resolvedPose.modelLinear,
+                resolvedPose.modelTranslation);
         const GpuUniforms uniforms{simd_mul(viewport, model)};
         AirfixMetalMeshBuffers* buffers =
             resources.meshBuffers[command.meshSlot];
@@ -2262,6 +2599,7 @@ bool preflightPrivateRoom(
     }
 
     [encoder endEncoding];
+    poseLease.reset();
     [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completed) {
         (void)completed;
         // Retain the immutable resource owner explicitly until this GPU

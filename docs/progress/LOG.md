@@ -1658,3 +1658,34 @@ superseded evidence.
   portable suite passed 47/47. The public-boundary scan checked 256 files,
   `actionlint` and `git diff --check` passed, and no original content or private
   path entered the repository.
+
+## 2026-07-27 - player actor pose-frame and native exchange pilot
+
+- Added a portable bounded `PlayerActorPoseFrame` builder. It validates the
+  authenticated actor binding and exact instance provenance, checked
+  `uint32_t`/count/byte ranges, and finite nonsingular operands before
+  producing a strictly ordered actor-only override frame. Each result owns its
+  payload; its borrowed exchange view is lvalue-only so a temporary cannot
+  create a dangling span.
+- Every override is composed exactly once as `actorWorld * actorLocal`.
+  Failures publish no partial vector and retain typed index/geometry details.
+  Tests cover noncommutative transforms, missing and malformed bindings,
+  gaps/order/duplicates, exact and one-under limits, nonfinite/singular input,
+  nonfinite composition, direct exchange publication, dynamic actor resolve,
+  and byte-for-byte authored fallback for a static instance.
+- Added a per-private-snapshot native `ScenePoseRuntime`. During serialized
+  off-main Metal preparation it derives the exact step-zero actor frame,
+  verifies every transform bit-for-bit against the already validated combined
+  model, begins one scene, and requires the initial publication to succeed
+  before the candidate can commit.
+- The native plan enforces independent instance, override, and frame-byte
+  ceilings before allocation. Checked retained storage for both exchange slots
+  enters the existing private CPU admission budget; the temporary initial
+  frame is released after publication. The render loop acquires at most one
+  lease for a complete frame and otherwise uses the immutable authored
+  transform.
+- Independent reviews approved the portable and Objective-C++ contracts after
+  one retained-memory finding was corrected. The portable suite passes 48/48,
+  the public-boundary scan checks 259 files, and no proprietary content or
+  private path is included. Real Objective-C++/Metal compilation remains the
+  responsibility of the unsigned iOS GitHub Actions run for this commit.

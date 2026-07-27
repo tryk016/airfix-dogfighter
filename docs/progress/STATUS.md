@@ -476,6 +476,14 @@
   count/byte ceilings, fail-closed session/callback/cancellation handling, and
   synthetic shared/separate-source and tamper cases cover the join. Native
   physical-device rendering and visual acceptance remain pending.
+- Added a bounded portable player-pose frame builder and exercised the native
+  per-snapshot `ScenePoseExchange`. Metal preparation derives an exact
+  actor-only step-zero frame from authenticated provenance, verifies it
+  bit-for-bit against the final authored instances, admits two exchange slots
+  under independent iOS ceilings and the CPU budget, and publishes it before
+  the candidate can commit. Each rendered frame acquires at most one lease;
+  static instances retain their authored fallback. A reusable main-thread
+  producer for later simulation steps is still pending.
 - The authenticated setup-to-room provenance chain now crosses the native iOS
   publication boundary together with an immutable `PlayerSpawnPose`. Ghidra
   Headless and Rizin independently confirm x/y/z radians, mode zero, exact
@@ -524,10 +532,10 @@
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Add dynamic player-instance pose overrides and a recovered camera/projection
-   path to the native Metal renderer, then perform physical-device visual
-   acceptance while keeping auxiliary weapons and effects separate. The static
-   combined room-and-player model already crosses the generic native pipeline.
+3. Extend the validated step-zero actor exchange with a reusable preallocated
+   main-thread producer for simulation steps, then add the recovered
+   camera/projection path and perform physical-device visual acceptance.
+   Auxiliary weapons and effects remain separate.
 4. Introduce a retained CCF/catalogue arena when runtime room switching is
    implemented; recover portal tracing, camera room traversal, and later
    transitions afterward.

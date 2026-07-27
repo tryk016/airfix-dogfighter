@@ -45,7 +45,9 @@ Implemented foundations include:
 - a deterministic semantic input core with native touch and Apple Game
   Controller adapters;
 - authenticated player selection plus bounded player-model, texture,
-  scene-placement, and publication integration in the mission-world loader.
+  scene-placement, and publication integration in the mission-world loader;
+- a per-scene pose exchange whose authenticated step-zero actor frame is
+  resolved by the Metal render loop without changing the authored static room.
 
 The portable authenticated load now produces one validated room-and-player
 draw model. Full gameplay simulation, campaign flow, audio, finished menus,
