@@ -1,5 +1,7 @@
 # Airfix Dogfighter — reconstruction and private iOS port
 
+[![Portable C++ CI](https://github.com/tryk016/airfix-dogfighter/actions/workflows/portable-ci.yml/badge.svg)](https://github.com/tryk016/airfix-dogfighter/actions/workflows/portable-ci.yml) [![Unsigned iOS](https://github.com/tryk016/airfix-dogfighter/actions/workflows/ios-unsigned.yml/badge.svg)](https://github.com/tryk016/airfix-dogfighter/actions/workflows/ios-unsigned.yml)
+
 An evidence-driven, native reimplementation of **Airfix Dogfighter v1.01
 (2000)**, with a private iOS port as its first target. The project reconstructs
 observable formats and behaviour as maintainable C++20 and Objective-C++ code;
@@ -8,6 +10,11 @@ it does not attempt to run or translate the original x86 executable on iOS.
 > **Project status:** active research and development. The repository builds
 > and tests its portable core and an unsigned, data-less UIKit/Metal shell, but
 > it is **not yet a playable or device-validated port**.
+
+**Lawfully owned original game data is required for private use and is not
+included in this repository.**
+
+[Status](#current-state) · [Build](#quick-start) · [Architecture](#architecture) · [Controls](#controls) · [Legal](#legal-and-clean-room-boundary)
 
 ## Scope
 
@@ -117,14 +124,6 @@ flowchart LR
     E --> M["Objective-C++ / UIKit / Metal"]
 ```
 
-| Boundary | Responsibility |
-|---|---|
-| Reverse engineering | Reproducible evidence, hypotheses, and format notes |
-| Portable core | Defensive parsers, authenticated loading, input, simulation, and render payloads |
-| Private content | Owner-local conversion, validation, activation, and rollback |
-| iOS platform | Lifecycle, touch UI, controllers, Metal, audio, haptics, and sandbox storage |
-| CI | Cross-platform C++ validation and unsigned, data-less Apple builds |
-
 Read the [architecture](docs/ARCHITECTURE.md), the
 [port strategy ADR](docs/adr/0001-port-strategy.md), and the
 [reverse-engineering workflow](docs/RE-WORKFLOW.md) for the detailed contracts.
@@ -150,40 +149,26 @@ content into the iOS sandbox. Packages are authenticated before activation,
 installed transactionally, and consumed through a verified session so a
 mission cannot silently mix content revisions or source handles.
 
-Public source, tests, and CI remain data-less. Optional setup, level, start, and
-player-definition launch inputs may be supplied only by a protected,
-manually approved private workflow. Pull-request workflows do not read private
-content configuration or signing secrets. AFPACK v1 deliberately contains no
+Public source and tests remain data-less. AFPACK v1 deliberately contains no
 mission-launch metadata.
 
 See the [AFPACK format and trust boundary](docs/formats/AFPACK.md) and
 [GitHub Actions iOS design](docs/ci/GITHUB-ACTIONS-IOS.md).
 
-## iOS builds
+## iOS and CI
 
-The public `ios-unsigned` workflow configures deployment target 16.4 and
-compiles the data-less UIKit/Metal shell for `iphoneos` and
-`iphonesimulator`, without code signing. It also checks the public-source
-boundary and verifies that no private content entered the bundle.
+Public workflows validate portable C++ and compile the data-less UIKit/Metal
+shell for `iphoneos` and `iphonesimulator` with deployment target 16.4 and no
+code signing. Pull-request workflows do not read private content configuration
+or signing secrets.
 
-A future protected workflow will own signing and private installation. Signed
-IPAs, credentials, profiles, original assets, and AFPACK content must never be
-published as public artifacts.
+Optional private launch inputs, signing, and installation belong to a
+protected, manually approved workflow. Signed IPAs, credentials, profiles,
+original assets, and AFPACK content must never be public artifacts.
 
-## Repository guide
-
-```text
-apps/airfix-ios/       UIKit, Metal, Game Controller, and Objective-C++ bridge
-src/airfix/            Portable C++20 libraries grouped by subsystem
-tests/                 Synthetic, malformed-input, and deterministic tests
-tools/                 Read-only inspectors, conversion tools, and CI checks
-docs/                  Architecture, ADRs, formats, evidence, and progress
-```
-
-Useful entry points:
+## Documentation
 
 - [Project plan](docs/PROJECT-PLAN.md)
-- [Architecture](docs/ARCHITECTURE.md)
 - [Version 1 scope](docs/design/V1-SCOPE.md)
 - [Private content installation](docs/systems/CONTENT-INSTALL.md)
 - [Player reconstruction](docs/re/systems/PLAYER-SPAWN.md)
