@@ -1,73 +1,249 @@
 # FMT-UDSP — `.up` archive format
 
-**State:** discovery  
-**Confidence:** 1/3 overall  
-**Evidence:** `EV-20260721-003`
+**State:** metadata and compression recovered; extraction not yet exposed
 
-## Known facts
+**Confidence:** 3/3 for parsed fields and compression, 1/3 for two unknown
+directory fields
 
-- Files `Resource.up`, `English.up`, `Dansk.up`, `Norsk.up`, and `Svenska.up`
-  begin with ASCII `UDSP` (`55 44 53 50`).
-- The next two observed bytes are `01 01`; treating them as a version is only a
-  hypothesis.
-- At offset `0x08`, the first four bytes interpreted little-endian are `0x2CD0`
-  for `Resource.up` and `0x01F8` for `English.up`. These values could be entry
-  counts, directory sizes, or offsets; no claim is accepted yet.
-- Plain ASCII fragments occur near the beginning of `English.up`, including
-  actor-like names. That suggests a directory/name table near the header, but it
-  does not establish record boundaries.
-- 7-Zip 26.00 does not recognize the container.
-- `UdsPack.dll` is a 24,576-byte PE32/x86 DLL and is the highest-value static
-  source for the layout.
+**Evidence:** `EV-20260721-003`, `EV-20260721-006` through `EV-20260721-010`
 
-## Header observations
+## Scope and evidence
+
+The layout below is supported independently by:
+
+- the `UpPackage`, `UpFile`, and `UpHashTable` code in `UdsPack.dll`;
+- byte-level comparison of all five supplied archives;
+- the portable C++ parser's structural/hash checks;
+- successful decompression-size validation of every compressed record.
+
+`UdsPack.dll` was analyzed statically and was never loaded as executable code.
+The original archives remain read-only and are not stored in this repository.
+
+## Physical layout
 
 ```text
-Resource.up @ 0x00
-55 44 53 50 01 01 00 00 D0 2C 00 00 84 CC 29 0A ...
-
-English.up @ 0x00
-55 44 53 50 01 01 00 00 F8 01 00 00 02 43 51 01 ...
+0x00000000  32-byte header
+0x00000020  file payloads
+dirOffset   directory records (24 bytes each)
+fileOffset  file records (24 bytes each)
+stringOffset NUL-terminated byte strings
+EOF
 ```
 
-## Hypothesis table
+The five observed archives place the three metadata regions contiguously at
+the end of the file. Offsets and integers are unsigned little-endian values.
 
-| Field | Current hypothesis | Confidence | How to falsify |
-|---|---|---:|---|
-| `0x00..0x03` | magic `UDSP` | 3 | compare all packages/code |
-| `0x04..0x05` | format version 1.1 | 1 | inspect version branches in `UdsPack.dll` |
-| `0x06..0x07` | flags/reserved | 0 | trace header reads |
-| `0x08..0x0B` | entry count | 1 | derive loop bound and compare archive size/names |
-| following data | fixed/variable directory records | 1 | identify repeating reads and validated offsets |
+## Header
 
-## Research procedure
+| Offset | Size | Field | Meaning |
+|---:|---:|---|---|
+| `0x00` | 4 | `magic` | ASCII `UDSP` |
+| `0x04` | 4 | `version` | `0x00000101` |
+| `0x08` | 4 | `directoryBytes` | byte size of directory table; multiple of 24 |
+| `0x0C` | 4 | `directoryOffset` | absolute file offset of directory table |
+| `0x10` | 4 | `stringBytes` | byte size of string table |
+| `0x14` | 4 | `stringOffset` | absolute file offset of string table |
+| `0x18` | 4 | `fileBytes` | byte size of file-record table; multiple of 24 |
+| `0x1C` | 4 | `fileOffset` | absolute file offset of file-record table |
 
-1. Extract imports, exports, strings, and call graph from `UdsPack.dll`.
-2. Locate checks for `0x50534455` (`UDSP` little-endian).
-3. Name each header read by offset, without assuming semantics.
-4. Identify loops over records and all bounds/error paths.
-5. Compare values across all five archives to distinguish counts from offsets.
-6. Implement a listing-only parser with checked arithmetic and no extraction.
-7. Validate every candidate offset/size against file boundaries.
-8. Add extraction only after names, data spans, compression, and overlap checks
-   are understood.
+The version is a 32-bit integer. Earlier notes described two version bytes;
+the constructor explicitly compares the complete value with `0x101`.
 
-## Security requirements for the parser
+## Common record prefix
 
-- No trust in counts, offsets, sizes, names, terminators, compression ratio, or
-  integer addition/multiplication.
-- Refuse overlapping/out-of-file regions unless the format explicitly proves
-  shared data is valid.
-- Normalize output paths; reject absolute paths, drive prefixes, and `..`.
-- Listing is read-only; extraction requires a separate output directory.
-- Test empty, truncated, oversized, duplicate-name, traversal, decompression
-  bomb, and checksum-error synthetic inputs.
+Both record kinds begin with:
 
-## Unknowns
+| Offset | Size | Field | Meaning |
+|---:|---:|---|---|
+| `0x00` | 4 | `nameHash` | legacy case-insensitive lookup hash |
+| `0x04` | 4 | `nameOffset` | byte offset relative to the string table |
 
-- Directory placement and record width.
-- Name encoding/hash algorithm.
-- Compression/encryption/checksum algorithms.
-- Alignment and duplicate/shared-data rules.
-- Whether language packages share the exact same entry schema as `Resource.up`.
+Names use a legacy single-byte encoding. Polish/Danish/Norwegian/Swedish bytes
+must not be decoded as UTF-8 before hashing.
 
+## Directory record
+
+| Offset | Size | Field | Meaning |
+|---:|---:|---|---|
+| `0x08` | 4 | unknown | observed but not required for listing |
+| `0x0C` | 4 | unknown | observed but not required for listing |
+| `0x10` | 4 | `fileCount` | number of file records in this directory |
+| `0x14` | 4 | `fileTableByteOffset` | relative byte offset into file table |
+
+The referenced file-record range is sorted by `nameHash`. The complete file
+table is a concatenation of such ranges and is not globally sorted. Empty
+directories may point at a shared or otherwise unused position.
+
+## File record
+
+| Offset | Size | Field | Meaning |
+|---:|---:|---|---|
+| `0x08` | 4 | `flags` | bit 0 means compressed; no other bits observed |
+| `0x0C` | 4 | `unpackedSize` | byte size visible to the caller |
+| `0x10` | 4 | `storedSize` | byte size stored in the payload region |
+| `0x14` | 4 | `dataOffset` | absolute file offset of stored payload |
+
+For an uncompressed entry, `storedSize == unpackedSize`. `UpPackage::Open`
+returns `[dataOffset, dataOffset + storedSize)`; `UpFile` exposes
+`unpackedSize` after decompression.
+
+## Name hash
+
+Only the final 15 bytes take part in the weighted sum. ASCII `A`–`Z` are folded
+to lowercase. Bytes `0x80`–`0xFF` contribute as negative signed-byte values,
+matching the original MSVC build's direct `char` call to `tolower`.
+
+```text
+primes = [3, 5, 7, 11, 13, 17, 19, 23,
+          29, 31, 37, 41, 43, 47, 53, 59]
+first = max(0, length - 15)
+hash = length
+for i in first .. length-1:
+    hash += legacy_lower_signed_byte(name[i]) * primes[length - i]
+```
+
+Arithmetic wraps modulo `2^32`. Examples:
+
+- `Game` and `GAME` → `0x00000E5E`;
+- Windows-1252 bytes for `Maskinegevær.gti` → `0x0000A7DD`.
+
+## Logical path lookup
+
+`EV-20260721-026` implements the original two-stage lookup without treating an
+archive name as a host-filesystem path:
+
+1. normalize `/` to `\` and split the final filename from its directory;
+2. binary-search the sorted directory table by the legacy hash;
+3. compare every equal-hash candidate with bytewise ASCII-only case folding;
+4. binary-search the selected directory's file range and repeat the full
+   equal-hash comparison for the filename.
+
+Bytes at or above `0x80` are compared as legacy single-byte values; locale and
+Unicode case folding are not used. Hash equality alone never proves a match.
+The result is explicitly `notFound`, `unique`, or `ambiguous`, so duplicate
+archive entries and future layered-package conflicts cannot silently select the
+first record.
+
+Lookup accepts relative logical names only. It rejects empty/oversized names,
+control bytes, drive/colon and leading separators, empty/trailing components,
+and `.`/`..`. It performs no host canonicalization, extension inference, or
+fallback search-root policy; those belong to the higher-level asset resolver.
+
+## Compression stream
+
+Compressed file payloads are a sequence of blocks with no separate stream
+header:
+
+| Opcode | Following bytes | Output |
+|---:|---|---|
+| `0x65` | `count`, then 4-byte pattern | pattern repeated `ceil(count / 4)` times |
+| `0x66` | `count`, then `count` bytes | literal bytes |
+| `0x67` | `count`, then `count` bytes | literal bytes; observed once per compressed file |
+
+The original reader treats `0x66` and `0x67` identically. Decoding ends when
+the `storedSize` input bytes are consumed. The output must equal
+`unpackedSize`; unknown opcodes and truncated blocks are errors.
+
+## Validation corpus
+
+| Archive | Bytes | Directories | Files | Compressed | Stored payload bytes | Unpacked bytes |
+|---|---:|---:|---:|---:|---:|---:|
+| `Dansk.up` | 22,290,690 | 21 | 218 | 146 | 22,281,236 | 30,280,656 |
+| `English.up` | 22,112,202 | 21 | 218 | 135 | 22,102,754 | 30,049,180 |
+| `Norsk.up` | 22,365,565 | 21 | 218 | 146 | 22,356,107 | 30,283,565 |
+| `Resource.up` | 170,642,453 | 478 | 2,628 | 1,338 | 170,511,460 | 191,873,346 |
+| `Svenska.up` | 22,414,591 | 21 | 218 | 146 | 22,405,121 | 30,280,353 |
+
+All 3,500 file records and all 1,911 compressed streams passed the current
+metadata, hash, bounds, directory-range, opcode, and decompressed-size checks.
+Across all five archives, directory ranges partition the file table exactly:
+every file record is referenced once, with no gaps or overlaps.
+
+## Portable implementation
+
+- Library: `src/airfix/archive/UdspArchive.*`
+- Read-only CLI:
+  `udsp-list [--summary|--verify|--inventory|--resolve-objects] <archive.up>`
+- Synthetic tests: `tests/UdspArchiveTests.cpp` and `tests/UdspLimitsTests.cpp`
+
+`Archive::open(path)` opens one binary file handle and delegates to
+`Archive::open(stream, sourceLabel)`. The stream API performs bounded
+random-access I/O: it measures the current stream size, reads the 32-byte
+header, validates offsets against that exact size, and then loads only the
+metadata tail. `sourceLabel` is used only in diagnostics and is never reopened
+or interpreted as a path. For `Resource.up` the metadata read is 130,961 bytes
+instead of 170,642,453 bytes (about 1/1,303 of the previous allocation).
+Diagnostic `--verify` mode deliberately buffers the full archive so it can
+validate every payload stream; that mode is tooling, not the iOS runtime path.
+
+`Archive::openRegion` applies the same validation and bounded metadata reads to
+a `[baseOffset, size)` region of a containing file. AFPACK validation therefore
+opens nested `Resource.up` and localization archives directly in place without
+copying their 192 MB combined payload to another buffer or temporary file.
+The declared containing-file size must equal the stream's current measured
+size. Both the archive region and every selected stored payload must remain
+inside their respective containing-file and `[0x20, directoryOffset)` bounds.
+
+`Archive::parse`, `open`, and `openRegion` accept the same explicit
+`ParseLimits`. Archive and metadata size, directory/file counts, string-table
+and individual/aggregate decoded-name bytes, stored/unpacked entry sizes, and
+checked aggregate unpacked size are rejected before their corresponding
+metadata read, reserve, or string construction. The default policy accepts the
+measured v1.01
+`Resource.up` (170,642,453 archive bytes, 130,961 metadata bytes, 478
+directories, 2,628 files, and 191,873,346 declared unpacked bytes) with bounded
+headroom. Callers can tighten the policy further without changing the parser.
+
+The stream overloads of `readFilePrefix` and `readFile` accept the same
+seekable stream, exact containing-file size, diagnostic label, parsed archive,
+and a checked file index. `readFilePrefix` decodes only the requested logical
+prefix for signature classification. `readFile` applies a caller-provided
+decoded-size limit and is used one entry at a time by format tooling.
+`streamoff` offsets and `streamsize` read lengths are proven representable
+before metadata vectors, stored-payload vectors, or uncompressed prefix
+storage are constructed. The inventory path therefore never holds the full
+archive or all decoded assets in memory.
+
+The older `path + FileEntry` overloads remain convenience wrappers. They open a
+new handle and confirm that the supplied record matches the parsed archive,
+but they do not prove that the path still names the same backing object; code
+crossing a trust or mutation boundary must retain and use the stream overloads.
+All stream APIs require binary, seekable input. The stream position after a
+call is unspecified, and callers must serialize access: neither an archive nor
+a shared stream is a thread-safety mechanism.
+
+`Archive::lookup` and `normalizeLogicalPath` provide bounded, hash-compatible
+metadata lookup. Synthetic tests cover mixed slash/case input, missing records,
+unsafe components, path limits, and ambiguous duplicate records.
+
+Single-handle regressions additionally cover standalone and
+prefix-plus-UDSP-plus-suffix containers, compressed and uncompressed entries,
+zero-byte prefixes, exact and one-under output limits, invalid indices, current
+size mismatches, and a deliberately poisoned `sourceLabel` that names invalid
+data. Sparse virtual streams exercise pre-allocation `streamsize` rejection on
+targets where the format can express a read larger than that type.
+
+These APIs establish the stable-source primitive required by the future
+private content bridge. They do not mean that the iOS runtime already consumes
+installed AFPACK payloads through asset decoding and rendering end to end.
+
+## Security requirements
+
+- Treat all sizes, offsets, names, terminators, hashes, and ratios as untrusted.
+- Check arithmetic before adding or multiplying offsets and sizes.
+- Reject data spans outside `[0x20, directoryOffset)`.
+- Reject unknown flags/opcodes and inconsistent output sizes.
+- Apply a configurable decompressed-output limit before allocation.
+- Logical lookup rejects absolute paths, drive prefixes, empty components, and
+  `.`/`..`. A future extractor must additionally enforce the resolved output
+  root before writing.
+- Keep empty, truncated, oversized, bad-hash, bad-range, traversal, and
+  decompression-bomb cases in synthetic tests.
+
+## Remaining unknowns
+
+- Meaning of directory record fields `0x08` and `0x0C`.
+- Whether opcode `0x67` was intended as an explicit final-literal marker even
+  though the original decoder does not branch on that meaning.
+- Whether other retail/localized builds use additional flags or encodings.
+- Exact semantics of overlapping/aliased directory file ranges.

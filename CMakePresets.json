@@ -1,0 +1,44 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "code-intelligence",
+      "displayName": "Code intelligence (Ninja, Debug)",
+      "description": "Portable C++20 build with compile_commands.json for clangd and LSP clients",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/code-intelligence",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "AIRFIX_BUILD_TESTS": true,
+        "AIRFIX_BUILD_TOOLS": true,
+        "AIRFIX_BUILD_IOS_APP": false
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "code-intelligence",
+      "displayName": "Build code-intelligence targets",
+      "configurePreset": "code-intelligence"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "code-intelligence",
+      "displayName": "Test code-intelligence build",
+      "configurePreset": "code-intelligence",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    }
+  ]
+}

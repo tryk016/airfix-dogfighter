@@ -1,6 +1,7 @@
 # GitHub Actions iOS build and signing design
 
-**Status:** accepted working design
+**Status:** unsigned shell implemented; private signing design accepted but
+disabled
 
 **Related decision:** ADR-0004
 
@@ -16,6 +17,12 @@
   artifacts.
 - Make every IPA traceable to source commit, workflow run, compiler, SDK, and
   asset-package schema.
+
+The connected source repository is currently public. Only the no-secret,
+unsigned workflow is enabled there. Before signed IPA work, either this remote
+must become private or signing must move to a separate private repository and
+protected workflow. No certificate, profile, UDID, signed IPA, or private asset
+package may enter the public remote.
 
 ## Accepted device matrix
 
@@ -34,9 +41,9 @@ expanded later.
 
 ```mermaid
 flowchart TD
-    R["Private GitHub repository"] --> V["Validate and unit tests"]
+    R["Public source repository (unsigned only)"] --> V["Validate and unit tests"]
     R --> S["macOS simulator build"]
-    R --> D["Manual signed device workflow"]
+    P["Future private signing boundary"] --> D["Manual signed device workflow"]
     D --> K["Ephemeral keychain from GitHub secrets"]
     K --> I["Signed data-less IPA"]
     I --> P1["iPhone 17 Pro Max / iOS 26.6"]
@@ -50,6 +57,10 @@ flowchart TD
 The application and game data are separate deliverables. CI never needs the
 original installation.
 
+The public source defaults are also launch-data-less: no setup or Level path is
+committed, inferred, or embedded unless a private build explicitly supplies
+the optional configuration described below.
+
 ## Workflow layers
 
 ### 1. `validate`
@@ -62,22 +73,26 @@ files are absent. It can use Windows/Linux runners where appropriate.
 
 No secrets. No signed outputs.
 
-### 2. `ios-simulator`
+### 2. `ios-unsigned`
 
 Trigger: every pull request and push after the iOS target exists.
 
-- Use an explicit GitHub macOS runner label such as `macos-26`, not the moving
+- Use the explicit GitHub `macos-26` runner label, not the moving
   `macos-latest` alias.
-- Select an explicit installed stable Xcode path/version.
+- Select `/Applications/Xcode_26.6.app/Contents/Developer`; preflight fails if
+  it disappears. This currently provides the iOS 26.5 SDK.
 - Print `xcodebuild -version`, SDK version, compiler version, CMake version, and
   runner image metadata into a build manifest.
-- Build with code signing disabled.
-- Run portable and iOS-host integration tests on an available iOS 26 simulator.
+- Build ARM64 `iphoneos` and ARM64 `iphonesimulator` bundles with code signing
+  disabled.
+- Keep every pull-request invocation data-less. This workflow never reads
+  repository secrets or forwards private initial-mission inputs.
+- Do not upload either bundle from the public repository.
 - Verify `IPHONEOS_DEPLOYMENT_TARGET=16.4` and fail if a dependency raises it.
 
-The exact Xcode patch is pinned only when the workflow is implemented because
-GitHub runner images change. A preflight step must fail clearly if the requested
-Xcode is not installed.
+The first green run was `29898694161`: device build and bundle validation took
+45 seconds; simulator build and validation took 66 seconds. Runtime simulator
+launch is a later check and is not implied by this compile/link milestone.
 
 ### 3. `ios-private-ipa`
 
@@ -96,8 +111,40 @@ tag. Never run for pull requests or untrusted branches.
 Physical installation and testing are manual after artifact download. GitHub
 Actions does not replace the device test pass.
 
-A MacBook is introduced only under `docs/process/MACBOOK-GATE.md`: a hard
-blocker or evidence that it reduces the remaining affected work by at least 20%.
+## Optional private initial-mission configuration
+
+The iOS target accepts four optional CMake cache inputs for a future protected
+private build workflow or an explicit local build:
+
+| GitHub secret | Generated value |
+|---|---|
+| `AIRFIX_IOS_INITIAL_SETUP_LOGICAL_PATH_BASE64` | Base64 of the explicit private setup logical path |
+| `AIRFIX_IOS_INITIAL_LEVEL_LOGICAL_PATH_BASE64` | Base64 of the explicit private Level logical path |
+| `AIRFIX_IOS_INITIAL_PLAYER_OBJECT_LOGICAL_PATH_BASE64` | Base64 of the optional exact player object-definition logical path |
+| `AIRFIX_IOS_INITIAL_START_INDEX` | decimal unsigned start index in `0..4294967295` |
+
+The public `ios-unsigned` workflow deliberately leaves all four values at their
+defaults. A separate protected private workflow may forward them only after
+manual environment approval and only from trusted source. CMake validates the
+Base64 alphabet/padding and `uint32_t` range, then `configure_file` generates
+`AirfixPrivateMissionConfig.h` inside the build directory. The generated header
+and decoded logical paths are never source files and must not be uploaded as
+artifacts or caches. Base64 is a safe source-generation transport, not
+encryption.
+
+All path inputs default to empty in public and unconfigured builds. Automatic
+loading is disabled unless setup and Level both decode as non-empty UTF-8;
+supplying only one is treated as incomplete configuration. The player object
+path is optional, but a non-empty value is rejected unless the setup/Level pair
+is complete and it decodes as non-empty UTF-8. The start index defaults to zero.
+After the private package is authenticated, the native coordinator submits the
+explicit setup + Level + optional player object + `uint32_t` request and builds
+the mission manifest and aggregate room through the same verified session.
+
+AFPACK v1 deliberately contains no launch metadata. A future AFPACK v2 may
+replace these build inputs with an authenticated, bounded mission catalogue,
+but that schema is not implemented. Until then, no private logical path belongs
+in the repository or workflow YAML.
 
 ## Signing secrets
 
@@ -135,6 +182,8 @@ pipeline produces a versioned package, provisionally named
 The CI-built application:
 
 - starts without the package and shows an import/install screen;
+- remains data-less and does not auto-load a mission when the optional private
+  configuration is empty;
 - imports the package through an iOS Files/document-picker or another private
   transfer path selected during the device spike;
 - copies it atomically into Application Support after validating header,
@@ -150,7 +199,8 @@ forbidden in GitHub Actions uploads and caches.
 
 ## Artifact policy
 
-- Repository is private before signing workflows are enabled.
+- The source repository may remain public only for unsigned jobs; a private
+  boundary is mandatory before signing workflows are enabled.
 - Signed IPA artifact retention starts at one day.
 - Test logs/results may use a longer documented retention only when they contain
   no private content.
@@ -202,22 +252,22 @@ Store publication.
 | IPA cannot reach device without Mac | validate Windows installation path in the first device spike |
 | iOS 16.4 regression remains unseen | label it build-time compatibility only; add older runtime/device only if required |
 | Actions success mistaken for device success | separate physical scenario checklist on both phones |
-| cloud/device feedback loop becomes too slow | measure one full loop and apply the MacBook 20% acceleration gate |
+| cloud/device feedback loop becomes too slow | use a local Mac for interactive profiling and debugging |
 
 ## Implementation order
 
-1. Create/push the private GitHub repository.
-2. Add portable validation workflow after the CMake test skeleton exists.
-3. Add data-less iOS simulator build with deployment target 16.4.
-4. Implement synthetic `.afpack` parser/import tests.
+1. Connect the source repository and enforce a public/private file boundary.
+2. Add the portable validation workflow and CMake test skeleton.
+3. Add data-less iOS simulator/device builds with deployment target 16.4.
+4. Implement the synthetic `.afpack` parser and package tests.
 5. Register both device UDIDs and create the private provisioning profile.
 6. Configure protected signing secrets/environment.
 7. Produce and inspect the first signed IPA.
 8. Select/verify Windows-to-iPhone IPA installation method.
 9. Import the locally converted private data package.
 10. Execute device scenarios on iOS 26.6 and 26.3.
-11. Measure Actions queue/build/download/install/debug feedback time and evaluate
-    the MacBook gate before intensive Metal/input/performance iteration.
+11. Use local Xcode, LLDB, Metal tooling, or Instruments when interactive
+    device profiling and debugging begin.
 
 ## Authoritative references
 

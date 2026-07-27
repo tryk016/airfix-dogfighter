@@ -1,7 +1,7 @@
 # Initial source inventory
 
 **Evidence set:** `EV-20260721-001` through `EV-20260721-005`  
-**Source:** `E:\roms\Airfix Dogfighter`  
+**Source:** owner-provided original game directory (kept outside Git)
 **Method:** read-only directory listing, SHA-256, header inspection, and 7-Zip
 listing attempts; no game binary was executed.
 
@@ -26,9 +26,9 @@ history.
 | File | Bytes | PE kind | Preliminary role |
 |---|---:|---|---|
 | `Dogfighter.exe` | 290,816 | EXE | launcher/bootstrap |
-| `Dogfighter.icd` | 282,669 | EXE | likely protected/effective executable boundary; unconfirmed |
+| `Dogfighter.icd` | 282,669 | EXE | older high-entropy protected/compressed executable artifact |
 | `AfEngine.dll` | 696,320 | DLL | probable engine core |
-| `Cc.dll` | 380,928 | DLL | unknown shared subsystem |
+| `Cc.dll` | 380,928 | DLL | scene graph, CCF loader, GTI image/pixel conversion |
 | `UdsPack.dll` | 24,576 | DLL | probable `UDSP` archive API |
 | `gtDirect3D.dll` | 36,864 | DLL | Direct3D renderer adapter |
 | `gt3DFX.dll` | 36,864 | DLL | Glide renderer adapter |
@@ -79,4 +79,3 @@ comparison proves otherwise.
 
 See `source-manifest.sha256`. Re-run `tools/Inspect-Source.ps1` before relying on
 addresses or binary-specific conclusions.
-

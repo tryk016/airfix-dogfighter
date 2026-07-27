@@ -1,0 +1,100 @@
+name: Portable C++ CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portable-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  code-intelligence-preset:
+    name: clangd preset / ubuntu-24.04
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Show toolchain
+        run: |
+          cmake --version
+          ninja --version
+
+      - name: Configure code-intelligence preset
+        run: cmake --preset code-intelligence
+
+      - name: Validate compilation database
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          database_path = Path("build/code-intelligence/compile_commands.json")
+          entries = json.loads(database_path.read_text(encoding="utf-8"))
+          if not entries:
+              raise SystemExit("compile_commands.json is empty")
+          if any(Path(entry["file"]).suffix.lower() in {".m", ".mm", ".metal"} for entry in entries):
+              raise SystemExit("portable compilation database contains Apple-only sources")
+
+      - name: Test public-source boundary
+        run: |
+          python3 tests/PublicBoundaryTests.py
+          python3 tools/ci/check_public_boundary.py .
+
+      - name: Test deterministic Rizin report normalization
+        run: python3 tests/RizinExportTests.py
+
+      - name: Build code-intelligence preset
+        run: cmake --build --preset code-intelligence --parallel
+
+      - name: Test code-intelligence preset
+        run: ctest --preset code-intelligence
+
+  build-and-test:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+          - os: windows-2025
+          - os: macos-26
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Show toolchain
+        run: cmake --version
+
+      - name: Test reverse-engineering tooling
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./tests/Invoke-GhidraAnalysisTests.ps1
+          ./tests/Prepare-ReWorkingCopyTests.ps1
+          ./tests/Invoke-RizinAnalysisTests.ps1
+          python tests/RizinExportTests.py
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DAIRFIX_BUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build --build-config Release --output-on-failure

@@ -1,21 +1,42 @@
 # Build products
 /build/
+/build-*/
 /out/
 /DerivedData/
 /.cache/
+**/compile_commands.json
 
 # IDE and local configuration
 /.idea/
 /.vscode/
+/CMakeUserPresets.json
 *.user
 *.suo
 *.xcuserstate
 
 # Reverse-engineering working data (large and machine-specific)
 /analysis/ghidra-projects/
+/analysis/ghidra-appdata/
 /analysis/dumps/
 /analysis/traces/
 /analysis/screenshots/
+/analysis/tool-cache/
+/analysis/tools/
+/analysis/work-copies/
+/analysis/rizin-projects/
+/analysis/cutter-projects/
+/analysis/binary-ninja-projects/
+/analysis/x64dbg-workspace/
+__pycache__/
+*.py[cod]
+*.bndb
+*.rzdb
+*.dd32
+*.dd32.bak
+*.dd64
+*.dd64.bak
+*.trace32
+*.trace64
 
 # Original copyrighted game data must remain outside this repository
 /original/

@@ -53,8 +53,8 @@ Tasks:
 
 - Record relative paths, sizes, timestamps, SHA-256, magic values, PE metadata,
   and archive signatures.
-- Mark `E:\roms\Airfix Dogfighter` read-only by policy; never run analysis tools
-  in write mode against it.
+- Mark the owner-provided original game directory read-only by policy; never run
+  analysis tools in write mode against it.
 - Record edition/version, language packs, patches, disc contents, and whether CD
   audio tracks are available.
 - Keep original files and original-derived private fixtures outside Git.
@@ -278,11 +278,11 @@ Tasks:
 - Make the app boot without data and implement atomic `.afpack` import before the
   first full device slice.
 - Select and document a Windows-compatible installation path for the signed IPA.
-- Measure the complete Actions-to-device feedback loop. Request a MacBook only
-  for a hard local-Xcode/LLDB/Metal/Instruments gate or a documented >=20%
-  reduction in the remaining affected work, following
-  `docs/process/MACBOOK-GATE.md`.
-- Integrate SDL3 xcframework or the result of its technical spike.
+- Use local Xcode, LLDB, Metal tools, and Instruments when interactive
+  physical-device debugging and profiling begin.
+- Implement native UIKit/Game Controller adapters first. Add an SDL3 desktop or
+  common adapter later only if the cross-platform shell makes it materially
+  useful, as staged in ADR-0002.
 - Implement Metal surface/backend, shader compilation, resource residency, and
   device-loss/lifecycle handling.
 - Design touch controls rather than merely overlaying the keyboard: configurable
@@ -385,28 +385,45 @@ contract, evidence, implementation, tests, parity result, and documentation agre
 | GitHub runner image changes Xcode | Breaks CI/reproducibility | Explicit runner/Xcode selection, preflight and build manifest |
 | Signed IPA cannot be installed from Windows | Blocks device tests | Prove the installation path in the first signed device spike |
 | No iOS 16.4 runtime device | Minimum-version behavior can regress | Treat 16.4 as build/availability coverage only and state the limitation |
-| Cloud build/device loop slows interactive tuning | Delays UI/Metal/debug work | Measure the loop; invoke MacBook gate only at blocker or >=20% saving |
+| Cloud build/device loop slows interactive tuning | Delays UI/Metal/debug work | Move interactive profiling and debugging to local Xcode |
 | Private artifacts are accidentally shared | Unauthorized redistribution | Ignore originals/converted assets and audit every packaged/staged artifact |
 | Scope expansion into enhancements | Delays playability | Lock faithful vertical slice before modern rendering work |
 
 ## Immediate ordered backlog
 
-1. **Completed:** initialize Git and commit planning baseline (`59828ed`).
-2. Classify mutable versus immutable source files and regenerate the manifest.
-3. **Completed:** original CD/disc image and audio tracks are unavailable; test
-   the no-music configuration.
-4. Install pinned JDK, Ghidra, Python, compiler, CMake, and Ninja.
-5. Generate import/export/section/string reports for all 16 PE modules.
-6. Determine launcher/ICD relationship without executing on the host.
-7. Create Ghidra projects and stable module/RVA symbol naming.
-8. Fully analyze exports and callers in `UdsPack.dll`.
-9. Write a read-only `UDSP list` prototype.
-10. Inventory entry names/types in `Resource.up` and `English.up`.
-11. Establish the isolated reference runtime and record boot/module-load traces.
-12. Define the first deterministic flight scenario and its measurements.
-13. Create the C++20/CMake test skeleton.
-14. Build a viewer for the first decoded model/room format.
-15. Re-estimate remaining work after archive inventory and first vertical-slice
-    dependencies are known.
-16. Connect a private GitHub repository and implement CI after the portable CMake
-    skeleton exists.
+1. **Completed:** immutable inventory, pinned toolchain, module reports, portable
+   C++/CMake skeleton, public GitHub boundary, and portable/unsigned-iOS CI.
+2. **Completed:** bounded UDSP listing/verification/decompression, AFPACK v1,
+   GTI base conversion, CCF materials/meshes/blueprints, FourCC object/world/
+   level/briefing/path parsing, and object-to-texture dependency
+   resolution.
+3. **Completed:** deterministic portable semantic input router with touch and
+   controller binding defaults; native adapters remain separate.
+4. **Completed:** define and test the CCF coordinate, matrix, UV policy, and
+   triangle-winding conversion contract for an API-neutral/Metal vertex path.
+5. **Completed:** decode exact GTI mip chains to canonical RGBA8 and define the
+   authored-chain/anomaly-fallback Metal upload contract.
+6. **Completed:** produce a private first-model diagnostic using resolved mesh,
+   material, and texture edges without committing derived asset data.
+7. **Completed:** the atomic portable AFPACK import/replacement and startup
+   recovery services are linked into the iOS target with native document
+   picker, bounded private copy, progress, startup gate, and verified rollback
+   presentation.
+8. Establish the isolated reference runtime and record the first deterministic
+   flight/control/render scenarios; this remains independent of host static
+   analysis until the isolated environment is available.
+9. **In progress:** the bounded blueprint and placed-scene graphs, seam-safe
+   draw-model payload, and multi-instance diagnostic have assembled and
+   rendered a complete grouped aircraft. Parent-relative local derivation, the
+   public synthetic Metal smoke path, placed-record decoder, and flat bounded
+   room fog/BSP parser plus polygon/object/mesh/portal resolver are implemented.
+   The conservative explicit-CCF-room plan and multi-mesh/multi-instance draw
+   assembly are implemented and validate every physical room across all
+   scenes. Exact world/CCF/TEXU binding, dense runtime texture IDs, cross-role
+   deduplication, and bounded GTI upload metadata are complete. Connect the
+   explicit-room payload through the existing data-less Metal shell and
+   separately recover the gameplay room-selection rule; the structurally
+   different World `ROOM` catalog is not treated as a join. BSP culling remains
+   disabled until its traversal semantics are proven.
+10. Implement native UIKit touch capture and Apple Game Controller adapters,
+    followed by the configurable visual overlay and on-device usability tests.

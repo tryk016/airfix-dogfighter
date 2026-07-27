@@ -1,0 +1,2 @@
+rzpipe==0.6.2 \
+    --hash=sha256:a620e2547e54f901233be6e1eb283fd7c499f6d9bd1651795c2ff53e5fab1d77

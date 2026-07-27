@@ -1,6 +1,6 @@
 # ADR-0002: Semantic actions with touch and controller adapters
 
-**Status:** Accepted as working baseline
+**Status:** Accepted; portable core implemented
 
 **Date:** 2026-07-21
 
@@ -25,9 +25,11 @@ controller rumble.
 
 Use custom touch controls for the final product because flight requires a
 dynamic stick, latching throttle, weapon selection, contextual buttons, and a
-layout editor. SDL3 is the default common controller/touch adapter. A narrow
-Apple Game Controller/Core Haptics bridge is permitted where platform features
-are not represented adequately by SDL.
+layout editor. The first iOS adapters use UIKit touch delivery and Apple's Game
+Controller framework because the current shell is native and this avoids an
+unneeded platform dependency in the vertical slice. SDL3 remains an optional
+common desktop/controller adapter if a later cross-platform shell benefits from
+it. Core Haptics stays behind a narrow Apple feedback bridge.
 
 ## Options considered
 
@@ -96,8 +98,8 @@ context and remapping, and cannot express an absolute touch throttle cleanly.
 
 ## Revisit conditions
 
-- SDL3 lacks a required Apple controller capability or introduces unacceptable
-  latency.
+- A later cross-platform shell makes an SDL3 adapter materially cheaper than
+  maintaining native adapters.
 - `GCVirtualController` proves sufficiently customizable in the device spike.
 - Multiplayer introduces more than one local player or simultaneous controller
   ownership.
@@ -107,9 +109,9 @@ context and remapping, and cannot express an absolute touch throttle cleanly.
 ## Action items
 
 1. [ ] Confirm action semantics and timing from the Windows reference build.
-2. [ ] Implement action IDs, contexts, bindings, and deterministic input frames.
+2. [x] Implement action IDs, contexts, bindings, and deterministic input frames.
 3. [ ] Prototype custom multi-touch stick, throttle, and two-button firing.
-4. [ ] Prototype SDL3 controller hot-plug on Windows and iOS.
+4. [ ] Implement Apple Game Controller hot-plug on iOS; add an SDL3 desktop
+   adapter only when desktop parity work needs it.
 5. [ ] Validate whether an Apple bridge is required for haptics/glyph metadata.
 6. [ ] Run phone/tablet/controller usability and lifecycle tests.
-

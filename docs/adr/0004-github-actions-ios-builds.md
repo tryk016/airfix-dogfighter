@@ -9,10 +9,10 @@
 ## Context
 
 The owner does not require a local Mac/Xcode environment and wants iOS builds to
-run through GitHub Actions. Original game data exists only at
-`E:\roms\Airfix Dogfighter` and must not be uploaded. The application is a
-private sideload with deployment target iOS 16.4. Physical tests use iPhone 17
-Pro Max on iOS 26.6 and iPhone SE (3rd generation) on iOS 26.3.
+run through GitHub Actions. Original game data exists only in the owner-provided
+source directory and must not be uploaded. The application is a private sideload
+with deployment target iOS 16.4. Physical tests use iPhone 17 Pro Max on iOS
+26.6 and iPhone SE (3rd generation) on iOS 26.3.
 
 ## Decision
 
@@ -69,9 +69,9 @@ if hosted-runner/Xcode constraints make a required build impossible.
   accepted device matrix.
 - The Windows-compatible installation path for the produced IPA must be proven
   during the first device spike.
-- A MacBook is not a default prerequisite. Escalate clearly if work becomes
-  blocked without local Xcode or measured evidence shows at least 20% saving for
-  the affected remaining work; see `docs/process/MACBOOK-GATE.md`.
+- A local Mac is not a prerequisite for portable development or unsigned
+  compile validation. It becomes part of the toolchain for interactive device
+  debugging and profiling.
 
 ## Revisit conditions
 
@@ -79,15 +79,16 @@ if hosted-runner/Xcode constraints make a required build impossible.
 - Actions costs or queue times become unacceptable.
 - A secure/private content transfer method cannot be made usable.
 - The owner later provides a local Mac or self-hosted macOS runner and prefers it.
-- The MacBook gate reports a hard blocker or >=20% measured acceleration.
+- Interactive LLDB, Metal, Instruments, or physical-device iteration begins.
 - Actual runtime verification on iOS 16.4 becomes a requirement.
 
 ## Action items
 
-1. [ ] Create/connect a private GitHub remote.
-2. [ ] Add explicit macOS runner/Xcode preflight workflow.
-3. [ ] Build a signing-free simulator target at deployment target 16.4.
-4. [ ] Define and implement the private `.afpack` import boundary.
+1. [x] Connect the source remote; keep signing disabled while it is public.
+2. [x] Add explicit macOS runner/Xcode preflight workflow.
+3. [x] Build signing-free simulator and device targets at deployment target
+   16.4.
+4. [x] Define and implement the private `.afpack` package boundary.
 5. [ ] Register both device UDIDs and create/export signing materials.
 6. [ ] Configure the protected `ios-private` environment and secrets.
 7. [ ] Build, download, install, and verify the first IPA on both phones.

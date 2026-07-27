@@ -39,6 +39,10 @@ looks plausible” is not the same as “understood.”
 Confidence applies to individual claims. Avoid assigning one blanket confidence
 to an entire function when only its name is understood.
 
+Agreement between Ghidra, Rizin, and Binary Ninja is corroboration among static
+analyses, not dynamic evidence. It may resolve a decompiler ambiguity or support
+confidence 2, but it does not alone establish confidence 3.
+
 ## Evidence rules
 
 Every nontrivial claim records:
@@ -54,6 +58,66 @@ Every nontrivial claim records:
 Do not paste large decompiler listings into Markdown. Store concise pseudocode,
 contracts, data layouts, constants, and cross-references. The original binary and
 local Ghidra database remain the source for raw disassembly.
+
+## Reproducible headless reports
+
+`tools/Invoke-GhidraAnalysis.ps1` runs report-producing post-scripts from
+`tools/ghidra` and writes their output under the ignored `artifacts/ghidra`
+directory. To inspect a program already imported into the default local Ghidra
+project, use its Ghidra domain-file name:
+
+```powershell
+./tools/Invoke-GhidraAnalysis.ps1 `
+  -ProgramName 'AirCraft.type' `
+  -PostScript 'ExportFunctionInstructions.java' `
+  -PostScriptArguments @('10003F40') `
+  -ReportSuffix 'flight-instructions'
+```
+
+This mode does not need or accept a path to the original executable. It fails
+before launching Ghidra if the local project is missing, rejects wildcard or
+path-like program names, and treats unresolved-address report markers as a
+failure. `ProjectName` is the `.gpr` project name; `ProgramName` is one literal
+program at the project root.
+
+For the first immutable import, use `-InputFile <private-source-file>` instead.
+The legacy `-InputFile ... -ReuseProject` form remains supported, but
+`-ProgramName` is preferred after import because it does not carry a private
+source path through the command line.
+
+The targeted read-only exporters are:
+
+| Script | Purpose |
+|---|---|
+| `ExportAddressFunctions.java` | decompile functions containing exact addresses |
+| `ExportFunctionInstructions.java` | emit deterministic address/bytes/instruction listings |
+| `ExportMemoryValues.java` | interpret four bytes at exact addresses as integer and `float32` values |
+| `ExportCallersOfNamedFunctions.java` | join selected named callees to their callers |
+
+Reports and Ghidra projects remain local and ignored. Only concise conclusions,
+stable IDs, scripts, and reproducible commands belong in Git.
+
+## Reproducible Rizin reports
+
+Rizin and `rzpipe` provide the independent scripted static-analysis path. The
+wrapper accepts only a hash-verified file below the ignored
+`analysis/work-copies` boundary, anchors the requested function by canonical
+RVA, records the PE image base and Rizin's VA observations, and writes
+deterministic JSON below the ignored `artifacts/rizin` directory. It disables
+user startup configuration, verifies the input hash again after analysis, and
+never uses write mode, debugger mode, a remote server, or a symbol downloader.
+
+Use Ghidra as the canonical decompiler and compare Rizin's independently found
+boundaries, calls, and data references. Optional pseudocode from Cutter's
+bundled `rz-ghidra` plugin remains a Rizin-family result, not a third independent
+source. Binary Ninja Free is an optional manual third check; its network
+features are disabled and outbound traffic is blocked, but its Free edition is
+not an automation dependency and GUI review must be scheduled so it does not
+interrupt other work on the computer.
+
+The complete setup, safe working-copy procedure, report commands, and
+cross-check protocol are in
+[toolchain/RE-WORKBENCH.md](toolchain/RE-WORKBENCH.md).
 
 ## Standard work cycle
 
@@ -74,12 +138,22 @@ local Ghidra database remain the source for raw disassembly.
 4. When static analysis is ambiguous, design the smallest controlled runtime or
    file experiment.
 5. Never edit, patch, unpack into, or launch directly from the original folder.
+6. Run every analysis on a verified copy and keep all tools offline from the
+   input. Never upload original or derived binaries to a cloud decompiler.
+7. Record each tool's boundary, proposed ABI, calls, data references, and
+   pseudocode summary before resolving disagreements.
 
 ### Before implementation
 
 Write a behavioral contract containing inputs, outputs, state read/written,
 ordering, numeric units/precision, error behavior, ownership/lifetime, and known
 unknowns. Link the contract from the function catalog.
+
+Promote knowledge into portable C++20 only when the observation is expressed as
+a platform-neutral behavioral contract and a synthetic test or an explicit
+missing-evidence item exists. Do not transliterate decompiler output, preserve
+x86 ABI artifacts, reproduce undefined behavior, or copy vendor code structure
+when the required behavior can be expressed independently.
 
 ### End of a session
 
@@ -144,4 +218,3 @@ system/format IDs and whether parity changed.
 - Automated test exists, or the missing test is recorded as a blocker.
 - Reference comparison is within its stated tolerance.
 - Catalog, status, parity matrix, and log are consistent.
-

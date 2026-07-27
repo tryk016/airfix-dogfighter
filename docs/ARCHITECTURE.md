@@ -1,15 +1,15 @@
 # Target architecture
 
-**Status:** proposed baseline  
-**Last updated:** 2026-07-21
+**Status:** active target architecture
+**Last updated:** 2026-07-24
 
 ## Constraints
 
 - The reference build is Windows PE32/x86 and uses DirectX 7-era APIs plus an
   optional Glide renderer.
 - iOS requires a native ARM64 application and Xcode build/signing, provided by
-  an explicit GitHub-hosted macOS runner. A local Mac is not required by default
-  and is introduced only under the blocker/20% acceleration gate.
+  an explicit GitHub-hosted macOS runner. A local Mac is required later for
+  interactive device debugging and profiling.
 - The original source code is unavailable. Decompiled output is evidence, not
   production-ready source.
 - Original assets are in custom `UDSP` packages and must be understood before a
@@ -61,6 +61,17 @@ pickups, effects, interaction, AI, missions, dogfight, and single-player flow.
 Subsystems initially mirror the original `.type` and `.mode` module boundaries;
 they may be refactored only after parity tests protect behavior.
 
+### `simulation`
+
+Portable deterministic state and update rules. It depends on semantic
+`airfix::input`, not UIKit, Game Controller, Metal, wall-clock timestamps, or
+render math. The first implemented slice is a frozen-pose player-control state:
+it carries uninterpreted Q15 bank/pitch intentions, exact primary-fire state and
+edge counts, a completed-step counter, and a canonical field encoding. Recovered
+flight equations will replace the frozen-pose boundary only after their units,
+branch conditions, constants, and dynamic actor binding are evidence-backed.
+The reference scheduler order and player command signs are already recovered.
+
 ### `assets`
 
 Two layers:
@@ -86,12 +97,23 @@ The faithful pipeline is implemented first. Modern lighting, shadows,
 post-processing, higher-resolution textures, and upscaling are optional feature
 layers with independent toggles and performance budgets.
 
+Static room payloads and GPU resources remain immutable after publication.
+Future actor motion enters through a separate bounded
+`ScenePoseExchange`: complete absolute instance transforms are published
+atomically by simulation and acquired through stable read leases by the
+renderer. The exchange is tied to one scene identity, never mutates
+`LoadedWorldRoom`, and returns the authored transform when an instance has no
+override. It deliberately does not decide which instances belong to a player;
+that binding awaits the recovered dynamic actor/spawn pipeline.
+
 ### `platform`
 
 Narrow interfaces for input, game controllers, touch, audio, timing, files,
-localization, lifecycle, and video. SDL3 is the proposed portability layer for
-window/event/controller/audio plumbing. A small Objective-C++ bridge handles
-iOS-specific lifecycle, storage, safe-area, audio-session, and Metal integration.
+localization, lifecycle, and video. The first iOS vertical slice uses native
+UIKit and Game Controller adapters behind a small Objective-C++ bridge, which
+also owns lifecycle, storage, safe-area, audio-session, and Metal integration.
+SDL3 remains an optional later desktop/common adapter, not an iOS prerequisite;
+ADR-0002 records the staged decision.
 
 Input is a distinct subsystem: platform adapters produce normalized physical
 events, a context/binding router resolves semantic actions, and the simulation
@@ -102,7 +124,9 @@ codes. See `docs/systems/INPUT.md` and ADR-0002.
 ### `apps`
 
 - `reference-win`: desktop executable used during reconstruction and comparison.
-- `airfix-ios`: iOS application target.
+- `airfix-ios`: CMake-generated Objective-C++/UIKit/Metal application target.
+  The first shell is data-less, iPhone-landscape only, and delegates lifecycle
+  state to portable `airfix::runtime`; see ADR-0006.
 - Optional diagnostic viewers for archives, models, levels, and effects.
 
 ## Dependency direction
