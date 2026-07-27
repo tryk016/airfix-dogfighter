@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <stop_token>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace airfix::afpack {
@@ -84,7 +85,7 @@ public:
         VerifiedContentTransactionIdentity&&) noexcept = default;
 
     [[nodiscard]] bool valid() const noexcept {
-        return streamIdentity_ != nullptr;
+        return marker_ != nullptr;
     }
 
     friend bool operator==(
@@ -94,11 +95,13 @@ public:
 private:
     friend class VerifiedContentSession;
 
-    explicit VerifiedContentTransactionIdentity(
-        const void* streamIdentity) noexcept
-        : streamIdentity_(streamIdentity) {}
+    struct Marker final {};
 
-    const void* streamIdentity_{};
+    explicit VerifiedContentTransactionIdentity(
+        std::shared_ptr<const Marker> marker) noexcept
+        : marker_(std::move(marker)) {}
+
+    std::shared_ptr<const Marker> marker_;
 };
 
 // Owns the one seekable stream that was authenticated against an active
@@ -148,7 +151,7 @@ public:
     // move-assigned, even if both sessions describe the same content revision.
     [[nodiscard]] VerifiedContentTransactionIdentity transactionIdentity()
         const noexcept {
-        return VerifiedContentTransactionIdentity(input_.get());
+        return VerifiedContentTransactionIdentity(transactionMarker_);
     }
 
     // These operations share one seekable handle and are intentionally
@@ -165,6 +168,8 @@ private:
 
     VerifiedContentSession(
         std::unique_ptr<std::ifstream> input,
+        std::shared_ptr<
+            const VerifiedContentTransactionIdentity::Marker> transactionMarker,
         std::string sourceLabel,
         ContentRevision revision,
         afpack::Pack pack,
@@ -173,6 +178,8 @@ private:
         std::size_t sourcePackEntryIndex) noexcept;
 
     std::unique_ptr<std::ifstream> input_;
+    std::shared_ptr<
+        const VerifiedContentTransactionIdentity::Marker> transactionMarker_;
     std::string sourceLabel_;
     ContentRevision revision_;
     afpack::Pack pack_;

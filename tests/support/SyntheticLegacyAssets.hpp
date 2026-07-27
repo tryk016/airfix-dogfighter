@@ -60,6 +60,7 @@ struct SyntheticLegacyCcfOptions {
     std::string primaryTexture{"Wall"};
     std::optional<std::string> secondaryTexture;
     std::array<float, 3U> placedTranslation{4.0F, 5.0F, 6.0F};
+    std::uint32_t placedRoomReference{20U};
 };
 
 struct SyntheticLegacyAssetOptions {
@@ -228,7 +229,7 @@ inline void appendBytes(
     auto payload = ccfName("PlacedMesh", "Synthetic");
     appendU32(payload, 100U);
     appendU32(payload, 7U);
-    appendU32(payload, 20U);
+    appendU32(payload, options.placedRoomReference);
     appendU32(payload, 0U);
     payload.push_back(0U);
     appendU32(payload, 0U);
@@ -296,7 +297,8 @@ inline void validateCcf(
         parsed.meshes[0].vertices.size() != 3U ||
         parsed.meshes[0].triangles.size() != 1U ||
         parsed.placedNodes.size() != 1U ||
-        parsed.placedNodes[0].roomReference != 20U) {
+        parsed.placedNodes[0].roomReference !=
+            options.placedRoomReference) {
         throw std::runtime_error(
             "synthetic CCF failed its semantic self-check");
     }

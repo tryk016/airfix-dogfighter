@@ -2,6 +2,7 @@
 
 #include "airfix/assets/AfChunkContainer.hpp"
 #include "airfix/assets/WorldCcfTextureResolver.hpp"
+#include "airfix/content/LoadedTextureAsset.hpp"
 #include "airfix/content/VerifiedContentSession.hpp"
 #include "airfix/render/CcfRoomDrawAssembly.hpp"
 #include "airfix/render/DrawSubmissionPlan.hpp"
@@ -112,13 +113,6 @@ struct WorldRoomLoadIssue {
     std::optional<render::GtiUploadDataIssueKind> texturePreparationIssue;
     std::optional<render::CcfRoomDrawIssueKind> drawAssemblyIssue;
     std::optional<render::DrawSubmissionIssueKind> submissionIssue;
-};
-
-struct LoadedTextureAsset {
-    render::TextureAssetId assetId;
-    std::size_t sourceFileIndex{};
-    render::GtiUploadPlan upload;
-    std::vector<assets::RgbaImage> uploadLevels;
 };
 
 struct LoadedWorldRoom {

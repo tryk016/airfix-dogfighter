@@ -313,9 +313,32 @@ checks cancellation between the World and every `OBJE`/`MODL` item. The builder
 rechecks both handle identity and revision before and after callbacks and before
 publication. Callback-driven replacement or move-out therefore fails atomically
 with `sessionIdentityChanged`, even when the replacement carries the same
-revision. It does not read or parse any CCF or GTI payload, and it is not yet
-connected to multi-source room assembly, texture binding, or native
-publication.
+revision. It does not read or parse any CCF or GTI payload.
+
+`airfix::content::MissionWorldRoomLoader` is the next authenticated transaction.
+It accepts only that manifest, a session for the same cryptographic
+`ContentRevision`, and caller-owned start-selection data. The loader pins the
+exact session marker and revision for its lifetime, revalidates every CCF
+logical path and archive index, and reads all CCF/GTI payloads exclusively
+through the guarded session. Unique CCF file indices are read and parsed once,
+but repeated ordered descriptors remain separate room-catalogue sources. The
+loader then resolves a legacy start, binds one selected-room texture namespace,
+prepares GTIs, assembles the source-aware model, and validates its draw
+submission before publishing an owned revision-tagged result. No CCF pointer,
+span, string view, or working catalogue escapes the transaction.
+
+The transaction identity now owns a private shared marker rather than copying
+the stream address. Moving the exact session preserves the marker; replacing it
+with another authenticated handle, including one for the same revision,
+produces a distinct marker. A copied guard keeps the displaced marker alive, so
+allocator address reuse cannot create an ABA match.
+
+CCF/GTI source peaks and aggregates, logical retained CCF metadata,
+decoded/upload/resident RGBA, and published CPU ownership are separately
+bounded. Retained CCF accounting is checked after the parser's existing hard
+caps; it is semantic ownership accounting, not an exact allocator/RSS ceiling.
+Setup-script authentication and native mission publication remain separate
+later stages.
 
 `publishedCpuBytes` is explicit semantic accounting for the retained manifest
 object, vector elements, and owned string contents; it is not a claim about

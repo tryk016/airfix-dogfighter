@@ -411,11 +411,38 @@
   callback-driven session replacement or move-out returns
   `sessionIdentityChanged`, even with the same revision. Handle identity and
   revision are checked before/after callbacks and before publication.
-- The manifest is not yet connected to CCF parsing, the ordered room catalog,
-  global texture binding, draw assembly, `WorldRoomLoader`, or native
-  publication. That authenticated aggregate load remains the next content
-  integration.
-- The mission-manifest regression target brings the portable suite to 41/41.
+- Added `MissionWorldRoomLoader`, the atomic consumer of that proof. It
+  validates the full descriptor shape and exact logical-path/file-index
+  identity, pins the loader session's revision and opaque transaction marker,
+  and reads each unique physical CCF once through that handle. Repeated CCF
+  descriptors remain separate semantic sources and produce the exact
+  main/backdrop/physical-OBJE catalogue order; the result records the
+  descriptor-to-cache mapping without publishing raw metadata pointers.
+- The loader builds `MissionWorldRoomCatalog`, resolves the fixed legacy start
+  table with modulo/root fallback, constructs one selected-room global texture
+  namespace, materializes every unique GTI, preserves mesh/instance source
+  provenance, and validates `DrawSubmissionPlan`. CCF/GTI source footprints,
+  decoded/upload/resident RGBA, and published CPU have independent checked
+  limits. Retained CCF metadata has a separate post-parse logical counter;
+  parser admission remains governed by the CCF parser's hard caps, so this is
+  not a peak-allocation or process-RSS ceiling. A late CCF, GTI, assembly,
+  submission, callback, cancellation, or session-identity failure publishes no
+  room.
+- `VerifiedContentTransactionIdentity` now uses a retained private marker rather
+  than an `ifstream` address. Session moves carry the marker, copied guard
+  tokens keep displaced markers alive, and independently opened same-revision
+  sessions receive distinct identities, closing allocator-address ABA.
+- Public synthetic coverage proves four semantic loads over three physical CCF
+  reads, and a second case reuses one physical CCF across different semantic
+  roots and `0x2000` placement flags. It covers legacy start selection,
+  first-use texture-ID ordering, independently recomputed ownership counters,
+  exact/N-1 compressed and aggregate budgets, callback-time destruction of
+  borrowed inputs, separately authenticated equal revisions, moved and
+  replaced sessions, identity-versus-callback-error precedence, cancellation,
+  and late atomic failures. The portable suite now passes 42/42.
+- Start positions are still caller-supplied parsed records, retained CCF/catalog
+  arenas for runtime room switching are not implemented, and native mission
+  publication remains the next content integration.
 
 ## Confirmed
 

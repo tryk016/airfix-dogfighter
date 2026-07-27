@@ -354,9 +354,25 @@ charges repeated descriptors rather than assuming a later read cache.
 Each footprint is `storedSize + unpackedSize` for a compressed entry and
 `storedSize` otherwise; published CPU is semantic retained ownership, not
 allocator overhead.
-Connecting these identities to CCF parsing, the room catalog, global texture
-binding, draw assembly, and native publication remains the next integration
-step.
+
+`MissionWorldRoomLoader` now connects those identities to the portable runtime
+boundary. It validates the complete descriptor shape, exact logical lookup,
+file index, and recorded footprint before I/O. Physical CCFs are cached by
+archive file index in first-use order, while the complete ordered descriptor
+list is replayed into the room catalogue. Thus repeated object definitions
+share one read/parse but still contribute repeated legacy room loads with
+`0x2000` placed-scene suppression. Stable CCF pointers are created only after
+the exact cache size has been reserved and filled.
+
+The resulting catalogue resolves the fixed start table and root fallback before
+the existing global texture binder, source-aware draw assembly, and submission
+validator run. Selected GTIs are materialized in dense first-use ID order.
+Malformed later CCFs or GTIs, source/revision replacement, cancellation, and
+late draw/submission failures clear the complete candidate. The published
+result owns only the selected room, start copy, provenance, textures, and
+submission; parsed CCFs and pointer-bearing working lists do not escape.
+Retaining the catalogue/CCF arena for room switching and publishing this result
+to the native mission coordinator remain later integrations.
 
 BSP culling, collision, and portal traversal remain later runtime features; no
 geometry is hidden until those traversal semantics are separately proven.

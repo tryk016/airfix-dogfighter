@@ -157,6 +157,8 @@ VerifiedContentCancelled::VerifiedContentCancelled()
 
 VerifiedContentSession::VerifiedContentSession(
     std::unique_ptr<std::ifstream> input,
+    std::shared_ptr<
+        const VerifiedContentTransactionIdentity::Marker> transactionMarker,
     std::string sourceLabel,
     ContentRevision revision,
     afpack::Pack pack,
@@ -164,6 +166,7 @@ VerifiedContentSession::VerifiedContentSession(
     udsp::Archive sourceArchive,
     const std::size_t sourcePackEntryIndex) noexcept
     : input_(std::move(input)),
+      transactionMarker_(std::move(transactionMarker)),
       sourceLabel_(std::move(sourceLabel)),
       revision_(std::move(revision)),
       pack_(std::move(pack)),
@@ -272,11 +275,14 @@ VerifiedContentSession VerifiedContentSession::open(
             "verified content size changed while opening the session: " +
             sourceLabel);
     }
+    auto transactionMarker =
+        std::make_shared<const VerifiedContentTransactionIdentity::Marker>();
     report(progress, stopToken, VerifiedContentPhase::complete,
         sizeBeforeHash, sizeBeforeHash);
 
     return VerifiedContentSession(
         std::move(input),
+        std::move(transactionMarker),
         std::move(sourceLabel),
         std::move(trustedRevision),
         std::move(pack),
@@ -317,8 +323,11 @@ VerifiedContentSession VerifiedContentSession::adopt(
         .generation = lease.activeGeneration_,
         .pack = lease.reference_,
     };
+    auto transactionMarker =
+        std::make_shared<const VerifiedContentTransactionIdentity::Marker>();
     return VerifiedContentSession(
         std::move(lease.input_),
+        std::move(transactionMarker),
         "active private package",
         std::move(revision),
         std::move(lease.pack_),

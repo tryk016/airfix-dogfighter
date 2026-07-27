@@ -242,10 +242,29 @@ is surrounded by exact handle-identity and revision checks. The same guard runs
 before publication, so replacement or move-out returns
 `sessionIdentityChanged` even if the visible revision is unchanged.
 
-The manifest intentionally reads no CCF or GTI payload. It is not yet wired to
-CCF parsing, `MissionWorldRoomCatalog`, global texture binding, draw assembly,
-`WorldRoomLoader`, or native publication; therefore it does not by itself
+The manifest intentionally reads no CCF or GTI payload. It does not by itself
 authenticate independently constructed renderer metadata.
+
+`MissionWorldRoomLoader` now supplies the provenance-preserving composition
+boundary. It accepts no caller-built CCF metadata, catalogue, load source, or
+texture source. Instead it revalidates each manifest descriptor against the
+same authenticated revision, pins the exact loader-session marker, reads and
+parses unique CCF entries through that handle, and constructs all pointer-bearing
+source lists locally after cache addresses are stable. Repeated descriptor
+loads remain repeated catalogue and draw sources even when their physical CCF
+payload is cached once.
+
+The loader selects a room through `resolveMissionStartsInWorld` and
+`selectMissionWorldStart`, builds the global selected-room bindings, prepares
+all GTIs, and passes those bindings into
+`buildMissionWorldRoomDrawAssembly`. The owned model, numeric provenance,
+texture upload data, and validated `DrawSubmissionPlan` are published together
+under one `ContentRevision`; working CCF metadata and views are destroyed.
+Every callback and payload read is surrounded by session identity/revision
+checks. Source-admission, RGBA, assembly, submission, and semantic
+published-CPU limits fail closed. Retained CCF metadata is measured by a
+separate post-parse logical counter; it does not claim to cap peak allocation
+or process RSS beyond the parser's existing hard caps.
 
 `buildMissionWorldRoomDrawAssembly` consumes those per-source bindings and
 produces one `DrawModelPayload` plus parallel numeric mesh/instance provenance.
@@ -253,9 +272,10 @@ It fails atomically on a late source, transform, binding, limit, or
 forged-catalog error, re-resolves the plan from the canonical catalog and exact
 load sources, and requires every draw-source CCF identity to match that list
 before allocation. The existing `DrawSubmissionPlan` accepts the combined
-model directly. The authenticated mission load manifest is not yet connected
-to this completed CCF/texture/binding/draw path, `WorldRoomLoader`, or the
-native coordinator.
+model directly. `MissionWorldRoomLoader` now connects the authenticated
+manifest to this complete portable CCF/texture/binding/draw path. Native
+mission publication and retained scene data for later room changes remain
+unimplemented.
 
 ## Metal handoff
 

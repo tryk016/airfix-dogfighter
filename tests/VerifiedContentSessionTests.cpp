@@ -45,6 +45,7 @@ using airfix::content::VerifiedContentError;
 using airfix::content::VerifiedContentLimits;
 using airfix::content::VerifiedContentPhase;
 using airfix::content::VerifiedContentSession;
+using airfix::content::VerifiedContentTransactionIdentity;
 using airfix::testing::Bytes;
 using airfix::testing::SyntheticAfPack;
 using airfix::testing::UdspInputEntry;
@@ -56,6 +57,12 @@ static_assert(!std::is_copy_constructible_v<VerifiedContentSession>);
 static_assert(!std::is_copy_assignable_v<VerifiedContentSession>);
 static_assert(std::is_nothrow_move_constructible_v<VerifiedContentSession>);
 static_assert(std::is_nothrow_move_assignable_v<VerifiedContentSession>);
+static_assert(!std::is_default_constructible_v<
+    VerifiedContentTransactionIdentity>);
+static_assert(std::is_copy_constructible_v<
+    VerifiedContentTransactionIdentity>);
+static_assert(std::is_copy_assignable_v<
+    VerifiedContentTransactionIdentity>);
 
 void require(const bool condition, const std::string_view message) {
     if (!condition) {
@@ -329,6 +336,56 @@ void testAdoptsReadyRecoveryLease() {
         "adopted session could not read from the authenticated source handle");
 }
 
+void testTransactionIdentitySurvivesMovesWithoutReplacementAba() {
+    const auto pack = representativePack();
+    const auto trusted = revisionFor(pack, 73U);
+
+    auto original = open(pack, trusted);
+    const auto originalIdentity = original.transactionIdentity();
+    const auto copiedIdentity = originalIdentity;
+    require(
+        originalIdentity.valid() && copiedIdentity == originalIdentity,
+        "transaction identity was not valid and copyable");
+
+    auto exactSession = std::move(original);
+    require(
+        !original.transactionIdentity().valid(),
+        "moved-from session retained a transaction identity");
+    require(
+        exactSession.transactionIdentity() == originalIdentity,
+        "moving the exact session changed its transaction identity");
+
+    auto replacement = open(pack, trusted);
+    const auto replacementIdentity = replacement.transactionIdentity();
+    require(
+        replacementIdentity.valid() &&
+            replacementIdentity != originalIdentity,
+        "same-revision replacement reused the original transaction identity");
+
+    original = std::move(replacement);
+    require(
+        original.transactionIdentity() == replacementIdentity &&
+            original.transactionIdentity() != copiedIdentity,
+        "move-assigned replacement produced an ABA transaction identity");
+
+    auto displacedReplacement = std::move(original);
+    original = std::move(exactSession);
+    require(
+        original.transactionIdentity() == originalIdentity,
+        "moving the exact original session back lost its identity");
+    require(
+        displacedReplacement.transactionIdentity() == replacementIdentity &&
+            displacedReplacement.transactionIdentity() != originalIdentity,
+        "replacement identity collapsed into the restored original identity");
+
+    exactSession = std::move(displacedReplacement);
+    original = open(pack, trusted);
+    require(
+        original.transactionIdentity() != originalIdentity &&
+            original.transactionIdentity() != replacementIdentity,
+        "new same-revision session reused a still-live transaction identity");
+}
+
 void testWrongExpectedSizeFailsAtomically() {
     const auto pack = representativePack();
     auto trusted = revisionFor(pack);
@@ -535,6 +592,7 @@ int main() {
     try {
         testValidSourceArchiveAndRevision();
         testAdoptsReadyRecoveryLease();
+        testTransactionIdentitySurvivesMovesWithoutReplacementAba();
         testWrongExpectedSizeFailsAtomically();
         testWrongExpectedDigestFailsAtomically();
         testInvalidGenerationFailsAtomically();

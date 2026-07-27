@@ -1,0 +1,1543 @@
+#include "airfix/content/MissionWorldRoomLoader.hpp"
+#include "airfix/content/MissionWorldRoomLoaderDetail.hpp"
+
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <new>
+#include <string_view>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <variant>
+
+namespace airfix::content {
+namespace {
+
+class SessionIdentityChanged final {};
+
+struct PlannedCcf {
+    std::size_t archiveFileIndex{};
+    std::size_t firstSourceIndex{};
+    std::uint64_t sourceFootprintBytes{};
+};
+
+struct CachedCcf {
+    std::size_t archiveFileIndex{};
+    std::uint64_t sourceFootprintBytes{};
+    assets::CcfMetadata metadata;
+};
+
+struct PinnedMissionWorldRoomManifestInput {
+    ContentRevision revision;
+    std::vector<MissionCcfLoadDescriptor> descriptors;
+    bool worldHasBackdrop{};
+    std::size_t objectEntryCount{};
+    std::vector<std::size_t> objectDefinitionIndices;
+    std::uint64_t plannedCcfSourceFootprintBytes{};
+};
+
+[[nodiscard]] MissionWorldRoomLoadIssue
+makeIssue(const MissionWorldRoomLoadIssueKind kind) noexcept {
+    return {
+        .kind = kind,
+        .sourceIndex = std::nullopt,
+        .sourceFileIndex = std::nullopt,
+        .startPositionIndex = std::nullopt,
+        .textureAssetId = std::nullopt,
+        .catalogIssue = std::nullopt,
+        .startIssue = std::nullopt,
+        .textureBindingIssue = std::nullopt,
+        .texturePreparationIssue = std::nullopt,
+        .drawAssemblyIssue = std::nullopt,
+        .submissionIssue = std::nullopt,
+    };
+}
+
+void addIssue(MissionWorldRoomLoadResult &result,
+              MissionWorldRoomLoadIssue issue) {
+    result.room.reset();
+    result.issues.push_back(std::move(issue));
+}
+
+void addIssue(MissionWorldRoomLoadResult &result,
+              const MissionWorldRoomLoadIssueKind kind) {
+    addIssue(result, makeIssue(kind));
+}
+
+using detail::checkedMissionWorldRoomByteAdd;
+using detail::checkedMissionWorldRoomByteProduct;
+
+[[nodiscard]] bool accountCount(std::uint64_t &total, const std::size_t count,
+                                const std::size_t elementSize) noexcept {
+    std::uint64_t bytes = 0U;
+    return checkedMissionWorldRoomByteProduct(count, elementSize, bytes) &&
+           checkedMissionWorldRoomByteAdd(total, bytes);
+}
+
+template <typename T>
+[[nodiscard]] bool accountVector(std::uint64_t &total,
+                                 const std::vector<T> &values) noexcept {
+    return accountCount(total, values.size(), sizeof(T));
+}
+
+[[nodiscard]] bool accountString(std::uint64_t &total,
+                                 const std::string &value) noexcept {
+    return checkedMissionWorldRoomByteAdd(total, value.size());
+}
+
+[[nodiscard]] bool
+accountOptionalString(std::uint64_t &total,
+                      const std::optional<std::string> &value) noexcept {
+    return !value.has_value() || accountString(total, *value);
+}
+
+[[nodiscard]] std::uint64_t
+sourceAllocationFootprint(const udsp::FileEntry &entry) noexcept {
+    return static_cast<std::uint64_t>(entry.storedSize) +
+           (entry.isCompressed()
+                ? static_cast<std::uint64_t>(entry.unpackedSize)
+                : 0U);
+}
+
+[[nodiscard]] bool
+accountChunkChildren(std::uint64_t &total,
+                     std::vector<const assets::CcfChunk *> &stack) {
+    while (!stack.empty()) {
+        const auto *chunk = stack.back();
+        stack.pop_back();
+        if (!accountVector(total, chunk->directChildren)) {
+            return false;
+        }
+        for (const auto &child : chunk->directChildren) {
+            stack.push_back(&child);
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool
+accountChunkVector(std::uint64_t &total,
+                   const std::vector<assets::CcfChunk> &chunks,
+                   std::vector<const assets::CcfChunk *> &stack) {
+    if (!accountVector(total, chunks)) {
+        return false;
+    }
+    for (const auto &chunk : chunks) {
+        stack.push_back(&chunk);
+    }
+    return accountChunkChildren(total, stack);
+}
+
+[[nodiscard]] bool
+accountBspTrees(std::uint64_t &total,
+                const std::vector<assets::CcfBspTreeMetadata> &trees,
+                std::vector<const assets::CcfChunk *> &chunkStack) {
+    if (!accountVector(total, trees)) {
+        return false;
+    }
+    for (const auto &tree : trees) {
+        if (!accountVector(total, tree.nodes) ||
+            !accountVector(total, tree.polygons)) {
+            return false;
+        }
+        for (const auto &node : tree.nodes) {
+            if (!accountVector(total, node.polygonIndices) ||
+                !accountChunkVector(total, node.trailingChildren, chunkStack)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] std::optional<std::uint64_t>
+retainedCcfMetadataBytes(const assets::CcfMetadata &ccf) {
+    std::uint64_t total = sizeof(assets::CcfMetadata);
+    std::vector<const assets::CcfChunk *> chunkStack;
+
+    if (!accountChunkVector(total, ccf.topLevelChunks, chunkStack) ||
+        !accountVector(total, ccf.roomSections) ||
+        !accountVector(total, ccf.rooms) ||
+        !accountVector(total, ccf.materials) ||
+        !accountVector(total, ccf.meshes) ||
+        !accountVector(total, ccf.blueprints) ||
+        !accountVector(total, ccf.placedNodes)) {
+        return std::nullopt;
+    }
+
+    for (const auto &room : ccf.rooms) {
+        if (!accountString(total, room.name) ||
+            !accountString(total, room.prefix) ||
+            !accountBspTrees(total, room.staticBspTrees, chunkStack) ||
+            !accountBspTrees(total, room.portalBspTrees, chunkStack) ||
+            !accountChunkVector(total, room.directChildren, chunkStack)) {
+            return std::nullopt;
+        }
+    }
+
+    for (const auto &material : ccf.materials) {
+        if (!accountString(total, material.name) ||
+            !accountString(total, material.prefix) ||
+            !accountOptionalString(total, material.primaryTexture) ||
+            !accountOptionalString(total, material.secondaryTexture) ||
+            !accountOptionalString(total, material.environmentTexture)) {
+            return std::nullopt;
+        }
+    }
+
+    for (const auto &mesh : ccf.meshes) {
+        if (!accountString(total, mesh.name) ||
+            !accountString(total, mesh.prefix) ||
+            !accountVector(total, mesh.vertices) ||
+            !accountVector(total, mesh.triangles)) {
+            return std::nullopt;
+        }
+        for (const auto &triangle : mesh.triangles) {
+            if (triangle.paint.has_value() &&
+                !accountVector(total, triangle.paint->colors)) {
+                return std::nullopt;
+            }
+        }
+    }
+
+    for (const auto &blueprint : ccf.blueprints) {
+        if (!accountString(total, blueprint.name) ||
+            !accountString(total, blueprint.prefix)) {
+            return std::nullopt;
+        }
+    }
+
+    for (const auto &node : ccf.placedNodes) {
+        if (!accountString(total, node.name) ||
+            !accountString(total, node.prefix) ||
+            !accountChunkVector(total, node.directChildren, chunkStack)) {
+            return std::nullopt;
+        }
+        bool dynamicOk = true;
+        std::visit(
+            [&](const auto &data) {
+                using T = std::decay_t<decltype(data)>;
+                if constexpr (std::is_same_v<T,
+                                             assets::CcfPlacedObjectMetadata>) {
+                    if (data.bsp4101.has_value()) {
+                        chunkStack.push_back(&*data.bsp4101);
+                        dynamicOk = accountChunkChildren(total, chunkStack);
+                    }
+                } else if constexpr (std::is_same_v<
+                                         T, assets::CcfPlacedLightMetadata>) {
+                    if (data.property4310.has_value() &&
+                        !accountOptionalString(total,
+                                               data.property4310->texture)) {
+                        dynamicOk = false;
+                        return;
+                    }
+                    if (data.property4320.has_value() &&
+                        data.property4320->textures.has_value()) {
+                        for (const auto &texture :
+                             *data.property4320->textures) {
+                            if (!accountString(total, texture)) {
+                                dynamicOk = false;
+                                return;
+                            }
+                        }
+                    }
+                }
+            },
+            node.data);
+        if (!dynamicOk) {
+            return std::nullopt;
+        }
+    }
+    return total;
+}
+
+[[nodiscard]] bool
+addModelPublishedBytes(std::uint64_t &total,
+                       const render::DrawModelPayload &model) noexcept {
+    if (!accountVector(total, model.meshes) ||
+        !accountVector(total, model.instances)) {
+        return false;
+    }
+    for (const auto &mesh : model.meshes) {
+        if (!accountVector(total, mesh.vertices) ||
+            !accountVector(total, mesh.indices) ||
+            !accountVector(total, mesh.materials) ||
+            !accountVector(total, mesh.ranges)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool
+finiteStart(const assets::MissionStartPosition &start) noexcept {
+    for (const auto value : start.position) {
+        if (!std::isfinite(value)) {
+            return false;
+        }
+    }
+    for (const auto value : start.axisRotation) {
+        if (!std::isfinite(value)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool
+validateLimits(const MissionWorldRoomLoadLimits &limits) noexcept {
+    return limits.maximumCcfSourceBytes != 0U &&
+           limits.maximumTextureSourceBytes != 0U &&
+           limits.maximumPublishedCpuBytes != 0U &&
+           limits.textureBindings.maximumCcfLogicalPathBytes != 0U &&
+           limits.gtiPerTexture.maximumSourceBytes != 0U;
+}
+
+void requireExpectedSession(
+    const VerifiedContentSession &session,
+    const VerifiedContentTransactionIdentity &expectedIdentity,
+    const ContentRevision &expectedRevision) {
+    if (session.transactionIdentity() != expectedIdentity ||
+        session.revision() != expectedRevision) {
+        throw SessionIdentityChanged{};
+    }
+}
+
+[[nodiscard]] bool report(MissionWorldRoomLoadResult &result,
+                          const std::stop_token stopToken,
+                          const MissionWorldRoomLoadProgressCallback &callback,
+                          const MissionWorldRoomLoadPhase phase,
+                          const std::size_t completedItems,
+                          const std::size_t totalItems) {
+    if (stopToken.stop_requested()) {
+        addIssue(result, MissionWorldRoomLoadIssueKind::cancelled);
+        return false;
+    }
+    if (completedItems > totalItems) {
+        addIssue(result, MissionWorldRoomLoadIssueKind::internalFailure);
+        return false;
+    }
+    if (callback) {
+        try {
+            callback({
+                .phase = phase,
+                .completedItems = completedItems,
+                .totalItems = totalItems,
+            });
+        } catch (const SessionIdentityChanged &) {
+            throw;
+        } catch (const std::bad_alloc &) {
+            throw;
+        } catch (...) {
+            addIssue(result,
+                     MissionWorldRoomLoadIssueKind::progressCallbackFailure);
+            return false;
+        }
+    }
+    if (stopToken.stop_requested()) {
+        addIssue(result, MissionWorldRoomLoadIssueKind::cancelled);
+        return false;
+    }
+    return true;
+}
+
+[[nodiscard]] std::uint64_t remaining(const std::uint64_t limit,
+                                      const std::uint64_t used) noexcept {
+    return used <= limit ? limit - used : 0U;
+}
+
+[[nodiscard]] std::size_t clampToSize(const std::uint64_t value) noexcept {
+    if constexpr (std::numeric_limits<std::size_t>::max() <
+                  std::numeric_limits<std::uint64_t>::max()) {
+        if (value > std::numeric_limits<std::size_t>::max()) {
+            return std::numeric_limits<std::size_t>::max();
+        }
+    }
+    return static_cast<std::size_t>(value);
+}
+
+[[nodiscard]] render::GtiUploadDataIssueKind
+mapPlanIssue(const render::GtiUploadIssueKind kind) noexcept {
+    switch (kind) {
+    case render::GtiUploadIssueKind::limitExceeded:
+        return render::GtiUploadDataIssueKind::limitExceeded;
+    case render::GtiUploadIssueKind::integerOverflow:
+        return render::GtiUploadDataIssueKind::integerOverflow;
+    default:
+        return render::GtiUploadDataIssueKind::planFailure;
+    }
+}
+
+[[nodiscard]] bool sameUploadPlan(const render::GtiUploadPlan &left,
+                                  const render::GtiUploadPlan &right) noexcept {
+    return left.request == right.request &&
+           left.variantIndex == right.variantIndex &&
+           left.format == right.format && left.checksum == right.checksum &&
+           left.mipPolicy == right.mipPolicy &&
+           left.uploadLevels == right.uploadLevels &&
+           left.allocatedMipCount == right.allocatedMipCount &&
+           left.uploadedMipCount == right.uploadedMipCount &&
+           left.decodedRgbaBytes == right.decodedRgbaBytes &&
+           left.uploadRgbaBytes == right.uploadRgbaBytes &&
+           left.residentRgbaBytes == right.residentRgbaBytes;
+}
+
+void addTextureIssue(MissionWorldRoomLoadResult &result,
+                     const MissionWorldRoomLoadIssueKind kind,
+                     const render::TextureImportRequest &request,
+                     const std::optional<render::GtiUploadDataIssueKind>
+                         upstream = std::nullopt) {
+    auto issue = makeIssue(kind);
+    issue.sourceFileIndex = request.archiveFileIndex;
+    issue.textureAssetId = request.assetId;
+    issue.texturePreparationIssue = upstream;
+    addIssue(result, std::move(issue));
+}
+
+[[nodiscard]] bool accountPublished(std::uint64_t &total,
+                                    const std::size_t count,
+                                    const std::size_t elementSize,
+                                    const std::uint64_t limit) noexcept {
+    return accountCount(total, count, elementSize) && total <= limit;
+}
+
+} // namespace
+
+MissionWorldRoomLoadResult
+loadMissionWorldRoom(VerifiedContentSession &session,
+                     const MissionLoadManifest &externalManifest,
+                     const MissionWorldRoomLoadRequest &externalRequest,
+                     const MissionWorldRoomLoadLimits &externalLimits,
+                     const std::stop_token stopToken,
+                     MissionWorldRoomLoadProgressCallback progress) {
+    MissionWorldRoomLoadResult result;
+    try {
+        const auto expectedIdentity = session.transactionIdentity();
+        const ContentRevision expectedRevision = session.revision();
+        if (!expectedIdentity.valid()) {
+            addIssue(result,
+                     MissionWorldRoomLoadIssueKind::sessionIdentityChanged);
+            return result;
+        }
+
+        if (!externalManifest.valid()) {
+            addIssue(result, MissionWorldRoomLoadIssueKind::invalidManifest);
+            return result;
+        }
+        if (!externalManifest.belongsTo(session)) {
+            addIssue(result,
+                     MissionWorldRoomLoadIssueKind::manifestRevisionMismatch);
+            return result;
+        }
+
+        const MissionWorldRoomLoadLimits limits = externalLimits;
+        if (!validateLimits(limits)) {
+            addIssue(result, MissionWorldRoomLoadIssueKind::invalidLimits);
+            return result;
+        }
+        if (externalRequest.startPositions.size() >
+            assets::legacyMissionStartCapacity) {
+            auto issue = makeIssue(
+                MissionWorldRoomLoadIssueKind::startResolutionFailure);
+            issue.startPositionIndex = assets::legacyMissionStartCapacity;
+            issue.startIssue =
+                assets::MissionWorldStartIssueKind::startPositionLimitExceeded;
+            addIssue(result, std::move(issue));
+            return result;
+        }
+        std::size_t initialRootBytes = 0U;
+        for (const auto *component :
+             {&externalRequest.initialRootName.name,
+              &externalRequest.initialRootName.prefix}) {
+            if (component->has_value() &&
+                (*component)->size() >
+                    limits.catalog.maximumNameComponentBytes) {
+                auto issue =
+                    makeIssue(MissionWorldRoomLoadIssueKind::catalogFailure);
+                issue.catalogIssue = assets::MissionWorldRoomBuildIssueKind::
+                    nameComponentLimitExceeded;
+                addIssue(result, std::move(issue));
+                return result;
+            }
+            if (component->has_value()) {
+                if ((*component)->size() >
+                    std::numeric_limits<std::size_t>::max() -
+                        initialRootBytes) {
+                    addIssue(result,
+                             MissionWorldRoomLoadIssueKind::integerOverflow);
+                    return result;
+                }
+                initialRootBytes += (*component)->size();
+            }
+        }
+        if (initialRootBytes > limits.catalog.maximumRetainedNameBytes) {
+            auto issue =
+                makeIssue(MissionWorldRoomLoadIssueKind::catalogFailure);
+            issue.catalogIssue = assets::MissionWorldRoomBuildIssueKind::
+                retainedNameLimitExceeded;
+            addIssue(result, std::move(issue));
+            return result;
+        }
+        for (std::size_t index = 0U;
+             index < externalRequest.startPositions.size(); ++index) {
+            if (externalRequest.startPositions[index].roomName.size() >
+                limits.starts.maximumNameComponentBytes) {
+                auto issue = makeIssue(
+                    MissionWorldRoomLoadIssueKind::startResolutionFailure);
+                issue.startPositionIndex = index;
+                issue.startIssue = assets::MissionWorldStartIssueKind::
+                    nameComponentLimitExceeded;
+                addIssue(result, std::move(issue));
+                return result;
+            }
+        }
+
+        const auto &externalDescriptors = externalManifest.ccfLoads();
+        if (externalDescriptors.size() > limits.maximumCcfSources) {
+            addIssue(
+                result,
+                MissionWorldRoomLoadIssueKind::ccfSourceCountLimitExceeded);
+            return result;
+        }
+        if (externalManifest.objectEntries().size() >
+                limits.maximumCcfSources ||
+            externalManifest.objectDefinitionIndices().size() >
+                limits.maximumCcfSources) {
+            addIssue(result, MissionWorldRoomLoadIssueKind::invalidManifest);
+            return result;
+        }
+        for (std::size_t index = 0U; index < externalDescriptors.size();
+             ++index) {
+            const auto &descriptor = externalDescriptors[index];
+            if (descriptor.source.logicalPath.size() >
+                    limits.textureBindings.maximumCcfLogicalPathBytes ||
+                (descriptor.textureRoot.has_value() &&
+                 descriptor.textureRoot->size() >
+                     limits.textureBindings.textureEntriesPerSource
+                         .maximumLogicalPathBytes)) {
+                auto issue = makeIssue(
+                    MissionWorldRoomLoadIssueKind::invalidCcfDescriptor);
+                issue.sourceIndex = index;
+                issue.sourceFileIndex = descriptor.source.archiveFileIndex;
+                addIssue(result, std::move(issue));
+                return result;
+            }
+        }
+
+        std::vector<assets::MissionStartPosition> pinnedStartPositions(
+            externalRequest.startPositions.begin(),
+            externalRequest.startPositions.end());
+        const MissionWorldRoomLoadRequest request{
+            .initialRootName = externalRequest.initialRootName,
+            .startPositions = pinnedStartPositions,
+            .requestedStartIndex = externalRequest.requestedStartIndex,
+            .basis = externalRequest.basis,
+            .uvPolicy = externalRequest.uvPolicy,
+        };
+        const PinnedMissionWorldRoomManifestInput pinnedManifest{
+            .revision = externalManifest.revision(),
+            .descriptors = externalManifest.ccfLoads(),
+            .worldHasBackdrop = externalManifest.world().backdrop.has_value(),
+            .objectEntryCount = externalManifest.objectEntries().size(),
+            .objectDefinitionIndices =
+                externalManifest.objectDefinitionIndices(),
+            .plannedCcfSourceFootprintBytes =
+                externalManifest.plannedCcfSourceFootprintBytes(),
+        };
+        if (pinnedManifest.revision != expectedRevision) {
+            addIssue(result,
+                     MissionWorldRoomLoadIssueKind::manifestRevisionMismatch);
+            return result;
+        }
+        requireExpectedSession(session, expectedIdentity, expectedRevision);
+
+        MissionWorldRoomLoadProgressCallback guardedProgress =
+            [&](const MissionWorldRoomLoadProgress &update) {
+                requireExpectedSession(session, expectedIdentity,
+                                       expectedRevision);
+                if (progress) {
+                    try {
+                        progress(update);
+                    } catch (...) {
+                        requireExpectedSession(session, expectedIdentity,
+                                               expectedRevision);
+                        throw;
+                    }
+                }
+                requireExpectedSession(session, expectedIdentity,
+                                       expectedRevision);
+            };
+
+        if (!report(result, stopToken, guardedProgress,
+                    MissionWorldRoomLoadPhase::validatingInput, 0U, 1U)) {
+            return result;
+        }
+        for (std::size_t index = 0U; index < request.startPositions.size();
+             ++index) {
+            if (!finiteStart(request.startPositions[index])) {
+                auto issue = makeIssue(
+                    MissionWorldRoomLoadIssueKind::invalidStartPosition);
+                issue.startPositionIndex = index;
+                addIssue(result, std::move(issue));
+                return result;
+            }
+        }
+        if (!report(result, stopToken, guardedProgress,
+                    MissionWorldRoomLoadPhase::validatingInput, 1U, 1U)) {
+            return result;
+        }
+
+        const auto &archive = session.sourceArchive();
+        const auto &descriptors = pinnedManifest.descriptors;
+        if (descriptors.size() > limits.maximumCcfSources) {
+            addIssue(
+                result,
+                MissionWorldRoomLoadIssueKind::ccfSourceCountLimitExceeded);
+            return result;
+        }
+        if (pinnedManifest.objectEntryCount !=
+                pinnedManifest.objectDefinitionIndices.size() ||
+            descriptors.empty()) {
+            addIssue(result, MissionWorldRoomLoadIssueKind::invalidManifest);
+            return result;
+        }
+
+        std::size_t expectedSourceCount = 1U;
+        if (pinnedManifest.worldHasBackdrop) {
+            if (expectedSourceCount ==
+                std::numeric_limits<std::size_t>::max()) {
+                addIssue(result,
+                         MissionWorldRoomLoadIssueKind::integerOverflow);
+                return result;
+            }
+            ++expectedSourceCount;
+        }
+        if (pinnedManifest.objectEntryCount >
+            std::numeric_limits<std::size_t>::max() - expectedSourceCount) {
+            addIssue(result, MissionWorldRoomLoadIssueKind::integerOverflow);
+            return result;
+        }
+        expectedSourceCount += pinnedManifest.objectEntryCount;
+        if (descriptors.size() != expectedSourceCount) {
+            addIssue(result, MissionWorldRoomLoadIssueKind::invalidManifest);
+            return result;
+        }
+
+        if (!report(result, stopToken, guardedProgress,
+                    MissionWorldRoomLoadPhase::preflightingCcfSources, 0U,
+                    descriptors.size())) {
+            return result;
+        }
+
+        std::unordered_map<std::size_t, std::size_t> cacheSlotByFileIndex;
+        cacheSlotByFileIndex.reserve(
+            std::min(descriptors.size(), limits.maximumUniqueCcfSources));
+        std::vector<PlannedCcf> plannedCcfs;
+        plannedCcfs.reserve(
+            std::min(descriptors.size(), limits.maximumUniqueCcfSources));
+        std::vector<std::size_t> cacheIndexByLoadSource;
+        cacheIndexByLoadSource.reserve(descriptors.size());
+        std::uint64_t semanticCcfFootprintBytes = 0U;
+        std::uint64_t uniqueCcfFootprintBytes = 0U;
+        const std::size_t objectSourceBegin =
+            pinnedManifest.worldHasBackdrop ? 2U : 1U;
+
+        for (std::size_t sourceIndex = 0U; sourceIndex < descriptors.size();
+             ++sourceIndex) {
+            const auto &descriptor = descriptors[sourceIndex];
+            bool descriptorShapeValid = descriptor.sourceIndex == sourceIndex &&
+                                        descriptor.roomSectionEnabled &&
+                                        !descriptor.copyPrimaryNameToRoot;
+            if (sourceIndex == 0U) {
+                descriptorShapeValid =
+                    descriptorShapeValid &&
+                    descriptor.role == MissionCcfLoadRole::mainWorld &&
+                    descriptor.legacyLoadFlags == 0U &&
+                    descriptor.placedSceneEnabled &&
+                    !descriptor.objectPlacementIndex.has_value() &&
+                    !descriptor.uniqueObjectDefinitionIndex.has_value();
+            } else if (pinnedManifest.worldHasBackdrop && sourceIndex == 1U) {
+                descriptorShapeValid =
+                    descriptorShapeValid &&
+                    descriptor.role == MissionCcfLoadRole::backdrop &&
+                    descriptor.legacyLoadFlags == 0U &&
+                    descriptor.placedSceneEnabled &&
+                    !descriptor.objectPlacementIndex.has_value() &&
+                    !descriptor.uniqueObjectDefinitionIndex.has_value();
+            } else {
+                const auto placementIndex = sourceIndex - objectSourceBegin;
+                descriptorShapeValid =
+                    descriptorShapeValid &&
+                    placementIndex <
+                        pinnedManifest.objectDefinitionIndices.size() &&
+                    descriptor.role == MissionCcfLoadRole::objectPlacement &&
+                    descriptor.legacyLoadFlags == 0x2000U &&
+                    !descriptor.placedSceneEnabled &&
+                    descriptor.objectPlacementIndex ==
+                        std::optional{placementIndex} &&
+                    descriptor.uniqueObjectDefinitionIndex ==
+                        std::optional{
+                            pinnedManifest
+                                .objectDefinitionIndices[placementIndex]};
+            }
+            if (!descriptorShapeValid ||
+                descriptor.source.archiveFileIndex >= archive.files().size() ||
+                !udsp::isLogicalPathValid(
+                    descriptor.source.logicalPath,
+                    limits.textureBindings.maximumCcfLogicalPathBytes)) {
+                auto issue = makeIssue(
+                    MissionWorldRoomLoadIssueKind::invalidCcfDescriptor);
+                issue.sourceIndex = sourceIndex;
+                issue.sourceFileIndex = descriptor.source.archiveFileIndex;
+                addIssue(result, std::move(issue));
+                return result;
+            }
+
+            udsp::FileLookupResult lookup;
+            try {
+                lookup = archive.lookup(
+                    descriptor.source.logicalPath,
+                    limits.textureBindings.maximumCcfLogicalPathBytes);
+            } catch (const std::bad_alloc &) {
+                throw;
+            } catch (...) {
+                auto issue = makeIssue(
+                    MissionWorldRoomLoadIssueKind::invalidCcfDescriptor);
+                issue.sourceIndex = sourceIndex;
+                issue.sourceFileIndex = descriptor.source.archiveFileIndex;
+                addIssue(result, std::move(issue));
+                return result;
+            }
+            if (lookup.status != udsp::LookupStatus::unique ||
+                lookup.fileIndex != descriptor.source.archiveFileIndex) {
+                auto issue = makeIssue(
+                    MissionWorldRoomLoadIssueKind::invalidCcfDescriptor);
+                issue.sourceIndex = sourceIndex;
+                issue.sourceFileIndex = descriptor.source.archiveFileIndex;
+                addIssue(result, std::move(issue));
+                return result;
+            }
+
+            const auto footprint =
+                sourceAllocationFootprint(archive.files()[lookup.fileIndex]);
+            if (footprint != descriptor.sourceAllocationFootprintBytes) {
+                auto issue = makeIssue(
+                    MissionWorldRoomLoadIssueKind::invalidCcfDescriptor);
+                issue.sourceIndex = sourceIndex;
+                issue.sourceFileIndex = lookup.fileIndex;
+                addIssue(result, std::move(issue));
+                return result;
+            }
+            if (footprint > limits.maximumCcfSourceBytes) {
+                auto issue = makeIssue(
+                    MissionWorldRoomLoadIssueKind::ccfSourceLimitExceeded);
+                issue.sourceIndex = sourceIndex;
+                issue.sourceFileIndex = lookup.fileIndex;
+                addIssue(result, std::move(issue));
+                return result;
+            }
+            if (!checkedMissionWorldRoomByteAdd(semanticCcfFootprintBytes,
+                                                footprint)) {
+                addIssue(result,
+                         MissionWorldRoomLoadIssueKind::integerOverflow);
+                return result;
+            }
+
+            auto found = cacheSlotByFileIndex.find(lookup.fileIndex);
+            if (found == cacheSlotByFileIndex.end()) {
+                if (plannedCcfs.size() >= limits.maximumUniqueCcfSources) {
+                    auto issue =
+                        makeIssue(MissionWorldRoomLoadIssueKind::
+                                      uniqueCcfSourceCountLimitExceeded);
+                    issue.sourceIndex = sourceIndex;
+                    issue.sourceFileIndex = lookup.fileIndex;
+                    addIssue(result, std::move(issue));
+                    return result;
+                }
+                auto nextUniqueFootprint = uniqueCcfFootprintBytes;
+                if (!checkedMissionWorldRoomByteAdd(nextUniqueFootprint,
+                                                    footprint)) {
+                    addIssue(result,
+                             MissionWorldRoomLoadIssueKind::integerOverflow);
+                    return result;
+                }
+                if (nextUniqueFootprint >
+                    limits.maximumTotalUniqueCcfSourceBytes) {
+                    auto issue = makeIssue(MissionWorldRoomLoadIssueKind::
+                                               aggregateCcfSourceLimitExceeded);
+                    issue.sourceIndex = sourceIndex;
+                    issue.sourceFileIndex = lookup.fileIndex;
+                    addIssue(result, std::move(issue));
+                    return result;
+                }
+                const auto slot = plannedCcfs.size();
+                plannedCcfs.push_back({
+                    .archiveFileIndex = lookup.fileIndex,
+                    .firstSourceIndex = sourceIndex,
+                    .sourceFootprintBytes = footprint,
+                });
+                found =
+                    cacheSlotByFileIndex.emplace(lookup.fileIndex, slot).first;
+                uniqueCcfFootprintBytes = nextUniqueFootprint;
+            }
+            cacheIndexByLoadSource.push_back(found->second);
+
+            if (!report(result, stopToken, guardedProgress,
+                        MissionWorldRoomLoadPhase::preflightingCcfSources,
+                        sourceIndex + 1U, descriptors.size())) {
+                return result;
+            }
+        }
+        if (semanticCcfFootprintBytes !=
+            pinnedManifest.plannedCcfSourceFootprintBytes) {
+            addIssue(result, MissionWorldRoomLoadIssueKind::invalidManifest);
+            return result;
+        }
+
+        std::vector<CachedCcf> cachedCcfs;
+        cachedCcfs.reserve(plannedCcfs.size());
+        std::uint64_t retainedMetadataBytes = 0U;
+        if (!report(result, stopToken, guardedProgress,
+                    MissionWorldRoomLoadPhase::loadingCcfSources, 0U,
+                    plannedCcfs.size())) {
+            return result;
+        }
+        for (std::size_t cacheIndex = 0U; cacheIndex < plannedCcfs.size();
+             ++cacheIndex) {
+            const auto &planned = plannedCcfs[cacheIndex];
+            requireExpectedSession(session, expectedIdentity, expectedRevision);
+            std::vector<std::uint8_t> ccfBytes;
+            try {
+                ccfBytes = session.readSourceFile(planned.archiveFileIndex,
+                                                  limits.maximumCcfSourceBytes);
+            } catch (const std::bad_alloc &) {
+                throw;
+            } catch (...) {
+                requireExpectedSession(session, expectedIdentity,
+                                       expectedRevision);
+                auto issue =
+                    makeIssue(MissionWorldRoomLoadIssueKind::ccfReadFailure);
+                issue.sourceIndex = planned.firstSourceIndex;
+                issue.sourceFileIndex = planned.archiveFileIndex;
+                addIssue(result, std::move(issue));
+                return result;
+            }
+            requireExpectedSession(session, expectedIdentity, expectedRevision);
+            if (stopToken.stop_requested()) {
+                addIssue(result, MissionWorldRoomLoadIssueKind::cancelled);
+                return result;
+            }
+
+            assets::CcfMetadata ccf;
+            try {
+                ccf = assets::parseCcf(ccfBytes);
+            } catch (const std::bad_alloc &) {
+                throw;
+            } catch (...) {
+                auto issue =
+                    makeIssue(MissionWorldRoomLoadIssueKind::ccfParseFailure);
+                issue.sourceIndex = planned.firstSourceIndex;
+                issue.sourceFileIndex = planned.archiveFileIndex;
+                addIssue(result, std::move(issue));
+                return result;
+            }
+            requireExpectedSession(session, expectedIdentity, expectedRevision);
+            if (stopToken.stop_requested()) {
+                addIssue(result, MissionWorldRoomLoadIssueKind::cancelled);
+                return result;
+            }
+            std::vector<std::uint8_t>().swap(ccfBytes);
+            const auto metadataBytes = retainedCcfMetadataBytes(ccf);
+            if (!metadataBytes.has_value() ||
+                !checkedMissionWorldRoomByteAdd(retainedMetadataBytes,
+                                                *metadataBytes)) {
+                auto issue =
+                    makeIssue(MissionWorldRoomLoadIssueKind::integerOverflow);
+                issue.sourceIndex = planned.firstSourceIndex;
+                issue.sourceFileIndex = planned.archiveFileIndex;
+                addIssue(result, std::move(issue));
+                return result;
+            }
+            if (retainedMetadataBytes >
+                limits.maximumRetainedCcfMetadataBytesAfterParse) {
+                auto issue = makeIssue(MissionWorldRoomLoadIssueKind::
+                                           retainedCcfMetadataLimitExceeded);
+                issue.sourceIndex = planned.firstSourceIndex;
+                issue.sourceFileIndex = planned.archiveFileIndex;
+                addIssue(result, std::move(issue));
+                return result;
+            }
+            cachedCcfs.push_back({
+                .archiveFileIndex = planned.archiveFileIndex,
+                .sourceFootprintBytes = planned.sourceFootprintBytes,
+                .metadata = std::move(ccf),
+            });
+            if (!report(result, stopToken, guardedProgress,
+                        MissionWorldRoomLoadPhase::loadingCcfSources,
+                        cacheIndex + 1U, plannedCcfs.size())) {
+                return result;
+            }
+        }
+
+        std::vector<assets::MissionCcfRoomLoadSource> loadSources;
+        std::vector<render::MissionWorldRoomTextureSource> textureSources;
+        loadSources.reserve(descriptors.size());
+        textureSources.reserve(descriptors.size());
+        for (std::size_t sourceIndex = 0U; sourceIndex < descriptors.size();
+             ++sourceIndex) {
+            const auto cacheIndex = cacheIndexByLoadSource[sourceIndex];
+            if (cacheIndex >= cachedCcfs.size()) {
+                addIssue(result,
+                         MissionWorldRoomLoadIssueKind::internalFailure);
+                return result;
+            }
+            const auto &descriptor = descriptors[sourceIndex];
+            const auto *ccf = &cachedCcfs[cacheIndex].metadata;
+            loadSources.push_back({
+                .ccf = ccf,
+                .roomSectionEnabled = descriptor.roomSectionEnabled,
+                .copyPrimaryNameToRoot = descriptor.copyPrimaryNameToRoot,
+                .placedSceneEnabled = descriptor.placedSceneEnabled,
+            });
+            std::optional<std::string_view> textureRoot;
+            if (descriptor.textureRoot.has_value()) {
+                textureRoot = *descriptor.textureRoot;
+            }
+            textureSources.push_back({
+                .ccf = ccf,
+                .textureRoot = textureRoot,
+                .ccfLogicalPath = descriptor.source.logicalPath,
+                .ccfArchiveFileIndex = descriptor.source.archiveFileIndex,
+            });
+        }
+
+        if (!report(result, stopToken, guardedProgress,
+                    MissionWorldRoomLoadPhase::buildingRoomCatalog, 0U, 1U)) {
+            return result;
+        }
+        auto catalogLimits = limits.catalog;
+        catalogLimits.maximumSources =
+            std::min(catalogLimits.maximumSources, limits.maximumCcfSources);
+        assets::MissionWorldRoomCatalog catalog;
+        try {
+            catalog = assets::buildMissionWorldRoomCatalog(
+                {
+                    .initialRootName = request.initialRootName,
+                    .sources = loadSources,
+                },
+                catalogLimits);
+        } catch (const std::bad_alloc &) {
+            throw;
+        } catch (...) {
+            addIssue(result, MissionWorldRoomLoadIssueKind::catalogFailure);
+            return result;
+        }
+        if (!catalog.complete()) {
+            for (const auto &upstream : catalog.issues) {
+                auto issue =
+                    makeIssue(MissionWorldRoomLoadIssueKind::catalogFailure);
+                issue.sourceIndex = upstream.sourceIndex;
+                issue.catalogIssue = upstream.kind;
+                addIssue(result, std::move(issue));
+            }
+            if (catalog.issues.empty()) {
+                addIssue(result, MissionWorldRoomLoadIssueKind::catalogFailure);
+            }
+            return result;
+        }
+        if (!report(result, stopToken, guardedProgress,
+                    MissionWorldRoomLoadPhase::buildingRoomCatalog, 1U, 1U)) {
+            return result;
+        }
+
+        if (!report(result, stopToken, guardedProgress,
+                    MissionWorldRoomLoadPhase::resolvingStart, 0U, 1U)) {
+            return result;
+        }
+        assets::MissionWorldStartResolution startResolution;
+        try {
+            startResolution = assets::resolveMissionStartsInWorld(
+                request.startPositions, catalog, limits.starts);
+        } catch (const std::bad_alloc &) {
+            throw;
+        } catch (...) {
+            addIssue(result,
+                     MissionWorldRoomLoadIssueKind::startResolutionFailure);
+            return result;
+        }
+        if (!startResolution.complete()) {
+            for (const auto &upstream : startResolution.issues) {
+                auto issue = makeIssue(
+                    MissionWorldRoomLoadIssueKind::startResolutionFailure);
+                issue.startPositionIndex = upstream.startPositionIndex;
+                issue.startIssue = upstream.kind;
+                addIssue(result, std::move(issue));
+            }
+            if (startResolution.issues.empty()) {
+                addIssue(result,
+                         MissionWorldRoomLoadIssueKind::startResolutionFailure);
+            }
+            return result;
+        }
+        const auto selection = assets::selectMissionWorldStart(
+            startResolution, request.requestedStartIndex);
+        if (!selection.has_value()) {
+            addIssue(result,
+                     MissionWorldRoomLoadIssueKind::startSelectionFailure);
+            return result;
+        }
+        std::optional<assets::MissionStartPosition> selectedStart;
+        if (selection->startPositionIndex.has_value()) {
+            const auto index = *selection->startPositionIndex;
+            if (index >= request.startPositions.size()) {
+                addIssue(result,
+                         MissionWorldRoomLoadIssueKind::startSelectionFailure);
+                return result;
+            }
+            selectedStart = request.startPositions[index];
+        }
+        if (!report(result, stopToken, guardedProgress,
+                    MissionWorldRoomLoadPhase::resolvingStart, 1U, 1U)) {
+            return result;
+        }
+
+        if (!report(result, stopToken, guardedProgress,
+                    MissionWorldRoomLoadPhase::planningTextureBindings, 0U,
+                    1U)) {
+            return result;
+        }
+        auto textureBindingLimits = limits.textureBindings;
+        textureBindingLimits.maximumSources = std::min(
+            textureBindingLimits.maximumSources, limits.maximumCcfSources);
+        const bool outerTextureAssetLimitClamped =
+            limits.maximumTextureAssets < textureBindingLimits.maximumImports;
+        textureBindingLimits.maximumImports = std::min(
+            textureBindingLimits.maximumImports, limits.maximumTextureAssets);
+        render::MissionWorldRoomTextureBindings binding;
+        try {
+            binding = render::buildMissionWorldRoomTextureBindings(
+                catalog, loadSources, selection->worldRoomIndex, textureSources,
+                archive, textureBindingLimits);
+        } catch (const std::bad_alloc &) {
+            throw;
+        } catch (...) {
+            addIssue(result,
+                     MissionWorldRoomLoadIssueKind::textureBindingFailure);
+            return result;
+        }
+        if (!binding.complete()) {
+            if (outerTextureAssetLimitClamped && binding.issues.size() == 1U &&
+                binding.issues.front().kind ==
+                    render::MissionWorldRoomTextureBindingIssueKind::
+                        limitExceeded &&
+                binding.issues.front().sourceIndex.has_value() &&
+                binding.issues.front().textureEntryIndex.has_value()) {
+                addIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::textureAssetLimitExceeded);
+                return result;
+            }
+            for (const auto &upstream : binding.issues) {
+                auto issue = makeIssue(
+                    MissionWorldRoomLoadIssueKind::textureBindingFailure);
+                issue.sourceIndex = upstream.sourceIndex;
+                issue.textureBindingIssue = upstream.kind;
+                addIssue(result, std::move(issue));
+            }
+            if (binding.issues.empty()) {
+                addIssue(result,
+                         MissionWorldRoomLoadIssueKind::textureBindingFailure);
+            }
+            return result;
+        }
+        if (binding.materialBindingsBySource.size() != loadSources.size() ||
+            binding.worldRoomIndex !=
+                std::optional{selection->worldRoomIndex}) {
+            addIssue(result,
+                     MissionWorldRoomLoadIssueKind::textureBindingFailure);
+            return result;
+        }
+        if (!report(result, stopToken, guardedProgress,
+                    MissionWorldRoomLoadPhase::planningTextureBindings, 1U,
+                    1U)) {
+            return result;
+        }
+
+        if (binding.imports.size() > limits.maximumTextureAssets) {
+            addIssue(result,
+                     MissionWorldRoomLoadIssueKind::textureAssetLimitExceeded);
+            return result;
+        }
+        if (!report(result, stopToken, guardedProgress,
+                    MissionWorldRoomLoadPhase::preflightingTextures, 0U,
+                    binding.imports.size())) {
+            return result;
+        }
+        std::unordered_set<std::size_t> uniqueTextureFiles;
+        uniqueTextureFiles.reserve(binding.imports.size());
+        std::uint64_t textureSourceFootprintBytes = 0U;
+        for (std::size_t index = 0U; index < binding.imports.size(); ++index) {
+            const auto &import = binding.imports[index];
+            if (static_cast<std::size_t>(import.assetId.value) != index ||
+                import.archiveFileIndex >= archive.files().size() ||
+                !uniqueTextureFiles.insert(import.archiveFileIndex).second) {
+                auto issue = makeIssue(
+                    MissionWorldRoomLoadIssueKind::invalidTextureImport);
+                issue.sourceFileIndex = import.archiveFileIndex;
+                issue.textureAssetId = import.assetId;
+                addIssue(result, std::move(issue));
+                return result;
+            }
+            const auto footprint = sourceAllocationFootprint(
+                archive.files()[import.archiveFileIndex]);
+            if (footprint > limits.maximumTextureSourceBytes ||
+                footprint > limits.gtiPerTexture.maximumSourceBytes) {
+                addTextureIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::textureSourceLimitExceeded,
+                    import);
+                return result;
+            }
+            if (!checkedMissionWorldRoomByteAdd(textureSourceFootprintBytes,
+                                                footprint)) {
+                addIssue(result,
+                         MissionWorldRoomLoadIssueKind::integerOverflow);
+                return result;
+            }
+            if (textureSourceFootprintBytes >
+                limits.maximumTotalTextureSourceBytes) {
+                addTextureIssue(result,
+                                MissionWorldRoomLoadIssueKind::
+                                    aggregateTextureSourceLimitExceeded,
+                                import);
+                return result;
+            }
+            if (!report(result, stopToken, guardedProgress,
+                        MissionWorldRoomLoadPhase::preflightingTextures,
+                        index + 1U, binding.imports.size())) {
+                return result;
+            }
+        }
+
+        std::uint64_t publishedCpuBytes = sizeof(LoadedMissionWorldRoom);
+        if (!accountPublished(publishedCpuBytes, binding.imports.size(),
+                              sizeof(LoadedTextureAsset),
+                              limits.maximumPublishedCpuBytes) ||
+            !accountPublished(publishedCpuBytes, cacheIndexByLoadSource.size(),
+                              sizeof(std::size_t),
+                              limits.maximumPublishedCpuBytes) ||
+            (selectedStart.has_value() &&
+             (!checkedMissionWorldRoomByteAdd(publishedCpuBytes,
+                                              selectedStart->roomName.size()) ||
+              publishedCpuBytes > limits.maximumPublishedCpuBytes))) {
+            addIssue(
+                result,
+                publishedCpuBytes > limits.maximumPublishedCpuBytes
+                    ? MissionWorldRoomLoadIssueKind::publishedCpuLimitExceeded
+                    : MissionWorldRoomLoadIssueKind::integerOverflow);
+            return result;
+        }
+
+        LoadedMissionWorldRoom candidate{
+            .revision = expectedRevision,
+            .startSelection = *selection,
+            .selectedStart = std::move(selectedStart),
+            .model = {},
+            .meshProvenance = {},
+            .instanceProvenance = {},
+            .submission = {},
+            .textures = {},
+            .semanticCcfSourceCount = descriptors.size(),
+            .uniqueCcfSourceCount = cachedCcfs.size(),
+            .uniqueCcfSourceFootprintBytes = uniqueCcfFootprintBytes,
+            .retainedCcfMetadataBytes = retainedMetadataBytes,
+            .textureSourceFootprintBytes = textureSourceFootprintBytes,
+            .decodedRgbaBytes = 0U,
+            .uploadRgbaBytes = 0U,
+            .residentRgbaBytes = 0U,
+            .publishedCpuBytes = 0U,
+            .ccfCacheIndexByLoadSource = std::move(cacheIndexByLoadSource),
+        };
+        candidate.textures.reserve(binding.imports.size());
+
+        std::uint64_t decodedRgbaBytes = 0U;
+        std::uint64_t uploadRgbaBytes = 0U;
+        std::uint64_t residentRgbaBytes = 0U;
+        if (!report(result, stopToken, guardedProgress,
+                    MissionWorldRoomLoadPhase::loadingTextures, 0U,
+                    binding.imports.size())) {
+            return result;
+        }
+        for (std::size_t index = 0U; index < binding.imports.size(); ++index) {
+            const auto &import = binding.imports[index];
+            requireExpectedSession(session, expectedIdentity, expectedRevision);
+            std::vector<std::uint8_t> gtiBytes;
+            try {
+                gtiBytes = session.readSourceFile(
+                    import.archiveFileIndex,
+                    std::min(limits.maximumTextureSourceBytes,
+                             limits.gtiPerTexture.maximumSourceBytes));
+            } catch (const std::bad_alloc &) {
+                throw;
+            } catch (...) {
+                requireExpectedSession(session, expectedIdentity,
+                                       expectedRevision);
+                addTextureIssue(
+                    result, MissionWorldRoomLoadIssueKind::textureReadFailure,
+                    import);
+                return result;
+            }
+            requireExpectedSession(session, expectedIdentity, expectedRevision);
+            if (stopToken.stop_requested()) {
+                addIssue(result, MissionWorldRoomLoadIssueKind::cancelled);
+                return result;
+            }
+
+            auto perAssetLimits = limits.gtiPerTexture;
+            perAssetLimits.maximumSourceBytes =
+                std::min(perAssetLimits.maximumSourceBytes,
+                         limits.maximumTextureSourceBytes);
+
+            assets::GtiMetadata metadata;
+            try {
+                metadata = assets::parseGti(
+                    gtiBytes,
+                    assets::GtiParseLimits{
+                        .maximumVariants =
+                            perAssetLimits.upload.maximumVariants,
+                        .maximumMetadataBytes =
+                            perAssetLimits.upload.maximumMetadataBytes,
+                    });
+            } catch (const assets::GtiParseLimitError &) {
+                addTextureIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::texturePreparationFailure,
+                    import, render::GtiUploadDataIssueKind::limitExceeded);
+                return result;
+            } catch (const std::bad_alloc &) {
+                throw;
+            } catch (...) {
+                addTextureIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::texturePreparationFailure,
+                    import, render::GtiUploadDataIssueKind::parseFailure);
+                return result;
+            }
+            requireExpectedSession(session, expectedIdentity, expectedRevision);
+            if (stopToken.stop_requested()) {
+                addIssue(result, MissionWorldRoomLoadIssueKind::cancelled);
+                return result;
+            }
+
+            render::GtiUploadDescription description;
+            try {
+                description = render::describeGtiUpload(import, metadata,
+                                                        perAssetLimits.upload);
+            } catch (const std::bad_alloc &) {
+                throw;
+            } catch (...) {
+                addTextureIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::texturePreparationFailure,
+                    import, render::GtiUploadDataIssueKind::planFailure);
+                return result;
+            }
+            if (!description.issues.empty()) {
+                addTextureIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::texturePreparationFailure,
+                    import, mapPlanIssue(description.issues.front().kind));
+                return result;
+            }
+            if (!description.plan.has_value()) {
+                addTextureIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::texturePreparationFailure,
+                    import, render::GtiUploadDataIssueKind::planFailure);
+                return result;
+            }
+            const auto &plannedUpload = *description.plan;
+            if (plannedUpload.decodedRgbaBytes >
+                remaining(limits.maximumDecodedRgbaBytes, decodedRgbaBytes)) {
+                addTextureIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::decodedRgbaLimitExceeded,
+                    import);
+                return result;
+            }
+            if (plannedUpload.uploadRgbaBytes >
+                remaining(limits.maximumUploadRgbaBytes, uploadRgbaBytes)) {
+                addTextureIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::uploadRgbaLimitExceeded,
+                    import);
+                return result;
+            }
+            if (plannedUpload.residentRgbaBytes >
+                remaining(limits.maximumResidentRgbaBytes, residentRgbaBytes)) {
+                addTextureIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::residentRgbaLimitExceeded,
+                    import);
+                return result;
+            }
+
+            auto prospectivePublished = publishedCpuBytes;
+            if (!accountPublished(prospectivePublished,
+                                  plannedUpload.uploadLevels.size(),
+                                  sizeof(render::GtiUploadLevel),
+                                  limits.maximumPublishedCpuBytes) ||
+                !accountPublished(prospectivePublished,
+                                  plannedUpload.uploadLevels.size(),
+                                  sizeof(assets::RgbaImage),
+                                  limits.maximumPublishedCpuBytes) ||
+                !checkedMissionWorldRoomByteAdd(
+                    prospectivePublished, plannedUpload.decodedRgbaBytes) ||
+                prospectivePublished > limits.maximumPublishedCpuBytes) {
+                addTextureIssue(
+                    result,
+                    prospectivePublished > limits.maximumPublishedCpuBytes
+                        ? MissionWorldRoomLoadIssueKind::
+                              publishedCpuLimitExceeded
+                        : MissionWorldRoomLoadIssueKind::integerOverflow,
+                    import);
+                return result;
+            }
+            if (stopToken.stop_requested()) {
+                addIssue(result, MissionWorldRoomLoadIssueKind::cancelled);
+                return result;
+            }
+
+            render::GtiUploadPreparation preparation;
+            try {
+                preparation =
+                    render::prepareGtiUpload(import, gtiBytes, perAssetLimits);
+            } catch (const std::bad_alloc &) {
+                throw;
+            } catch (...) {
+                addTextureIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::texturePreparationFailure,
+                    import, render::GtiUploadDataIssueKind::decodeFailure);
+                return result;
+            }
+            std::vector<std::uint8_t>().swap(gtiBytes);
+            if (!preparation.success()) {
+                addTextureIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::texturePreparationFailure,
+                    import,
+                    preparation.issues.empty()
+                        ? std::optional{render::GtiUploadDataIssueKind::
+                                            decodeFailure}
+                        : std::optional{preparation.issues.front().kind});
+                return result;
+            }
+            if (!sameUploadPlan(plannedUpload, *preparation.plan)) {
+                addTextureIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::texturePreparationFailure,
+                    import, render::GtiUploadDataIssueKind::planMismatch);
+                return result;
+            }
+            const auto &upload = *preparation.plan;
+            if (!checkedMissionWorldRoomByteAdd(decodedRgbaBytes,
+                                                upload.decodedRgbaBytes) ||
+                !checkedMissionWorldRoomByteAdd(uploadRgbaBytes,
+                                                upload.uploadRgbaBytes) ||
+                !checkedMissionWorldRoomByteAdd(residentRgbaBytes,
+                                                upload.residentRgbaBytes)) {
+                addIssue(result,
+                         MissionWorldRoomLoadIssueKind::integerOverflow);
+                return result;
+            }
+            publishedCpuBytes = prospectivePublished;
+            candidate.textures.push_back({
+                .assetId = import.assetId,
+                .sourceFileIndex = import.archiveFileIndex,
+                .upload = std::move(*preparation.plan),
+                .uploadLevels = std::move(preparation.uploadLevels),
+            });
+            if (!report(result, stopToken, guardedProgress,
+                        MissionWorldRoomLoadPhase::loadingTextures, index + 1U,
+                        binding.imports.size())) {
+                return result;
+            }
+        }
+
+        candidate.decodedRgbaBytes = decodedRgbaBytes;
+        candidate.uploadRgbaBytes = uploadRgbaBytes;
+        candidate.residentRgbaBytes = residentRgbaBytes;
+
+        if (!report(result, stopToken, guardedProgress,
+                    MissionWorldRoomLoadPhase::assemblingRoom, 0U, 1U)) {
+            return result;
+        }
+        std::vector<render::MissionWorldRoomDrawSource> drawSources;
+        drawSources.reserve(loadSources.size());
+        for (std::size_t sourceIndex = 0U; sourceIndex < loadSources.size();
+             ++sourceIndex) {
+            drawSources.push_back({
+                .ccf = loadSources[sourceIndex].ccf,
+                .materialBindings =
+                    binding.materialBindingsBySource[sourceIndex],
+            });
+        }
+        auto drawLimits = limits.draw;
+        drawLimits.maximumSources =
+            std::min(drawLimits.maximumSources, limits.maximumCcfSources);
+        drawLimits.maximumTotalBytes =
+            std::min(drawLimits.maximumTotalBytes,
+                     clampToSize(remaining(limits.maximumPublishedCpuBytes,
+                                           publishedCpuBytes)));
+        render::MissionWorldRoomDrawAssembly assembly;
+        try {
+            assembly = render::buildMissionWorldRoomDrawAssembly(
+                catalog, loadSources, selection->worldRoomIndex, drawSources,
+                request.basis, request.uvPolicy, drawLimits);
+        } catch (const std::bad_alloc &) {
+            throw;
+        } catch (...) {
+            addIssue(result,
+                     MissionWorldRoomLoadIssueKind::drawAssemblyFailure);
+            return result;
+        }
+        if (!assembly.complete()) {
+            for (const auto &upstream : assembly.issues) {
+                auto issue = makeIssue(
+                    MissionWorldRoomLoadIssueKind::drawAssemblyFailure);
+                issue.sourceIndex = upstream.sourceIndex;
+                issue.drawAssemblyIssue = upstream.kind;
+                addIssue(result, std::move(issue));
+            }
+            if (assembly.issues.empty()) {
+                addIssue(result,
+                         MissionWorldRoomLoadIssueKind::drawAssemblyFailure);
+            }
+            return result;
+        }
+        if (assembly.meshProvenance.size() != assembly.model.meshes.size() ||
+            assembly.instanceProvenance.size() !=
+                assembly.model.instances.size() ||
+            assembly.worldRoomIndex !=
+                std::optional{selection->worldRoomIndex}) {
+            addIssue(result,
+                     MissionWorldRoomLoadIssueKind::drawAssemblyFailure);
+            return result;
+        }
+        auto modelPublished = publishedCpuBytes;
+        if (!addModelPublishedBytes(modelPublished, assembly.model) ||
+            !accountCount(modelPublished, assembly.meshProvenance.size(),
+                          sizeof(render::MissionWorldRoomMeshProvenance)) ||
+            !accountCount(modelPublished, assembly.instanceProvenance.size(),
+                          sizeof(render::MissionWorldRoomInstanceProvenance))) {
+            addIssue(result, MissionWorldRoomLoadIssueKind::integerOverflow);
+            return result;
+        }
+        if (modelPublished > limits.maximumPublishedCpuBytes) {
+            addIssue(result,
+                     MissionWorldRoomLoadIssueKind::publishedCpuLimitExceeded);
+            return result;
+        }
+        publishedCpuBytes = modelPublished;
+        candidate.model = std::move(assembly.model);
+        candidate.meshProvenance = std::move(assembly.meshProvenance);
+        candidate.instanceProvenance = std::move(assembly.instanceProvenance);
+        if (!report(result, stopToken, guardedProgress,
+                    MissionWorldRoomLoadPhase::assemblingRoom, 1U, 1U)) {
+            return result;
+        }
+
+        if (!report(result, stopToken, guardedProgress,
+                    MissionWorldRoomLoadPhase::planningSubmission, 0U, 1U)) {
+            return result;
+        }
+        std::size_t commandCount = 0U;
+        for (const auto &instance : candidate.model.instances) {
+            if (instance.meshSlot >= candidate.model.meshes.size()) {
+                addIssue(result,
+                         MissionWorldRoomLoadIssueKind::submissionFailure);
+                return result;
+            }
+            const auto rangeCount =
+                candidate.model.meshes[instance.meshSlot].ranges.size();
+            if (rangeCount >
+                std::numeric_limits<std::size_t>::max() - commandCount) {
+                addIssue(result,
+                         MissionWorldRoomLoadIssueKind::integerOverflow);
+                return result;
+            }
+            commandCount += rangeCount;
+        }
+        auto submissionPublished = publishedCpuBytes;
+        if (!accountCount(submissionPublished, candidate.model.meshes.size(),
+                          sizeof(render::DrawMeshUploadMetadata)) ||
+            !accountCount(submissionPublished, commandCount,
+                          sizeof(render::DrawSubmissionCommand))) {
+            addIssue(result, MissionWorldRoomLoadIssueKind::integerOverflow);
+            return result;
+        }
+        if (submissionPublished > limits.maximumPublishedCpuBytes) {
+            addIssue(result,
+                     MissionWorldRoomLoadIssueKind::publishedCpuLimitExceeded);
+            return result;
+        }
+        render::DrawSubmissionDescription submission;
+        try {
+            submission = render::buildDrawSubmissionPlan(
+                candidate.model, candidate.textures.size(), limits.submission);
+        } catch (const std::bad_alloc &) {
+            throw;
+        } catch (...) {
+            addIssue(result, MissionWorldRoomLoadIssueKind::submissionFailure);
+            return result;
+        }
+        if (!submission.plan.has_value() || !submission.issues.empty()) {
+            for (const auto &upstream : submission.issues) {
+                auto issue =
+                    makeIssue(MissionWorldRoomLoadIssueKind::submissionFailure);
+                issue.submissionIssue = upstream.kind;
+                addIssue(result, std::move(issue));
+            }
+            if (submission.issues.empty()) {
+                addIssue(result,
+                         MissionWorldRoomLoadIssueKind::submissionFailure);
+            }
+            return result;
+        }
+        publishedCpuBytes = submissionPublished;
+        candidate.submission = std::move(*submission.plan);
+        candidate.publishedCpuBytes = publishedCpuBytes;
+        if (!report(result, stopToken, guardedProgress,
+                    MissionWorldRoomLoadPhase::planningSubmission, 1U, 1U)) {
+            return result;
+        }
+
+        if (!report(result, stopToken, guardedProgress,
+                    MissionWorldRoomLoadPhase::complete, 1U, 1U)) {
+            return result;
+        }
+        requireExpectedSession(session, expectedIdentity, expectedRevision);
+        result.room = std::move(candidate);
+        return result;
+    } catch (const SessionIdentityChanged &) {
+        result.room.reset();
+        result.issues.clear();
+        addIssue(result, MissionWorldRoomLoadIssueKind::sessionIdentityChanged);
+        return result;
+    } catch (const std::bad_alloc &) {
+        result.room.reset();
+        result.issues.clear();
+        addIssue(result, MissionWorldRoomLoadIssueKind::allocationFailure);
+        return result;
+    } catch (...) {
+        result.room.reset();
+        result.issues.clear();
+        addIssue(result, MissionWorldRoomLoadIssueKind::internalFailure);
+        return result;
+    }
+}
+
+} // namespace airfix::content

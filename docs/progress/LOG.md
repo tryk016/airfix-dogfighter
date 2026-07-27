@@ -1404,3 +1404,46 @@ superseded evidence.
 - A fresh complete CMake/Ninja build passes and all 41 portable CTest targets
   pass, including the new manifest regression target. No private game data,
   original-derived payload, or local path was added.
+
+## 2026-07-27 - authenticated aggregate mission room load
+
+- Added `MissionWorldRoomLoader`, which consumes `MissionLoadManifest` and a
+  `VerifiedContentSession` for the same cryptographic `ContentRevision`. It
+  validates every ordered CCF descriptor, exact logical-path/file-index
+  identity, role, flag, placement index, and recorded compressed allocation
+  footprint before reading a payload. The loader pins the exact handle marker
+  and revision before/after every callback and read and again before
+  publication.
+- Physical CCF entries are cached by archive file index in first-use order,
+  while the main/backdrop/physical-OBJE descriptor list remains fully repeated
+  for legacy room publication. The public synthetic transaction contains four
+  semantic loads over three physical CCF reads and records cache mapping
+  `{0,1,2,2}`. Repeated object loads retain room contributors but suppress their
+  independent placed scene and its deliberately missing texture through the
+  recovered `0x2000` behavior.
+- The loader builds the source-aware room catalogue, resolves the fixed
+  `AddStartPos` table with modulo or anonymous-root fallback, constructs the
+  selected room's dense global texture namespace, prepares every GTI, preserves
+  mesh/instance source provenance, assembles the combined model, and validates
+  its `DrawSubmissionPlan`. Start positions are copied into the result but are
+  still caller-supplied parsed data; authenticated AFS loading remains later
+  work.
+- Per-entry and unique-aggregate CCF/GTI footprints,
+  decoded/upload/resident RGBA, and published CPU ownership are independently
+  checked. Retained CCF metadata has post-parse logical accounting on top of
+  the parser's fixed admission caps; it is not presented as an allocator/RSS
+  ceiling. Exact/N-1 compressed budgets, independently recomputed ownership
+  counters, malformed last CCF and second GTI, late draw/submission rejection,
+  callback-time destruction of borrowed inputs, cancellation, complete-callback
+  failure, moved proofs/sessions, separately authenticated equal revisions, and
+  same-revision handle replacement all return no partial room.
+- `VerifiedContentTransactionIdentity` now carries a private retained marker
+  rather than an `ifstream` address. Exact session moves preserve identity,
+  independently opened or replacement sessions receive new markers, and copied
+  guards keep displaced markers alive so allocator-address reuse cannot create
+  an ABA match.
+- A fresh Windows GCC/Ninja build completes and all 42 portable CTest targets
+  pass. No private game data, original-derived payload, generated analysis
+  database, or local source path was added. Native mission publication,
+  authenticated setup-script loading, and retained CCF/catalogue data for
+  runtime room switching remain the next integration boundaries.

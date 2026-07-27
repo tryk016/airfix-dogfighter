@@ -149,15 +149,29 @@ and never become mission-root CCF sources.
 
 The descriptor order is main World, optional first backdrop, then every Level
 `OBJE`. A referenced `OBJE` must parse as an object definition rather than a
-model definition. The manifest reads no CCF or GTI payload and is not yet
-connected to multi-source room assembly, global texture binding, or native
-publication. Per-entry and aggregate definition-source limits, planned CCF
-source limits, published-CPU accounting, cancellation, and late dependency
-failure are fail-closed. Entry resolution checks cancellation between the World,
-each `OBJE`, and each `MODL`. A callback cannot replace or move out the session
+model definition. The manifest itself reads no CCF or GTI payload. Per-entry
+and aggregate definition-source limits, planned CCF source limits,
+published-CPU accounting, cancellation, and late dependency failure are
+fail-closed. Entry resolution checks cancellation between the World, each
+`OBJE`, and each `MODL`. A callback cannot replace or move out the session
 handle even with the same revision: identity is checked before and after every
-callback and again before publication. No partial or identity-mismatched
-manifest is returned.
+callback and again before publication. Transaction identities use retained
+opaque markers rather than stream addresses, preventing allocator-address reuse
+from reviving a displaced session identity.
+
+`MissionWorldRoomLoader` now consumes that proof and completes the portable
+mission-room transaction. It validates every ordered descriptor against the
+same authenticated revision, reads and parses each unique physical CCF once,
+while preserving repeated semantic loads, builds the multi-source room
+catalogue, resolves the legacy start table, creates one room-global texture ID
+namespace, materializes every selected GTI, assembles the model and provenance,
+and validates the final draw submission. Exact session identity and revision
+are pinned throughout. CCF/GTI source admission, RGBA and published-CPU
+budgets are checked; retained CCF metadata additionally has explicit
+post-parse logical accounting, not a process-memory ceiling. No partial
+textures or geometry escape a late failure.
+Start positions are currently caller-supplied parsed records; authenticated AFS
+loading and native mission publication are later integration boundaries.
 
 The mission layer also reconstructs the ordered runtime room namespace across
 the main scene, optional backdrop, and object CCF loads. It keeps the anonymous
@@ -165,7 +179,7 @@ root separate, merges ordinary rooms with bounded ASCII case-insensitive
 lookup, records every source/physical-room contributor, and resolves the fixed
 mission start table without executing setup scripts. A private aggregate check
 of all 20 campaign starts reports unique main-scene matches and no published
-original names or paths. The portable suite passes 41/41 synthetic tests.
+original names or paths. The portable suite passes 42/42 synthetic tests.
 Physical-device rendering and visual acceptance remain pending.
 
 ## Architecture
