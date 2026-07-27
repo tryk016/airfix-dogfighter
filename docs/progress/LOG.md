@@ -1721,3 +1721,41 @@ superseded evidence.
 - An independent native review found no P0-P3 issue. A clean 166-step
   Windows GCC/Ninja build and all 49 portable tests pass; the public-boundary
   scan checks 263 files, `actionlint`, and `git diff --check` are clean.
+
+## 2026-07-27 - camera projection and portal render chain
+
+- Ghidra Headless and Rizin independently matched the boundaries and raw
+  callsites from `CcCamera::Render` through `RenderRoom`, ordered render-list
+  draining, six-plane and distance clipping, `CcPolyVertex::Project`, and the
+  concrete Direct3D `GtScreen::RenderTriangle` implementation. Recovered MSVC
+  declarations, ECX use, and stack cleanup resolve Rizin's incorrect `cdecl`
+  proposals.
+- Confirmed positive-Z camera space, FOV clamping to `[1, 175]` degrees,
+  `focal = 0.5 * windowWidth / tan(FOV * pi / 360)`, the exact near fallback
+  branch, screen centre, and explicit screen-Y inversion. Constructor defaults
+  are near `1`, far `100`, and FOV `90`; engine initialization installs near
+  `0.25`, far `200`, and FOV `90`.
+- `RenderRoom` gathers room object lists and recurses through portals whose
+  clipped visible area is nonempty. The fourth parameter is depth and the
+  constructor limit is two; no general visited-room set was found. Portal type
+  one reflects the camera and reverses culling, which behaves like a mirror
+  although the enum name remains unproven.
+- Corrected the prior BSP hypothesis. The confirmed render path does not walk
+  static-BSP children. Camera movement separately traces the portal-BSP,
+  visiting the movement segment's start-side child first and retaining the
+  nearest crossed portal polygon to resolve the next room.
+- The evidence supports a portable camera-space-to-screen scalar contract but
+  not a parity view or Metal projection matrix. World-to-view layout, gameplay
+  camera modes, legacy depth mapping, and widescreen policy remain explicit
+  blockers for the native camera join.
+- Implemented that bounded scalar contract as immutable portable C++20. Its
+  factory validates finite near/far/FOV/window inputs and derived scales,
+  applies the recovered FOV clamp, and its allocation-free `noexcept` hot path
+  preserves the exact near fallback, operation order, centre, and Y inversion.
+  Far clipping, world-to-view, NDC, depth, and Metal matrices remain outside
+  this component by design.
+- The complete Windows GCC/Ninja build and all 50 portable tests pass. A
+  separate GCC C++20 `-Wall -Wextra -Wpedantic -Werror` compile for the new
+  implementation and tests is also clean. Independent review found no P0-P3
+  issue; the public-boundary scan checks 267 files, `actionlint`, and
+  `git diff --check` are clean.

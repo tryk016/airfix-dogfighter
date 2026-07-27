@@ -49,7 +49,10 @@ Implemented foundations include:
 - authenticated player selection plus bounded player-model, texture,
   scene-placement, and publication integration in the mission-world loader;
 - a preallocated per-scene pose runtime that publishes authenticated actor
-  frames for accepted simulation steps and is resolved once per Metal frame.
+  frames for accepted simulation steps and is resolved once per Metal frame;
+- a validated, allocation-free reconstruction of the legacy camera-space
+  screen projection, kept separate from still-unknown view and Metal depth
+  transforms.
 
 The portable authenticated load now produces one validated room-and-player
 draw model. The actor still remains at its authenticated spawn transform until

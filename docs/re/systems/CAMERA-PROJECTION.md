@@ -1,153 +1,171 @@
-# Camera and projection evidence
+# Camera and projection contract
 
-**Status:** partial static evidence; original camera contract not recovered
+**Status:** legacy scalar screen projection implemented and room/portal render
+chain recovered; world-to-view and Metal depth mapping remain open
 
 This document separates confirmed legacy behavior from reconstruction
-decisions. It does not define an Airfix-compatible camera yet.
+decisions. The complete evidence record is
+[EXP-20260727-004](../../experiments/EXP-20260727-004-camera-render-pipeline.md).
 
-## Confirmed functions
-
-| Component | Module / RVA | Confidence | Confirmed behavior |
-|---|---|---:|---|
-| `CcPolyVertex::Project` | `Cc.dll` / `0x0000CCE0` | 3/3 | View space faces positive Z. Projection divides X and Y by positive Z, adds X around the screen center, and subtracts Y from the screen center. |
-| `CcObject::AddVisiblePolygonsToRenderList` | `Cc.dll` / `0x0001FDD0` | 3/3 | `thiscall` method receiving `CcCamera*`, `CcRenderList*`, and a boolean. It transforms vertices, walks polygons, applies the recovered reverse-cross facing test, evaluates optional light/flare work, and queues render records. |
-| `Cc3Matrix::SetRow`, `SetCol`, `operator*` | `Cc.dll` / `0x0002B5C0`, `0x0002B5E0`, `0x0002B670` | 3/3 | Confirms legacy row-vector storage and the need for the existing explicit runtime column-vector adapter. These functions do not establish a view matrix. |
-
-Ghidra and Rizin agree on the boundaries and raw calls for
-`CcObject::AddVisiblePolygonsToRenderList`. Ghidra is authoritative for its
-`thiscall` ABI; Rizin's proposed `cdecl` signature is contradicted by ECX
-receiver use and stack cleanup.
-
-The saved direct-call list for that function does not contain
-`CcPolyVertex::Project`. Projection may therefore occur later while draining
-`CcRenderList`, but that remains a hypothesis.
-
-## Confirmed spatial build chain
+## Confirmed render chain
 
 ```text
-NfMission::LoadLevel                   0x0002D6F0
-  -> CcRoom::LoadScene                 0x00027270
-  -> CcRoom::LoadSceneCcf              0x00027340
-  -> CcWorld::FreezeAll                0x00011CF0
-       -> CcRoom::Freeze               0x000218E0
-            -> CcRoom::CreateStaticBsp 0x00021720
-
-CcWorld::CreateAllPortalBsp            0x00011C90
-  -> CcRoom::CreatePortalBsp           0x00021820
+CcCamera::Render                         0x0001BB20
+  -> CcCamera::RenderRoom                0x0001C6A0
+     -> CcObject::AddVisiblePolygons...  0x0001FDD0
+     -> CcCamera::RenderLayerPolys       0x0001EB20
+        -> render-layer clip helper      0x0001EE00
+        -> CcDistClip::ProcessPoly        0x000477F0
+           -> CcPolyVertex::Project       0x0000CCE0
+           -> GtPolyRender::ProcessPoly   0x00046130
+              -> GtScreen::RenderTriangle
 ```
 
-The portable asset layer already retains flat BSP nodes with root/child
-indices, split normal, and point-on-plane data. Polygon ownership resolves
-through object, mesh, and triangle records, and portal bindings retain their
-target room index.
+The Direct3D implementation of `GtScreen::RenderTriangle` is at
+`gtDirect3D.dll` RVA `0x000034B0`. It stages three converted vertices in the
+concrete screen buffer and flushes through a local helper. Per-triangle
+submission does not call `GtDevice` directly.
 
-This proves how spatial data is built. It does not prove camera-side BSP
-classification, child order, portal clipping, recursion, cycle prevention, or
-current-room transitions.
+Ghidra and Rizin independently agree on the important boundaries and raw
+callsites. Ghidra's recovered MSVC declarations, ECX receiver use, and
+`RET n` cleanup establish `__thiscall` where Rizin proposes `cdecl`.
 
-## Missing call chain
+## Legacy screen projection
 
-Only the endpoints below are currently justified:
+Camera space faces positive Z. `CcCamera::Render` clamps the horizontal FOV to
+`[1, 175]` degrees and derives:
 
 ```text
-[unknown world/camera traversal]
-  -> CcObject::AddVisiblePolygonsToRenderList(
-         CcCamera*, CcRenderList*, bool)
-  -> CcRenderList
-  -> [unknown projection/list drain/device calls]
-  -> GtDevice
-  -> gtDirect3D.dll or gt3DFX.dll
+windowWidth  = right - left
+focal        = 0.5 * windowWidth / tan(FOV * pi / 360)
+projectScale = focal / near
 ```
 
-The graphics bootstrap is known through driver probing, device factory
-selection, `dllCreate(ModuleHandle, 0)`, and the returned `GtDevice*`.
-The device vtable and render-list submission path are not yet mapped.
-
-## What is not yet known
-
-- `CcCamera` construction, layout, update, or view transform;
-- camera-to-player relation and camera mode switching;
-- FOV, focal scale, near/far values, or the use of configured view distance;
-- viewport resize, aspect ratio, 4:3 framing, or widescreen policy;
-- clip-depth and viewport-Y mapping at the graphics backend;
-- the caller graph for RVAs `0x0000CCE0` and `0x0001FDD0`;
-- current-room selection and camera-driven BSP/portal traversal;
-- `CcRenderList` drain and `GtDevice` submission slots;
-- fog/view-distance interaction.
-
-No parity claim should assign values or behavior to these fields before the
-missing evidence is recovered.
-
-## Current reconstructed renderer
-
-The current Metal path is a structural diagnostic, not a recovered camera.
-It applies aspect correction directly to each model transform:
+`CcPolyVertex::Project` preserves this exact operation order:
 
 ```text
-clip = aspectCorrection * modelFromLocal * position
+factor  = near / z, when z > near
+factor  = 1,        otherwise
+scale   = projectScale * factor
+screenX = scale * x + centreX
+screenY = centreY - scale * y
 ```
 
-World coordinates can therefore fall outside clip space. The diagnostic
-rasterizer's auto-fit orthographic three-quarter view is also not evidence of
-the original camera.
+`CcDistClip::ProcessPoly` performs far and then near clipping before the final
+three projection calls. The point-projection function itself does not reject a
+point outside either distance.
 
-The future renderer join is:
+Constructor defaults:
+
+| Parameter | Value |
+|---|---:|
+| Near | `1` |
+| Far | `100` |
+| Horizontal FOV | `90°` |
+| Centre | `(0.5, 0.5)` |
+| Window | `(0, 0)-(1, 1)` |
+
+Engine initialization changes near/far to `0.25`/`200` and sets FOV to `90°`.
+Console paths can subsequently change those values.
+
+Confirmed camera fields:
+
+| Offset | Meaning |
+|---:|---|
+| `+0x900` | focal screen scale |
+| `+0x904` | `1 / near` |
+| `+0x908` | `focal / near` |
+| `+0x90C` | `far / near` |
+| `+0x914` | `1 / far` |
+| `+0x918` | window width |
+| `+0x928`, `+0x92C` | near and far |
+| `+0x930` | FOV degrees |
+| `+0x934`, `+0x938` | centre X/Y |
+| `+0x93C` through `+0x948` | window left/top/right/bottom |
+
+## Current room and portals
+
+`CcCamera + 0xF4` is the current room. `SetPosAndTracePortals` traces the old to
+new camera position and updates this field only when `CcRoom::TracePortals`
+returns a room.
+
+`Render` starts with:
 
 ```text
-clipFromView * viewFromWorld * modelFromLocal * position
+RenderRoom(currentRoom, rootClip, 1, 0)
 ```
 
-## Safe interim contract
+Render-time portals come from a room object list and point to their target room
+through `portalObject + 0x13C`. A portal must survive culling and produce a
+non-empty scoped clip before recursion. The fourth `RenderRoom` parameter is
+depth; its default limit is `2`, and no general visited-room set was found.
 
-Before the original builders are known, the portable layer may introduce only
-a validated matrix carrier:
+`portalType == 1` reflects camera position and basis across the portal plane
+and reverses culling. This behaves like a mirror, but the durable enum name is
+not yet confirmed.
 
-```cpp
-struct CameraMatrices {
-    Mat4 viewFromWorld;
-    Mat4 clipFromView;
-};
+## BSP boundary
 
-struct CameraViewport {
-    std::uint32_t width;
-    std::uint32_t height;
-};
+The render path does **not** walk the static-BSP child tree. It renders room
+object lists and follows explicit clipped portals.
 
-struct CameraRenderFrame {
-    std::uint64_t simulationStep;
-    CameraMatrices matrices;
-    CameraViewport viewport;
-};
+Camera movement separately queries the portal-BSP list through:
+
+```text
+CcRoom::TracePortals                    0x000216C0
+  -> PhLine::GetPortalBspCollision      0x00039070
+     -> PhLine::TraceBspNode            0x000391D0
 ```
 
-Such a carrier must:
+The BSP traversal computes signed distances for segment endpoints, visits the
+start-side child first, tests polygons on a crossed plane, then visits the
+end-side child while retaining the nearest hit. The hit polygon resolves the
+next room through its owning portal object.
 
-- use the runtime column-vector convention;
-- define `clipFromView * viewFromWorld * modelFromLocal` explicitly;
-- validate finite values, nonzero viewport, and an invertible affine view;
-- compute the combined view-projection once per frame;
-- label any temporary projection as `DiagnosticCamera`;
-- keep draw-all selected-room rendering as the fallback;
-- avoid BSP and portal culling until traversal semantics are recovered.
+## Reconstructed renderer boundary
 
-It must not invent an Airfix FOV, near/far pair, aspect policy, or camera mode.
+The current Metal renderer still applies only a diagnostic aspect correction
+to each model transform:
 
-## Next static-analysis targets
+```text
+clip = diagnosticAspect * modelFromLocal * position
+```
 
-1. Enumerate all exports and symbols containing `CcCamera`.
-2. Recover callers of `CcPolyVertex::Project` and
-   `CcObject::AddVisiblePolygonsToRenderList`.
-3. Identify current-room selection and the entry to BSP traversal.
-4. Recover the BSP side test and child visitation order.
-5. Recover portal clipping, recursion, visited-state, and room transition.
-6. Recover `CcRenderList` drain and the relevant `GtDevice` vtable calls.
-7. Trace globals used as screen center, focal scale, FOV, near/far, and view
-   distance.
-8. Trace resize/aspect behavior and camera-to-player/rear-view mode changes.
+It is not a recovered camera. World coordinates may fall outside clip space.
+The diagnostic rasterizer's auto-fit view is also not legacy evidence.
 
-Portal traversal additionally requires a retained, budgeted CCF/catalogue/BSP
-arena. The currently published static room intentionally does not retain that
-complete runtime world.
+The portable implementation in
+`src/airfix/render/LegacyScreenProjection.cpp` is deliberately narrow:
+
+- validate the confirmed projection parameters;
+- derive `focal` and `focal / near`;
+- project an already camera-space point using the exact branch and float
+  operation order above;
+- keep clipping separate;
+- expose no generic matrix or claimed parity camera.
+
+Its build factory rejects non-finite or invalid near/far/window values, clamps
+finite FOV exactly as the legacy render path does, and validates all derived
+scalars. The hot `project()` path is `noexcept`, allocation-free, reports the
+near fallback explicitly, and rejects non-finite input or output atomically.
+Portable tests cover defaults, engine near/far/FOV with a synthetic viewport,
+FOV bounds, centre and Y convention, the exact near comparison, projection
+beyond far, invalid configuration, overflow, and repeated zero-allocation use.
+
+## Still unknown
+
+- complete `CcCamera` view/basis layout and `viewFromWorld`;
+- gameplay camera modes, chase offsets, smoothing, rear view, and recentering;
+- legacy W-buffer semantics and the exact Metal `[0,1]` depth mapping;
+- final NDC/viewport conversion and any additional backend Y convention;
+- widescreen behavior and faithful 4:3 versus expanded framing;
+- durable semantic names for every room list, clip virtual method, and portal
+  enum;
+- whether any game path raises the portal depth limit above its constructor
+  default.
+
+No code may invent these values or claim camera parity before the missing
+evidence is recovered.
 
 ## Related evidence
 
@@ -156,3 +174,4 @@ complete runtime world.
 - [Render data contract](RENDER-DATA-CONTRACT.md)
 - [Startup and plugin chain](STARTUP-PLUGINS.md)
 - [Static tool cross-check](../../experiments/EXP-20260727-001-static-tool-crosscheck.md)
+- [Camera render experiment](../../experiments/EXP-20260727-004-camera-render-pipeline.md)

@@ -488,13 +488,17 @@
   lease, and static instances retain their authored fallback. The producer
   currently republishes the authenticated spawn world because the movement
   law has not yet supplied a changing actor pose.
-- Recorded the first bounded camera/projection evidence. The legacy projection
-  endpoint faces positive view-space Z, adds projected X around the screen
-  centre, and subtracts projected Y; the visible-polygon endpoint and static
-  room/BSP build chain are also located. Camera construction, view transform,
-  FOV, clipping, render-list drain, aspect policy, BSP visitation, and portal
-  traversal remain unknown, so the Metal path is still explicitly diagnostic
-  and no guessed parity camera has been introduced.
+- Recovered the bounded legacy screen-projection and room render chain.
+  Constructor defaults, engine near/far/FOV values, exact FOV clamp/focal
+  formula, near fallback, screen centre, Y inversion, far/near clipping order,
+  render-list drain, and concrete Direct3D triangle staging are confirmed by
+  Ghidra and Rizin. `RenderRoom` uses object lists and clipped portal recursion
+  with a default depth limit of two; it does not traverse static-BSP children.
+  Portal-BSP is instead confirmed in camera movement room transitions. The
+  exact scalar projection is now implemented as a validated, allocation-free
+  portable C++20 contract. The complete view transform, gameplay camera modes,
+  legacy depth-to-Metal mapping, and widescreen policy remain unknown, so
+  Metal is still explicitly diagnostic and no parity matrix has been guessed.
 - The authenticated setup-to-room provenance chain now crosses the native iOS
   publication boundary together with an immutable `PlayerSpawnPose`. Ghidra
   Headless and Rizin independently confirm x/y/z radians, mode zero, exact
@@ -543,11 +547,10 @@
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Recover the camera construction/update path, callers of the projection and
-   visible-polygon endpoints, render-list drain, and numeric projection
-   constants. Then add the evidence-backed camera carrier and perform
-   physical-device visual acceptance. Auxiliary weapons and effects remain
-   separate.
+3. Recover the world-to-view basis and legacy depth mapping before introducing
+   a Metal camera matrix or performing physical-device visual acceptance. The
+   camera-space-to-screen scalar contract is implemented and tested. Auxiliary
+   weapons and effects remain separate.
 4. Introduce a retained CCF/catalogue arena when runtime room switching is
    implemented; recover portal tracing, camera room traversal, and later
    transitions afterward.
