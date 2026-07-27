@@ -3,7 +3,8 @@
 #import <Metal/Metal.h>
 #import <simd/simd.h>
 
-#include "airfix/content/WorldRoomLoader.hpp"
+#include "airfix/content/MissionWorldRoomLoader.hpp"
+#include "airfix/content/MissionWorldRoomPublication.hpp"
 #include "airfix/render/DrawModel.hpp"
 #include "airfix/render/DrawSubmissionPlan.hpp"
 #include "airfix/render/SnapshotGpuBudgetLedger.hpp"
@@ -440,6 +441,7 @@ simd_float4x4 aspectCorrection(const CGSize size) {
     airfix::content::ContentRevision _revision;
     airfix::render::DrawModelPayload _payload;
     airfix::render::DrawSubmissionPlan _submissionPlan;
+    std::optional<airfix::content::LoadedMissionWorldRoom> _missionRoom;
     std::vector<NSUInteger> _indexOffsets;
 }
 @property(nonatomic, strong) NSArray<AirfixMetalMeshBuffers*>* meshBuffers;
@@ -769,10 +771,12 @@ bool validateTextureAsset(
 
 bool preflightPrivateRoom(
     id<MTLDevice> device,
-    const airfix::content::LoadedWorldRoom& room,
+    const airfix::content::LoadedMissionWorldRoom& room,
     PrivateRoomPreflight& result) {
     if (room.revision.generation == 0U ||
         room.revision.pack.size == 0U ||
+        airfix::content::validateMissionWorldRoomPublication(
+            room, room.revision).has_value() ||
         !fitsNSUInteger(room.model.meshes.size()) ||
         !fitsNSUInteger(room.textures.size()) ||
         room.submission.meshUploads.size() != room.model.meshes.size()) {
@@ -1601,13 +1605,13 @@ bool preflightPrivateRoom(
     }
 }
 
-- (BOOL)worldRoomInstalled {
+- (BOOL)missionWorldRoomInstalled {
     AirfixMetalRoomSnapshot* snapshot = self.roomSnapshot;
     return snapshot != nil && snapshot->_worldRoomInstalled;
 }
 
-- (nullable AirfixPreparedMetalRoom*)prepareLoadedRoom:
-    (airfix::content::LoadedWorldRoom&&)room
+- (nullable AirfixPreparedMetalRoom*)prepareLoadedMissionRoom:
+    (airfix::content::LoadedMissionWorldRoom&&)room
     error:(NSError* _Nullable* _Nullable)error {
     if (error != nullptr) {
         *error = nil;
@@ -2084,10 +2088,7 @@ bool preflightPrivateRoom(
         preparedRoom->_published = NO;
         candidateResources->_indexOffsets =
             std::move(preflight.indexOffsets);
-        candidateResources->_revision = std::move(room.revision);
-        candidateResources->_payload = std::move(room.model);
-        candidateResources->_submissionPlan =
-            std::move(room.submission);
+        candidateResources->_revision = room.revision;
         candidate->_resources = candidateResources;
         candidate->_releaseQueue = resourceReleaseQueue;
         candidate->_worldRoomInstalled = YES;
@@ -2096,6 +2097,7 @@ bool preflightPrivateRoom(
         // snapshot after Metal owns the complete resource set.
         std::vector<airfix::content::LoadedTextureAsset>().swap(
             room.textures);
+        candidateResources->_missionRoom.emplace(std::move(room));
 
         reservationHolder->_reservation.emplace(
             std::move(*privatePlanReservation));
@@ -2115,8 +2117,8 @@ bool preflightPrivateRoom(
     }
 }
 
-- (BOOL)publishPreparedRoom:(AirfixPreparedMetalRoom*)preparedRoom
-                      error:(NSError* _Nullable* _Nullable)error {
+- (BOOL)validatePreparedRoomForCommit:(AirfixPreparedMetalRoom*)preparedRoom
+                                error:(NSError* _Nullable* _Nullable)error {
     if (error != nullptr) {
         *error = nil;
     }
@@ -2158,6 +2160,10 @@ bool preflightPrivateRoom(
         return NO;
     }
 
+    return YES;
+}
+
+- (void)commitValidatedPreparedRoom:(AirfixPreparedMetalRoom*)preparedRoom {
     AirfixMetalRoomSnapshot* candidate = preparedRoom->_snapshot;
     preparedRoom->_published = YES;
     preparedRoom->_snapshot = nil;
@@ -2166,7 +2172,6 @@ bool preflightPrivateRoom(
     // strong-pointer assignment publishes the complete room without any
     // budget mutation.
     self.roomSnapshot = candidate;
-    return YES;
 }
 
 - (void)mtkView:(MTKView*)view drawableSizeWillChange:(CGSize)size {
@@ -2183,6 +2188,14 @@ bool preflightPrivateRoom(
     if (resources == nil) {
         return;
     }
+    const airfix::render::DrawModelPayload& payload =
+        resources->_missionRoom.has_value()
+            ? resources->_missionRoom->model
+            : resources->_payload;
+    const airfix::render::DrawSubmissionPlan& submissionPlan =
+        resources->_missionRoom.has_value()
+            ? resources->_missionRoom->submission
+            : resources->_submissionPlan;
     AirfixBudgetedMetalTexture* fallbackResource =
         self.fallbackResource;
     if (fallbackResource == nil ||
@@ -2212,12 +2225,12 @@ bool preflightPrivateRoom(
 
     const simd_float4x4 viewport = aspectCorrection(view.drawableSize);
     for (std::size_t commandIndex = 0U;
-         commandIndex < resources->_submissionPlan.commands.size();
+         commandIndex < submissionPlan.commands.size();
          ++commandIndex) {
         const auto& command =
-            resources->_submissionPlan.commands[commandIndex];
+            submissionPlan.commands[commandIndex];
         const auto& instance =
-            resources->_payload.instances[command.instanceIndex];
+            payload.instances[command.instanceIndex];
         const simd_float4x4 model =
             toSimdMatrix(instance.modelLinear, instance.modelTranslation);
         const GpuUniforms uniforms{simd_mul(viewport, model)};

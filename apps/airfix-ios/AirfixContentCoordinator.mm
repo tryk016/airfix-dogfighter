@@ -1,10 +1,11 @@
 #import "AirfixContentCoordinator.h"
-#import "AirfixWorldRoomSnapshot+Private.hpp"
+#import "AirfixMissionWorldRoomSnapshot+Private.hpp"
 
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
+#include "airfix/content/MissionLoadManifest.hpp"
+#include "airfix/content/MissionWorldRoomLoader.hpp"
 #include "airfix/content/VerifiedContentSession.hpp"
-#include "airfix/content/WorldRoomLoader.hpp"
 #include "airfix/content/WorldRoomPublicationGate.hpp"
 #include "airfix/package/AfPackInstaller.hpp"
 #include "airfix/package/AfPackRecovery.hpp"
@@ -14,6 +15,7 @@
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <exception>
 #include <fcntl.h>
 #include <filesystem>
@@ -32,12 +34,13 @@ namespace {
 
 constexpr std::uint64_t kMaximumImportedPackBytes = 512U * 1024U * 1024U;
 constexpr std::size_t kCopyBufferBytes = 64U * 1024U;
-constexpr NSUInteger kMaximumWorldLogicalPathBytes = 4096U;
+constexpr NSUInteger kMaximumMissionLogicalPathBytes = 4096U;
 char kContentWorkQueueSpecificKey;
 
-struct RememberedWorldRoomRequest final {
-    std::string worldLogicalPath;
-    std::size_t physicalRoom{};
+struct RememberedMissionRequest final {
+    std::string setupLogicalPath;
+    std::string levelLogicalPath;
+    std::uint32_t requestedStartIndex{};
 };
 
 struct StoredInspectionOutcome final {
@@ -79,11 +82,22 @@ void clearWorkerContent(
     inspectionSlot.reset();
 }
 
-[[nodiscard]] NSString* worldLogicalPathString(const std::string& logicalPath) {
-    return [[NSString alloc]
-        initWithBytes:logicalPath.data()
-               length:logicalPath.size()
-             encoding:NSUTF8StringEncoding];
+[[nodiscard]] std::optional<std::string>
+copyPrivateLogicalPath(NSString* const logicalPath) {
+    if (logicalPath == nil) {
+        return std::nullopt;
+    }
+    NSData* const encoded =
+        [logicalPath dataUsingEncoding:NSUTF8StringEncoding
+                  allowLossyConversion:NO];
+    if (encoded == nil || encoded.length == 0U ||
+        encoded.length > kMaximumMissionLogicalPathBytes ||
+        std::memchr(encoded.bytes, 0, encoded.length) != nullptr) {
+        return std::nullopt;
+    }
+    const auto* const bytes =
+        static_cast<const char*>(encoded.bytes);
+    return std::string(bytes, static_cast<std::size_t>(encoded.length));
 }
 
 class NativeCopyCancelled final : public std::runtime_error {
@@ -329,14 +343,14 @@ NSString* canonicalTransactionIdentifier(void) {
     // thread-safe and its token is copied into the serialized worker.
     std::stop_source _loadStop;
     airfix::content::WorldRoomPublicationGate _roomPublicationGate;
-    std::optional<RememberedWorldRoomRequest> _rememberedWorldRoomRequest;
+    std::optional<RememberedMissionRequest> _rememberedMissionRequest;
 
     // Opaque identities are confined to the main thread. Blocks retain the
     // identities they started with, so pointer equality cannot wrap or alias a
     // later operation/lifecycle/request.
     __strong NSObject* _operationIdentity;
     __strong NSObject* _lifecycleIdentity;
-    __strong NSObject* _worldRoomRequestIdentity;
+    __strong NSObject* _missionRequestIdentity;
 }
 @property(nonatomic, weak) UIViewController* presentingViewController;
 @property(nonatomic, strong, readwrite) UIView* controlsView;
@@ -351,9 +365,9 @@ NSString* canonicalTransactionIdentifier(void) {
 @property(nonatomic) BOOL pickerPresented;
 @property(nonatomic) BOOL inspectWhenIdle;
 
-- (void)cancelWorldRoomLoadClearingRevision:(BOOL)clearRevision;
+- (void)cancelMissionLoadClearingRevision:(BOOL)clearRevision;
 - (void)invalidateContentOperationLifecycle;
-- (void)startRememberedWorldRoomLoadIfPossible;
+- (void)startRememberedMissionLoadIfPossible;
 @end
 
 @implementation AirfixContentCoordinator
@@ -366,7 +380,7 @@ NSString* canonicalTransactionIdentifier(void) {
     _presentingViewController = viewController;
     _readiness = AirfixContentReadinessMissing;
     _lifecycleIdentity = [NSObject new];
-    _worldRoomRequestIdentity = [NSObject new];
+    _missionRequestIdentity = [NSObject new];
     _workQueue = dispatch_queue_create(
         "com.tryk016.airfixdogfighter.content", DISPATCH_QUEUE_SERIAL);
     dispatch_queue_set_specific(
@@ -478,8 +492,9 @@ NSString* canonicalTransactionIdentifier(void) {
     [self beginInspection];
 }
 
-- (void)cancelWorldRoomLoadClearingRevision:(BOOL)clearRevision {
-    NSAssert(NSThread.isMainThread, @"World room publication gate is main-thread confined");
+- (void)cancelMissionLoadClearingRevision:(BOOL)clearRevision {
+    NSAssert(NSThread.isMainThread,
+        @"Mission room publication gate is main-thread confined");
     _loadStop.request_stop();
     _loadStop = std::stop_source{};
     if (clearRevision) {
@@ -498,23 +513,23 @@ NSString* canonicalTransactionIdentifier(void) {
 
 - (void)applicationWillResignActive {
     [self invalidateContentOperationLifecycle];
-    [self cancelWorldRoomLoadClearingRevision:YES];
+    [self cancelMissionLoadClearingRevision:YES];
 }
 
 - (void)applicationDidEnterBackground {
     [self invalidateContentOperationLifecycle];
-    [self cancelWorldRoomLoadClearingRevision:YES];
+    [self cancelMissionLoadClearingRevision:YES];
 }
 
 - (void)applicationWillEnterForeground {
-    [self cancelWorldRoomLoadClearingRevision:YES];
+    [self cancelMissionLoadClearingRevision:YES];
     // The active record may have changed at a commit boundary while the app was
     // leaving the foreground. Inspection is intentionally restarted only once
     // the application is active again.
 }
 
 - (void)applicationDidBecomeActive {
-    [self cancelWorldRoomLoadClearingRevision:YES];
+    [self cancelMissionLoadClearingRevision:YES];
     if (!self.started || self.pickerPresented) {
         return;
     }
@@ -717,7 +732,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
     case airfix::afpack::ActiveContentStatus::ready:
         self.statusLabel.text = @"Private game content is ready.";
         [self setReadinessAndNotify:AirfixContentReadinessReady];
-        [self startRememberedWorldRoomLoadIfPossible];
+        [self startRememberedMissionLoadIfPossible];
         break;
     case airfix::afpack::ActiveContentStatus::rollbackAvailable:
         self.statusLabel.text =
@@ -777,126 +792,137 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
     });
 }
 
-- (void)scheduleWorldRoomRequestFailureAtLogicalPath:(NSString*)worldLogicalPath
-                                        physicalRoom:(NSUInteger)physicalRoom
-                                     requestIdentity:(NSObject*)requestIdentity {
-    NSAssert(NSThread.isMainThread, @"World room requests are main-thread confined");
+- (void)scheduleMissionRequestFailure:(NSObject*)requestIdentity {
+    NSAssert(NSThread.isMainThread, @"Mission requests are main-thread confined");
     __weak AirfixContentCoordinator* weakSelf = self;
     dispatch_async(dispatch_get_main_queue(), ^{
         AirfixContentCoordinator* coordinator = weakSelf;
         if (coordinator == nil ||
-            coordinator->_worldRoomRequestIdentity != requestIdentity) {
+            coordinator->_missionRequestIdentity != requestIdentity) {
             return;
         }
-        coordinator.statusLabel.text = @"The requested world path is invalid.";
+        coordinator.statusLabel.text =
+            @"The private mission selection is invalid.";
         id<AirfixContentCoordinatorDelegate> delegate = coordinator.delegate;
         if ([delegate respondsToSelector:@selector(
-                contentCoordinator:didFailLoadingWorldAtLogicalPath:physicalRoom:)]) {
-            [delegate contentCoordinator:coordinator
-                didFailLoadingWorldAtLogicalPath:
-                    (worldLogicalPath == nil ? @"" : worldLogicalPath)
-                physicalRoom:physicalRoom];
+                contentCoordinatorDidFailLoadingMission:)]) {
+            [delegate
+                contentCoordinatorDidFailLoadingMission:coordinator];
         }
     });
 }
 
-- (void)requestWorldAtLogicalPath:(NSString*)worldLogicalPath
-                    physicalRoom:(NSUInteger)physicalRoom {
-    NSAssert(NSThread.isMainThread, @"World room requests must start on the main thread");
+- (void)requestMissionWithSetupLogicalPath:(NSString*)setupLogicalPath
+                          levelLogicalPath:(NSString*)levelLogicalPath
+                       requestedStartIndex:
+                           (uint32_t)requestedStartIndex {
+    NSAssert(NSThread.isMainThread,
+        @"Mission requests must start on the main thread");
     NSObject* const requestIdentity = [NSObject new];
-    _worldRoomRequestIdentity = requestIdentity;
-    [self cancelWorldRoomLoadClearingRevision:NO];
-
-    const NSUInteger utf8Bytes =
-        [worldLogicalPath lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
-    if (utf8Bytes == 0U || utf8Bytes > kMaximumWorldLogicalPathBytes) {
-        _rememberedWorldRoomRequest.reset();
-        [self scheduleWorldRoomRequestFailureAtLogicalPath:worldLogicalPath
-                                              physicalRoom:physicalRoom
-                                           requestIdentity:requestIdentity];
-        return;
-    }
-
-    const char* const utf8 = worldLogicalPath.UTF8String;
-    if (utf8 == nullptr) {
-        _rememberedWorldRoomRequest.reset();
-        [self scheduleWorldRoomRequestFailureAtLogicalPath:worldLogicalPath
-                                              physicalRoom:physicalRoom
-                                           requestIdentity:requestIdentity];
-        return;
-    }
+    _missionRequestIdentity = requestIdentity;
+    [self cancelMissionLoadClearingRevision:NO];
 
     try {
-        _rememberedWorldRoomRequest = RememberedWorldRoomRequest{
-            .worldLogicalPath =
-                std::string(utf8, static_cast<std::size_t>(utf8Bytes)),
-            .physicalRoom = static_cast<std::size_t>(physicalRoom),
+        auto setup = copyPrivateLogicalPath(setupLogicalPath);
+        auto level = copyPrivateLogicalPath(levelLogicalPath);
+        if (!setup.has_value() || !level.has_value()) {
+            _rememberedMissionRequest.reset();
+            [self scheduleMissionRequestFailure:requestIdentity];
+            return;
+        }
+        _rememberedMissionRequest = RememberedMissionRequest{
+            .setupLogicalPath = std::move(*setup),
+            .levelLogicalPath = std::move(*level),
+            .requestedStartIndex = requestedStartIndex,
         };
     }
     catch (...) {
-        _rememberedWorldRoomRequest.reset();
-        [self scheduleWorldRoomRequestFailureAtLogicalPath:worldLogicalPath
-                                              physicalRoom:physicalRoom
-                                           requestIdentity:requestIdentity];
+        _rememberedMissionRequest.reset();
+        [self scheduleMissionRequestFailure:requestIdentity];
         return;
     }
-    [self startRememberedWorldRoomLoadIfPossible];
+    [self startRememberedMissionLoadIfPossible];
 }
 
-- (BOOL)isWorldRoomSnapshotCurrent:(AirfixWorldRoomSnapshot*)snapshot {
-    NSAssert(NSThread.isMainThread, @"World room publication checks are main-thread confined");
+- (BOOL)isMissionWorldRoomSnapshotCurrent:
+    (AirfixMissionWorldRoomSnapshot*)snapshot {
+    NSAssert(NSThread.isMainThread,
+        @"Mission room publication checks are main-thread confined");
     try {
         return _roomPublicationGate.accepts(
-            airfix::ios::worldRoomPublicationTicket(snapshot),
-            airfix::ios::worldRoomResultRevision(snapshot)) ? YES : NO;
+            airfix::ios::missionWorldRoomPublicationTicket(snapshot),
+            airfix::ios::missionWorldRoomResultRevision(snapshot)) ? YES : NO;
     }
     catch (...) {
         return NO;
     }
 }
 
-- (void)startRememberedWorldRoomLoadIfPossible {
-    NSAssert(NSThread.isMainThread, @"World room publication gate is main-thread confined");
+- (BOOL)consumeMissionWorldRoomSnapshot:
+    (AirfixMissionWorldRoomSnapshot*)snapshot {
+    NSAssert(NSThread.isMainThread,
+        @"Mission room publication commits are main-thread confined");
+    try {
+        return _roomPublicationGate.consume(
+            airfix::ios::missionWorldRoomPublicationTicket(snapshot),
+            airfix::ios::missionWorldRoomResultRevision(snapshot)) ? YES : NO;
+    }
+    catch (...) {
+        return NO;
+    }
+}
+
+- (BOOL)abandonMissionWorldRoomSnapshot:
+    (AirfixMissionWorldRoomSnapshot*)snapshot {
+    NSAssert(NSThread.isMainThread,
+        @"Mission room publication failures are main-thread confined");
+    try {
+        return _roomPublicationGate.abandon(
+            airfix::ios::missionWorldRoomPublicationTicket(snapshot),
+            airfix::ios::missionWorldRoomResultRevision(snapshot)) ? YES : NO;
+    }
+    catch (...) {
+        return NO;
+    }
+}
+
+- (void)startRememberedMissionLoadIfPossible {
+    NSAssert(NSThread.isMainThread,
+        @"Mission room publication gate is main-thread confined");
     if (self.busy ||
         self.readiness != AirfixContentReadinessReady ||
         UIApplication.sharedApplication.applicationState !=
             UIApplicationStateActive ||
-        !_rememberedWorldRoomRequest.has_value() ||
+        !_rememberedMissionRequest.has_value() ||
         _roomPublicationGate.hasOutstandingTicket() ||
         !_roomPublicationGate.activeRevision().has_value()) {
         return;
     }
 
-    const auto request = *_rememberedWorldRoomRequest;
+    const auto request = *_rememberedMissionRequest;
     const auto expectedRevision = *_roomPublicationGate.activeRevision();
     const auto ticket = _roomPublicationGate.begin(expectedRevision);
-    NSString* const logicalPath =
-        worldLogicalPathString(request.worldLogicalPath);
-    if (!ticket.has_value() || logicalPath == nil) {
+    if (!ticket.has_value()) {
         _roomPublicationGate.invalidate();
-        self.statusLabel.text = @"The requested world room could not be started.";
+        self.statusLabel.text =
+            @"The requested mission could not be started.";
         id<AirfixContentCoordinatorDelegate> delegate = self.delegate;
         if ([delegate respondsToSelector:@selector(
-                contentCoordinator:didFailLoadingWorldAtLogicalPath:physicalRoom:)]) {
-            [delegate contentCoordinator:self
-                didFailLoadingWorldAtLogicalPath:
-                    (logicalPath == nil ? @"" : logicalPath)
-                physicalRoom:static_cast<NSUInteger>(request.physicalRoom)];
+                contentCoordinatorDidFailLoadingMission:)]) {
+            [delegate contentCoordinatorDidFailLoadingMission:self];
         }
         return;
     }
 
     _loadStop = std::stop_source{};
     const auto stopToken = _loadStop.get_token();
-    self.statusLabel.text = @"Loading private world room...";
+    self.statusLabel.text = @"Loading authenticated private mission...";
     self.progressView.progress = 0.0F;
     self.progressView.hidden = YES;
     id<AirfixContentCoordinatorDelegate> delegate = self.delegate;
     if ([delegate respondsToSelector:@selector(
-            contentCoordinator:didBeginLoadingWorldAtLogicalPath:physicalRoom:)]) {
-        [delegate contentCoordinator:self
-            didBeginLoadingWorldAtLogicalPath:logicalPath
-            physicalRoom:static_cast<NSUInteger>(request.physicalRoom)];
+            contentCoordinatorDidBeginLoadingMission:)]) {
+        [delegate contentCoordinatorDidBeginLoadingMission:self];
     }
 
     __weak AirfixContentCoordinator* weakSelf = self;
@@ -907,32 +933,28 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
         }
 
         [&] {
+            void (^publishFailure)(void) = ^{
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    AirfixContentCoordinator* coordinator = weakSelf;
+                    if (coordinator == nil ||
+                        !coordinator->_roomPublicationGate.abandon(
+                            *ticket, ticket->expectedRevision)) {
+                        return;
+                    }
+                    coordinator.progressView.hidden = YES;
+                    coordinator.statusLabel.text =
+                        @"The requested mission could not be prepared.";
+                    id<AirfixContentCoordinatorDelegate> currentDelegate =
+                        coordinator.delegate;
+                    if ([currentDelegate respondsToSelector:@selector(
+                            contentCoordinatorDidFailLoadingMission:)]) {
+                        [currentDelegate
+                            contentCoordinatorDidFailLoadingMission:
+                                coordinator];
+                    }
+                });
+            };
             try {
-                void (^publishFailure)(void) = ^{
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        AirfixContentCoordinator* coordinator = weakSelf;
-                        if (coordinator == nil ||
-                            !coordinator->_roomPublicationGate.isCurrent(*ticket)) {
-                            return;
-                        }
-                        coordinator->_roomPublicationGate.invalidate();
-                        coordinator.progressView.hidden = YES;
-                        coordinator.statusLabel.text =
-                            @"The requested world room could not be prepared.";
-                        id<AirfixContentCoordinatorDelegate> currentDelegate =
-                            coordinator.delegate;
-                        if ([currentDelegate respondsToSelector:@selector(
-                                contentCoordinator:
-                                didFailLoadingWorldAtLogicalPath:
-                                physicalRoom:)]) {
-                            [currentDelegate contentCoordinator:coordinator
-                                didFailLoadingWorldAtLogicalPath:logicalPath
-                                physicalRoom:static_cast<NSUInteger>(
-                                    request.physicalRoom)];
-                        }
-                    });
-                };
-
                 if (!strongSelf->_verifiedSession.has_value() ||
                     strongSelf->_verifiedSession->revision() !=
                         ticket->expectedRevision) {
@@ -942,38 +964,44 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
 
                 const auto revisionBeforeLoad =
                     strongSelf->_verifiedSession->revision();
-                const airfix::content::WorldRoomLoadRequest loadRequest{
-                    .worldLogicalPath = request.worldLogicalPath,
-                    .ccfRoomIndex = request.physicalRoom,
+                const airfix::content::MissionLoadManifestRequest
+                    manifestRequest{
+                        .levelLogicalPath = request.levelLogicalPath,
+                        .setupLogicalPath = request.setupLogicalPath,
+                    };
+                auto manifestResult =
+                    airfix::content::buildMissionLoadManifest(
+                        *strongSelf->_verifiedSession,
+                        manifestRequest,
+                        {},
+                        stopToken);
+                if (!strongSelf->_verifiedSession.has_value() ||
+                    strongSelf->_verifiedSession->revision() !=
+                        revisionBeforeLoad ||
+                    revisionBeforeLoad != ticket->expectedRevision ||
+                    !manifestResult.success() ||
+                    !manifestResult.manifest.has_value() ||
+                    manifestResult.manifest->revision() !=
+                        ticket->expectedRevision) {
+                    publishFailure();
+                    return;
+                }
+
+                const airfix::content::MissionWorldRoomLoadRequest
+                    loadRequest{
+                        .initialRootName = {},
+                        .requestedStartIndex =
+                            request.requestedStartIndex,
+                        .basis = {},
+                        .uvPolicy =
+                            airfix::render::UvPolicy::preserveRaw,
                 };
-                auto result = airfix::content::loadWorldRoom(
+                auto result = airfix::content::loadMissionWorldRoom(
                     *strongSelf->_verifiedSession,
+                    *manifestResult.manifest,
                     loadRequest,
                     {},
-                    stopToken,
-                    [weakSelf, ticket](
-                        const airfix::content::WorldRoomLoadProgress& progress) {
-                        const auto completedItems = progress.completedItems;
-                        const auto totalItems = progress.totalItems;
-                        dispatch_async(dispatch_get_main_queue(), ^{
-                            AirfixContentCoordinator* coordinator = weakSelf;
-                            if (coordinator == nil ||
-                                !coordinator->_roomPublicationGate.isCurrent(
-                                    *ticket)) {
-                                return;
-                            }
-                            coordinator.statusLabel.text =
-                                @"Loading private world room...";
-                            coordinator.progressView.hidden =
-                                totalItems == 0U;
-                            coordinator.progressView.progress =
-                                totalItems == 0U ? 0.0F :
-                                static_cast<float>(std::min(
-                                    completedItems,
-                                    totalItems)) /
-                                static_cast<float>(totalItems);
-                        });
-                    });
+                    stopToken);
 
                 if (!strongSelf->_verifiedSession.has_value() ||
                     strongSelf->_verifiedSession->revision() !=
@@ -987,10 +1015,8 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
                 }
 
                 const auto resultRevision = result.room->revision;
-                AirfixWorldRoomSnapshot* const snapshot =
-                    airfix::ios::makeWorldRoomSnapshot(
-                        request.worldLogicalPath,
-                        request.physicalRoom,
+                AirfixMissionWorldRoomSnapshot* const snapshot =
+                    airfix::ios::makeMissionWorldRoomSnapshot(
                         *ticket,
                         std::move(*result.room));
                 dispatch_async(dispatch_get_main_queue(), ^{
@@ -1002,54 +1028,31 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
                     }
                     coordinator.progressView.hidden = YES;
                     coordinator.statusLabel.text =
-                        @"World room data is ready for rendering.";
+                        @"Mission data is ready for rendering.";
                     id<AirfixContentCoordinatorDelegate> currentDelegate =
                         coordinator.delegate;
                     if (![currentDelegate respondsToSelector:@selector(
-                            contentCoordinator:didLoadWorldRoomSnapshot:)]) {
-                        coordinator->_roomPublicationGate.invalidate();
+                            contentCoordinator:
+                            didLoadMissionWorldRoomSnapshot:)]) {
+                        (void)coordinator->_roomPublicationGate.abandon(
+                            *ticket, resultRevision);
                         coordinator.statusLabel.text =
-                            @"The world room renderer is unavailable.";
+                            @"The mission renderer is unavailable.";
                         if ([currentDelegate respondsToSelector:@selector(
-                                contentCoordinator:
-                                didFailLoadingWorldAtLogicalPath:
-                                physicalRoom:)]) {
-                            [currentDelegate contentCoordinator:coordinator
-                                didFailLoadingWorldAtLogicalPath:logicalPath
-                                physicalRoom:static_cast<NSUInteger>(
-                                    request.physicalRoom)];
+                                contentCoordinatorDidFailLoadingMission:)]) {
+                            [currentDelegate
+                                contentCoordinatorDidFailLoadingMission:
+                                    coordinator];
                         }
                         return;
                     }
                     [currentDelegate contentCoordinator:coordinator
-                        didLoadWorldRoomSnapshot:snapshot];
+                        didLoadMissionWorldRoomSnapshot:snapshot];
                 });
             }
             catch (...) {
-                // This catch encloses construction of the request, callbacks,
-                // loader result, and snapshot. No C++ exception may cross GCD.
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    AirfixContentCoordinator* coordinator = weakSelf;
-                    if (coordinator == nil ||
-                        !coordinator->_roomPublicationGate.isCurrent(*ticket)) {
-                        return;
-                    }
-                    coordinator->_roomPublicationGate.invalidate();
-                    coordinator.progressView.hidden = YES;
-                    coordinator.statusLabel.text =
-                        @"The requested world room could not be prepared.";
-                    id<AirfixContentCoordinatorDelegate> currentDelegate =
-                        coordinator.delegate;
-                    if ([currentDelegate respondsToSelector:@selector(
-                            contentCoordinator:
-                            didFailLoadingWorldAtLogicalPath:
-                            physicalRoom:)]) {
-                        [currentDelegate contentCoordinator:coordinator
-                            didFailLoadingWorldAtLogicalPath:logicalPath
-                            physicalRoom:static_cast<NSUInteger>(
-                                request.physicalRoom)];
-                    }
-                });
+                // No C++ exception may cross a GCD/Objective-C boundary.
+                publishFailure();
             }
         }();
 
@@ -1066,7 +1069,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
     if (self.busy) {
         return;
     }
-    [self cancelWorldRoomLoadClearingRevision:YES];
+    [self cancelMissionLoadClearingRevision:YES];
     [self beginOperationWithText:@"Checking private game content..."];
     const std::stop_token stopToken = _operationStop.get_token();
     NSObject* const operationIdentity = _operationIdentity;
@@ -1163,7 +1166,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
     if (self.busy) {
         return;
     }
-    [self cancelWorldRoomLoadClearingRevision:YES];
+    [self cancelMissionLoadClearingRevision:YES];
     [self beginOperationWithText:@"Preparing private import..."];
     const std::stop_token stopToken = _operationStop.get_token();
     NSObject* const operationIdentity = _operationIdentity;
@@ -1376,7 +1379,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
     if (self.busy || !self.rollbackEligible) {
         return;
     }
-    [self cancelWorldRoomLoadClearingRevision:YES];
+    [self cancelMissionLoadClearingRevision:YES];
     [self beginOperationWithText:@"Restoring the verified package..."];
     const std::stop_token stopToken = _operationStop.get_token();
     NSObject* const operationIdentity = _operationIdentity;

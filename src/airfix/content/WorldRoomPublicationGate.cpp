@@ -8,7 +8,8 @@ namespace airfix::content {
 WorldRoomPublicationGate::WorldRoomPublicationGate(
     std::optional<ContentRevision> activeRevision,
     const std::uint64_t initialSerial) noexcept
-    : activeRevision_(std::move(activeRevision)),
+    : ownerThread_(std::this_thread::get_id()),
+      activeRevision_(std::move(activeRevision)),
       serial_(initialSerial) {}
 
 void WorldRoomPublicationGate::setActiveRevision(
@@ -48,6 +49,28 @@ bool WorldRoomPublicationGate::accepts(
     const ContentRevision& resultRevision) const noexcept {
     return isCurrent(ticket) &&
         resultRevision == ticket.expectedRevision;
+}
+
+bool WorldRoomPublicationGate::consume(
+    const WorldRoomPublicationTicket& ticket,
+    const ContentRevision& resultRevision) noexcept {
+    if (std::this_thread::get_id() != ownerThread_ ||
+        !accepts(ticket, resultRevision)) {
+        return false;
+    }
+    ticketOutstanding_ = false;
+    return true;
+}
+
+bool WorldRoomPublicationGate::abandon(
+    const WorldRoomPublicationTicket& ticket,
+    const ContentRevision& resultRevision) noexcept {
+    if (std::this_thread::get_id() != ownerThread_ ||
+        !accepts(ticket, resultRevision)) {
+        return false;
+    }
+    ticketOutstanding_ = false;
+    return true;
 }
 
 bool WorldRoomPublicationGate::isCurrent(

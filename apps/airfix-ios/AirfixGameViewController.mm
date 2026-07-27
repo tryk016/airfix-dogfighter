@@ -4,23 +4,47 @@
 #import "AirfixIOSInputCoordinator.h"
 #import "AirfixMetalRenderer.h"
 #import "AirfixTouchControlsView.h"
-#import "AirfixWorldRoomSnapshot.h"
+#import "AirfixMissionWorldRoomSnapshot.h"
 
 #import <MetalKit/MetalKit.h>
 
-#include "AirfixWorldRoomSnapshot+Private.hpp"
+#include "AirfixPrivateMissionConfig.h"
+#include "AirfixMissionWorldRoomSnapshot+Private.hpp"
 #include "AirfixIOSInputCoordinator+Private.hpp"
 #include "airfix/runtime/AppSession.hpp"
 #include "airfix/simulation/PlayerAircraftSimulation.hpp"
 
+#include <string_view>
 #include <utility>
 
 namespace {
 
-// First private-render smoke selection, verified against the owner's external
-// v1.01 content. Mission/campaign selection will replace this explicit request.
-NSString* const kInitialWorldLogicalPath = @"Game/Worlds/axis_1.world";
-constexpr NSUInteger kInitialPhysicalRoom = 1U;
+[[nodiscard]] NSString* decodePrivateLogicalPath(
+    const std::string_view encoded) {
+    if (encoded.empty()) {
+        return nil;
+    }
+    NSString* const base64 = [[NSString alloc]
+        initWithBytes:encoded.data()
+               length:encoded.size()
+             encoding:NSASCIIStringEncoding];
+    if (base64 == nil) {
+        return nil;
+    }
+    NSData* const bytes = [[NSData alloc]
+        initWithBase64EncodedString:base64
+                           options:0];
+    if (bytes == nil || bytes.length == 0U) {
+        return nil;
+    }
+    NSString* const logicalPath = [[NSString alloc]
+        initWithData:bytes
+            encoding:NSUTF8StringEncoding];
+    if (logicalPath == nil) {
+        return nil;
+    }
+    return logicalPath;
+}
 
 } // namespace
 
@@ -100,8 +124,36 @@ constexpr NSUInteger kInitialPhysicalRoom = 1U;
     _rendererPreparationQueue = dispatch_queue_create(
         "com.tryk016.airfixdogfighter.renderer-preparation",
         DISPATCH_QUEUE_SERIAL);
-    [self.contentCoordinator requestWorldAtLogicalPath:kInitialWorldLogicalPath
-                                         physicalRoom:kInitialPhysicalRoom];
+    const std::string_view configuredSetup =
+        airfix::ios::private_mission_config::
+            initialSetupLogicalPathBase64;
+    const std::string_view configuredLevel =
+        airfix::ios::private_mission_config::
+            initialLevelLogicalPathBase64;
+    if (!configuredSetup.empty() && !configuredLevel.empty()) {
+        NSString* const setupLogicalPath =
+            decodePrivateLogicalPath(configuredSetup);
+        NSString* const levelLogicalPath =
+            decodePrivateLogicalPath(configuredLevel);
+        if (setupLogicalPath != nil && levelLogicalPath != nil) {
+            [self.contentCoordinator
+                requestMissionWithSetupLogicalPath:setupLogicalPath
+                                  levelLogicalPath:levelLogicalPath
+                               requestedStartIndex:
+                                   airfix::ios::private_mission_config::
+                                       initialStartIndex];
+        }
+        else {
+            label.text =
+                @"Airfix Dogfighter reconstruction\n"
+                 @"Private mission configuration is invalid";
+        }
+    }
+    else if (!configuredSetup.empty() || !configuredLevel.empty()) {
+        label.text =
+            @"Airfix Dogfighter reconstruction\n"
+             @"Private mission configuration is incomplete";
+    }
     UIStackView* stack = [[UIStackView alloc] initWithArrangedSubviews:@[
         label,
         self.contentCoordinator.controlsView,
@@ -297,7 +349,7 @@ constexpr NSUInteger kInitialPhysicalRoom = 1U;
         break;
     case AirfixContentReadinessReady:
         // A valid AFPACK is necessary but not renderable until the requested
-        // room has also passed portable loading and the two-phase Metal swap.
+        // mission has also passed portable loading and the Metal transaction.
         contentState = airfix::runtime::ContentState::validating;
         break;
     case AirfixContentReadinessRejected:
@@ -312,14 +364,11 @@ constexpr NSUInteger kInitialPhysicalRoom = 1U;
     }
 }
 
-- (void)contentCoordinator:(AirfixContentCoordinator*)coordinator
-        didBeginLoadingWorldAtLogicalPath:(NSString*)worldLogicalPath
-        physicalRoom:(NSUInteger)physicalRoom {
+- (void)contentCoordinatorDidBeginLoadingMission:
+    (AirfixContentCoordinator*)coordinator {
     (void)coordinator;
-    (void)worldLogicalPath;
-    (void)physicalRoom;
     _session.setContentState(airfix::runtime::ContentState::validating);
-    // A newly requested world owns a fresh deterministic gameplay state.
+    // A newly requested mission owns a fresh deterministic gameplay state.
     // Lifecycle and input-source resets do not otherwise erase this state.
     _playerAircraftState = {};
     [self.inputCoordinator resetForGameplayBoundary];
@@ -328,14 +377,17 @@ constexpr NSUInteger kInitialPhysicalRoom = 1U;
     ((MTKView*)self.view).paused = YES;
     self.touchControlsView.hidden = YES;
     self.statusLabel.text =
-        @"Airfix Dogfighter reconstruction\nLoading private room...";
+        @"Airfix Dogfighter reconstruction\nLoading private mission...";
 }
 
 - (void)contentCoordinator:(AirfixContentCoordinator*)coordinator
-        didLoadWorldRoomSnapshot:(AirfixWorldRoomSnapshot*)snapshot {
-    (void)coordinator;
+        didLoadMissionWorldRoomSnapshot:
+            (AirfixMissionWorldRoomSnapshot*)snapshot {
     AirfixMetalRenderer* renderer = self.renderer;
     if (renderer == nil || snapshot == nil) {
+        if (snapshot != nil) {
+            [coordinator abandonMissionWorldRoomSnapshot:snapshot];
+        }
         _session.setContentState(airfix::runtime::ContentState::rejected);
         [self.inputCoordinator resetForGameplayBoundary];
         ((MTKView*)self.view).paused = YES;
@@ -353,9 +405,11 @@ constexpr NSUInteger kInitialPhysicalRoom = 1U;
         NSError* preparationError = nil;
         @try {
             try {
-                auto room = airfix::ios::takeLoadedWorldRoom(snapshot);
+                auto room =
+                    airfix::ios::takeLoadedMissionWorldRoom(snapshot);
                 preparedRoom =
-                    [renderer prepareLoadedRoom:std::move(room)
+                    [renderer
+                        prepareLoadedMissionRoom:std::move(room)
                                           error:&preparationError];
             }
             catch (...) {
@@ -383,10 +437,12 @@ constexpr NSUInteger kInitialPhysicalRoom = 1U;
             AirfixGameViewController* strongSelf = weakSelf;
             if (strongSelf == nil ||
                 ![strongSelf.contentCoordinator
-                    isWorldRoomSnapshotCurrent:snapshot]) {
+                    isMissionWorldRoomSnapshotCurrent:snapshot]) {
                 return;
             }
             if (preparedRoom == nil) {
+                [strongSelf.contentCoordinator
+                    abandonMissionWorldRoomSnapshot:snapshot];
                 strongSelf->_session.setContentState(
                     airfix::runtime::ContentState::rejected);
                 [strongSelf.inputCoordinator resetForGameplayBoundary];
@@ -400,15 +456,12 @@ constexpr NSUInteger kInitialPhysicalRoom = 1U;
                 return;
             }
 
-            // Main serializes the final gate check and the constant-time
-            // pointer swap, so an invalidation cannot interleave between them.
-            if (![strongSelf.contentCoordinator
-                    isWorldRoomSnapshotCurrent:snapshot]) {
-                return;
-            }
             NSError* publicationError = nil;
-            if (![renderer publishPreparedRoom:preparedRoom
-                                         error:&publicationError]) {
+            if (![renderer
+                    validatePreparedRoomForCommit:preparedRoom
+                                           error:&publicationError]) {
+                [strongSelf.contentCoordinator
+                    abandonMissionWorldRoomSnapshot:snapshot];
                 strongSelf->_session.setContentState(
                     airfix::runtime::ContentState::rejected);
                 [strongSelf.inputCoordinator resetForGameplayBoundary];
@@ -422,6 +475,17 @@ constexpr NSUInteger kInitialPhysicalRoom = 1U;
                 return;
             }
 
+            // Main owns this complete transaction. Validation is read-only;
+            // consuming the exact ticket is immediately followed by the
+            // renderer's no-fail constant-time pointer swap.
+            if (![strongSelf.contentCoordinator
+                    isMissionWorldRoomSnapshotCurrent:snapshot] ||
+                ![strongSelf.contentCoordinator
+                    consumeMissionWorldRoomSnapshot:snapshot]) {
+                return;
+            }
+            [renderer commitValidatedPreparedRoom:preparedRoom];
+
             strongSelf->_session.setContentState(
                 airfix::runtime::ContentState::ready);
             [strongSelf.inputCoordinator resetForGameplayBoundary];
@@ -433,7 +497,7 @@ constexpr NSUInteger kInitialPhysicalRoom = 1U;
             if (inputOperational) {
                 strongSelf.statusLabel.text = [NSString stringWithFormat:
                     @"Airfix Dogfighter reconstruction\n"
-                     @"Private room ready: %lu meshes, %lu textures, %lu draws\n"
+                     @"Private mission ready: %lu meshes, %lu textures, %lu draws\n"
                      @"Press pause or controller menu to start",
                     static_cast<unsigned long>(snapshot.meshCount),
                     static_cast<unsigned long>(snapshot.textureCount),
@@ -447,25 +511,22 @@ constexpr NSUInteger kInitialPhysicalRoom = 1U;
             else {
                 strongSelf.statusLabel.text =
                     @"Airfix Dogfighter reconstruction\n"
-                     @"Private room ready; input pipeline unavailable";
+                     @"Private mission ready; input pipeline unavailable";
             }
             ((MTKView*)strongSelf.view).paused = YES;
         });
     });
 }
 
-- (void)contentCoordinator:(AirfixContentCoordinator*)coordinator
-        didFailLoadingWorldAtLogicalPath:(NSString*)worldLogicalPath
-        physicalRoom:(NSUInteger)physicalRoom {
+- (void)contentCoordinatorDidFailLoadingMission:
+    (AirfixContentCoordinator*)coordinator {
     (void)coordinator;
-    (void)worldLogicalPath;
-    (void)physicalRoom;
     _session.setContentState(airfix::runtime::ContentState::rejected);
     [self.inputCoordinator resetForGameplayBoundary];
     ((MTKView*)self.view).paused = YES;
     self.touchControlsView.hidden = YES;
     self.statusLabel.text =
-        @"Airfix Dogfighter reconstruction\nPrivate room could not be loaded";
+        @"Airfix Dogfighter reconstruction\nPrivate mission could not be loaded";
 }
 
 - (void)inputCoordinator:(AirfixIOSInputCoordinator*)coordinator
@@ -512,7 +573,7 @@ constexpr NSUInteger kInitialPhysicalRoom = 1U;
         self.inputPipelineReady &&
         self.simulationPipelineReady &&
         self.inputCoordinator.isOperational &&
-        self.renderer.worldRoomInstalled;
+        self.renderer.missionWorldRoomInstalled;
     const bool resumed = mayResume && _session.resume();
     metalView.paused = !resumed;
     if (resumed) {

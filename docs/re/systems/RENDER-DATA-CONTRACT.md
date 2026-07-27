@@ -3,8 +3,8 @@
 **State:** mesh/model payload, conservative explicit-room assembly, stable
 runtime texture plans, atomic RGBA8 upload preparation, fail-closed draw
 submission, private CPU diagnostic, public synthetic Metal bootstrap, and
-two-phase private asset-backed Metal room publication implemented; physical
-device visual acceptance pending
+two-phase authenticated aggregate-mission Metal publication implemented;
+selected-start simulation pose and physical-device visual acceptance pending
 
 **Evidence:** `EV-20260721-030` through `EV-20260721-034`,
 `EV-20260727-002`
@@ -285,8 +285,9 @@ load sources, and requires every draw-source CCF identity to match that list
 before allocation. The existing `DrawSubmissionPlan` accepts the combined
 model directly. `MissionWorldRoomLoader` now connects the authenticated
 manifest to this complete portable CCF/texture/binding/draw path. Native
-mission publication, retained scene data for later room changes, and applying
-the selected start room/pose to the reconstructed player remain unimplemented.
+aggregate-mission publication now consumes that owned result. Retained scene
+data for later room changes and applying the selected start room/pose to the
+reconstructed player remain unimplemented.
 
 ## Metal handoff
 
@@ -327,26 +328,48 @@ The portable content layer supplies an authenticated, move-only, single-handle
 AFPACK/`Resource.up` session tagged with the exact
 `{generation, size, digest}` revision. The native coordinator adopts the ready
 `ActiveContentLease` into that session on its serialized worker; the package
-handle is never transferred to the main or render threads. The first native
-smoke request selects the logical asset `Game/Worlds/axis_1.world` and explicit
-physical CCF room index 1.
+handle is never transferred to the main or render threads. A native mission
+request contains an explicit setup logical path, Level logical path, and
+`uint32_t` start index; neither path is inferred.
 
-`WorldRoomLoader` composes exact World/CCF dependencies, that explicit physical
-room, every GTI preparation, geometry, and draw submission into one immutable
-result carrying the session revision. A monotonic request serial and the full
-content revision gate both the worker callback and final publication. Replaced
-requests, lifecycle invalidation, reinspection, and any generation, size, or
-digest mismatch fail closed. The Objective-C CPU snapshot owns the complete
-loaded result and allows it to be moved into renderer preparation only once.
+The worker builds `MissionLoadManifest` and then invokes
+`MissionWorldRoomLoader` through that same `VerifiedContentSession`. This
+composes the authenticated setup/start table, ordered aggregate CCF sources,
+selected runtime room, every GTI preparation, source-aware geometry and
+provenance, and final draw submission into one immutable result carrying the
+session revision. A monotonic request serial and full content revision gate
+both the worker callback and final publication. Replaced requests, lifecycle
+invalidation, reinspection, and any generation, size, or digest mismatch fail
+closed.
 
-Private Metal replacement is two-phase. `prepareLoadedRoom` must run off-main
-and leaves the published snapshot untouched while it validates and creates
-every mesh buffer, RGBA8 texture, authored mip upload, generated mip chain,
-checked index offset, payload, and draw-submission owner. Generated mip work is
-committed and required to complete before the candidate is returned. Main then
-revalidates the publication ticket and `publishPreparedRoom` performs a single
-atomic strong-pointer assignment. A candidate is tied to its renderer and
-device, can be published once, and cannot partially replace the old room.
+The private Objective-C++ snapshot owns one
+`LoadedMissionWorldRoom` and allows the C++ payload to be moved into renderer
+preparation exactly once. Its Objective-C surface publishes only bounded
+counts and revision metadata. The private setup/Level strings exist transiently
+as native request inputs but never become public snapshot properties, status
+text, logs, or displayed UI; aggregate provenance remains behind the private
+Objective-C++ bridge. An unconsumed stale snapshot detaches its storage in
+constant time and destroys the potentially large payload on a serial off-main
+queue.
+
+Private Metal replacement is two-phase.
+`prepareLoadedMissionRoom` must run off-main and leaves the published snapshot
+untouched while it validates and creates every mesh buffer, RGBA8 texture,
+authored mip upload, generated mip chain, checked index offset, and
+draw-submission owner. Generated mip work is committed and required to complete
+before the candidate is returned. The candidate retains the authenticated
+setup identity, start selection/record, CCF cache mapping, and mesh/instance
+provenance. Texture upload vectors are released after Metal owns the complete
+texture set, so decoded CPU pixels do not remain in the published room.
+
+Commit is deliberately ordered on main: renderer candidate validation is
+read-only; the coordinator rechecks and consumes the exact outstanding
+serial/revision ticket; `commitValidatedPreparedRoom` then performs the no-fail,
+constant-time strong-pointer assignment with no callback or dispatch between
+consume and swap. A preparation or validation failure conditionally abandons
+only the exact still-current ticket. Stale failure and completion paths leave a
+newer request untouched. A candidate is tied to its renderer and device, can be
+published once, and cannot partially replace the old room.
 
 Private preparation has a 128 MiB packed-CPU ceiling, a 256 MiB logical-GPU
 preflight ceiling, a separate 256 MiB descriptor heap-plan ceiling, and
@@ -411,14 +434,21 @@ charged and permanently closes the ledger to new snapshots; the documented
 post-creation page-rounding path instead obtains and absorbs a separately
 admitted token.
 
+Native publication does not yet mutate simulation state. The retained selected
+start records the authenticated room choice and authored pose, but there is no
+simulation pose model to apply it to the reconstructed player. The published
+render room also does not retain the full parsed CCF/catalogue arena; runtime
+room switching must introduce that explicitly before portal or later-room
+transitions can be implemented.
+
 ## Dynamic instance-pose boundary
 
 `airfix::render::ScenePoseExchange` is the portable transport seam for future
-dynamic actors. It does not mutate `LoadedWorldRoom`, rebuild a Metal resource
-snapshot, or identify any instance as the player. One published frame contains
-only a simulation step and a sorted, unique, bounded list of absolute
-runtime-world `Mat3`/`Vec3` overrides keyed by the exact instance index of one
-scene.
+dynamic actors. It does not mutate `LoadedMissionWorldRoom`, rebuild a Metal
+resource snapshot, or identify any instance as the player. One published
+frame contains only a simulation step and a sorted, unique, bounded list of
+absolute runtime-world `Mat3`/`Vec3` overrides keyed by the exact instance
+index of one scene.
 
 Every exchange mints an opaque handle for one scene generation. A private
 shared control block is the identity: an equivalent content revision or a new

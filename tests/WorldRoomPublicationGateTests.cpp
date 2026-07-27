@@ -5,6 +5,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string_view>
+#include <thread>
 
 namespace {
 
@@ -50,6 +51,103 @@ void testCurrentTicketAccepted() {
         "current progress/failure ticket was rejected");
     require(gate.accepts(*ticket, current),
         "current ticket and result revision were rejected");
+}
+
+void testConsumeFinalizesExactlyOnceAndAllowsNextTicket() {
+    const auto current = revision(13U, 4'096U, 0x60U);
+    WorldRoomPublicationGate gate(current);
+    const auto first = gate.begin(current);
+
+    require(first.has_value(), "consume fixture did not receive a ticket");
+    require(gate.consume(*first, current),
+        "current ticket was not consumed");
+    require(!gate.hasOutstandingTicket(),
+        "successful consume left a ticket outstanding");
+    require(!gate.accepts(*first, current),
+        "consumed ticket remained acceptable");
+    require(!gate.consume(*first, current),
+        "ticket was consumed twice");
+
+    const auto next = gate.begin(current);
+    require(next.has_value() && next->serial == first->serial + 1U,
+        "new ticket after consume was not issued monotonically");
+    require(gate.accepts(*next, current),
+        "new ticket after consume was not current");
+}
+
+void testRejectedConsumeLeavesCurrentTicketOutstanding() {
+    const auto current = revision(14U, 8'192U, 0x70U);
+    const auto wrongRevision = revision(15U, 8'192U, 0x70U);
+    WorldRoomPublicationGate gate(current);
+    const auto stale = gate.begin(current);
+    const auto active = gate.begin(current);
+    require(stale.has_value() && active.has_value(),
+        "stale consume fixture did not receive tickets");
+
+    require(!gate.consume(*stale, current),
+        "stale serial was consumed");
+    require(gate.accepts(*active, current),
+        "stale serial consume changed current state");
+
+    const airfix::content::WorldRoomPublicationTicket wrongTicket{
+        .serial = active->serial,
+        .expectedRevision = wrongRevision,
+    };
+    require(!gate.consume(wrongTicket, wrongRevision),
+        "revision-mismatched ticket was consumed");
+    require(!gate.consume(*active, wrongRevision),
+        "revision-mismatched result was consumed");
+    require(gate.hasOutstandingTicket() &&
+            gate.accepts(*active, current),
+        "revision rejection changed outstanding state");
+}
+
+void testConsumeRequiresOwnerThread() {
+    const auto current = revision(16U, 16'384U, 0x80U);
+    WorldRoomPublicationGate gate(current);
+    const auto ticket = gate.begin(current);
+    require(ticket.has_value(),
+        "wrong-thread consume fixture did not receive a ticket");
+
+    bool consumedOnWorker = true;
+    std::thread worker([&] {
+        consumedOnWorker = gate.consume(*ticket, current);
+    });
+    worker.join();
+
+    require(!consumedOnWorker,
+        "non-owner thread consumed a publication ticket");
+    require(gate.hasOutstandingTicket() &&
+            gate.accepts(*ticket, current),
+        "wrong-thread consume changed owner state");
+    require(gate.consume(*ticket, current),
+        "owner thread could not consume after wrong-thread rejection");
+}
+
+void testAbandonFinalizesOnlyTheExactCurrentTicket() {
+    const auto current = revision(17U, 32'768U, 0x90U);
+    const auto wrongRevision = revision(18U, 32'768U, 0x90U);
+    WorldRoomPublicationGate gate(current);
+    const auto stale = gate.begin(current);
+    const auto active = gate.begin(current);
+    require(stale.has_value() && active.has_value(),
+        "abandon fixture did not receive tickets");
+
+    require(!gate.abandon(*stale, current),
+        "stale ticket abandoned a newer request");
+    require(!gate.abandon(*active, wrongRevision),
+        "mismatched result revision abandoned the current request");
+    require(gate.accepts(*active, current),
+        "rejected abandon changed the current request");
+    require(gate.abandon(*active, current),
+        "exact current ticket could not be abandoned");
+    require(!gate.hasOutstandingTicket() &&
+            !gate.accepts(*active, current),
+        "abandoned ticket remained current");
+
+    const auto next = gate.begin(current);
+    require(next.has_value() && next->serial == active->serial + 1U,
+        "abandon did not permit the next monotonic request");
 }
 
 void testNewerRequestRejectsOldTicket() {
@@ -162,6 +260,10 @@ void testSerialOverflowRefusesNewTicket() {
 int main() {
     try {
         testCurrentTicketAccepted();
+        testConsumeFinalizesExactlyOnceAndAllowsNextTicket();
+        testRejectedConsumeLeavesCurrentTicketOutstanding();
+        testConsumeRequiresOwnerThread();
+        testAbandonFinalizesOnlyTheExactCurrentTicket();
         testNewerRequestRejectsOldTicket();
         testInvalidationAndClearRejectTickets();
         testRevisionIdentityMismatches();

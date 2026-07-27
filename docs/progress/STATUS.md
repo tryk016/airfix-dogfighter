@@ -317,7 +317,7 @@
   size/digest/generation, cancellation during hashing, malformed source UDSP,
   exact/one-under limits, and a poisoned label that points at another real file.
 - Implemented an atomic `WorldRoomLoader` on that session. A request contains
-  only an exact World logical path and an explicit physical CCF room index; CCF
+  only an exact World logical path and a legacy single-room index; CCF
   and GTI entry indices are derived internally from the same archive. The
   loader validates World -> `CCFF`, room dependencies, dense first-use texture
   IDs, GTI plans and RGBA data, room assembly, and draw submission before
@@ -336,24 +336,33 @@
   ordinary room from the owner's original content. It published 62 meshes,
   62 instances, 23 dense textures, and 167 validated draw commands. Generated
   private artifacts and original-derived bytes never entered Git.
-- Added a portable `WorldRoomPublicationGate` and the native room handoff.
+- Added a portable `WorldRoomPublicationGate` and the native mission handoff.
   Main-thread state binds each request to the exact active
   `{generation, size, digest}` revision and a monotonically increasing serial;
   replacement, lifecycle invalidation, content changes, and serial exhaustion
-  fail closed. The worker rechecks the adopted session before and after loading,
-  and a loaded result must carry the same revision before a callback is accepted.
-- The first native smoke selection is the exact logical World
-  `Game/Worlds/axis_1.world` and explicit physical CCF room index 1. Its
-  Objective-C snapshot owns one immutable `LoadedWorldRoom`, exposes aggregate
-  counts only, and permits the CPU payload to be consumed once. A stale
+  fail closed. Exact ticket/revision `consume` and `abandon` operations are
+  additionally confined to the gate's owner thread; stale or cross-thread
+  completion cannot mutate a newer request.
+- The native request is an explicit private setup logical path, Level logical
+  path, and `uint32_t` start index. The content worker builds
+  `MissionLoadManifest` and then `LoadedMissionWorldRoom` through the same
+  pinned `VerifiedContentSession` and revision. A private Objective-C++
+  snapshot owns that aggregate C++ result exactly once, exposes aggregate
+  counts only, and does not expose or log the requested paths. A stale,
   unconsumed payload is detached and destroyed on a serial off-main queue.
-- Implemented two-phase private-room Metal publication. Complete mesh buffers,
+- Implemented two-phase aggregate-mission Metal publication. Complete mesh buffers,
   authored RGBA8 mip levels, generated mip chains, texture arrays, draw offsets,
-  payload, and submission state are prepared off-main; only a current snapshot
-  is atomically published on main. Preparation checks a 128 MiB packed-CPU
+  payload, submission state, setup/start selection, and numeric provenance are
+  prepared off-main. On main, renderer validation is read-only, then the exact
+  current publication ticket is consumed and the already validated candidate
+  is installed with a no-fail constant-time strong-pointer assignment. A
+  failed or discarded current candidate is conditionally abandoned; stale
+  candidates cannot clear newer tickets. Preparation checks a 128 MiB packed-CPU
   ceiling, 256 MiB logical and heap-plan ceilings, and
   `device.maxBufferLength`. Buffers and textures are created only from retained
-  shared/tracked Metal heaps.
+  shared/tracked Metal heaps. CPU texture pixels are released after Metal owns
+  the complete texture set, while setup/start selection and mesh/instance
+  provenance remain retained by the published room.
 - A move-only reservation token admits the heap descriptor plan before
   allocation, then charges each accepted snapshot by the measured
   `MTLHeap.currentAllocatedSize` exactly once. Page-rounding growth must obtain a
@@ -452,11 +461,19 @@
   compressed and aggregate budgets, callback-time destruction of snapshotted
   inputs, separately authenticated equal revisions, moved and replaced
   sessions, identity-versus-callback-error precedence, cancellation, and late
-  atomic failures. The portable suite now passes 42/42.
-- The authenticated setup-to-room provenance chain is closed. Retained
-  CCF/catalog arenas for runtime room switching, native iOS mission
-  publication, and application of the selected room/pose to the reconstructed
-  player remain the next content boundaries.
+  atomic failures. The portable suite now passes 43/43.
+- The authenticated setup-to-room provenance chain now crosses the native iOS
+  publication boundary. The selected start record remains retained and
+  auditable, but its pose is not yet applied to the reconstructed player
+  because the simulation pose model is absent. Runtime room switching still
+  requires retaining the CCF/catalogue arena rather than reconstructing it from
+  the published static room.
+- Added optional build-generated initial mission configuration. Public defaults
+  are empty/data-less. Private builds may supply Base64 setup and Level logical
+  paths plus a decimal `uint32_t` start index through three GitHub secrets;
+  CMake validates them and generates a local header without committing private
+  paths. AFPACK v1 contains no launch metadata; an authenticated bounded
+  mission catalogue remains a target for AFPACK v2.
 
 ## Confirmed
 
@@ -494,11 +511,10 @@
 3. Implement explicit dynamic publication of the recovered primary actor and
    its selected-skin hierarchies through the pose exchange, keeping auxiliary
    weapons/effects separate.
-4. Publish the authenticated aggregate mission room through the native iOS
-   coordinator and apply its selected start room/pose to the reconstructed
-   player. Retain the CCF/catalog arena only when runtime room switching is
-   introduced; recover portal tracing, camera room traversal, and later
-   transitions afterward.
+4. Add the simulation pose model and apply the already retained authenticated
+   start room/pose to the reconstructed player. Introduce a retained
+   CCF/catalogue arena when runtime room switching is implemented; recover
+   portal tracing, camera room traversal, and later transitions afterward.
 5. Keep BSP culling and portal traversal disabled until their runtime semantics
    are proven against executable evidence.
 

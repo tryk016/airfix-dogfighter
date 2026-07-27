@@ -10,9 +10,9 @@ The project is under active development and is **not yet a playable port**.
 It currently provides the portable archive/asset pipeline, deterministic input
 and player-control state, private content-package infrastructure, fail-closed
 render submission and texture-upload preparation, diagnostic rendering, and a
-data-less UIKit/Metal application shell with an authenticated private-room
-loading path and full native gameplay-action transport into the frozen
-simulation boundary.
+data-less UIKit/Metal application shell with an authenticated aggregate-mission
+loading and publication path, plus full native gameplay-action transport into
+the frozen simulation boundary.
 
 ## Project scope
 
@@ -70,11 +70,11 @@ sources.
 | Legacy assets | GTI textures plus bounded CCF scene, room/fog/BSP, mesh, material, blueprint, and placed-node parsing implemented |
 | Dependency resolution | Object-to-scene, blueprint/placed graphs, BSP polygons, verified world-to-CCF binding, rooms, meshes, portals, materials, texture edges, and an authenticated mission dependency manifest implemented |
 | Private packaging | AFPACK writer, validation, transactional install/recovery, and native iOS import/rollback UI implemented |
-| Runtime content loading | Exact authenticated active lease/session, atomic World → CCF → GTI → draw-submission room loading, and revision/serial-gated one-shot native handoff implemented |
-| Rendering | Bounded explicit-room and source-aware multi-CCF runtime-room assembly, globally deduplicated source-local texture binding, numeric provenance, stable texture IDs, atomic RGBA8 upload preparation, CPU diagnostics, two-phase private-room Metal publication, and neutral scene-bound pose transport implemented; mission CCF/GTI materialization and native aggregate publication remain pending |
+| Runtime content loading | Exact authenticated active lease/session, explicit setup + Level + `uint32` start requests, same-session mission manifest and aggregate CCF/GTI loading, and revision/serial-gated one-shot native handoff implemented |
+| Rendering | Bounded source-aware multi-CCF runtime-room assembly, globally deduplicated source-local texture binding, numeric provenance, stable texture IDs, atomic RGBA8 upload preparation, CPU diagnostics, two-phase aggregate-mission Metal publication, and neutral scene-bound pose transport implemented |
 | Input core | Deterministic semantic router for touch/controller/test sources implemented |
 | Native controls | Full V1 gameplay-action transport implemented for the UIKit overlay and one Apple extended controller; profiles, remapping, haptics, finished menus, and device acceptance remain pending |
-| Game simulation | Frozen-pose deterministic player-control intent state implemented for flight, throttle, combat, camera, mission, and pause actions; the player spawn/primary-actor path, campaign start table, ordered multi-CCF room lookup/draw plan, grouped skin hierarchy, and complete static 12 ms aircraft force law are documented, while portal traversal, authenticated mission publication, dynamic publication, runtime traces, physical units, and numeric tolerance remain pending |
+| Game simulation | Frozen-pose deterministic player-control intent state implemented for flight, throttle, combat, camera, mission, and pause actions; the player spawn/primary-actor path, campaign start table, ordered multi-CCF room lookup/draw plan, grouped skin hierarchy, and complete static 12 ms aircraft force law are documented, while applying the authenticated start pose, portal traversal, dynamic publication, runtime traces, physical units, and numeric tolerance remain pending |
 | Continuous integration | Portable C++ tests plus unsigned device/simulator iOS builds |
 
 Detailed, frequently updated progress lives in
@@ -82,17 +82,24 @@ Detailed, frequently updated progress lives in
 [docs/progress/LOG.md](docs/progress/LOG.md).
 
 The public synthetic Metal scene remains the data-less bootstrap and regression
-fixture. Once private content is authenticated, the native coordinator keeps
-the adopted AFPACK session on its serialized worker, loads the initial
-`Game/Worlds/axis_1.world` logical asset at physical CCF room index 1, and
-issues a one-shot CPU room snapshot. Publication requires both the exact
-`{generation, size, digest}` content revision and the current monotonic request
-serial, so replaced requests, content changes, and lifecycle invalidation cannot
-publish stale work.
+fixture. An optional private launch request supplies an explicit setup logical
+path, Level logical path, and `uint32_t` start index. The native coordinator
+keeps the adopted AFPACK session on its serialized content worker, builds the
+authenticated mission manifest, and loads the aggregate room through that same
+`VerifiedContentSession`. It then issues a one-shot private Objective-C++
+snapshot. The paths exist only as transient native request inputs; the public
+snapshot, UI, status text, and logs expose only bounded counts and revision
+metadata, never those paths or C++ provenance.
 
 Metal publication is two-phase. Complete buffers, RGBA8 textures, and generated
-mips are prepared off the main thread; the main thread rechecks the snapshot
-gate and publishes the complete immutable room with one pointer assignment.
+mips are prepared off the main thread. On main, renderer validation is
+read-only; the coordinator then consumes the exact outstanding serial/revision
+ticket and immediately performs the candidate's no-fail, constant-time atomic
+pointer swap. A failed or discarded candidate conditionally abandons only its
+own still-current ticket, so it cannot cancel newer work. Replaced requests,
+content changes, lifecycle invalidation, and stale callbacks cannot publish.
+The published owner retains setup/start selection and mesh/instance provenance
+while releasing CPU texture pixels after Metal has complete ownership.
 Buffers and textures are suballocated from retained Metal heaps. A checked heap
 descriptor plan is admitted before allocation, then each accepted snapshot is
 charged exactly once by its measured `MTLHeap.currentAllocatedSize` in a shared
@@ -188,9 +195,11 @@ manifest's `ContentRevision` are pinned throughout; a separately authenticated
 session for the same revision remains valid. CCF/GTI source admission, RGBA and
 published-CPU budgets are checked; retained CCF metadata additionally has
 explicit post-parse logical accounting, not a process-memory ceiling. No
-partial textures or geometry escape a late failure. Native iOS mission
-publication and applying the selected room/pose to the reconstructed player
-remain later integration boundaries.
+partial textures or geometry escape a late failure. Native iOS aggregate
+mission publication is implemented. The selected start record is retained and
+auditable, but its pose is not yet applied to the reconstructed player because
+the simulation pose model is not implemented. Runtime room switching likewise
+still requires a deliberately retained CCF/catalogue arena.
 
 The mission layer also reconstructs the ordered runtime room namespace across
 the main scene, optional backdrop, and object CCF loads. It keeps the anonymous
@@ -198,7 +207,7 @@ root separate, merges ordinary rooms with bounded ASCII case-insensitive
 lookup, records every source/physical-room contributor, and resolves the fixed
 mission start table without executing setup scripts. A private aggregate check
 of all 20 campaign starts reports unique main-scene matches and no published
-original names or paths. The portable suite passes 42/42 synthetic tests.
+original names or paths. The portable suite passes 43/43 synthetic tests.
 Physical-device rendering and visual acceptance remain pending.
 
 ## Architecture
@@ -329,6 +338,15 @@ GitHub Actions is the current Apple build host, so portable development and
 compile validation do not require a local Mac. The workflow builds a data-less
 UIKit/Metal shell for both ARM64 devices and the simulator and verifies that no
 private content enters the app bundle.
+
+Public builds leave the optional initial-mission configuration empty and remain
+data-less. A private workflow can generate the Objective-C++ configuration
+header at build time from the two Base64 path secrets
+`AIRFIX_IOS_INITIAL_SETUP_LOGICAL_PATH_BASE64` and
+`AIRFIX_IOS_INITIAL_LEVEL_LOGICAL_PATH_BASE64`, plus the decimal
+`AIRFIX_IOS_INITIAL_START_INDEX`. No private logical path is stored in the
+repository. AFPACK v1 itself has no launch metadata; an authenticated,
+bounded mission catalogue is reserved for a future AFPACK v2 design.
 
 Device signing and installation are a later protected workflow using the
 owner's Apple Developer credentials and provisioning profile. Signed IPAs,

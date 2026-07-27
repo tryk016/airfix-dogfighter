@@ -2,7 +2,7 @@
 
 #ifdef __cplusplus
 namespace airfix::content {
-struct LoadedWorldRoom;
+struct LoadedMissionWorldRoom;
 }
 #endif
 
@@ -14,7 +14,7 @@ NS_ASSUME_NONNULL_BEGIN
 // with one complete private room prepared from authenticated AFPACK content.
 @interface AirfixMetalRenderer : NSObject <MTKViewDelegate>
 
-@property(nonatomic, readonly) BOOL worldRoomInstalled;
+@property(nonatomic, readonly) BOOL missionWorldRoomInstalled;
 
 - (nullable instancetype)initWithMetalView:(MTKView*)metalView
                                      error:(NSError* _Nullable* _Nullable)error
@@ -24,16 +24,20 @@ NS_ASSUME_NONNULL_BEGIN
 // Builds every Metal resource without changing the renderer's published room.
 // This synchronous boundary must run on a serialized preparation queue, never
 // the main thread. On failure the old render snapshot and room stay unchanged.
-- (nullable AirfixPreparedMetalRoom*)prepareLoadedRoom:
-    (airfix::content::LoadedWorldRoom&&)room
+- (nullable AirfixPreparedMetalRoom*)prepareLoadedMissionRoom:
+    (airfix::content::LoadedMissionWorldRoom&&)room
     error:(NSError* _Nullable* _Nullable)error;
 #endif
 
-// Performs only owner/device/one-shot/transition validation and one atomic
-// snapshot assignment. It must run on the main thread after the coordinator
-// revalidates the request serial and content revision.
-- (BOOL)publishPreparedRoom:(AirfixPreparedMetalRoom*)preparedRoom
-                      error:(NSError* _Nullable* _Nullable)error;
+// Read-only main-thread validation. The coordinator consumes the exact
+// ticket/revision only after this succeeds and immediately before commit.
+- (BOOL)validatePreparedRoomForCommit:(AirfixPreparedMetalRoom*)preparedRoom
+                                error:(NSError* _Nullable* _Nullable)error;
+
+// No-fail, constant-time main-thread commit of a candidate already validated
+// by validatePreparedRoomForCommit:. No callback or dispatch may occur between
+// ticket consumption and this method.
+- (void)commitValidatedPreparedRoom:(AirfixPreparedMetalRoom*)preparedRoom;
 
 - (instancetype)init NS_UNAVAILABLE;
 

@@ -57,6 +57,10 @@ flowchart TD
 The application and game data are separate deliverables. CI never needs the
 original installation.
 
+The public source defaults are also launch-data-less: no setup or Level path is
+committed, inferred, or embedded unless a private build explicitly supplies
+the optional configuration described below.
+
 ## Workflow layers
 
 ### 1. `validate`
@@ -108,6 +112,35 @@ Actions does not replace the device test pass.
 A MacBook is introduced only under `docs/process/MACBOOK-GATE.md`: a hard
 blocker or evidence that it reduces the remaining affected work by at least 20%.
 
+## Optional private initial-mission configuration
+
+The iOS target accepts three optional CMake cache inputs:
+
+| GitHub secret | Generated value |
+|---|---|
+| `AIRFIX_IOS_INITIAL_SETUP_LOGICAL_PATH_BASE64` | Base64 of the explicit private setup logical path |
+| `AIRFIX_IOS_INITIAL_LEVEL_LOGICAL_PATH_BASE64` | Base64 of the explicit private Level logical path |
+| `AIRFIX_IOS_INITIAL_START_INDEX` | decimal unsigned start index in `0..4294967295` |
+
+The workflow forwards these values only as build configuration. CMake validates
+the Base64 alphabet/padding and `uint32_t` range, then `configure_file`
+generates `AirfixPrivateMissionConfig.h` inside the build directory. The
+generated header and decoded logical paths are never source files and must not
+be uploaded as artifacts or caches. Base64 is a safe source-generation
+transport, not encryption.
+
+Both path secrets default to empty in public and unconfigured builds. Automatic
+loading is disabled unless both decode as non-empty UTF-8; supplying only one
+is treated as incomplete configuration. The start index defaults to zero.
+After the private package is authenticated, the native coordinator submits the
+explicit setup + Level + `uint32_t` request and builds the mission manifest and
+aggregate room through the same verified session.
+
+AFPACK v1 deliberately contains no launch metadata. A future AFPACK v2 may
+replace these build inputs with an authenticated, bounded mission catalogue,
+but that schema is not implemented. Until then, no private logical path belongs
+in the repository or workflow YAML.
+
 ## Signing secrets
 
 The protected environment holds only the items required for signing:
@@ -144,6 +177,8 @@ pipeline produces a versioned package, provisionally named
 The CI-built application:
 
 - starts without the package and shows an import/install screen;
+- remains data-less and does not auto-load a mission when the optional private
+  configuration is empty;
 - imports the package through an iOS Files/document-picker or another private
   transfer path selected during the device spike;
 - copies it atomically into Application Support after validating header,

@@ -1,4 +1,6 @@
-#import "AirfixWorldRoomSnapshot+Private.hpp"
+#import "AirfixMissionWorldRoomSnapshot+Private.hpp"
+
+#include "airfix/content/MissionWorldRoomPublication.hpp"
 
 #include <optional>
 #include <stdexcept>
@@ -9,29 +11,27 @@ namespace {
 struct SnapshotStorage final {
     SnapshotStorage(
         airfix::content::WorldRoomPublicationTicket publicationTicket,
-        airfix::content::LoadedWorldRoom&& loadedRoom)
+        airfix::content::LoadedMissionWorldRoom&& loadedRoom)
         : ticket(std::move(publicationTicket)),
           resultRevision(loadedRoom.revision),
           room(std::move(loadedRoom)) {}
 
     airfix::content::WorldRoomPublicationTicket ticket;
     airfix::content::ContentRevision resultRevision;
-    std::optional<airfix::content::LoadedWorldRoom> room;
+    std::optional<airfix::content::LoadedMissionWorldRoom> room;
 };
 
 dispatch_queue_t snapshotTeardownQueue() {
     static dispatch_queue_t queue = dispatch_queue_create(
-        "com.tryk016.airfixdogfighter.world-room-snapshot-teardown",
+        "com.tryk016.airfixdogfighter.mission-room-snapshot-teardown",
         DISPATCH_QUEUE_SERIAL);
     return queue;
 }
 
 } // namespace
 
-@interface AirfixWorldRoomSnapshot ()
+@interface AirfixMissionWorldRoomSnapshot ()
 
-@property(nonatomic, copy, readwrite) NSString* worldLogicalPath;
-@property(nonatomic, readwrite) NSUInteger physicalRoom;
 @property(nonatomic, readwrite) uint64_t requestSerial;
 @property(nonatomic, readwrite) uint64_t contentGeneration;
 @property(nonatomic, readwrite) uint64_t packSize;
@@ -39,20 +39,16 @@ dispatch_queue_t snapshotTeardownQueue() {
 @property(nonatomic, readwrite) NSUInteger meshCount;
 @property(nonatomic, readwrite) NSUInteger drawCommandCount;
 
-- (instancetype)initWithWorldLogicalPath:(NSString*)worldLogicalPath
-                             physicalRoom:(NSUInteger)physicalRoom
-                            requestSerial:(uint64_t)requestSerial
-                          loadedRoomStore:(void*)loadedRoomStore;
+- (instancetype)initWithRequestSerial:(uint64_t)requestSerial
+                      loadedRoomStore:(void*)loadedRoomStore;
 - (void*)airfix_privateStorage;
 
 @end
 
-@implementation AirfixWorldRoomSnapshot
+@implementation AirfixMissionWorldRoomSnapshot
 
-- (instancetype)initWithWorldLogicalPath:(NSString*)worldLogicalPath
-                             physicalRoom:(NSUInteger)physicalRoom
-                            requestSerial:(uint64_t)requestSerial
-                          loadedRoomStore:(void*)loadedRoomStore {
+- (instancetype)initWithRequestSerial:(uint64_t)requestSerial
+                      loadedRoomStore:(void*)loadedRoomStore {
     self = [super init];
     if (self == nil) {
         delete static_cast<SnapshotStorage*>(loadedRoomStore);
@@ -66,8 +62,6 @@ dispatch_queue_t snapshotTeardownQueue() {
     }
 
     _airfixPrivateStorage = storage;
-    _worldLogicalPath = [worldLogicalPath copy];
-    _physicalRoom = physicalRoom;
     _requestSerial = requestSerial;
     _contentGeneration = storage->room->revision.generation;
     _packSize = storage->room->revision.pack.size;
@@ -99,50 +93,41 @@ dispatch_queue_t snapshotTeardownQueue() {
 
 namespace airfix::ios {
 
-AirfixWorldRoomSnapshot* makeWorldRoomSnapshot(
-    std::string worldLogicalPath,
-    const std::size_t physicalRoom,
+AirfixMissionWorldRoomSnapshot* makeMissionWorldRoomSnapshot(
     content::WorldRoomPublicationTicket ticket,
-    content::LoadedWorldRoom&& room) {
-    if (room.revision != ticket.expectedRevision) {
+    content::LoadedMissionWorldRoom&& room) {
+    if (content::validateMissionWorldRoomPublication(
+            room, ticket.expectedRevision).has_value()) {
         throw std::invalid_argument(
-            "world room snapshot revision does not match its publication ticket");
+            "mission room snapshot failed its publication contract");
     }
     // Initialize the long-lived teardown queue on the content worker so the
     // first stale release never has to create it from a main-thread dealloc.
     (void)snapshotTeardownQueue();
-    NSString* const logicalPath = [[NSString alloc]
-        initWithBytes:worldLogicalPath.data()
-               length:worldLogicalPath.size()
-             encoding:NSUTF8StringEncoding];
-    if (logicalPath == nil) {
-        throw std::invalid_argument(
-            "world logical path is not valid UTF-8 at snapshot publication");
-    }
-
     const auto requestSerial = ticket.serial;
     auto* const storage =
         new SnapshotStorage(std::move(ticket), std::move(room));
-    AirfixWorldRoomSnapshot* const snapshot = [[AirfixWorldRoomSnapshot alloc]
-        initWithWorldLogicalPath:logicalPath
-                   physicalRoom:static_cast<NSUInteger>(physicalRoom)
-                  requestSerial:requestSerial
-                loadedRoomStore:storage];
+    AirfixMissionWorldRoomSnapshot* const snapshot =
+        [[AirfixMissionWorldRoomSnapshot alloc]
+            initWithRequestSerial:requestSerial
+                 loadedRoomStore:storage];
     if (snapshot == nil) {
-        throw std::runtime_error("world room snapshot could not be initialized");
+        throw std::runtime_error(
+            "mission room snapshot could not be initialized");
     }
     return snapshot;
 }
 
-content::LoadedWorldRoom takeLoadedWorldRoom(
-    AirfixWorldRoomSnapshot* const snapshot) {
+content::LoadedMissionWorldRoom takeLoadedMissionWorldRoom(
+    AirfixMissionWorldRoomSnapshot* const snapshot) {
     if (snapshot == nil) {
-        throw std::invalid_argument("world room snapshot is null");
+        throw std::invalid_argument("mission room snapshot is null");
     }
     auto* const storage =
         static_cast<SnapshotStorage*>([snapshot airfix_privateStorage]);
     if (storage == nullptr || !storage->room.has_value()) {
-        throw std::logic_error("world room snapshot payload was already consumed");
+        throw std::logic_error(
+            "mission room snapshot payload was already consumed");
     }
 
     auto room = std::move(*storage->room);
@@ -150,28 +135,30 @@ content::LoadedWorldRoom takeLoadedWorldRoom(
     return room;
 }
 
-content::WorldRoomPublicationTicket worldRoomPublicationTicket(
-    AirfixWorldRoomSnapshot* const snapshot) {
+content::WorldRoomPublicationTicket missionWorldRoomPublicationTicket(
+    AirfixMissionWorldRoomSnapshot* const snapshot) {
     if (snapshot == nil) {
-        throw std::invalid_argument("world room snapshot is null");
+        throw std::invalid_argument("mission room snapshot is null");
     }
     auto* const storage =
         static_cast<SnapshotStorage*>([snapshot airfix_privateStorage]);
     if (storage == nullptr) {
-        throw std::logic_error("world room snapshot storage is unavailable");
+        throw std::logic_error(
+            "mission room snapshot storage is unavailable");
     }
     return storage->ticket;
 }
 
-content::ContentRevision worldRoomResultRevision(
-    AirfixWorldRoomSnapshot* const snapshot) {
+content::ContentRevision missionWorldRoomResultRevision(
+    AirfixMissionWorldRoomSnapshot* const snapshot) {
     if (snapshot == nil) {
-        throw std::invalid_argument("world room snapshot is null");
+        throw std::invalid_argument("mission room snapshot is null");
     }
     auto* const storage =
         static_cast<SnapshotStorage*>([snapshot airfix_privateStorage]);
     if (storage == nullptr) {
-        throw std::logic_error("world room snapshot storage is unavailable");
+        throw std::logic_error(
+            "mission room snapshot storage is unavailable");
     }
     return storage->resultRevision;
 }

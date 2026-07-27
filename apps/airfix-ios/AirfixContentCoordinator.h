@@ -1,5 +1,7 @@
 #import <UIKit/UIKit.h>
 
+#include <stdint.h>
+
 NS_ASSUME_NONNULL_BEGIN
 
 typedef NS_ENUM(NSInteger, AirfixContentReadiness) {
@@ -10,7 +12,7 @@ typedef NS_ENUM(NSInteger, AirfixContentReadiness) {
 };
 
 @class AirfixContentCoordinator;
-@class AirfixWorldRoomSnapshot;
+@class AirfixMissionWorldRoomSnapshot;
 
 @protocol AirfixContentCoordinatorDelegate <NSObject>
 - (void)contentCoordinator:(AirfixContentCoordinator*)coordinator
@@ -18,14 +20,13 @@ typedef NS_ENUM(NSInteger, AirfixContentReadiness) {
 
 @optional
 // Main-thread notification.
+- (void)contentCoordinatorDidBeginLoadingMission:
+    (AirfixContentCoordinator*)coordinator;
 - (void)contentCoordinator:(AirfixContentCoordinator*)coordinator
-        didBeginLoadingWorldAtLogicalPath:(NSString*)worldLogicalPath
-        physicalRoom:(NSUInteger)physicalRoom;
-- (void)contentCoordinator:(AirfixContentCoordinator*)coordinator
-        didLoadWorldRoomSnapshot:(AirfixWorldRoomSnapshot*)snapshot;
-- (void)contentCoordinator:(AirfixContentCoordinator*)coordinator
-        didFailLoadingWorldAtLogicalPath:(NSString*)worldLogicalPath
-        physicalRoom:(NSUInteger)physicalRoom;
+    didLoadMissionWorldRoomSnapshot:
+        (AirfixMissionWorldRoomSnapshot*)snapshot;
+- (void)contentCoordinatorDidFailLoadingMission:
+    (AirfixContentCoordinator*)coordinator;
 @end
 
 // Owns the native private-content workflow. All package mutations are
@@ -47,14 +48,26 @@ typedef NS_ENUM(NSInteger, AirfixContentReadiness) {
 - (void)applicationWillEnterForeground;
 - (void)applicationDidBecomeActive;
 
-// Remembers the latest requested physical CCF room. If content is validating
-// or the app is inactive, loading begins after the next ready inspection.
-- (void)requestWorldAtLogicalPath:(NSString*)worldLogicalPath
-                    physicalRoom:(NSUInteger)physicalRoom;
+// Remembers an explicit private mission setup/Level pair. If content is
+// validating or the app is inactive, loading begins after the next ready
+// inspection. The paths are never inferred, displayed, logged, or exposed by
+// the resulting public snapshot.
+- (void)requestMissionWithSetupLogicalPath:(NSString*)setupLogicalPath
+                          levelLogicalPath:(NSString*)levelLogicalPath
+                       requestedStartIndex:(uint32_t)requestedStartIndex;
 
 // Main-thread two-phase publication check. The caller checks after off-main
-// Metal preparation and again immediately before its constant-time swap.
-- (BOOL)isWorldRoomSnapshotCurrent:(AirfixWorldRoomSnapshot*)snapshot;
+// Metal preparation and again immediately before transaction commit.
+- (BOOL)isMissionWorldRoomSnapshotCurrent:
+    (AirfixMissionWorldRoomSnapshot*)snapshot;
+
+// Finalize exactly the current ticket. consume... is called after renderer
+// candidate validation and immediately before its no-fail swap. abandon...
+// releases only a matching failed candidate and cannot cancel a newer request.
+- (BOOL)consumeMissionWorldRoomSnapshot:
+    (AirfixMissionWorldRoomSnapshot*)snapshot;
+- (BOOL)abandonMissionWorldRoomSnapshot:
+    (AirfixMissionWorldRoomSnapshot*)snapshot;
 
 @end
 

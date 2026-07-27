@@ -1,21 +1,76 @@
 set(AIRFIX_IOS_BUNDLE_IDENTIFIER "com.tryk016.airfixdogfighter" CACHE STRING
     "Bundle identifier used by the unsigned iOS shell")
 
+set(AIRFIX_IOS_INITIAL_SETUP_LOGICAL_PATH_BASE64 "" CACHE STRING
+    "Optional Base64-encoded private setup logical path used by the iOS shell")
+set(AIRFIX_IOS_INITIAL_LEVEL_LOGICAL_PATH_BASE64 "" CACHE STRING
+    "Optional Base64-encoded private Level logical path used by the iOS shell")
+set(AIRFIX_IOS_INITIAL_START_INDEX "0" CACHE STRING
+    "Optional initial mission start index used by the iOS shell")
+
+foreach(_airfix_ios_base64_variable IN ITEMS
+        AIRFIX_IOS_INITIAL_SETUP_LOGICAL_PATH_BASE64
+        AIRFIX_IOS_INITIAL_LEVEL_LOGICAL_PATH_BASE64)
+    set(_airfix_ios_base64_value "${${_airfix_ios_base64_variable}}")
+    if(NOT _airfix_ios_base64_value MATCHES "^[A-Za-z0-9+/]*=?=?$")
+        message(FATAL_ERROR
+            "${_airfix_ios_base64_variable} must use only the Base64 alphabet "
+            "(A-Z, a-z, 0-9, +, /, and up to two trailing = characters)")
+    endif()
+
+    string(LENGTH "${_airfix_ios_base64_value}" _airfix_ios_base64_length)
+    math(EXPR _airfix_ios_base64_remainder
+        "${_airfix_ios_base64_length} % 4")
+    if(NOT _airfix_ios_base64_remainder EQUAL 0)
+        message(FATAL_ERROR
+            "${_airfix_ios_base64_variable} must be empty or have a Base64 "
+            "length divisible by four")
+    endif()
+endforeach()
+
+if(NOT AIRFIX_IOS_INITIAL_START_INDEX MATCHES "^[0-9]+$")
+    message(FATAL_ERROR
+        "AIRFIX_IOS_INITIAL_START_INDEX must be a decimal integer in the "
+        "range 0..4294967295")
+endif()
+
+string(REGEX REPLACE "^0+" ""
+    _airfix_ios_initial_start_index_normalized
+    "${AIRFIX_IOS_INITIAL_START_INDEX}")
+if(_airfix_ios_initial_start_index_normalized STREQUAL "")
+    set(_airfix_ios_initial_start_index_normalized "0")
+endif()
+string(LENGTH "${_airfix_ios_initial_start_index_normalized}"
+    _airfix_ios_initial_start_index_length)
+if(_airfix_ios_initial_start_index_length GREATER 10 OR
+        (_airfix_ios_initial_start_index_length EQUAL 10 AND
+         _airfix_ios_initial_start_index_normalized STRGREATER "4294967295"))
+    message(FATAL_ERROR
+        "AIRFIX_IOS_INITIAL_START_INDEX must be a decimal integer in the "
+        "range 0..4294967295")
+endif()
+
 configure_file(
-    Info.plist.in
+    "${CMAKE_CURRENT_LIST_DIR}/Info.plist.in"
     "${CMAKE_CURRENT_BINARY_DIR}/AirfixDogfighter-Info.plist"
+    @ONLY
+)
+configure_file(
+    "${CMAKE_CURRENT_LIST_DIR}/AirfixPrivateMissionConfig.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/AirfixPrivateMissionConfig.h"
     @ONLY
 )
 
 add_executable(airfix_ios MACOSX_BUNDLE
+    "${CMAKE_CURRENT_BINARY_DIR}/AirfixPrivateMissionConfig.h"
     main.mm
     AirfixAppDelegate.h
     AirfixAppDelegate.mm
     AirfixContentCoordinator.h
     AirfixContentCoordinator.mm
-    AirfixWorldRoomSnapshot.h
-    AirfixWorldRoomSnapshot.mm
-    AirfixWorldRoomSnapshot+Private.hpp
+    AirfixMissionWorldRoomSnapshot.h
+    AirfixMissionWorldRoomSnapshot.mm
+    AirfixMissionWorldRoomSnapshot+Private.hpp
     AirfixGameControllerAdapter.h
     AirfixGameControllerAdapter.mm
     AirfixGameViewController.h
@@ -34,6 +89,9 @@ add_executable(airfix_ios MACOSX_BUNDLE
 # phase. Keep it visible in the project and compile it explicitly below.
 set_source_files_properties(AirfixShaders.metal PROPERTIES HEADER_FILE_ONLY YES)
 
+target_include_directories(airfix_ios PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}"
+)
 target_compile_features(airfix_ios PRIVATE cxx_std_20)
 target_compile_options(airfix_ios PRIVATE
     -Wall

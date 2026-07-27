@@ -1,0 +1,17 @@
+#pragma once
+
+#include <cstdint>
+
+namespace airfix::ios::private_mission_config {
+
+// Paths stay Base64-encoded in generated source so arbitrary private path
+// contents cannot alter C++ syntax. Empty values disable automatic loading.
+inline constexpr char initialSetupLogicalPathBase64[] =
+    "@AIRFIX_IOS_INITIAL_SETUP_LOGICAL_PATH_BASE64@";
+inline constexpr char initialLevelLogicalPathBase64[] =
+    "@AIRFIX_IOS_INITIAL_LEVEL_LOGICAL_PATH_BASE64@";
+inline constexpr std::uint32_t initialStartIndex =
+    static_cast<std::uint32_t>(
+        @_airfix_ios_initial_start_index_normalized@ULL);
+
+}  // namespace airfix::ios::private_mission_config

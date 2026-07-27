@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <thread>
 
 namespace airfix::content {
 
@@ -44,6 +45,20 @@ public:
         const WorldRoomPublicationTicket& ticket,
         const ContentRevision& resultRevision) const noexcept;
 
+    // Finalizes exactly one successful publication. Consumption is permitted
+    // only on the thread that constructed the gate; rejected stale,
+    // revision-mismatched, or cross-thread attempts leave state unchanged.
+    [[nodiscard]] bool consume(
+        const WorldRoomPublicationTicket& ticket,
+        const ContentRevision& resultRevision) noexcept;
+
+    // Finalizes a failed or discarded current candidate without allowing a
+    // stale completion to cancel a newer request. The same owner-thread and
+    // exact ticket/revision requirements as consume() apply.
+    [[nodiscard]] bool abandon(
+        const WorldRoomPublicationTicket& ticket,
+        const ContentRevision& resultRevision) noexcept;
+
     [[nodiscard]] const std::optional<ContentRevision>& activeRevision()
         const noexcept {
         return activeRevision_;
@@ -55,6 +70,7 @@ public:
     [[nodiscard]] bool exhausted() const noexcept;
 
 private:
+    std::thread::id ownerThread_;
     std::optional<ContentRevision> activeRevision_;
     std::uint64_t serial_{};
     bool ticketOutstanding_{};

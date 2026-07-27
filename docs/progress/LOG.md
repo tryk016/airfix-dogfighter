@@ -975,11 +975,11 @@ superseded evidence.
   invalidation, content revision changes, and serial exhaustion fail closed.
 - Added a one-shot Objective-C room snapshot. It moves one complete
   `LoadedWorldRoom` from the worker to the renderer exactly once while exposing
-  only aggregate metadata to UIKit. The initial native smoke request selects
-  the exact logical World `Game/Worlds/axis_1.world` and explicit physical CCF
-  room index 1. If lifecycle or revision invalidation rejects the handoff before
-  consumption, its potentially large CPU payload is detached in constant time
-  and destroyed on a dedicated serial worker rather than on main.
+  only aggregate metadata to UIKit. That initial single-World smoke request was
+  later superseded by the authenticated aggregate-mission transaction recorded
+  on 2026-07-27. If lifecycle or revision invalidation rejects the handoff
+  before consumption, its potentially large CPU payload is detached in
+  constant time and destroyed on a dedicated serial worker rather than on main.
 - Added two-phase Metal replacement. All private mesh buffers, RGBA8 textures,
   authored or generated mip chains, offsets, payload, and submission state are
   prepared off-main. Main revalidates the publication ticket and performs one
@@ -1483,3 +1483,41 @@ superseded evidence.
   the reconstructed player, and retaining CCF/catalogue state for later room
   transitions remain open. No private content name, path, script, or
   original-derived payload was added.
+
+## 2026-07-27 - native authenticated aggregate-mission publication
+
+- Replaced the native single-World request with an explicit private setup
+  logical path, Level logical path, and `uint32_t` start index. The serialized
+  content worker builds `MissionLoadManifest` and then
+  `LoadedMissionWorldRoom` through the same pinned
+  `VerifiedContentSession`/`ContentRevision`; neither logical path is inferred,
+  reopened, logged, or exposed by the public snapshot, UI, or status surface.
+  They exist only as transient native request inputs.
+- Added a one-shot private Objective-C++ aggregate snapshot. Its public surface
+  exposes only bounded counts and revision metadata. The move-only mission
+  payload crosses into renderer preparation exactly once, while a stale
+  unconsumed payload is detached on main and destroyed on the existing serial
+  teardown queue.
+- Metal preparation now consumes the authenticated aggregate room off-main and
+  retains setup/start selection, CCF cache mapping, and mesh/instance
+  provenance. After the complete Metal texture set exists, decoded CPU texture
+  vectors are released instead of being held by the published renderer owner.
+- Closed the main-thread transaction order: renderer validation is read-only,
+  the coordinator revalidates and consumes the exact outstanding
+  serial/revision ticket, and the renderer immediately performs a no-fail,
+  constant-time atomic strong-pointer swap. Preparation or validation failure
+  conditionally abandons only the matching current ticket; stale failures
+  cannot cancel newer work.
+- Added optional build-generated startup configuration. Public defaults remain
+  empty and data-less. Private builds can provide Base64 setup and Level paths
+  plus a decimal start index through
+  `AIRFIX_IOS_INITIAL_SETUP_LOGICAL_PATH_BASE64`,
+  `AIRFIX_IOS_INITIAL_LEVEL_LOGICAL_PATH_BASE64`, and
+  `AIRFIX_IOS_INITIAL_START_INDEX`; CMake validates the inputs and generates a
+  build-tree header. No private path is stored in source control.
+- AFPACK v1 remains intentionally free of launch metadata. An authenticated,
+  bounded mission catalogue is reserved for AFPACK v2. The retained selected
+  start is not yet applied to simulation because no player pose model exists,
+  and runtime room switching still requires a retained CCF/catalogue arena.
+  This entry records implementation scope; it does not claim completion of the
+  current GitHub Actions validation.

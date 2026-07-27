@@ -2,8 +2,8 @@
 
 **State:** version 1 container, parser, verifier, local writer, strict
 semantic manifest validation, active-record format, and durable publication
-primitives plus portable installer/recovery implemented; native iOS import and
-recovery UI pending
+primitives plus portable installer/recovery and native iOS import/recovery UI
+implemented
 
 **Confidence:** design contract (not an original Airfix format)
 
@@ -164,6 +164,26 @@ human-readable audit and must agree during import.
 Because the original CD/audio tracks are unavailable, `music` is always false
 for the accepted v1 source set. Missing music is a supported configuration, not
 an import failure.
+
+### Mission launch selection is not AFPACK v1 metadata
+
+The strict version 1 manifest contains no initial-mission path, start index,
+campaign list, or other launch metadata. Importing and authenticating a valid
+v1 pack therefore does not select a mission. The current native shell accepts
+an optional out-of-band request containing an explicit setup logical path,
+explicit Level logical path, and `uint32_t` start index. For private CI builds,
+the two paths are Base64-encoded build inputs and CMake generates a local
+Objective-C++ header; public defaults are empty and data-less. Base64 prevents
+source-generation syntax injection but is not encryption.
+
+No private logical path belongs in Git, a public workflow file, test fixture,
+or this format specification. The target AFPACK v2 design is an authenticated,
+bounded mission catalogue inside the private package manifest. It must define
+canonical setup/Level pairs and start-index policy without path inference,
+retain deterministic ordering, validate every referenced logical path against
+the same package, and remain optional so the application can still start
+data-less. That catalogue and its migration rules are not implemented and do
+not retroactively extend v1.
 
 ## Active record (AFAC v1)
 
@@ -355,8 +375,13 @@ CCF/GTI source peaks and aggregates, logical retained CCF metadata,
 decoded/upload/resident RGBA, and published CPU ownership are separately
 bounded. Retained CCF accounting is checked after the parser's existing hard
 caps; it is semantic ownership accounting, not an exact allocator/RSS ceiling.
-Native iOS mission publication and application of the selected start room and
-pose to the reconstructed player remain separate later stages.
+Native iOS now publishes the resulting authenticated aggregate room through a
+one-shot private Objective-C++ snapshot and two-phase Metal transaction. The
+published owner retains setup/start selection and source provenance while
+discarding decoded CPU texture pixels after Metal upload. Application of the
+selected start room/pose to the reconstructed player remains a separate later
+stage, and runtime room switching still requires a retained CCF/catalogue
+arena.
 
 `publishedCpuBytes` is explicit semantic accounting for the retained manifest
 object, vector elements, and owned string contents; it is not a claim about
