@@ -1902,3 +1902,7 @@ superseded evidence.
   steps and all 56 CTest targets pass. The public-boundary scan checks 291
   files; wrapper tests, report normalization, `actionlint`, and
   `git diff --check` are clean.
+- Corrected the portable CI Windows runner from `windows-2022` to
+  `windows-2025`, matching the repository's required status-check context.
+  The prior mismatch left a fully green PR unmergeable even though no review
+  approval was required.
