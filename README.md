@@ -51,8 +51,9 @@ Implemented foundations include:
 - a preallocated per-scene pose runtime that publishes authenticated actor
   frames for accepted simulation steps and is resolved once per Metal frame;
 - validated, allocation-free reconstructions of the legacy world-to-camera
-  point transform and camera-space screen projection, kept separate from the
-  still-unknown Metal depth transform.
+  point transform and camera-space screen projection, including the recovered
+  reverse-depth scalar and a parity-first 640x480 aspect-fit layout kept
+  separate from Metal.
 
 The portable authenticated load now produces one validated room-and-player
 draw model. The actor still remains at its authenticated spawn transform until

@@ -501,9 +501,16 @@
   transposed-basis dot products, then multiply by cached inverse-square scale,
   without changing axis signs. That point transform is implemented behind an
   immutable, normalized-Gram-validated, allocation-free C++20 boundary.
-  Gameplay camera modes, legacy depth-to-Metal mapping, and widescreen policy
-  remain unknown, so Metal is still explicitly diagnostic and no full parity
-  matrix has been introduced.
+  The active Direct3D path is now confirmed as a normal Z-buffer carrying
+  manual reverse depth `near / cameraZ`, with `greaterEqual` comparison and
+  `[0,1]` viewport depth. Startup uses a logical 640x480 canvas and fixed
+  gameplay camera window `(35,35)-(555,345)`; no adaptive widescreen policy was
+  found. The portable projection result now preserves camera Z and the exact
+  reciprocal-depth scalar, while an immutable, allocation-free layout contract
+  aspect-fits the recovered 640x480 canvas without presenting that port policy
+  as original behavior. Gameplay camera pose/modes and the exact clear-depth
+  call remain unknown, so Metal is still explicitly diagnostic and no full
+  parity matrix has been introduced.
 - The authenticated setup-to-room provenance chain now crosses the native iOS
   publication boundary together with an immutable `PlayerSpawnPose`. Ghidra
   Headless and Rizin independently confirm x/y/z radians, mode zero, exact
@@ -552,10 +559,11 @@
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Recover legacy depth mapping before introducing a Metal camera matrix or
-   performing physical-device visual acceptance. The world-to-camera point
-   and camera-space-to-screen scalar contracts are implemented and tested.
-   Auxiliary weapons and effects remain separate.
+3. Recover gameplay camera pose/modes and the exact legacy depth-clear call
+   before introducing a Metal camera matrix or performing physical-device
+   visual acceptance. World-to-camera, scalar projection with reciprocal
+   depth, and parity-first 4:3 presentation are implemented as portable
+   contracts. Auxiliary weapons and effects remain separate.
 4. Introduce a retained CCF/catalogue arena when runtime room switching is
    implemented; recover portal tracing, camera room traversal, and later
    transitions afterward.
@@ -566,7 +574,8 @@
 
 - Which Windows-compatible method will install the signed Actions IPA on both
   registered phones?
-- Should faithful 4:3 framing or expanded widescreen be the default?
+- Which optional widescreen/Hor+ design should follow the parity-first 4:3
+  presentation after physical-device acceptance?
 
 These questions do not block static analysis or the archive work.
 

@@ -1,7 +1,7 @@
 # Camera and projection contract
 
-**Status:** legacy scalar screen projection implemented; world-to-view and
-room/portal render chains recovered; Metal depth mapping remains open
+**Status:** legacy scalar screen projection and world-to-view implemented;
+reverse depth, 4:3 canvas, and room/portal render chains recovered
 
 This document separates confirmed legacy behavior from reconstruction
 decisions. The complete evidence record is
@@ -82,6 +82,72 @@ Confirmed camera fields:
 | `+0x930` | FOV degrees |
 | `+0x934`, `+0x938` | centre X/Y |
 | `+0x93C` through `+0x948` | window left/top/right/bottom |
+
+## Reverse depth
+
+`CcPolyVertex::Project` also preserves camera Z and writes:
+
+```text
+rhw = factor
+```
+
+After inclusive near/far clipping:
+
+```text
+near <= cameraZ <= far
+near / far <= rhw <= 1
+```
+
+The active Direct3D path uses `D3DZB_TRUE`, not hardware
+`D3DZB_USEW`, and copies `rhw` into both transformed-vertex `z` and `rhw`.
+Opaque mode one uses `D3DCMP_GREATEREQUAL` with depth writes:
+
+```text
+legacyDepth = near / cameraZ
+near -> 1
+far  -> near / far
+```
+
+The D3D viewport depth range is `[0,1]`. This is a conventional Z-buffer
+carrying manually reversed reciprocal depth. Modes two through four separately
+select unconditional comparison and/or disable depth writes.
+
+The exact legacy clear call/value is still untraced. Clearing a reverse-depth
+target to zero is logically required for `greaterEqual`, but remains a port
+requirement rather than a confirmed original callsite.
+
+See
+[EXP-20260727-006](../../experiments/EXP-20260727-006-reverse-depth.md)
+for the embedded `GtVertex`, transformed-vertex layout, FVF, D3D states, and
+dormant hardware-W branch.
+
+## Legacy canvas and aspect
+
+The application starts in exclusive fullscreen `640x480`. Camera windows and
+centres are pixel coordinates. Main gameplay uses a fixed window embedded in
+the HUD:
+
+```text
+logical canvas = 640 x 480
+gameplay window = (35,35) - (555,345)
+gameplay size = 520 x 310
+gameplay centre = (295,190)
+```
+
+The camera FOV is horizontal; focal length depends on window width only.
+Window height does not enter projection. No adaptive letterbox, pillarbox,
+Hor+, or widescreen policy was found, and the fixed gameplay rectangle is not
+recomputed after a console resolution change.
+
+The safe first iOS presentation policy is therefore an explicit reconstruction
+decision: aspect-fit the logical 4:3 canvas and keep the legacy gameplay
+window/HUD coordinates unchanged. A widescreen/Hor+ mode must remain a
+separate option with its own HUD, culling, touch-layout, and visual tests.
+
+See
+[EXP-20260727-007](../../experiments/EXP-20260727-007-viewport-aspect.md)
+for setter callsites, display setup, resize behavior, and preview/widget camera
+rectangles.
 
 ## Current room and portals
 
@@ -187,6 +253,9 @@ The portable implementation in
 - derive `focal` and `focal / near`;
 - project an already camera-space point using the exact branch and float
   operation order above;
+- preserve camera-space Z and the exact `near / cameraZ` factor as
+  `legacyRhw` so a later backend can consume the recovered reverse-depth
+  scalar without recomputing it;
 - keep clipping separate;
 - expose no generic matrix or claimed parity camera.
 
@@ -196,14 +265,25 @@ scalars. The hot `project()` path is `noexcept`, allocation-free, reports the
 near fallback explicitly, and rejects non-finite input or output atomically.
 Portable tests cover defaults, engine near/far/FOV with a synthetic viewport,
 FOV bounds, centre and Y convention, the exact near comparison, projection
-beyond far, invalid configuration, overflow, and repeated zero-allocation use.
+beyond far, reciprocal-depth monotonicity and boundaries, invalid
+configuration, atomic failure, overflow, and repeated zero-allocation use.
+
+`src/airfix/render/LegacyCanvasLayout.cpp` keeps the recovered facts and the
+port decision separate. It exposes compile-time constants for the 640x480
+logical canvas and 520x310 gameplay rectangle, then provides a validated
+aspect-fit policy for a caller-supplied target rectangle. The immutable build
+result is backend-neutral, `noexcept`, allocation-free, and rejects non-finite,
+non-positive, underflowing, or overflowing layouts. It deliberately knows
+nothing about UIKit points, display scale, orientation, safe areas, or Metal.
 
 ## Still unknown
 
 - gameplay camera modes, chase offsets, smoothing, rear view, and recentering;
-- legacy W-buffer semantics and the exact Metal `[0,1]` depth mapping;
-- final NDC/viewport conversion and any additional backend Y convention;
-- widescreen behavior and faithful 4:3 versus expanded framing;
+- the exact original depth-clear call/value and which gameplay draws select
+  each of the four depth modes;
+- final Metal clip-matrix packaging and raster-space Y convention;
+- optional widescreen/Hor+ behavior beyond the confirmed parity-first 4:3
+  policy;
 - durable semantic names for every room list, clip virtual method, and portal
   enum;
 - whether any game path raises the portal depth limit above its constructor
@@ -221,3 +301,5 @@ evidence is recovered.
 - [Static tool cross-check](../../experiments/EXP-20260727-001-static-tool-crosscheck.md)
 - [Camera render experiment](../../experiments/EXP-20260727-004-camera-render-pipeline.md)
 - [Camera world-to-view experiment](../../experiments/EXP-20260727-005-camera-world-to-view.md)
+- [Direct3D reverse-depth experiment](../../experiments/EXP-20260727-006-reverse-depth.md)
+- [Viewport/aspect experiment](../../experiments/EXP-20260727-007-viewport-aspect.md)

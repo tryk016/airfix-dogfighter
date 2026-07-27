@@ -1785,3 +1785,36 @@ superseded evidence.
   scale, overflow, immutability, and zero-allocation coverage. The
   public-boundary scan checks 271 files; `actionlint`, the function-catalog
   uniqueness check, and `git diff --check` are clean.
+
+## 2026-07-27 - reverse depth and legacy viewport policy
+
+- Closed the clipped-depth path from `CcPolyVertex::Project` through embedded
+  `GtVertex`, the 44-byte D3D7 transformed vertex, and `DrawPrimitive` FVF
+  `0x344`. The active driver uses ordinary `D3DZB_TRUE`, not hardware W-buffer
+  mode, but manually assigns both transformed Z and RHW to `near / cameraZ`.
+  Opaque mode one uses `GREATEREQUAL` with writes; three further modes combine
+  `ALWAYS` or `GREATEREQUAL` with writes enabled or disabled.
+- Confirmed inclusive near/far clipping, reciprocal depth range
+  `[near/far, 1]`, and D3D viewport depth `[0,1]`. This gives Metal an exact
+  reverse-depth scalar contract. The original depth-clear call/value remains
+  untraced; clearing to zero is logically required but is not yet labeled as
+  original evidence.
+- Enumerated all named `SetWindow`/`SetCentre` callers. Startup requests
+  exclusive fullscreen `640x480`; main gameplay installs fixed pixel window
+  `(35,35)-(555,345)` with centre `(295,190)`, while menu scenes use their
+  widget rectangles. Horizontal FOV depends only on window width, and no
+  adaptive widescreen, Hor+, letterbox, or pillarbox policy was found.
+- Selected a parity-first iOS presentation policy: retain a logical 640x480
+  canvas, preserve the embedded 520x310 gameplay/HUD window, and aspect-fit
+  that canvas into the physical target. This is explicitly a port decision;
+  optional widescreen remains a separate later feature with its own HUD,
+  culling, touch-layout, and visual acceptance.
+- Extended `LegacyScreenProjection` to publish camera-space Z and the exact
+  recovered reciprocal-depth factor without introducing Metal state or
+  clipping. Boundary, monotonicity, atomic-failure, and zero-allocation tests
+  cover the new result.
+- Added `LegacyCanvasLayout`, separating recovered 640x480/gameplay constants
+  from a validated, immutable, backend-neutral aspect-fit port policy.
+  Independent review identified a float-endpoint overflow edge case; checked
+  double-width endpoint headroom and regression tests close it.
+- A clean Ninja build completed all 175 steps and all 52 CTest targets pass.
