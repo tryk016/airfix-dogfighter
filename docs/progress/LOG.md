@@ -1689,3 +1689,35 @@ superseded evidence.
   the public-boundary scan checks 259 files, and no proprietary content or
   private path is included. Real Objective-C++/Metal compilation remains the
   responsibility of the unsigned iOS GitHub Actions run for this commit.
+
+## 2026-07-27 - reusable player-pose producer and camera boundary
+
+- Replaced the native step-zero-only wrapper with portable
+  `PlayerActorPoseRuntime`. Its factory copies authenticated actor-local
+  sources, owns one scratch frame and two exchange slots, enforces exact
+  instance/override/frame limits before allocation, and reports the complete
+  retained logical byte charge.
+- `tryPublish` is bounded, allocation-free, and `noexcept`. It recomposes every
+  actor override as `actorWorld * actorLocal`; pre-publication failures preserve
+  the last accepted slot, stale steps fail closed, and a busy exchange permits
+  the deterministic simulation state to advance while dropping only the
+  contested visual update.
+- Native Metal preparation admits the source, scratch, and double-buffered
+  storage before creating the runtime, then verifies the initial step-zero
+  lease bit-for-bit against the authored combined model. Snapshot resources
+  retain the only strong runtime owner so large destruction remains off-main.
+  The controller carries only an optional weak endpoint across the main-thread
+  publication boundary and swaps it after the exact content ticket commits.
+- Every accepted later simulation step publishes before its state is assigned.
+  Expiry or any non-busy publication error terminates the simulation pipeline
+  without accepting the new state. Until recovered flight integration produces
+  a changing world transform, later frames intentionally reuse the
+  authenticated spawn world.
+- Documented the first camera/projection boundary without inventing values.
+  `CcPolyVertex::Project` confirms positive view-space Z and screen-centred
+  X/add, Y/subtract projection; the visible-polygon endpoint and room/BSP build
+  chain are located. Camera construction, FOV, clipping, aspect, render-list
+  drain, BSP traversal, and portal semantics remain explicit unknowns.
+- An independent native review found no P0-P3 issue. A clean 166-step
+  Windows GCC/Ninja build and all 49 portable tests pass; the public-boundary
+  scan checks 263 files, `actionlint`, and `git diff --check` are clean.

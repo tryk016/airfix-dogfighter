@@ -380,8 +380,9 @@
   rejects stale identities and malformed frames atomically, and uses stable
   RAII leases plus authored-transform fallback. Its shared control block keeps
   outstanding leases safe after exchange destruction and prevents allocator
-  address reuse from reviving stale handles. It is not yet connected to Metal
-  or connected to the recovered primary-actor/skin-hierarchy contract.
+  address reuse from reviving stale handles. The authenticated player runtime
+  now connects this exchange to Metal and the recovered primary-actor/
+  skin-hierarchy contract.
 - Added global source-aware mission texture binding. It replays the canonical
   room plan, validates every supplied CCF logical-path/file-index pair against
   the same UDSP metadata, resolves each source-local `TEXU`, preserves
@@ -476,14 +477,24 @@
   count/byte ceilings, fail-closed session/callback/cancellation handling, and
   synthetic shared/separate-source and tamper cases cover the join. Native
   physical-device rendering and visual acceptance remain pending.
-- Added a bounded portable player-pose frame builder and exercised the native
-  per-snapshot `ScenePoseExchange`. Metal preparation derives an exact
-  actor-only step-zero frame from authenticated provenance, verifies it
-  bit-for-bit against the final authored instances, admits two exchange slots
-  under independent iOS ceilings and the CPU budget, and publishes it before
-  the candidate can commit. Each rendered frame acquires at most one lease;
-  static instances retain their authored fallback. A reusable main-thread
-  producer for later simulation steps is still pending.
+- Added a bounded portable player-pose frame builder and reusable
+  `PlayerActorPoseRuntime`. Metal preparation derives an exact actor-only
+  step-zero frame from authenticated provenance, verifies it bit-for-bit
+  against the final authored instances, and admits source storage, scratch,
+  and two exchange slots under independent iOS ceilings and the CPU budget.
+  The main-thread simulation consumer publishes accepted later steps without
+  allocation before committing their deterministic state; a busy exchange
+  drops only that visual update. Each rendered frame acquires at most one
+  lease, and static instances retain their authored fallback. The producer
+  currently republishes the authenticated spawn world because the movement
+  law has not yet supplied a changing actor pose.
+- Recorded the first bounded camera/projection evidence. The legacy projection
+  endpoint faces positive view-space Z, adds projected X around the screen
+  centre, and subtracts projected Y; the visible-polygon endpoint and static
+  room/BSP build chain are also located. Camera construction, view transform,
+  FOV, clipping, render-list drain, aspect policy, BSP visitation, and portal
+  traversal remain unknown, so the Metal path is still explicitly diagnostic
+  and no guessed parity camera has been introduced.
 - The authenticated setup-to-room provenance chain now crosses the native iOS
   publication boundary together with an immutable `PlayerSpawnPose`. Ghidra
   Headless and Rizin independently confirm x/y/z radians, mode zero, exact
@@ -532,10 +543,11 @@
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Extend the validated step-zero actor exchange with a reusable preallocated
-   main-thread producer for simulation steps, then add the recovered
-   camera/projection path and perform physical-device visual acceptance.
-   Auxiliary weapons and effects remain separate.
+3. Recover the camera construction/update path, callers of the projection and
+   visible-polygon endpoints, render-list drain, and numeric projection
+   constants. Then add the evidence-backed camera carrier and perform
+   physical-device visual acceptance. Auxiliary weapons and effects remain
+   separate.
 4. Introduce a retained CCF/catalogue arena when runtime room switching is
    implemented; recover portal tracing, camera room traversal, and later
    transitions afterward.

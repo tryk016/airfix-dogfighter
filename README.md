@@ -48,12 +48,14 @@ Implemented foundations include:
   Controller adapters;
 - authenticated player selection plus bounded player-model, texture,
   scene-placement, and publication integration in the mission-world loader;
-- a per-scene pose exchange whose authenticated step-zero actor frame is
-  resolved by the Metal render loop without changing the authored static room.
+- a preallocated per-scene pose runtime that publishes authenticated actor
+  frames for accepted simulation steps and is resolved once per Metal frame.
 
 The portable authenticated load now produces one validated room-and-player
-draw model. Full gameplay simulation, campaign flow, audio, finished menus,
-physical-device rendering, and visual acceptance remain future milestones.
+draw model. The actor still remains at its authenticated spawn transform until
+the recovered movement law supplies a changing world pose. Full gameplay
+simulation, campaign flow, audio, finished menus, physical-device rendering,
+and visual acceptance remain future milestones.
 
 For frequently updated details, use
 [project status](docs/progress/STATUS.md) and the

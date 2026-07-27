@@ -11,8 +11,8 @@ Statuses: `not-investigated`, `observed`, `specified`, `implemented`, `verified`
 | Aircraft flight model | P0 | observed | SCN-FLIGHT-001 | Scheduler, controls, and complete static equations recovered; physical units, runtime traces, and numeric tolerance remain unknown |
 | Deterministic player-control state | P0 | implemented | SCN-FLIGHT-001 | Frozen-pose flight/throttle/combat/camera/mission intent bridge; explicitly not behavior parity |
 | Player spawn and visual identity | P0 | implemented | SCN-SPAWN-001 | Authenticated primary actor, start room, selected-skin hierarchy, textures, exact spawn transform, combined draw submission, and allocation-free publication proof implemented; physical-device visual acceptance pending |
-| Dynamic instance-pose transport | P0 | implemented | SCN-RENDER-001 | Authenticated actor binding feeds a bounded bit-verified step-zero frame through a per-snapshot SPSC exchange into Metal; reusable simulation-step producer pending |
-| Camera | P0 | not-investigated | SCN-CAMERA-001 | |
+| Dynamic instance-pose transport | P0 | implemented | SCN-RENDER-001 | Authenticated actor binding feeds a bounded bit-verified step-zero frame and allocation-free accepted-step publications through a per-snapshot SPSC exchange into Metal; changing world pose awaits the recovered movement law |
+| Camera | P0 | observed | SCN-CAMERA-001 | Positive-Z projection and visible-polygon endpoints plus the spatial build chain are located; camera/view/FOV/clipping/aspect/render-list and traversal semantics remain unknown |
 | Collision and damage | P0 | observed | SCN-COLLISION-001 | Static/BSP resolver and rigid-body impulse order located; damage semantics incomplete |
 | Primary and secondary weapons | P0 | observed | SCN-WEAPON-001 | Attack events and setters identified; projectile spawn and damage remain unknown |
 | Ground/water/interactive actors | P1 | not-investigated | SCN-ACTOR-001 | |
