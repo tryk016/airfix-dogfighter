@@ -161,15 +161,20 @@ Implemented:
   limits plus atomic failure with released vector capacity;
 - allocation-free, bounded source-world static/portal line trace;
 - exact portal mesh/type/visibility gate and bounded multi-room continuation;
+- optional strict per-hop `[0,1]` validation for portable state publishers;
 - publication-time range, topology, float, target, and exact byte-accounting
   validation;
 - synthetic tests independent of proprietary content.
+
+[EXP-20260727-012](EXP-20260727-012-runtime-spatial-adapter.md) adds the
+runtime/source-world basis boundary and strict per-hop fraction policy used by
+future camera state publication.
 
 Deferred:
 
 - sphere contact collection and iterative constraint resolution;
 - dynamic-object collision;
-- runtime-basis camera adapter and stateful camera pose/room publication;
+- stateful camera pose/room publication;
 - controlled executable traces for numeric tolerances and pathological
   epsilon/tie cases.
 

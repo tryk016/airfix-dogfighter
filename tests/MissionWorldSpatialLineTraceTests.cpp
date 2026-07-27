@@ -450,6 +450,76 @@ void testPortalTransitionCycleIsBounded() {
         "caller bypassed the hard portal transition cap");
 }
 
+void testStrictPortalTransitionRejectsEpsilonHit() {
+    auto arena = oneTreeArena(
+        CcfBspTreeKind::portalTree, {triangle(1.0F, 1U)});
+    arena.nodes[0].pointOnPlane = {0.0F, 0.0F, 1.0F};
+    const auto raw = traceMissionWorldPortalTransition(
+        arena,
+        0U,
+        {0.0F, 0.0F, -1.0F},
+        {0.0F, 0.0F, 0.9999995F});
+    require(
+        raw.status == MissionWorldPortalTraceStatus::transition &&
+            raw.targetWorldRoomIndex ==
+                std::optional<std::size_t>{1U},
+        "raw portal trace no longer preserves the legacy epsilon hit");
+
+    const auto strict = traceMissionWorldPortalTransition(
+        arena,
+        0U,
+        {0.0F, 0.0F, -1.0F},
+        {0.0F, 0.0F, 0.9999995F},
+        {.requireHitsWithinSegment = true});
+    require(
+        strict.status ==
+                MissionWorldPortalTraceStatus::outOfSegmentHit &&
+            strict.hit.has_value() &&
+            strict.hit->fraction > 1.0F &&
+            !strict.targetWorldRoomIndex.has_value() &&
+            strict.transitionCount == 0U,
+        "strict portal trace accepted an epsilon hit outside the segment");
+}
+
+void testStrictPortalTransitionChecksEveryHop() {
+    auto arena = oneTreeArena(
+        CcfBspTreeKind::portalTree, {triangle(0.0F, 1U)});
+    arena.rooms.resize(3U);
+    arena.rooms[1].firstPortalTreeReference = 1U;
+    arena.rooms[1].portalTreeCount = 1U;
+    arena.treeReferences.push_back(1U);
+    arena.trees.push_back({
+        .kind = CcfBspTreeKind::portalTree,
+        .worldRoomIndex = 1U,
+        .rootNodeIndex = 1U,
+        .firstNodeIndex = 1U,
+        .nodeCount = 1U,
+    });
+    arena.nodes.push_back({
+        .splitNormal = {0.0F, 0.0F, 1.0F},
+        .pointOnPlane = {0.0F, 0.0F, 1.0F},
+        .firstPolygonIndex = 1U,
+        .polygonCount = 1U,
+    });
+    arena.polygons.push_back(triangle(1.0F, 2U));
+
+    const auto strict = traceMissionWorldPortalTransition(
+        arena,
+        0U,
+        {0.0F, 0.0F, -1.0F},
+        {0.0F, 0.0F, 0.9999995F},
+        {.requireHitsWithinSegment = true});
+    require(
+        strict.status ==
+                MissionWorldPortalTraceStatus::outOfSegmentHit &&
+            strict.hit.has_value() &&
+            strict.hit->ownerWorldRoomIndex == 1U &&
+            strict.hit->fraction > 1.0F &&
+            strict.transitionCount == 1U &&
+            !strict.targetWorldRoomIndex.has_value(),
+        "strict portal trace checked only the last published result");
+}
+
 void testLegacyFaceNormalSentinelNeverHits() {
     auto sentinel = triangle(0.0F);
     const auto nan = std::bit_cast<float>(0xFFC00000U);
@@ -483,6 +553,8 @@ int main() {
         testUnknownTreeKindIsInvalidInput();
         testPortalTargetAndFailClosedInputs();
         testPortalTransitionCycleIsBounded();
+        testStrictPortalTransitionRejectsEpsilonHit();
+        testStrictPortalTransitionChecksEveryHop();
         testLegacyFaceNormalSentinelNeverHits();
         std::cout << "Mission world spatial line trace tests passed\n";
         return 0;

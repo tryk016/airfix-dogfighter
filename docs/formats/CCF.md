@@ -398,9 +398,20 @@ exact topology and accounting at the native publication boundary.
 near-first static/portal line query with strict nearest-hit ties.
 `traceMissionWorldPortalTransition` applies the exact one-sided portal gate and
 continues across rooms with an explicit portable cycle bound; requests above
-the non-disableable 256-transition hard maximum are invalid. BSP render
-culling, sphere/contact resolution, dynamic-object collision, and the
-runtime-basis camera/stateful publication join remain separate work.
+the non-disableable 256-transition hard maximum are invalid. Its optional
+strict mode rejects an epsilon hit outside `[0,1]` before any local room
+change, while the default source-space path retains the recovered unbounded
+fraction behavior.
+
+`traceMissionWorldRuntimeSpatialLine` and
+`traceMissionWorldRuntimePortalTransition` form the allocation-free boundary
+from runtime points back into this source-world arena. Points use
+`B^-1(runtime / scale)` for queries and `scale * B * source` for returned hit
+positions. Plane normals use `transpose(B^-1)` without an extra reflection
+flip or normalization. The runtime portal boundary always enables strict
+per-hop fraction validation and publishes no target room after an invalid hop.
+BSP render culling, sphere/contact resolution, dynamic-object collision, and
+stateful camera publication remain separate work.
 
 ## Material records (`0x2100`)
 

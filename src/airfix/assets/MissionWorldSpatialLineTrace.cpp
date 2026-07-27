@@ -656,6 +656,12 @@ MissionWorldPortalTraceResult traceMissionWorldPortalTransition(
             line.hit->polygonIndex >= arena.polygons.size()) {
             return finish(MissionWorldPortalTraceStatus::invalidArena);
         }
+        if (options.requireHitsWithinSegment &&
+            (!(line.hit->fraction >= 0.0F) ||
+             !(line.hit->fraction <= 1.0F))) {
+            return finish(
+                MissionWorldPortalTraceStatus::outOfSegmentHit);
+        }
         const auto& polygon =
             arena.polygons[line.hit->polygonIndex];
         if (!polygon.portalWorldRoomIndex.has_value() ||

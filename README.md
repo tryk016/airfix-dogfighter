@@ -52,7 +52,8 @@ Implemented foundations include:
   frames for accepted simulation steps and is resolved once per Metal frame;
 - a retained, pointer-free mission BSP arena with source-aware runtime-room
   bindings, bounded allocation-free static/portal line tracing, and the
-  recovered portal mesh/type/visibility transition gate;
+  recovered portal mesh/type/visibility transition gate, plus a fail-closed
+  runtime/source-world basis adapter with strict per-hop segment validation;
 - validated, allocation-free reconstructions of the legacy world-to-camera
   point transform and camera-space screen projection, including the recovered
   reverse-depth scalar, four depth presets, gameplay camera preset selection,
