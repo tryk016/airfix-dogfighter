@@ -130,6 +130,8 @@ void testDefaults() {
     require(
         close(point.point.x, 1.0F) &&
             close(point.point.y, 0.25F) &&
+            point.cameraSpaceZ == 2.0F &&
+            point.legacyRhw == 0.5F &&
             !point.usedNearFallback,
         "default projection formula changed");
 }
@@ -234,11 +236,19 @@ void testNearFallbackBoundary() {
             !above.usedNearFallback &&
             close(below.point.x, 1.0F) &&
             close(equal.point.x, 1.0F) &&
-            above.point.x < 1.0F,
+            above.point.x < 1.0F &&
+            below.cameraSpaceZ == 0.5F &&
+            equal.cameraSpaceZ == 1.0F &&
+            above.cameraSpaceZ ==
+                std::nextafter(
+                    1.0F, std::numeric_limits<float>::infinity()) &&
+            below.legacyRhw == 1.0F &&
+            equal.legacyRhw == 1.0F &&
+            above.legacyRhw == 1.0F / above.cameraSpaceZ,
         "near fallback did not preserve the exact z comparison");
 }
 
-void testBeyondFarStillProjects() {
+void testFarBoundaryAndBeyondStillProject() {
     const auto built = buildLegacyScreenProjection({
         .nearDistance = 1.0F,
         .farDistance = 2.0F,
@@ -248,12 +258,52 @@ void testBeyondFarStillProjects() {
     });
     const auto& projection =
         requireProjection(built, "short-far projection was rejected");
-    const auto point = requirePoint(
+    const auto atFar = requirePoint(
+        projection.project({4.0F, 0.0F, 2.0F}),
+        "point exactly at far was rejected");
+    const auto beyondFar = requirePoint(
         projection.project({8.0F, 0.0F, 4.0F}),
         "point beyond far was clipped");
     require(
-        close(point.point.x, 2.0F) && !point.usedNearFallback,
+        close(atFar.point.x, 2.0F) &&
+            atFar.cameraSpaceZ == projection.farDistance() &&
+            atFar.legacyRhw ==
+                projection.nearDistance() /
+                    projection.farDistance() &&
+            !atFar.usedNearFallback &&
+            close(beyondFar.point.x, 2.0F) &&
+            beyondFar.cameraSpaceZ == 4.0F &&
+            beyondFar.legacyRhw == 0.25F &&
+            !beyondFar.usedNearFallback,
         "far distance incorrectly participated in projection");
+}
+
+void testLegacyRhwDecreasesWithIncreasingZ() {
+    const auto built = buildLegacyScreenProjection({
+        .nearDistance = 0.5F,
+        .farDistance = 2.0F,
+        .horizontalFovDegrees = 90.0F,
+        .windowWidth = 2.0F,
+        .centre = {0.0F, 0.0F},
+    });
+    const auto& projection =
+        requireProjection(built, "rhw projection was rejected");
+    const auto nearer = requirePoint(
+        projection.project({0.0F, 0.0F, 1.0F}),
+        "nearer rhw point was rejected");
+    const auto farther = requirePoint(
+        projection.project({0.0F, 0.0F, 2.0F}),
+        "farther rhw point was rejected");
+    const auto beyondFar = requirePoint(
+        projection.project({0.0F, 0.0F, 4.0F}),
+        "beyond-far rhw point was rejected");
+    require(
+        nearer.legacyRhw > farther.legacyRhw &&
+            farther.legacyRhw > beyondFar.legacyRhw &&
+            nearer.cameraSpaceZ == 1.0F &&
+            farther.cameraSpaceZ == 2.0F &&
+            beyondFar.cameraSpaceZ == 4.0F,
+        "legacy rhw was not monotonic for increasing positive z");
 }
 
 void testInvalidConfigurations() {
@@ -315,10 +365,12 @@ void testInvalidInputsAndOutputOverflow() {
         0.0F, 0.0F, std::numeric_limits<float>::infinity()});
     require(
         !nanResult.complete() && nanResult.issue.has_value() &&
+            !nanResult.projected.has_value() &&
             nanResult.issue->kind ==
                 LegacyScreenProjectionProjectIssueKind::
                     nonFiniteInput &&
             !infinityResult.complete() &&
+            !infinityResult.projected.has_value() &&
             infinityResult.issue.has_value() &&
             infinityResult.issue->kind ==
                 LegacyScreenProjectionProjectIssueKind::
@@ -384,7 +436,8 @@ int main() {
         testFovClamps();
         testShiftedCentreWidthAndYSign();
         testNearFallbackBoundary();
-        testBeyondFarStillProjects();
+        testFarBoundaryAndBeyondStillProject();
+        testLegacyRhwDecreasesWithIncreasingZ();
         testInvalidConfigurations();
         testInvalidInputsAndOutputOverflow();
         testProjectDoesNotAllocate();

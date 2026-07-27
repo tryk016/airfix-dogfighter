@@ -124,6 +124,8 @@ LegacyScreenProjectionProjectResult LegacyScreenProjection::project(
     return {
         .projected = LegacyScreenProjectedPoint{
             .point = {.x = screenX, .y = screenY},
+            .cameraSpaceZ = cameraSpacePosition.z,
+            .legacyRhw = factor,
             .usedNearFallback = usedNearFallback,
         },
         .issue = std::nullopt,

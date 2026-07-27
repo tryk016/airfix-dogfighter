@@ -141,6 +141,7 @@ add_library(airfix_render
     src/airfix/render/DrawMesh.cpp
     src/airfix/render/DrawSubmissionPlan.cpp
     src/airfix/render/LegacyCameraTransform.cpp
+    src/airfix/render/LegacyCanvasLayout.cpp
     src/airfix/render/LegacyGeometry.cpp
     src/airfix/render/LegacyScreenProjection.cpp
     src/airfix/render/ObjectVisualDrawAssembly.cpp
@@ -430,6 +431,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_legacy_camera_transform_tests
         COMMAND airfix_legacy_camera_transform_tests)
+
+    add_executable(airfix_legacy_canvas_layout_tests
+        tests/LegacyCanvasLayoutTests.cpp)
+    target_link_libraries(airfix_legacy_canvas_layout_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_legacy_canvas_layout_tests
+        COMMAND airfix_legacy_canvas_layout_tests)
 
     add_executable(airfix_legacy_screen_projection_tests
         tests/LegacyScreenProjectionTests.cpp)

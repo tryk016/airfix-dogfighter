@@ -49,6 +49,8 @@ struct LegacyScreenProjectionProjectIssue final {
 
 struct LegacyScreenProjectedPoint final {
     LegacyScreenPoint point{};
+    float cameraSpaceZ{};
+    float legacyRhw{};
     bool usedNearFallback{};
 };
 
