@@ -52,9 +52,13 @@ makeIssue(const MissionWorldRoomLoadIssueKind kind) noexcept {
         .kind = kind,
         .sourceIndex = std::nullopt,
         .sourceFileIndex = std::nullopt,
+        .physicalRoomIndex = std::nullopt,
+        .worldRoomIndex = std::nullopt,
         .startPositionIndex = std::nullopt,
         .textureAssetId = std::nullopt,
         .catalogIssue = std::nullopt,
+        .spatialArenaIssue = std::nullopt,
+        .roomSceneIssue = std::nullopt,
         .startIssue = std::nullopt,
         .textureBindingIssue = std::nullopt,
         .texturePreparationIssue = std::nullopt,
@@ -1249,6 +1253,63 @@ loadMissionWorldRoom(VerifiedContentSession &session,
         }
 
         if (!report(result, stopToken, guardedProgress,
+                    MissionWorldRoomLoadPhase::buildingSpatialArena, 0U,
+                    1U)) {
+            return result;
+        }
+        auto spatialLimits = limits.spatialArena;
+        spatialLimits.maximumSources = std::min(
+            spatialLimits.maximumSources, limits.maximumCcfSources);
+        spatialLimits.maximumWorldRooms = std::min(
+            spatialLimits.maximumWorldRooms,
+            catalogLimits.maximumRuntimeRooms);
+        spatialLimits.catalogAuthentication = catalogLimits;
+        assets::MissionWorldSpatialArena spatialArena;
+        try {
+            spatialArena = assets::buildMissionWorldSpatialArena(
+                loadSources, catalog, spatialLimits);
+        } catch (const std::bad_alloc &) {
+            throw;
+        } catch (...) {
+            addIssue(
+                result,
+                MissionWorldRoomLoadIssueKind::spatialArenaFailure);
+            return result;
+        }
+        if (!spatialArena.complete()) {
+            for (const auto &upstream : spatialArena.issues) {
+                if (upstream.kind ==
+                    assets::MissionWorldSpatialArenaIssueKind::
+                        allocationFailure) {
+                    addIssue(
+                        result,
+                        MissionWorldRoomLoadIssueKind::allocationFailure);
+                    return result;
+                }
+                auto issue = makeIssue(
+                    MissionWorldRoomLoadIssueKind::spatialArenaFailure);
+                issue.sourceIndex = upstream.sourceIndex;
+                issue.physicalRoomIndex =
+                    upstream.physicalRoomIndex;
+                issue.worldRoomIndex = upstream.worldRoomIndex;
+                issue.spatialArenaIssue = upstream.kind;
+                issue.roomSceneIssue = upstream.roomSceneIssue;
+                addIssue(result, std::move(issue));
+            }
+            if (spatialArena.issues.empty()) {
+                addIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::spatialArenaFailure);
+            }
+            return result;
+        }
+        if (!report(result, stopToken, guardedProgress,
+                    MissionWorldRoomLoadPhase::buildingSpatialArena, 1U,
+                    1U)) {
+            return result;
+        }
+
+        if (!report(result, stopToken, guardedProgress,
                     MissionWorldRoomLoadPhase::resolvingStart, 0U, 1U)) {
             return result;
         }
@@ -1543,6 +1604,10 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             !accountPublished(publishedCpuBytes, cacheIndexByLoadSource.size(),
                               sizeof(std::size_t),
                               limits.maximumPublishedCpuBytes) ||
+            !checkedMissionWorldRoomByteAdd(
+                publishedCpuBytes,
+                spatialArena.retainedPayloadBytes) ||
+            publishedCpuBytes > limits.maximumPublishedCpuBytes ||
             (selectedStart.has_value() &&
              (!checkedMissionWorldRoomByteAdd(publishedCpuBytes,
                                               selectedStart->roomName.size()) ||
@@ -1564,6 +1629,7 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             .selectedStart = std::move(selectedStart),
             .runtimeBasis = request.basis,
             .playerSpawnPose = *playerSpawnPose.pose,
+            .spatialArena = std::move(spatialArena),
             .model = {},
             .meshProvenance = {},
             .instanceProvenance = {},
@@ -1577,6 +1643,7 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             .uniqueCcfSourceCount = cachedCcfs.size(),
             .uniqueCcfSourceFootprintBytes = uniqueCcfFootprintBytes,
             .retainedCcfMetadataBytes = retainedMetadataBytes,
+            .retainedSpatialBytes = 0U,
             .textureSourceFootprintBytes = textureSourceFootprintBytes,
             .decodedRgbaBytes = 0U,
             .uploadRgbaBytes = 0U,
@@ -1586,6 +1653,8 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             .playerVisualCcfCacheIndex =
                 playerVisualCcfCacheIndex,
         };
+        candidate.retainedSpatialBytes =
+            candidate.spatialArena.retainedPayloadBytes;
         candidate.textures.reserve(binding.imports.size());
 
         std::uint64_t decodedRgbaBytes = 0U;

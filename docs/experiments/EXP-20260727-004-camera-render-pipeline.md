@@ -182,6 +182,11 @@ start side, tests polygons on the crossed plane, then visits the end-side
 child, retaining the nearest hit and its polygon. That polygon resolves the
 next room through its owning object.
 
+Follow-up experiment
+[EXP-20260727-011](EXP-20260727-011-portal-bsp-line-trace.md) closes the
+child-side mapping, prepend traversal order, exact polygon test, portal follow
+gate, unused third argument, and bounded portable implementation.
+
 The confirmed `RenderRoom` path does **not** walk static-BSP left/right
 children. It renders room object lists with culling and explicit portal
 recursion. Static BSP must therefore remain disabled as a rendering

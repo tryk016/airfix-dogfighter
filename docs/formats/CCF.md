@@ -378,14 +378,29 @@ fallback. Selected GTIs are materialized in dense first-use ID order.
 Malformed later CCFs or GTIs, source/revision replacement, cancellation, and
 late draw/submission failures clear the complete candidate. The published
 result owns only the canonical setup identity and footprint, selected room and
-start copy, provenance, textures, and submission; raw AFS, parsed CCFs, and
-pointer-bearing working lists do not escape. Retaining the catalogue/CCF arena
-for room switching, publishing the result to the native iOS mission
-coordinator, and applying the selected room/pose to the player remain later
-integrations.
+start copy, provenance, textures, submission, and the pointer-free spatial
+arena described below; raw AFS, parsed CCFs, and pointer-bearing working lists
+do not escape. Retaining any additional catalogue/CCF state, publishing the
+result to the native iOS mission coordinator, and applying the selected
+room/pose to the player remain later integrations.
 
-BSP culling, collision, and portal traversal remain later runtime features; no
-geometry is hidden until those traversal semantics are separately proven.
+Mission publication now repacks authenticated room BSP into a pointer-free
+`MissionWorldSpatialArena` before the parsed CCF cache is destroyed. The arena
+retains raw source-world planes, edges, polygon bindings, runtime owner rooms,
+portal target rooms, and the confirmed mesh/type/visibility follow gates for
+all runtime rooms. Before allocation it rebuilds and compares the canonical
+room catalog, limits aggregate active physical rooms, trees, nodes, polygons,
+and retained bytes, and reproduces the legacy prepend order for tree and
+polygon lists. It is charged to the published CPU budget and revalidated for
+exact topology and accounting at the native publication boundary.
+
+`traceMissionWorldSpatialLine` implements the bounded, allocation-free,
+near-first static/portal line query with strict nearest-hit ties.
+`traceMissionWorldPortalTransition` applies the exact one-sided portal gate and
+continues across rooms with an explicit portable cycle bound; requests above
+the non-disableable 256-transition hard maximum are invalid. BSP render
+culling, sphere/contact resolution, dynamic-object collision, and the
+runtime-basis camera/stateful publication join remain separate work.
 
 ## Material records (`0x2100`)
 

@@ -152,6 +152,13 @@ tryConvertLegacyAxisRotationWorldPose(
     const ConvertedNodeTransform& parentWorld,
     const ConvertedNodeTransform& local);
 
+// Allocation-free fail-closed composition for publication and frame-boundary
+// validation. Invalid, non-finite, or singular inputs/results return no value.
+[[nodiscard]] std::optional<ConvertedNodeTransform>
+tryComposeNodeTransforms(
+    const ConvertedNodeTransform& parentWorld,
+    const ConvertedNodeTransform& local) noexcept;
+
 // Converts raw row-vector orientation to the runtime column-vector convention:
 // B * transpose(raw) * inverse(B).
 [[nodiscard]] Mat3 toRuntimeColumnMatrix(

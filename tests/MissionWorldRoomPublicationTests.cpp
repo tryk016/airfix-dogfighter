@@ -1,18 +1,63 @@
 #include "airfix/content/MissionWorldRoomPublication.hpp"
 #include "airfix/content/PlayerSpawnPoseBuilder.hpp"
 
+#include <atomic>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <new>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
+
+namespace {
+
+std::atomic<bool> trackAllocations{false};
+std::atomic<std::size_t> allocationCount{0U};
+
+void recordAllocation() noexcept {
+    if (trackAllocations.load(std::memory_order_relaxed)) {
+        allocationCount.fetch_add(1U, std::memory_order_relaxed);
+    }
+}
+
+} // namespace
+
+void* operator new(const std::size_t size) {
+    recordAllocation();
+    if (void* memory = std::malloc(size == 0U ? 1U : size);
+        memory != nullptr) {
+        return memory;
+    }
+    throw std::bad_alloc();
+}
+
+void* operator new[](const std::size_t size) {
+    return ::operator new(size);
+}
+
+void operator delete(void* memory) noexcept {
+    std::free(memory);
+}
+
+void operator delete[](void* memory) noexcept {
+    ::operator delete(memory);
+}
+
+void operator delete(void* memory, std::size_t) noexcept {
+    ::operator delete(memory);
+}
+
+void operator delete[](void* memory, std::size_t) noexcept {
+    ::operator delete(memory);
+}
 
 namespace {
 
@@ -44,6 +89,65 @@ void require(const bool condition, const std::string_view message) {
     return result;
 }
 
+[[nodiscard]] std::uint64_t independentPublishedCpuBytes(
+    const LoadedMissionWorldRoom& room) {
+    std::uint64_t total = sizeof(LoadedMissionWorldRoom);
+    total += room.setupEntry.logicalPath.size();
+    total += room.textures.size() *
+        sizeof(airfix::content::LoadedTextureAsset);
+    total += room.ccfCacheIndexByLoadSource.size() * sizeof(std::size_t);
+    total += room.retainedSpatialBytes;
+    if (room.playerVisual.has_value()) {
+        total +=
+            room.playerVisual->objectDefinitionSource.logicalPath.size();
+        total += room.playerVisual->modelCcfSource.logicalPath.size();
+        total += room.playerVisual->blueprintSelector.size();
+        if (room.playerVisual->textureRoot.has_value()) {
+            total += room.playerVisual->textureRoot->size();
+        }
+    }
+    if (room.selectedStart.has_value()) {
+        total += room.selectedStart->roomName.size();
+    }
+    for (const auto& texture : room.textures) {
+        total += texture.upload.uploadLevels.size() *
+            sizeof(airfix::render::GtiUploadLevel);
+        total += texture.uploadLevels.size() *
+            sizeof(airfix::assets::RgbaImage);
+        for (const auto& level : texture.uploadLevels) {
+            total += level.pixels.size();
+        }
+    }
+    total += room.model.meshes.size() *
+        sizeof(airfix::render::DrawMeshPayload);
+    total += room.model.instances.size() *
+        sizeof(airfix::render::DrawMeshInstance);
+    for (const auto& mesh : room.model.meshes) {
+        total += mesh.vertices.size() * sizeof(airfix::render::DrawVertex);
+        total += mesh.indices.size() * sizeof(std::uint32_t);
+        total += mesh.materials.size() *
+            sizeof(airfix::render::DrawMaterial);
+        total += mesh.ranges.size() * sizeof(airfix::render::DrawRange);
+    }
+    total += room.meshProvenance.size() *
+        sizeof(airfix::render::MissionWorldRoomMeshProvenance);
+    total += room.instanceProvenance.size() *
+        sizeof(airfix::render::MissionWorldRoomInstanceProvenance);
+    total += room.playerActorMeshProvenance.size() *
+        sizeof(airfix::render::PlayerActorSceneMeshProvenance);
+    total += room.playerActorInstanceProvenance.size() *
+        sizeof(airfix::render::PlayerActorSceneInstanceProvenance);
+    total += room.submission.meshUploads.size() *
+        sizeof(airfix::render::DrawMeshUploadMetadata);
+    total += room.submission.commands.size() *
+        sizeof(airfix::render::DrawSubmissionCommand);
+    return total;
+}
+
+void refreshPublishedCpuBytes(LoadedMissionWorldRoom& room) {
+    room.publishedCpuBytes = independentPublishedCpuBytes(room);
+}
+
 [[nodiscard]] LoadedMissionWorldRoom validRootRoom() {
     LoadedMissionWorldRoom room;
     room.revision = revision();
@@ -58,6 +162,12 @@ void require(const bool condition, const std::string_view message) {
     room.semanticCcfSourceCount = 3U;
     room.uniqueCcfSourceCount = 2U;
     room.ccfCacheIndexByLoadSource = {0U, 1U, 1U};
+    room.spatialArena.rooms.resize(1U);
+    room.spatialArena.retainedPayloadBytes =
+        sizeof(airfix::assets::MissionWorldSpatialRoom);
+    room.retainedSpatialBytes =
+        room.spatialArena.retainedPayloadBytes;
+    refreshPublishedCpuBytes(room);
     return room;
 }
 
@@ -66,8 +176,13 @@ void require(const bool condition, const std::string_view message) {
     room.startSelection = {
         .source = MissionWorldStartSelectionSource::table,
         .startPositionIndex = airfix::assets::legacyMissionStartCapacity - 1U,
-        .worldRoomIndex = std::numeric_limits<std::size_t>::max(),
+        .worldRoomIndex = 1U,
     };
+    room.spatialArena.rooms.resize(2U);
+    room.spatialArena.retainedPayloadBytes =
+        2U * sizeof(airfix::assets::MissionWorldSpatialRoom);
+    room.retainedSpatialBytes =
+        room.spatialArena.retainedPayloadBytes;
     room.selectedStart = MissionStartPosition{
         .roomName = "Room",
         .position =
@@ -90,6 +205,7 @@ void require(const bool condition, const std::string_view message) {
         throw std::runtime_error("valid table pose fixture failed to build");
     }
     room.playerSpawnPose = *pose.pose;
+    refreshPublishedCpuBytes(room);
     return room;
 }
 
@@ -190,6 +306,7 @@ actorWorldFrom(
             .firstInstanceIndex = 1U,
             .instanceCount = 1U,
         };
+    refreshPublishedCpuBytes(room);
     return room;
 }
 
@@ -199,6 +316,21 @@ void requireIssue(const LoadedMissionWorldRoom &room,
     const auto actual =
         airfix::content::validateMissionWorldRoomPublication(room, revision());
     require(actual == std::optional{expected}, message);
+}
+
+void refreshSpatialBytes(LoadedMissionWorldRoom& room) {
+    auto& arena = room.spatialArena;
+    arena.retainedPayloadBytes =
+        arena.rooms.size() *
+            sizeof(airfix::assets::MissionWorldSpatialRoom) +
+        arena.treeReferences.size() * sizeof(std::size_t) +
+        arena.trees.size() *
+            sizeof(airfix::assets::MissionWorldSpatialTree) +
+        arena.nodes.size() *
+            sizeof(airfix::assets::MissionWorldSpatialNode) +
+        arena.polygons.size() *
+            sizeof(airfix::assets::MissionWorldSpatialPolygon);
+    room.retainedSpatialBytes = arena.retainedPayloadBytes;
 }
 
 void testValidBoundaryRooms() {
@@ -213,6 +345,91 @@ void testValidBoundaryRooms() {
         !airfix::content::validateMissionWorldRoomPublication(table, revision())
              .has_value(),
         "valid table boundary values were rejected");
+}
+
+void testPublishedCpuByteAccountingBoundary() {
+    {
+        const auto root = validRootRoom();
+        const auto table = validTableRoom();
+        const auto player = validPlayerRoom();
+        require(
+            root.publishedCpuBytes ==
+                    independentPublishedCpuBytes(root) &&
+                table.publishedCpuBytes ==
+                    independentPublishedCpuBytes(table) &&
+                player.publishedCpuBytes ==
+                    independentPublishedCpuBytes(player),
+            "valid fixture published-byte counters are stale");
+    }
+    {
+        auto room = validPlayerRoom();
+        room.textures.resize(1U);
+        room.textures[0].upload.uploadLevels.resize(2U);
+        room.textures[0].uploadLevels.resize(2U);
+        room.textures[0].uploadLevels[0].pixels.resize(3U);
+        room.textures[0].uploadLevels[1].pixels.resize(7U);
+
+        auto& mesh = room.model.meshes[0];
+        mesh.vertices.resize(1U);
+        mesh.indices.resize(2U);
+        mesh.materials.resize(3U);
+        mesh.ranges.resize(4U);
+        room.submission.meshUploads.resize(2U);
+        room.submission.commands.resize(5U);
+        refreshPublishedCpuBytes(room);
+
+        require(
+            !airfix::content::validateMissionWorldRoomPublication(
+                 room, revision())
+                 .has_value(),
+            "independently accounted nested published payload was rejected");
+        require(
+            room.publishedCpuBytes ==
+                independentPublishedCpuBytes(room),
+            "nested published payload was not accounted exactly");
+
+        ++room.publishedCpuBytes;
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 publishedCpuBytesMismatch},
+            "one-byte published CPU overcount was accepted");
+
+        room.publishedCpuBytes =
+            independentPublishedCpuBytes(room) - 1U;
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 publishedCpuBytesMismatch},
+            "one-byte published CPU undercount was accepted");
+    }
+    {
+        auto room = validRootRoom();
+        room.publishedCpuBytes =
+            std::numeric_limits<std::uint64_t>::max();
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 publishedCpuBytesMismatch},
+            "maximum forged published CPU count was accepted");
+    }
+}
+
+void testPublicationValidationDoesNotAllocate() {
+    const auto room = validPlayerRoom();
+    allocationCount.store(0U, std::memory_order_relaxed);
+    trackAllocations.store(true, std::memory_order_release);
+    const auto publicationIssue =
+        airfix::content::validateMissionWorldRoomPublication(
+            room, revision());
+    trackAllocations.store(false, std::memory_order_release);
+
+    require(
+        !publicationIssue.has_value(),
+        "valid player room failed allocation-free publication");
+    require(
+        allocationCount.load(std::memory_order_relaxed) == 0U,
+        "publication validation allocated memory");
 }
 
 void testIdentityAndParallelProvenance() {
@@ -639,17 +856,237 @@ void testPlayerActorPublicationBoundary() {
     }
 }
 
+void testSpatialPublicationBoundary() {
+    {
+        auto room = validRootRoom();
+        room.spatialArena.issues.push_back({});
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 spatialArenaIncomplete},
+            "incomplete spatial arena was accepted");
+    }
+    {
+        auto room = validRootRoom();
+        ++room.retainedSpatialBytes;
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 spatialPayloadByteMismatch},
+            "forged spatial byte count was accepted");
+    }
+    {
+        auto room = validTableRoom();
+        room.spatialArena.rooms.resize(1U);
+        refreshSpatialBytes(room);
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 spatialStartRoomOutOfRange},
+            "out-of-range selected spatial room was accepted");
+    }
+    {
+        auto room = validRootRoom();
+        room.spatialArena.rooms[0].firstStaticTreeReference = 1U;
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 spatialRoomRangeInvalid,
+             .sourceIndex = 0U},
+            "forged spatial room range was accepted");
+    }
+    {
+        auto room = validRootRoom();
+        auto& arena = room.spatialArena;
+        arena.treeReferences = {0U};
+        arena.rooms[0].staticTreeCount = 1U;
+        arena.rooms[0].firstPortalTreeReference = 1U;
+        arena.trees.push_back({
+            .kind = airfix::assets::CcfBspTreeKind::staticTree,
+            .sourceIndex = room.semanticCcfSourceCount,
+            .worldRoomIndex = 0U,
+            .rootNodeIndex = 0U,
+            .firstNodeIndex = 0U,
+            .nodeCount = 1U,
+        });
+        arena.nodes.push_back({
+            .splitNormal = {0.0F, 0.0F, 1.0F},
+            .pointOnPlane = {},
+        });
+        refreshSpatialBytes(room);
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 spatialTreeInvalid,
+             .sourceIndex = 0U},
+            "forged spatial tree owner was accepted");
+    }
+    {
+        auto room = validRootRoom();
+        auto& arena = room.spatialArena;
+        arena.treeReferences = {1U, 1U};
+        arena.rooms[0].staticTreeCount = 2U;
+        arena.rooms[0].firstPortalTreeReference = 2U;
+        arena.trees = {
+            {
+                .kind = airfix::assets::CcfBspTreeKind::staticTree,
+                .sourceIndex = 0U,
+                .worldRoomIndex = 0U,
+                .rootNodeIndex = 0U,
+                .firstNodeIndex = 0U,
+                .nodeCount = 1U,
+            },
+            {
+                .kind = airfix::assets::CcfBspTreeKind::staticTree,
+                .sourceIndex = 0U,
+                .worldRoomIndex = 0U,
+                .rootNodeIndex = 1U,
+                .firstNodeIndex = 1U,
+                .nodeCount = 1U,
+            },
+        };
+        arena.nodes = {
+            {
+                .splitNormal = {0.0F, 0.0F, 1.0F},
+                .pointOnPlane = {},
+            },
+            {
+                .splitNormal = {0.0F, 0.0F, 1.0F},
+                .pointOnPlane = {},
+            },
+        };
+        refreshSpatialBytes(room);
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 spatialTreeInvalid,
+             .sourceIndex = 1U},
+            "duplicate spatial tree reference was accepted");
+    }
+    {
+        auto room = validRootRoom();
+        auto& arena = room.spatialArena;
+        arena.treeReferences = {0U};
+        arena.rooms[0].staticTreeCount = 1U;
+        arena.rooms[0].firstPortalTreeReference = 1U;
+        arena.trees.push_back({
+            .kind = airfix::assets::CcfBspTreeKind::staticTree,
+            .sourceIndex = 0U,
+            .worldRoomIndex = 0U,
+            .rootNodeIndex = 0U,
+            .firstNodeIndex = 0U,
+            .nodeCount = 1U,
+        });
+        arena.nodes.push_back({
+            .childAIndex = 2U,
+            .splitNormal = {0.0F, 0.0F, 1.0F},
+            .pointOnPlane = {},
+        });
+        refreshSpatialBytes(room);
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 spatialNodeInvalid,
+             .sourceIndex = 0U},
+            "out-of-tree spatial child was accepted");
+    }
+    {
+        auto room = validRootRoom();
+        auto& arena = room.spatialArena;
+        arena.treeReferences = {0U};
+        arena.rooms[0].staticTreeCount = 1U;
+        arena.rooms[0].firstPortalTreeReference = 1U;
+        arena.trees.push_back({
+            .kind = airfix::assets::CcfBspTreeKind::staticTree,
+            .sourceIndex = 0U,
+            .worldRoomIndex = 0U,
+            .rootNodeIndex = 0U,
+            .firstNodeIndex = 0U,
+            .nodeCount = 2U,
+        });
+        arena.nodes = {
+            {
+                .childAIndex = 0U,
+                .splitNormal = {0.0F, 0.0F, 1.0F},
+                .pointOnPlane = {},
+            },
+            {
+                .splitNormal = {0.0F, 0.0F, 1.0F},
+                .pointOnPlane = {},
+            },
+        };
+        refreshSpatialBytes(room);
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 spatialNodeInvalid,
+             .sourceIndex = 0U},
+            "spatial child cycle was accepted");
+
+        arena.nodes[0].childAIndex = std::nullopt;
+        refreshSpatialBytes(room);
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 spatialNodeInvalid,
+             .sourceIndex = 0U},
+            "disconnected spatial node was accepted");
+    }
+    {
+        auto room = validRootRoom();
+        auto& arena = room.spatialArena;
+        arena.treeReferences = {0U};
+        arena.rooms[0].staticTreeCount = 1U;
+        arena.rooms[0].firstPortalTreeReference = 1U;
+        arena.trees.push_back({
+            .kind = airfix::assets::CcfBspTreeKind::staticTree,
+            .sourceIndex = 0U,
+            .worldRoomIndex = 0U,
+            .rootNodeIndex = 0U,
+            .firstNodeIndex = 0U,
+            .nodeCount = 1U,
+        });
+        arena.nodes.push_back({
+            .splitNormal = {0.0F, 0.0F, 1.0F},
+            .pointOnPlane = {},
+            .firstPolygonIndex = 0U,
+            .polygonCount = 1U,
+        });
+        arena.polygons.push_back({
+            .faceCross = {0.0F, 0.0F, 1.0F},
+            .faceNormal = {0.0F, 0.0F, 1.0F},
+            .point0 = {
+                std::numeric_limits<float>::infinity(),
+                0.0F,
+                0.0F,
+            },
+            .edge01 = {1.0F, 0.0F, 0.0F},
+            .edge12 = {-1.0F, 1.0F, 0.0F},
+        });
+        refreshSpatialBytes(room);
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 spatialPolygonInvalid,
+             .sourceIndex = 0U},
+            "non-finite spatial polygon was accepted");
+    }
+}
+
 } // namespace
 
 int main() {
     try {
         testValidBoundaryRooms();
+        testPublishedCpuByteAccountingBoundary();
+        testPublicationValidationDoesNotAllocate();
         testIdentityAndParallelProvenance();
         testRootFallbackMutations();
         testTableMutationsAndFiniteness();
         testPlayerSpawnPoseBinding();
         testCcfCountAndCacheMutations();
         testPlayerActorPublicationBoundary();
+        testSpatialPublicationBoundary();
     } catch (const std::exception &error) {
         std::cerr << "Mission world publication tests failed: " << error.what()
                   << '\n';

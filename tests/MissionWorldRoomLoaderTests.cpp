@@ -1384,6 +1384,7 @@ sourceFootprint(const VerifiedContentSession &session,
     total += room.setupEntry.logicalPath.size();
     total += room.textures.size() * sizeof(airfix::content::LoadedTextureAsset);
     total += room.ccfCacheIndexByLoadSource.size() * sizeof(std::size_t);
+    total += room.retainedSpatialBytes;
     if (room.playerVisual.has_value()) {
         total +=
             room.playerVisual->objectDefinitionSource.logicalPath.size();
@@ -1514,6 +1515,8 @@ void testExactAndOneUnderBudgets() {
             room.uniqueCcfSourceFootprintBytes;
         exact.maximumRetainedCcfMetadataBytesAfterParse =
             room.retainedCcfMetadataBytes;
+        exact.spatialArena.maximumRetainedBytes =
+            room.retainedSpatialBytes;
         exact.maximumTextureAssets = room.textures.size();
         exact.maximumTotalTextureSourceBytes = room.textureSourceFootprintBytes;
         exact.maximumDecodedRgbaBytes = room.decodedRgbaBytes;
@@ -1593,6 +1596,14 @@ void testExactAndOneUnderBudgets() {
             limits,
             MissionWorldRoomLoadIssueKind::retainedCcfMetadataLimitExceeded,
             "one-under post-parse retained CCF metadata succeeded");
+    }
+    {
+        auto limits = exact;
+        --limits.spatialArena.maximumRetainedBytes;
+        requireOneUnder(
+            limits,
+            MissionWorldRoomLoadIssueKind::spatialArenaFailure,
+            "one-under retained spatial arena succeeded");
     }
     {
         auto limits = exact;

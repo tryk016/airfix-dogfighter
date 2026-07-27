@@ -1930,3 +1930,46 @@ superseded evidence.
   targets pass; the public-boundary scan checks 294 files, the function
   catalogue contains 209 unique entries, and Ghidra/Rizin wrapper tests,
   12 Rizin normalization tests, `actionlint`, and `git diff --check` pass.
+
+## 2026-07-27 - retained mission BSP and portal line backend
+
+- Cross-checked `CcBspNode`, `CcBspNodePoly`,
+  `PhLine::TraceBspNode`, `GetPortalBspCollision`, and
+  `CcRoom::TracePortals` with Ghidra instructions and Rizin. Child A is the
+  negative plane side, child B is nonnegative, and both tree and polygon
+  runtime lists reverse physical CCF order through prepend insertion.
+- Recovered the exact near/node/far traversal, `FLT_MAX` nearest seed,
+  binary32 `1e-6` endpoint gate, strict three-edge XOR inclusion test,
+  one-sided default, explicit binary32 direction/distance/fraction stores,
+  binary32 endpoint/polygon-relative and reconstructed-edge stores, `z+y+x`
+  split-dot grouping, the asymmetric X/Y-versus-Z hit-point spill schedule,
+  unordered-`t` far traversal, strict equal-fraction tie behavior, and
+  unclamped hit fraction.
+- Confirmed that portal continuation requires mesh `selectionFlagB`, placed
+  object `portalType == 0`, and nonzero `rawFlag`; the third float argument to
+  `CcRoom::TracePortals` is unused in this game build.
+- Added `MissionWorldSpatialArena`, a bounded pointer-free source-world copy of
+  authenticated BSP for every runtime room. It translates portal targets
+  through semantic source/physical-room contributors, excludes
+  placed-scene-disabled ghost collision, preserves the legal face-normal NaN
+  sentinel, authenticates a supplied catalog by canonical rebuild-and-compare,
+  and fails atomically before payload allocation on dependency, structure,
+  float, aggregate physical-room/tree/node/polygon, or retained-byte errors.
+- Added allocation-free source-world static/portal line tracing and bounded
+  multi-room portal continuation. The explicit transition limit and
+  non-disableable hard cap of 256 are a portable safety divergence from the
+  original unbounded recursion.
+- Integrated the arena into `LoadedMissionWorldRoom`, published CPU accounting,
+  detailed loader progress/issues, and the allocation-free publication
+  validator. Publication checks exact tree-reference permutation, node
+  reachability/acyclicity, ranges, spatial and total published byte accounting,
+  and source/target ownership. Synthetic tests cover ordering, target
+  translation, gates, binary32 ties, unordered crossings, sentinels, forged
+  catalogs, invalid topology, and exact/one-under budgets. Original assets and
+  derived payloads remain outside Git.
+- Three independent final reviews exposed and closed binary32 cancellation
+  and 1-ULP hit-point cases, forged-catalog/pre-allocation hazards, missing
+  topology/accounting proofs, and an allocating transform check inside the
+  nominally allocation-free publication validator. The corrected validator
+  uses `tryComposeNodeTransforms`; a global-allocation counter proves zero
+  allocations for a complete valid player room.
