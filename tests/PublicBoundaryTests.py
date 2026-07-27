@@ -60,6 +60,11 @@ def main() -> int:
             "analysis/tools/vendor.bin",
             "forbidden local-analysis directory",
         )
+        assert_blocked(
+            root,
+            "analysis/ghidra-appdata/preferences",
+            "forbidden local-analysis directory",
+        )
         assert_blocked(root, "notes/function.bndb", "forbidden file type")
         assert_blocked(root, "notes/session.trace32", "forbidden file type")
         assert_blocked(root, "notes/session.dd32.bak", "forbidden file type")

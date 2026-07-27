@@ -285,11 +285,14 @@ horizontal/depth components and adds Y in world space:
 ```text
 worldOffset = R * (ox, 0, oz) + (0, oy, 0)
 target      = p + worldOffset
-error       = target - c
+error       = (p - c) + worldOffset
 ```
 
 This preserves an upright world-space lift while the behind/front component
-follows vehicle rotation.
+follows vehicle rotation. `target - c` is algebraically equivalent, but the
+second form above is the recovered instruction order and is retained by the
+portable implementation so it does not introduce a different float-rounding
+boundary.
 
 The recovered nonlinear error adjustment is:
 
@@ -493,7 +496,9 @@ refreshChase(vehicle, camera):
         rotation(vehicle.q) * (offset.x, 0, offset.z)
     target =
         vehicle.position + planarDepthOffset + (0, offset.y, 0)
-    error = target - camera.position
+    error =
+        (vehicle.position - camera.position) +
+        planarDepthOffset + (0, offset.y, 0)
 
     if dot(error, error) < dot(offset, offset):
         error *= (length(error) + 0.001) * 0.99
@@ -590,11 +595,25 @@ A parity-first portable camera should initially preserve:
 9. a logical full-screen `640x480` gameplay viewport, aspect-fitted by the
    separate presentation layer.
 
-`LegacyGameplayCameraPreset` now implements the exact four tuples, fail-closed
-raw mode validation, persistent `0 -> 1 -> 2 -> 0` cycling, held rear
-selection, and the `0.25/200/90` projection defaults. It deliberately does not
-claim the still-unimplemented smoothing, collision, portal, or pose mutation
-stages.
+`LegacyGameplayCameraPreset` implements the exact four tuples, fail-closed raw
+mode validation, persistent `0 -> 1 -> 2 -> 0` cycling, held rear selection,
+and the `0.25/200/90` projection defaults.
+
+`LegacyGameplayCameraChase` now implements the confirmed stateless portion of
+the refresh recurrence: runtime-column rotation of offset X/Z, world-up offset
+Y, the recovered `(vehicle - camera) + worldOffset` operation order, strict
+nonlinear threshold, exact binary32 constants, per-axis factors, and the
+candidate position without `dt`. The allocation-free `noexcept` boundary
+rejects non-finite input or derived output atomically. It accepts the finite
+matrix supplied by the caller without silently normalizing it; the later
+quaternion adapter must preserve the original `CcMatrixRot::FromQuat`
+behavior.
+
+The implementation deliberately does not claim bit-identical x87 extended
+precision on every modern target. Algebra and instruction grouping are
+confidence **3/3**; cross-platform bit identity remains confidence **2/3**.
+Portal tracing, collision correction, look-at rotation, and final pose
+publication remain separate unimplemented stages.
 
 Time-normalized smoothing, free look, touch drag, controller right-stick
 orbit, recenter, and Hor+ widescreen are useful port features, but they must

@@ -1,8 +1,8 @@
 # Camera and projection contract
 
 **Status:** legacy scalar projection, world-to-view, depth presets, gameplay
-camera presets, and 4:3 layout implemented; stateful chase pose and Metal join
-remain
+camera presets, stateless chase smoothing, and 4:3 layout implemented;
+portal/collision/look-at pose and Metal join remain
 
 This document separates confirmed legacy behavior from reconstruction
 decisions. The complete evidence record is
@@ -201,11 +201,18 @@ step without a time multiplier, resolves portal/sphere/line collision, then
 rebuilds camera rotation to look at the vehicle. No normal player-triggered
 legacy recenter binding was found.
 
-`LegacyGameplayCameraPreset.cpp` implements only the exact tuples, persistent
-cycle, held rear selection, and projection defaults. Invalid raw modes fail
-closed. The allocation-free `noexcept` boundary intentionally excludes
-smoothing, collision, portal mutation, and final pose until those stateful
-steps have their own bounded implementation.
+`LegacyGameplayCameraPreset.cpp` implements the exact tuples, persistent cycle,
+held rear selection, and projection defaults. Invalid raw modes fail closed.
+
+`LegacyGameplayCameraChase.cpp` implements the allocation-free stateless
+target and smoothing stage. Its matrix is in the runtime column-vector
+convention; only offset X/Z are rotated, offset Y remains world-up, and error
+uses the recovered `(vehicle - camera) + worldOffset` operation order. The
+strict nonlinear branch uses the exact binary32 constants and advances each
+axis as `(factor * speed) * error` without `dt`. Non-finite input or derived
+results fail atomically. The returned candidate is not a final camera pose:
+portal mutation, sphere/line collision correction, look-at rotation, and pose
+publication remain deliberately outside this contract.
 
 See
 [EXP-20260727-010](../../experiments/EXP-20260727-010-gameplay-camera-modes.md)

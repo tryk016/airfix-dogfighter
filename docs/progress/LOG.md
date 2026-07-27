@@ -1851,3 +1851,28 @@ superseded evidence.
   all 181 steps and all 54 CTest targets pass; the public-boundary scan checks
   285 files, the function catalogue contains 206 unique entries, and
   `actionlint` plus `git diff --check` are clean.
+
+## 2026-07-27 - stateless gameplay-camera chase step
+
+- Rechecked the `AfVehicle::ProcessEvent` chase block with Ghidra instructions
+  and Rizin. The recovered rotation maps directly to the portable
+  column-vector `Mat3`; the CCF legacy-row adapter and world-to-camera
+  transform do not belong in this path.
+- Corrected the documented float operation order from the algebraic
+  `target - camera` shorthand to the actual
+  `(vehicle - camera) + worldOffset` sequence. Confirmed
+  `error.x² + (error.y² + error.z²)`, strict threshold comparison, exact
+  binary32 bias/damping constants, `(factor * speed) * error`, and no `dt`.
+- Added `LegacyGameplayCameraChase`, an allocation-free `noexcept` contract for
+  runtime-column offset rotation, world-up Y, nonlinear close-target damping,
+  per-axis movement factors, and candidate camera position. Non-finite input
+  and derived overflow fail atomically.
+- Kept portal tracing, sphere/line collision, look-at rotation, and final pose
+  publication outside this stateless stage. The portable implementation
+  preserves recovered algebra/grouping but does not claim bit-identical x87
+  extended precision across modern targets.
+- Independent review found no P0-P3 issue and independently built/passed the
+  focused test. A fresh release Ninja build completed all 184 steps and all 55
+  CTest targets pass. The public-boundary scan checks 288 files; its synthetic
+  suite now also protects local Ghidra application data. Ghidra/Rizin wrapper
+  tests, Rizin normalization tests, `actionlint`, and `git diff --check` pass.

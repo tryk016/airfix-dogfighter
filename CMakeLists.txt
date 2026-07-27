@@ -143,6 +143,7 @@ add_library(airfix_render
     src/airfix/render/LegacyCameraTransform.cpp
     src/airfix/render/LegacyCanvasLayout.cpp
     src/airfix/render/LegacyDepthState.cpp
+    src/airfix/render/LegacyGameplayCameraChase.cpp
     src/airfix/render/LegacyGameplayCameraPreset.cpp
     src/airfix/render/LegacyGeometry.cpp
     src/airfix/render/LegacyScreenProjection.cpp
@@ -454,6 +455,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_legacy_gameplay_camera_preset_tests
         COMMAND airfix_legacy_gameplay_camera_preset_tests)
+
+    add_executable(airfix_legacy_gameplay_camera_chase_tests
+        tests/LegacyGameplayCameraChaseTests.cpp)
+    target_link_libraries(airfix_legacy_gameplay_camera_chase_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_legacy_gameplay_camera_chase_tests
+        COMMAND airfix_legacy_gameplay_camera_chase_tests)
 
     add_executable(airfix_legacy_screen_projection_tests
         tests/LegacyScreenProjectionTests.cpp)

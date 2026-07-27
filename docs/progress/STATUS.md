@@ -568,11 +568,11 @@
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Implement the bounded gameplay chase recurrence, portal/collision join, and
-   look-at pose before introducing a Metal camera matrix or performing
+3. Add the exact vehicle-quaternion adapter, then implement the portal/collision
+   join and look-at pose before introducing a Metal camera matrix or performing
    physical-device visual acceptance. World-to-camera, scalar projection with
-   reciprocal depth, exact zero clear, depth modes, camera presets, and
-   parity-first 4:3 presentation are recovered; the safe stateless subsets are
+   reciprocal depth, exact zero clear, depth modes, camera presets, stateless
+   chase target/smoothing, and parity-first 4:3 presentation are recovered and
    implemented. Auxiliary weapons and effects remain separate.
 4. Introduce a retained CCF/catalogue arena when runtime room switching is
    implemented; recover portal tracing, camera room traversal, and later

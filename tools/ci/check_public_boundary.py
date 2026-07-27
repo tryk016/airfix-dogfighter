@@ -41,6 +41,7 @@ BLOCKED_PATH_PREFIXES = {
     "analysis/tool-cache/",
     "analysis/tools/",
     "analysis/work-copies/",
+    "analysis/ghidra-appdata/",
     "analysis/rizin-projects/",
     "analysis/cutter-projects/",
     "analysis/binary-ninja-projects/",
