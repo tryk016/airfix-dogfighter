@@ -467,13 +467,15 @@
   inputs, separately authenticated equal revisions, moved and replaced
   sessions, identity-versus-callback-error precedence, cancellation, and late
   atomic failures. The portable suite now passes 47/47.
-- Added portable player-actor adapters below the loader boundary. They resolve
-  the complete selected blueprint subtree, apply the recovered visible
-  slot-zero root pose, retain actor-local transforms, merge actor texture
-  bindings into the existing dense global texture namespace, and append the
-  actor at its authenticated absolute spawn pose exactly once. Typed
-  provenance, count/byte limits, and independent reviews cover the complete
-  scene output. The final loader/publication join is in progress.
+- Joined the optional authenticated player actor into the aggregate
+  mission-world loader and its allocation-free publication boundary. The
+  loader shares physical CCF reads, preserves the room's mesh/instance and
+  texture-ID prefixes, appends actor-only resources in deterministic first-use
+  order, applies the authenticated absolute spawn pose exactly once, and emits
+  one validated draw model and submission plan. Typed provenance, independent
+  count/byte ceilings, fail-closed session/callback/cancellation handling, and
+  synthetic shared/separate-source and tamper cases cover the join. Native
+  physical-device rendering and visual acceptance remain pending.
 - The authenticated setup-to-room provenance chain now crosses the native iOS
   publication boundary together with an immutable `PlayerSpawnPose`. Ghidra
   Headless and Rizin independently confirm x/y/z radians, mode zero, exact
@@ -522,8 +524,10 @@
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Complete the authenticated mission-loader and publication join for the
-   recovered primary actor, keeping auxiliary weapons/effects separate.
+3. Add dynamic player-instance pose overrides and a recovered camera/projection
+   path to the native Metal renderer, then perform physical-device visual
+   acceptance while keeping auxiliary weapons and effects separate. The static
+   combined room-and-player model already crosses the generic native pipeline.
 4. Introduce a retained CCF/catalogue arena when runtime room switching is
    implemented; recover portal tracing, camera room traversal, and later
    transitions afterward.

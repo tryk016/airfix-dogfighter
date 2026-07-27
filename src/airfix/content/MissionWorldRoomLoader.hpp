@@ -6,6 +6,8 @@
 #include "airfix/render/DrawSubmissionPlan.hpp"
 #include "airfix/render/MissionWorldRoomDrawAssembly.hpp"
 #include "airfix/render/MissionWorldRoomTextureBindings.hpp"
+#include "airfix/render/PlayerActorSceneAssembly.hpp"
+#include "airfix/render/PlayerActorTextureBindings.hpp"
 #include "airfix/simulation/PlayerSpawnPose.hpp"
 
 #include <cstddef>
@@ -16,6 +18,8 @@
 #include <vector>
 
 namespace airfix::content {
+
+enum class MissionWorldRoomPublicationIssueKind : std::uint8_t;
 
 struct MissionWorldRoomLoadRequest {
     assets::CcNameState initialRootName;
@@ -31,7 +35,11 @@ struct MissionWorldRoomLoadLimits {
     render::MissionWorldRoomDrawLimits draw{};
     render::DrawSubmissionLimits submission{};
     render::GtiUploadDataLimits gtiPerTexture{};
+    render::PlayerActorTextureBindingLimits playerTextureBindings{};
+    render::ObjectVisualDrawLimits playerVisual{};
+    render::PlayerActorSceneLimits playerScene{};
 
+    // Room semantic sources plus the optional player visual CCF.
     std::size_t maximumCcfSources{65'536U};
     std::size_t maximumUniqueCcfSources{65'536U};
     std::size_t maximumCcfSourceBytes{256U * 1024U * 1024U};
@@ -47,6 +55,9 @@ struct MissionWorldRoomLoadLimits {
     std::uint64_t maximumDecodedRgbaBytes{512U * 1024U * 1024U};
     std::uint64_t maximumUploadRgbaBytes{512U * 1024U * 1024U};
     std::uint64_t maximumResidentRgbaBytes{512U * 1024U * 1024U};
+    std::size_t maximumPlayerObjectLogicalPathBytes{4'096U};
+    std::size_t maximumPlayerBlueprintSelectorBytes{4'096U};
+    std::size_t maximumPlayerTextureRootBytes{4'096U};
     std::uint64_t maximumPublishedCpuBytes{768U * 1024U * 1024U};
 };
 
@@ -62,6 +73,11 @@ enum class MissionWorldRoomLoadPhase : std::uint8_t {
     assemblingRoom,
     planningSubmission,
     complete,
+    planningPlayerTextureBindings,
+    assemblingPlayerVisual,
+    assemblingPlayerScene,
+    validatingPublication,
+    preflightingPlayerCcfSource,
 };
 
 struct MissionWorldRoomLoadProgress {
@@ -109,6 +125,11 @@ enum class MissionWorldRoomLoadIssueKind : std::uint8_t {
     allocationFailure,
     progressCallbackFailure,
     internalFailure,
+    invalidPlayerVisualDescriptor,
+    playerTextureBindingFailure,
+    playerVisualAssemblyFailure,
+    playerSceneAssemblyFailure,
+    publicationFailure,
 };
 
 struct MissionWorldRoomLoadIssue {
@@ -125,6 +146,12 @@ struct MissionWorldRoomLoadIssue {
     std::optional<render::GtiUploadDataIssueKind> texturePreparationIssue;
     std::optional<render::MissionWorldRoomDrawIssueKind> drawAssemblyIssue;
     std::optional<render::DrawSubmissionIssueKind> submissionIssue;
+    std::optional<render::PlayerActorTextureBindingIssueKind>
+        playerTextureBindingIssue;
+    std::optional<render::PlayerActorVisualDrawIssueKind>
+        playerVisualAssemblyIssue;
+    std::optional<render::PlayerActorSceneIssueKind> playerSceneAssemblyIssue;
+    std::optional<MissionWorldRoomPublicationIssueKind> publicationIssue;
 };
 
 struct LoadedMissionWorldRoom {
@@ -136,15 +163,22 @@ struct LoadedMissionWorldRoom {
     render::BasisTransform runtimeBasis;
     simulation::PlayerSpawnPose playerSpawnPose;
     render::DrawModelPayload model;
+    // Static room provenance remains a stable prefix of the final model.
     std::vector<render::MissionWorldRoomMeshProvenance> meshProvenance;
     std::vector<render::MissionWorldRoomInstanceProvenance> instanceProvenance;
+    std::optional<MissionPlayerVisualDescriptor> playerVisual;
+    std::vector<render::PlayerActorSceneMeshProvenance>
+        playerActorMeshProvenance;
+    std::vector<render::PlayerActorSceneInstanceProvenance>
+        playerActorInstanceProvenance;
+    std::optional<render::PlayerActorSceneBinding> playerActorBinding;
     render::DrawSubmissionPlan submission;
     // Dense order: textures[index].assetId.value == index.
     std::vector<LoadedTextureAsset> textures;
 
-    // Auditable physical-cache provenance. Each entry is parallel to the
-    // manifest's semantic CCF load list and indexes the first-use-ordered
-    // unique CCF cache used during this transaction.
+    // Auditable physical-cache provenance. The vector remains parallel to the
+    // room-only manifest CCF load list. The optional player index addresses
+    // the same first-use-ordered physical cache after all room first uses.
     std::size_t semanticCcfSourceCount{};
     std::size_t uniqueCcfSourceCount{};
     std::uint64_t uniqueCcfSourceFootprintBytes{};
@@ -155,6 +189,7 @@ struct LoadedMissionWorldRoom {
     std::uint64_t residentRgbaBytes{};
     std::uint64_t publishedCpuBytes{};
     std::vector<std::size_t> ccfCacheIndexByLoadSource;
+    std::optional<std::size_t> playerVisualCcfCacheIndex;
 };
 
 struct MissionWorldRoomLoadResult {
@@ -167,10 +202,11 @@ struct MissionWorldRoomLoadResult {
     }
 };
 
-// Loads one start-selected runtime room from the exact ordered CCF source list
-// authenticated by manifest. Physical CCF and GTI payloads are read only
-// through session. Repeated semantic CCF loads share one physical parse but
-// remain distinct catalog/draw sources. No partial result is published.
+// Loads one start-selected runtime room and optional authenticated player
+// visual. Physical CCF and GTI payloads are read only through session.
+// Repeated room/player CCF identities share one physical parse. The player is
+// appended after the static room prefix and receives one final submission
+// plan with the room. No partial result is published.
 [[nodiscard]] MissionWorldRoomLoadResult
 loadMissionWorldRoom(VerifiedContentSession &session,
                      const MissionLoadManifest &manifest,

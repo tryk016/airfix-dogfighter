@@ -44,13 +44,12 @@ Implemented foundations include:
   two-phase Metal publication;
 - a deterministic semantic input core with native touch and Apple Game
   Controller adapters;
-- authenticated player selection in the mission manifest and portable player
-  actor visual, scene-placement, and texture-binding builders.
+- authenticated player selection plus bounded player-model, texture,
+  scene-placement, and publication integration in the mission-world loader.
 
-The player actor is not yet joined into the authenticated mission-world loader;
-that integration is in progress. Full gameplay simulation, campaign flow,
-audio, finished menus, physical-device rendering, and visual acceptance remain
-future milestones.
+The portable authenticated load now produces one validated room-and-player
+draw model. Full gameplay simulation, campaign flow, audio, finished menus,
+physical-device rendering, and visual acceptance remain future milestones.
 
 For frequently updated details, use
 [project status](docs/progress/STATUS.md) and the

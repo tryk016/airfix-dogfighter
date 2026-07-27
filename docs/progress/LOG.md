@@ -1625,3 +1625,36 @@ superseded evidence.
   technical architecture decisions and tool requirements remain documented.
   No private path, original payload, local analysis database, signing material,
   or generated content was added.
+
+## 2026-07-27 - authenticated player actor loader publication
+
+- Completed the optional player branch inside `MissionWorldRoomLoader`. The
+  player descriptor is pinned before callbacks, its CCF participates in the
+  same authenticated physical cache as room sources, and a shared source is
+  read only once. Room semantic-source and cache-prefix semantics remain
+  unchanged.
+- The room texture namespace is retained as a stable prefix. Actor textures
+  reuse matching authenticated entries and append only actor-specific entries
+  in deterministic first-use order. The selected actor visual is composed with
+  the authenticated absolute spawn pose exactly once, then joined with the
+  static room into one final model and one `DrawSubmissionPlan`.
+- The published result carries the optional descriptor, physical-cache index,
+  actor binding, and mesh/instance provenance. The allocation-free publication
+  validator checks absent/present co-occurrence, ranges and final indices,
+  room prefixes, cache order, mesh/source identity, slot-zero selection, and a
+  bit-exact recomposition of every actor world transform.
+- Synthetic tests cover separate and shared player CCFs, shared and actor-only
+  textures, root and table-selected starts, one physical read, malformed
+  sources, late failures, callback/session/cancellation races, exact and
+  one-under budgets, and publication tampering. An independent review found
+  two admission-policy inconsistencies in typed source-limit reporting and
+  global CPU preflight; both were corrected before publication.
+- A separate native-path audit confirmed that the generic snapshot and Metal
+  preparation already retain and render the complete static combined model,
+  including actor ranges, textures, provenance, and transforms. Dynamic actor
+  pose transport, a recovered camera/projection, secondary/environment texture
+  use, and device visual acceptance remain separate follow-up work.
+- A fresh Windows GCC/Ninja Release tree built all 160 steps and the complete
+  portable suite passed 47/47. The public-boundary scan checked 256 files,
+  `actionlint` and `git diff --check` passed, and no original content or private
+  path entered the repository.

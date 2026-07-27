@@ -35,6 +35,22 @@ enum class MissionWorldRoomPublicationIssueKind : std::uint8_t {
     ccfCacheIndexOutOfRange,
     ccfCacheFirstUseOrderMismatch,
     uniqueCcfSourceCountMismatch,
+    playerVisualCooccurrenceMismatch,
+    invalidPlayerVisualDescriptor,
+    playerVisualCcfCacheIndexOutOfRange,
+    staticMeshProvenancePrefixMismatch,
+    staticInstanceProvenancePrefixMismatch,
+    playerActorBindingRangeOverflow,
+    playerActorFinalMeshCountMismatch,
+    playerActorFinalInstanceCountMismatch,
+    playerActorMeshProvenanceCountMismatch,
+    playerActorInstanceProvenanceCountMismatch,
+    playerActorFinalMeshSlotMismatch,
+    playerActorFinalInstanceIndexMismatch,
+    playerActorSkinSlotMismatch,
+    playerActorSourceReferenceMismatch,
+    playerActorPhysicalMeshMismatch,
+    playerActorTransformMismatch,
 };
 
 struct MissionWorldRoomPublicationIssue {

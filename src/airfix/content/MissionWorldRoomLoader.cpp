@@ -1,5 +1,6 @@
 #include "airfix/content/MissionWorldRoomLoader.hpp"
 #include "airfix/content/MissionWorldRoomLoaderDetail.hpp"
+#include "airfix/content/MissionWorldRoomPublication.hpp"
 #include "airfix/content/PlayerSpawnPoseBuilder.hpp"
 
 #include <algorithm>
@@ -40,6 +41,9 @@ struct PinnedMissionWorldRoomManifestInput {
     std::vector<std::size_t> objectDefinitionIndices;
     std::uint64_t setupSourceFootprintBytes{};
     std::uint64_t plannedCcfSourceFootprintBytes{};
+    std::uint64_t plannedPlayerVisualCcfSourceFootprintBytes{};
+    std::uint64_t plannedTotalCcfSourceFootprintBytes{};
+    std::optional<MissionPlayerVisualDescriptor> playerVisual;
 };
 
 [[nodiscard]] MissionWorldRoomLoadIssue
@@ -56,6 +60,10 @@ makeIssue(const MissionWorldRoomLoadIssueKind kind) noexcept {
         .texturePreparationIssue = std::nullopt,
         .drawAssemblyIssue = std::nullopt,
         .submissionIssue = std::nullopt,
+        .playerTextureBindingIssue = std::nullopt,
+        .playerVisualAssemblyIssue = std::nullopt,
+        .playerSceneAssemblyIssue = std::nullopt,
+        .publicationIssue = std::nullopt,
     };
 }
 
@@ -103,6 +111,52 @@ sourceAllocationFootprint(const udsp::FileEntry &entry) noexcept {
            (entry.isCompressed()
                 ? static_cast<std::uint64_t>(entry.unpackedSize)
                 : 0U);
+}
+
+[[nodiscard]] std::optional<std::string>
+canonicalArchiveLogicalPath(const udsp::Archive &archive,
+                            const std::size_t directoryIndex,
+                            const std::size_t fileIndex) {
+    if (fileIndex >= archive.files().size() ||
+        directoryIndex >= archive.directories().size()) {
+        return std::nullopt;
+    }
+    std::string result = archive.directories()[directoryIndex].path;
+    if (!result.empty()) {
+        result.push_back('\\');
+    }
+    result += archive.files()[fileIndex].name;
+    return result;
+}
+
+[[nodiscard]] bool
+accountPlayerDescriptor(std::uint64_t &total,
+                        const MissionPlayerVisualDescriptor &descriptor)
+    noexcept {
+    return accountString(total, descriptor.objectDefinitionSource.logicalPath) &&
+           accountString(total, descriptor.modelCcfSource.logicalPath) &&
+           accountString(total, descriptor.blueprintSelector) &&
+           accountOptionalString(total, descriptor.textureRoot);
+}
+
+[[nodiscard]] render::ConvertedNodeTransform
+actorWorldFrom(const simulation::PlayerSpawnPose &pose) noexcept {
+    const auto vectorAt = [](const std::array<float, 3U> &value) {
+        return render::Vec3{value[0], value[1], value[2]};
+    };
+    return {
+        .linear =
+            {
+                .columns =
+                    {
+                        vectorAt(pose.runtimeWorldRotationColumns[0]),
+                        vectorAt(pose.runtimeWorldRotationColumns[1]),
+                        vectorAt(pose.runtimeWorldRotationColumns[2]),
+                    },
+            },
+        .translation = vectorAt(pose.runtimeWorldPosition),
+        .rawScalar = 1.0F,
+    };
 }
 
 [[nodiscard]] bool
@@ -295,6 +349,9 @@ validateLimits(const MissionWorldRoomLoadLimits &limits) noexcept {
     return limits.maximumCcfSourceBytes != 0U &&
            limits.maximumTextureSourceBytes != 0U &&
            limits.maximumPublishedCpuBytes != 0U &&
+           limits.maximumPlayerObjectLogicalPathBytes != 0U &&
+           limits.maximumPlayerBlueprintSelectorBytes != 0U &&
+           limits.maximumPlayerTextureRootBytes != 0U &&
            limits.textureBindings.maximumCcfLogicalPathBytes != 0U &&
            limits.gtiPerTexture.maximumSourceBytes != 0U;
 }
@@ -501,11 +558,17 @@ loadMissionWorldRoom(VerifiedContentSession &session,
         }
 
         const auto &externalDescriptors = externalManifest.ccfLoads();
+        const auto &externalPlayerVisual =
+            externalManifest.playerVisual();
         const auto externalObjectEntryCount =
             externalManifest.objectEntries().size();
         const auto &externalObjectDefinitionIndices =
             externalManifest.objectDefinitionIndices();
-        if (externalDescriptors.size() > limits.maximumCcfSources) {
+        const auto playerSemanticSourceCount =
+            externalPlayerVisual.has_value() ? 1U : 0U;
+        if (externalDescriptors.size() > limits.maximumCcfSources ||
+            playerSemanticSourceCount >
+                limits.maximumCcfSources - externalDescriptors.size()) {
             addIssue(
                 result,
                 MissionWorldRoomLoadIssueKind::ccfSourceCountLimitExceeded);
@@ -534,6 +597,113 @@ loadMissionWorldRoom(VerifiedContentSession &session,
                 return result;
             }
         }
+        if (externalPlayerVisual.has_value()) {
+            const auto &player = *externalPlayerVisual;
+            const auto invalidDescriptor = [&] {
+                addIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::
+                        invalidPlayerVisualDescriptor);
+            };
+            if (!player.valid() ||
+                player.objectDefinitionSource.logicalPath.size() >
+                    limits.maximumPlayerObjectLogicalPathBytes ||
+                player.modelCcfSource.logicalPath.size() >
+                    limits.textureBindings.maximumCcfLogicalPathBytes ||
+                player.blueprintSelector.size() >
+                    limits.maximumPlayerBlueprintSelectorBytes ||
+                (player.textureRoot.has_value() &&
+                 player.textureRoot->size() >
+                     limits.maximumPlayerTextureRootBytes) ||
+                !udsp::isLogicalPathValid(
+                    player.objectDefinitionSource.logicalPath,
+                    limits.maximumPlayerObjectLogicalPathBytes) ||
+                !udsp::isLogicalPathValid(
+                    player.modelCcfSource.logicalPath,
+                    limits.textureBindings.maximumCcfLogicalPathBytes)) {
+                invalidDescriptor();
+                return result;
+            }
+            const auto &initialArchive = session.sourceArchive();
+            const auto validateIdentity =
+                [&](const MissionArchiveEntryIdentity &identity,
+                    const std::size_t logicalPathLimit,
+                    const std::uint64_t expectedFootprint) {
+                    if (identity.archiveFileIndex >=
+                        initialArchive.files().size()) {
+                        return false;
+                    }
+                    udsp::FileLookupResult lookup;
+                    try {
+                        lookup = initialArchive.lookup(
+                            identity.logicalPath, logicalPathLimit);
+                    } catch (const std::bad_alloc &) {
+                        throw;
+                    } catch (...) {
+                        return false;
+                    }
+                    const auto canonical =
+                        canonicalArchiveLogicalPath(
+                            initialArchive,
+                            lookup.directoryIndex,
+                            lookup.fileIndex);
+                    return lookup.status == udsp::LookupStatus::unique &&
+                           lookup.fileIndex ==
+                               identity.archiveFileIndex &&
+                           canonical.has_value() &&
+                           *canonical == identity.logicalPath &&
+                           sourceAllocationFootprint(
+                               initialArchive
+                                   .files()[lookup.fileIndex]) ==
+                               expectedFootprint;
+                };
+            if (!validateIdentity(
+                    player.objectDefinitionSource,
+                    limits.maximumPlayerObjectLogicalPathBytes,
+                    player
+                        .objectDefinitionSourceAllocationFootprintBytes) ||
+                !validateIdentity(
+                    player.modelCcfSource,
+                    limits.textureBindings.maximumCcfLogicalPathBytes,
+                    player.modelCcfSourceAllocationFootprintBytes) ||
+                externalManifest
+                        .plannedPlayerVisualCcfSourceFootprintBytes() !=
+                    player.modelCcfSourceAllocationFootprintBytes) {
+                invalidDescriptor();
+                return result;
+            }
+            if (player.modelCcfSourceAllocationFootprintBytes >
+                limits.maximumCcfSourceBytes) {
+                auto issue = makeIssue(
+                    MissionWorldRoomLoadIssueKind::ccfSourceLimitExceeded);
+                issue.sourceIndex = externalDescriptors.size();
+                issue.sourceFileIndex =
+                    player.modelCcfSource.archiveFileIndex;
+                addIssue(result, std::move(issue));
+                return result;
+            }
+            auto plannedTotal =
+                externalManifest.plannedCcfSourceFootprintBytes();
+            if (!checkedMissionWorldRoomByteAdd(
+                    plannedTotal,
+                    player.modelCcfSourceAllocationFootprintBytes) ||
+                plannedTotal !=
+                    externalManifest
+                        .plannedTotalCcfSourceFootprintBytes()) {
+                invalidDescriptor();
+                return result;
+            }
+        } else if (
+            externalManifest
+                    .plannedPlayerVisualCcfSourceFootprintBytes() != 0U ||
+            externalManifest.plannedTotalCcfSourceFootprintBytes() !=
+                externalManifest.plannedCcfSourceFootprintBytes()) {
+            addIssue(
+                result,
+                MissionWorldRoomLoadIssueKind::
+                    invalidPlayerVisualDescriptor);
+            return result;
+        }
 
         const MissionWorldRoomLoadRequest request = externalRequest;
         PinnedMissionWorldRoomManifestInput pinnedManifest{
@@ -548,6 +718,13 @@ loadMissionWorldRoom(VerifiedContentSession &session,
                 externalManifest.setupSourceFootprintBytes(),
             .plannedCcfSourceFootprintBytes =
                 externalManifest.plannedCcfSourceFootprintBytes(),
+            .plannedPlayerVisualCcfSourceFootprintBytes =
+                externalManifest
+                    .plannedPlayerVisualCcfSourceFootprintBytes(),
+            .plannedTotalCcfSourceFootprintBytes =
+                externalManifest
+                    .plannedTotalCcfSourceFootprintBytes(),
+            .playerVisual = externalPlayerVisual,
         };
         if (pinnedManifest.revision != expectedRevision) {
             addIssue(result,
@@ -799,6 +976,90 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             return result;
         }
 
+        std::optional<std::size_t> playerVisualCcfCacheIndex;
+        if (pinnedManifest.playerVisual.has_value()) {
+            if (!report(
+                    result,
+                    stopToken,
+                    guardedProgress,
+                    MissionWorldRoomLoadPhase::
+                        preflightingPlayerCcfSource,
+                    0U,
+                    1U)) {
+                return result;
+            }
+            const auto &player = *pinnedManifest.playerVisual;
+            const auto fileIndex =
+                player.modelCcfSource.archiveFileIndex;
+            const auto footprint =
+                player.modelCcfSourceAllocationFootprintBytes;
+            auto found = cacheSlotByFileIndex.find(fileIndex);
+            if (found == cacheSlotByFileIndex.end()) {
+                if (plannedCcfs.size() >=
+                    limits.maximumUniqueCcfSources) {
+                    auto issue = makeIssue(
+                        MissionWorldRoomLoadIssueKind::
+                            uniqueCcfSourceCountLimitExceeded);
+                    issue.sourceIndex = descriptors.size();
+                    issue.sourceFileIndex = fileIndex;
+                    addIssue(result, std::move(issue));
+                    return result;
+                }
+                auto nextUniqueFootprint =
+                    uniqueCcfFootprintBytes;
+                if (!checkedMissionWorldRoomByteAdd(
+                        nextUniqueFootprint, footprint)) {
+                    addIssue(
+                        result,
+                        MissionWorldRoomLoadIssueKind::integerOverflow);
+                    return result;
+                }
+                if (nextUniqueFootprint >
+                    limits.maximumTotalUniqueCcfSourceBytes) {
+                    auto issue = makeIssue(
+                        MissionWorldRoomLoadIssueKind::
+                            aggregateCcfSourceLimitExceeded);
+                    issue.sourceIndex = descriptors.size();
+                    issue.sourceFileIndex = fileIndex;
+                    addIssue(result, std::move(issue));
+                    return result;
+                }
+                const auto slot = plannedCcfs.size();
+                plannedCcfs.push_back({
+                    .archiveFileIndex = fileIndex,
+                    .firstSourceIndex = descriptors.size(),
+                    .sourceFootprintBytes = footprint,
+                });
+                found =
+                    cacheSlotByFileIndex.emplace(fileIndex, slot).first;
+                uniqueCcfFootprintBytes = nextUniqueFootprint;
+            }
+            playerVisualCcfCacheIndex = found->second;
+
+            auto semanticTotal = semanticCcfFootprintBytes;
+            if (!checkedMissionWorldRoomByteAdd(
+                    semanticTotal, footprint) ||
+                semanticTotal !=
+                    pinnedManifest
+                        .plannedTotalCcfSourceFootprintBytes) {
+                addIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::
+                        invalidPlayerVisualDescriptor);
+                return result;
+            }
+            if (!report(
+                    result,
+                    stopToken,
+                    guardedProgress,
+                    MissionWorldRoomLoadPhase::
+                        preflightingPlayerCcfSource,
+                    1U,
+                    1U)) {
+                return result;
+            }
+        }
+
         std::vector<CachedCcf> cachedCcfs;
         cachedCcfs.reserve(plannedCcfs.size());
         std::uint64_t retainedMetadataBytes = 0U;
@@ -914,6 +1175,38 @@ loadMissionWorldRoom(VerifiedContentSession &session,
                 .ccfLogicalPath = descriptor.source.logicalPath,
                 .ccfArchiveFileIndex = descriptor.source.archiveFileIndex,
             });
+        }
+
+        std::optional<assets::ObjectDefinition> playerObjectDefinition;
+        const assets::CcfMetadata *playerCcf = nullptr;
+        if (pinnedManifest.playerVisual.has_value()) {
+            if (!playerVisualCcfCacheIndex.has_value() ||
+                *playerVisualCcfCacheIndex >= cachedCcfs.size()) {
+                addIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::internalFailure);
+                return result;
+            }
+            const auto &player = *pinnedManifest.playerVisual;
+            playerCcf =
+                &cachedCcfs[*playerVisualCcfCacheIndex].metadata;
+            playerObjectDefinition = assets::ObjectDefinition{
+                .kind = assets::ObjectDefinitionKind::object,
+                .type = std::nullopt,
+                .category = std::nullopt,
+                .name = std::nullopt,
+                .nationality = std::nullopt,
+                .textureRoot = player.textureRoot,
+                .ccfPath =
+                    std::optional<std::string>{
+                        player.modelCcfSource.logicalPath},
+                .meshName =
+                    std::optional<std::string>{
+                        player.blueprintSelector},
+                .gravity = std::nullopt,
+                .hidden = false,
+                .unknownChunks = {},
+            };
         }
 
         if (!report(result, stopToken, guardedProgress,
@@ -1079,6 +1372,108 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             return result;
         }
 
+        std::optional<render::PlayerActorTextureBindings>
+            playerTextureBindings;
+        if (pinnedManifest.playerVisual.has_value()) {
+            if (!playerObjectDefinition.has_value() ||
+                playerCcf == nullptr) {
+                addIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::internalFailure);
+                return result;
+            }
+            if (!report(
+                    result,
+                    stopToken,
+                    guardedProgress,
+                    MissionWorldRoomLoadPhase::
+                        planningPlayerTextureBindings,
+                    0U,
+                    1U)) {
+                return result;
+            }
+            auto playerTextureLimits =
+                limits.playerTextureBindings;
+            playerTextureLimits.maximumBaseImports = std::min(
+                playerTextureLimits.maximumBaseImports,
+                limits.maximumTextureAssets);
+            playerTextureLimits.maximumGlobalImports = std::min(
+                playerTextureLimits.maximumGlobalImports,
+                limits.maximumTextureAssets);
+            playerTextureLimits.textureEntries.maximumLogicalPathBytes =
+                std::min(
+                    playerTextureLimits.textureEntries
+                        .maximumLogicalPathBytes,
+                    limits.maximumPlayerTextureRootBytes);
+            try {
+                requireExpectedSession(
+                    session, expectedIdentity, expectedRevision);
+                playerTextureBindings =
+                    render::buildPlayerActorTextureBindings(
+                        binding.imports,
+                        *playerObjectDefinition,
+                        *playerCcf,
+                        archive,
+                        playerTextureLimits);
+                requireExpectedSession(
+                    session, expectedIdentity, expectedRevision);
+            } catch (const std::bad_alloc &) {
+                throw;
+            } catch (const SessionIdentityChanged &) {
+                throw;
+            } catch (...) {
+                addIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::
+                        playerTextureBindingFailure);
+                return result;
+            }
+            if (!playerTextureBindings->complete()) {
+                for (const auto &upstream :
+                     playerTextureBindings->issues) {
+                    auto issue = makeIssue(
+                        MissionWorldRoomLoadIssueKind::
+                            playerTextureBindingFailure);
+                    issue.playerTextureBindingIssue =
+                        upstream.kind;
+                    issue.sourceFileIndex =
+                        upstream.archiveFileIndex;
+                    addIssue(result, std::move(issue));
+                }
+                if (playerTextureBindings->issues.empty()) {
+                    addIssue(
+                        result,
+                        MissionWorldRoomLoadIssueKind::
+                            playerTextureBindingFailure);
+                }
+                return result;
+            }
+            if (playerTextureBindings->imports.size() <
+                    binding.imports.size() ||
+                !std::equal(
+                    binding.imports.begin(),
+                    binding.imports.end(),
+                    playerTextureBindings->imports.begin())) {
+                addIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::
+                        playerTextureBindingFailure);
+                return result;
+            }
+            binding.imports =
+                std::move(playerTextureBindings->imports);
+            if (!report(
+                    result,
+                    stopToken,
+                    guardedProgress,
+                    MissionWorldRoomLoadPhase::
+                        planningPlayerTextureBindings,
+                    1U,
+                    1U)) {
+                return result;
+            }
+        }
+
         if (binding.imports.size() > limits.maximumTextureAssets) {
             addIssue(result,
                      MissionWorldRoomLoadIssueKind::textureAssetLimitExceeded);
@@ -1138,6 +1533,10 @@ loadMissionWorldRoom(VerifiedContentSession &session,
         std::uint64_t publishedCpuBytes = sizeof(LoadedMissionWorldRoom);
         if (!accountString(publishedCpuBytes,
                            pinnedManifest.setupEntry.logicalPath) ||
+            (pinnedManifest.playerVisual.has_value() &&
+             !accountPlayerDescriptor(
+                 publishedCpuBytes,
+                 *pinnedManifest.playerVisual)) ||
             !accountPublished(publishedCpuBytes, binding.imports.size(),
                               sizeof(LoadedTextureAsset),
                               limits.maximumPublishedCpuBytes) ||
@@ -1168,6 +1567,10 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             .model = {},
             .meshProvenance = {},
             .instanceProvenance = {},
+            .playerVisual = pinnedManifest.playerVisual,
+            .playerActorMeshProvenance = {},
+            .playerActorInstanceProvenance = {},
+            .playerActorBinding = std::nullopt,
             .submission = {},
             .textures = {},
             .semanticCcfSourceCount = descriptors.size(),
@@ -1180,6 +1583,8 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             .residentRgbaBytes = 0U,
             .publishedCpuBytes = 0U,
             .ccfCacheIndexByLoadSource = std::move(cacheIndexByLoadSource),
+            .playerVisualCcfCacheIndex =
+                playerVisualCcfCacheIndex,
         };
         candidate.textures.reserve(binding.imports.size());
 
@@ -1448,12 +1853,176 @@ loadMissionWorldRoom(VerifiedContentSession &session,
                      MissionWorldRoomLoadIssueKind::drawAssemblyFailure);
             return result;
         }
+        candidate.meshProvenance = std::move(assembly.meshProvenance);
+        candidate.instanceProvenance = std::move(assembly.instanceProvenance);
+        if (!report(result, stopToken, guardedProgress,
+                    MissionWorldRoomLoadPhase::assemblingRoom, 1U, 1U)) {
+            return result;
+        }
+
+        if (candidate.playerVisual.has_value()) {
+            if (!playerObjectDefinition.has_value() ||
+                playerCcf == nullptr ||
+                !playerTextureBindings.has_value()) {
+                addIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::internalFailure);
+                return result;
+            }
+            if (!report(
+                    result,
+                    stopToken,
+                    guardedProgress,
+                    MissionWorldRoomLoadPhase::
+                        assemblingPlayerVisual,
+                    0U,
+                    1U)) {
+                return result;
+            }
+            render::PlayerActorVisualDrawAssembly actorVisual;
+            auto playerVisualLimits = limits.playerVisual;
+            playerVisualLimits.maximumTotalBytes =
+                std::min(
+                    playerVisualLimits.maximumTotalBytes,
+                    clampToSize(remaining(
+                        limits.maximumPublishedCpuBytes,
+                        publishedCpuBytes)));
+            try {
+                requireExpectedSession(
+                    session, expectedIdentity, expectedRevision);
+                actorVisual =
+                    render::buildPlayerActorVisualDrawAssembly(
+                        *playerObjectDefinition,
+                        *playerCcf,
+                        playerTextureBindings->materialBindings,
+                        request.basis,
+                        request.uvPolicy,
+                        playerVisualLimits);
+                requireExpectedSession(
+                    session, expectedIdentity, expectedRevision);
+            } catch (const std::bad_alloc &) {
+                throw;
+            } catch (const SessionIdentityChanged &) {
+                throw;
+            } catch (...) {
+                addIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::
+                        playerVisualAssemblyFailure);
+                return result;
+            }
+            if (!actorVisual.issues.empty()) {
+                for (const auto &upstream : actorVisual.issues) {
+                    auto issue = makeIssue(
+                        MissionWorldRoomLoadIssueKind::
+                            playerVisualAssemblyFailure);
+                    issue.playerVisualAssemblyIssue =
+                        upstream.kind;
+                    addIssue(result, std::move(issue));
+                }
+                return result;
+            }
+            if (!report(
+                    result,
+                    stopToken,
+                    guardedProgress,
+                    MissionWorldRoomLoadPhase::
+                        assemblingPlayerVisual,
+                    1U,
+                    1U) ||
+                !report(
+                    result,
+                    stopToken,
+                    guardedProgress,
+                    MissionWorldRoomLoadPhase::
+                        assemblingPlayerScene,
+                    0U,
+                    1U)) {
+                return result;
+            }
+
+            render::PlayerActorSceneAssembly actorScene;
+            auto playerSceneLimits = limits.playerScene;
+            playerSceneLimits.maximumTotalBytes =
+                std::min(
+                    playerSceneLimits.maximumTotalBytes,
+                    clampToSize(remaining(
+                        limits.maximumPublishedCpuBytes,
+                        publishedCpuBytes)));
+            try {
+                requireExpectedSession(
+                    session, expectedIdentity, expectedRevision);
+                actorScene =
+                    render::buildPlayerActorSceneAssembly(
+                        std::move(assembly.model),
+                        std::move(actorVisual),
+                        actorWorldFrom(candidate.playerSpawnPose),
+                        playerSceneLimits);
+                requireExpectedSession(
+                    session, expectedIdentity, expectedRevision);
+            } catch (const std::bad_alloc &) {
+                throw;
+            } catch (const SessionIdentityChanged &) {
+                throw;
+            } catch (...) {
+                addIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::
+                        playerSceneAssemblyFailure);
+                return result;
+            }
+            if (!actorScene.complete()) {
+                for (const auto &upstream : actorScene.issues) {
+                    auto issue = makeIssue(
+                        MissionWorldRoomLoadIssueKind::
+                            playerSceneAssemblyFailure);
+                    issue.playerSceneAssemblyIssue =
+                        upstream.kind;
+                    addIssue(result, std::move(issue));
+                }
+                if (actorScene.issues.empty()) {
+                    addIssue(
+                        result,
+                        MissionWorldRoomLoadIssueKind::
+                            playerSceneAssemblyFailure);
+                }
+                return result;
+            }
+            candidate.model = std::move(actorScene.model);
+            candidate.playerActorMeshProvenance =
+                std::move(actorScene.actorMeshProvenance);
+            candidate.playerActorInstanceProvenance =
+                std::move(actorScene.actorInstanceProvenance);
+            candidate.playerActorBinding =
+                actorScene.actorBinding;
+            if (!report(
+                    result,
+                    stopToken,
+                    guardedProgress,
+                    MissionWorldRoomLoadPhase::
+                        assemblingPlayerScene,
+                    1U,
+                    1U)) {
+                return result;
+            }
+        } else {
+            candidate.model = std::move(assembly.model);
+        }
+
         auto modelPublished = publishedCpuBytes;
-        if (!addModelPublishedBytes(modelPublished, assembly.model) ||
-            !accountCount(modelPublished, assembly.meshProvenance.size(),
+        if (!addModelPublishedBytes(modelPublished, candidate.model) ||
+            !accountCount(modelPublished, candidate.meshProvenance.size(),
                           sizeof(render::MissionWorldRoomMeshProvenance)) ||
-            !accountCount(modelPublished, assembly.instanceProvenance.size(),
-                          sizeof(render::MissionWorldRoomInstanceProvenance))) {
+            !accountCount(modelPublished, candidate.instanceProvenance.size(),
+                          sizeof(render::MissionWorldRoomInstanceProvenance)) ||
+            !accountCount(
+                modelPublished,
+                candidate.playerActorMeshProvenance.size(),
+                sizeof(render::PlayerActorSceneMeshProvenance)) ||
+            !accountCount(
+                modelPublished,
+                candidate.playerActorInstanceProvenance.size(),
+                sizeof(render::PlayerActorSceneInstanceProvenance))) {
             addIssue(result, MissionWorldRoomLoadIssueKind::integerOverflow);
             return result;
         }
@@ -1463,13 +2032,6 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             return result;
         }
         publishedCpuBytes = modelPublished;
-        candidate.model = std::move(assembly.model);
-        candidate.meshProvenance = std::move(assembly.meshProvenance);
-        candidate.instanceProvenance = std::move(assembly.instanceProvenance);
-        if (!report(result, stopToken, guardedProgress,
-                    MissionWorldRoomLoadPhase::assemblingRoom, 1U, 1U)) {
-            return result;
-        }
 
         if (!report(result, stopToken, guardedProgress,
                     MissionWorldRoomLoadPhase::planningSubmission, 0U, 1U)) {
@@ -1533,6 +2095,38 @@ loadMissionWorldRoom(VerifiedContentSession &session,
         candidate.publishedCpuBytes = publishedCpuBytes;
         if (!report(result, stopToken, guardedProgress,
                     MissionWorldRoomLoadPhase::planningSubmission, 1U, 1U)) {
+            return result;
+        }
+
+        if (candidate.playerVisual.has_value() &&
+            !report(
+                result,
+                stopToken,
+                guardedProgress,
+                MissionWorldRoomLoadPhase::validatingPublication,
+                0U,
+                1U)) {
+            return result;
+        }
+        const auto publicationIssue =
+            validateMissionWorldRoomPublication(
+                candidate, expectedRevision);
+        if (publicationIssue.has_value()) {
+            auto issue = makeIssue(
+                MissionWorldRoomLoadIssueKind::publicationFailure);
+            issue.publicationIssue = publicationIssue->kind;
+            issue.sourceIndex = publicationIssue->sourceIndex;
+            addIssue(result, std::move(issue));
+            return result;
+        }
+        if (candidate.playerVisual.has_value() &&
+            !report(
+                result,
+                stopToken,
+                guardedProgress,
+                MissionWorldRoomLoadPhase::validatingPublication,
+                1U,
+                1U)) {
             return result;
         }
 

@@ -44,6 +44,14 @@ using airfix::testing::UdspInputEntry;
 inline constexpr std::string_view kObjectOnlyTexture = "ObjectOnly";
 inline constexpr std::string_view kObjectOnlyGtiLogicalPath =
     "Graphics/Textures/ObjectOnly.gti";
+inline constexpr std::string_view kPlayerObjectLogicalPath =
+    "Game/Objects/Player.object";
+inline constexpr std::string_view kPlayerCcfLogicalPath =
+    "Graphics/Player.ccf";
+inline constexpr std::string_view kPlayerBlueprintSelector = "Mesh";
+inline constexpr std::string_view kActorOnlyTexture = "ActorOnly";
+inline constexpr std::string_view kActorOnlyGtiLogicalPath =
+    "Graphics/Textures/ActorOnly.gti";
 
 void require(const bool condition, const std::string_view message) {
     if (!condition) {
@@ -149,12 +157,41 @@ struct FixtureOptions {
     bool malformedDetailGti{};
     bool objectUsesMainCcf{};
     bool backdropUsesMainCcf{};
+    bool playerVisual{};
+    bool playerUsesMainCcf{};
+    bool malformedPlayerCcf{};
+    bool malformedActorGti{};
+    bool missingActorGti{};
     enum class SetupKind : std::uint8_t {
         empty,
         authoredRoom,
         missingRoom,
     } setup{SetupKind::empty};
 };
+
+[[nodiscard]] Bytes makePlayerObjectDefinition(
+    const std::string_view ccfPath) {
+    Bytes chunks;
+    airfix::testing::legacy_detail::appendAfChunk(
+        chunks,
+        airfix::assets::fourCC('T', 'E', 'X', 'U'),
+        airfix::testing::kSyntheticTextureRoot);
+    airfix::testing::legacy_detail::appendAfChunk(
+        chunks,
+        airfix::assets::fourCC('C', 'C', 'F', 'F'),
+        ccfPath);
+    airfix::testing::legacy_detail::appendAfChunk(
+        chunks,
+        airfix::assets::fourCC('M', 'E', 'S', 'H'),
+        kPlayerBlueprintSelector);
+    Bytes bytes;
+    airfix::testing::legacy_detail::appendU32(
+        bytes, airfix::assets::kAfObjectRoot);
+    airfix::testing::legacy_detail::appendU32(
+        bytes, static_cast<std::uint32_t>(chunks.size()));
+    airfix::testing::legacy_detail::appendBytes(bytes, chunks);
+    return bytes;
+}
 
 [[nodiscard]] std::vector<UdspInputEntry>
 missionEntries(const FixtureOptions options = {}) {
@@ -203,6 +240,18 @@ missionEntries(const FixtureOptions options = {}) {
     auto [backdropStored, backdropUnpacked] =
         maybeCompress(std::move(backdropCcf));
     auto [objectStored, objectUnpacked] = maybeCompress(std::move(objectCcf));
+    auto playerCcf =
+        options.malformedPlayerCcf
+            ? Bytes{0x00U}
+            : airfix::testing::makeSyntheticLegacyCcf({
+                  .primaryTexture = "Detail",
+                  .secondaryTexture =
+                      std::string{kActorOnlyTexture},
+                  .placedTranslation = {0.0F, 0.0F, 0.0F},
+                  .placedRoomReference = 20U,
+              });
+    auto [playerStored, playerUnpacked] =
+        maybeCompress(std::move(playerCcf));
 
     Bytes setup;
     switch (options.setup) {
@@ -222,7 +271,7 @@ missionEntries(const FixtureOptions options = {}) {
     }
     }
 
-    return {
+    std::vector<UdspInputEntry> entries{
         {
             .logicalPath =
                 std::string(airfix::testing::kSyntheticMissionSetupLogicalPath),
@@ -304,6 +353,43 @@ missionEntries(const FixtureOptions options = {}) {
             .unpackedSize = std::nullopt,
         },
     };
+    if (options.playerVisual) {
+        entries.push_back({
+            .logicalPath = std::string(kPlayerObjectLogicalPath),
+            .bytes = makePlayerObjectDefinition(
+                options.playerUsesMainCcf
+                    ? airfix::testing::kSyntheticCcfLogicalPath
+                    : kPlayerCcfLogicalPath),
+            .flags = 0U,
+            .unpackedSize = std::nullopt,
+        });
+        if (!options.playerUsesMainCcf) {
+            entries.push_back({
+                .logicalPath = std::string(kPlayerCcfLogicalPath),
+                .bytes = std::move(playerStored),
+                .flags =
+                    options.compressedCcfs
+                        ? airfix::udsp::kCompressedFlag
+                        : 0U,
+                .unpackedSize = playerUnpacked,
+            });
+            if (!options.missingActorGti) {
+                entries.push_back({
+                    .logicalPath =
+                        std::string(kActorOnlyGtiLogicalPath),
+                    .bytes =
+                        options.malformedActorGti
+                            ? Bytes{0x00U}
+                            : airfix::testing::makeSyntheticRgba8Gti(
+                                  airfix::testing::kSyntheticWallRgba,
+                                  0xA5A5A5A5U),
+                    .flags = 0U,
+                    .unpackedSize = std::nullopt,
+                });
+            }
+        }
+    }
+    return entries;
 }
 
 [[nodiscard]] SyntheticAfPack makePack(const FixtureOptions options = {}) {
@@ -313,7 +399,8 @@ missionEntries(const FixtureOptions options = {}) {
 }
 
 [[nodiscard]] MissionLoadManifestResult
-buildManifest(VerifiedContentSession &session) {
+buildManifest(VerifiedContentSession &session,
+              const bool playerVisual = false) {
     return airfix::content::buildMissionLoadManifest(
         session,
         {
@@ -321,6 +408,11 @@ buildManifest(VerifiedContentSession &session) {
                 std::string(airfix::testing::kSyntheticLevelLogicalPath),
             .setupLogicalPath =
                 std::string(airfix::testing::kSyntheticMissionSetupLogicalPath),
+            .playerObjectLogicalPath =
+                playerVisual
+                    ? std::optional<std::string>{
+                          kPlayerObjectLogicalPath}
+                    : std::nullopt,
         });
 }
 
@@ -427,6 +519,180 @@ void testRootFallbackOrderingCachingAndPoisonTexture() {
         session.sourceArchive().lookup(kObjectOnlyGtiLogicalPath);
     require(objectOnlyLookup.status == airfix::udsp::LookupStatus::notFound,
             "poison fixture accidentally included the object-only GTI");
+}
+
+[[nodiscard]] airfix::render::ConvertedNodeTransform
+actorWorldFrom(
+    const airfix::simulation::PlayerSpawnPose &pose) {
+    const auto vectorAt = [](const std::array<float, 3U> &value) {
+        return airfix::render::Vec3{
+            value[0], value[1], value[2]};
+    };
+    return {
+        .linear =
+            {
+                .columns =
+                    {
+                        vectorAt(
+                            pose.runtimeWorldRotationColumns[0]),
+                        vectorAt(
+                            pose.runtimeWorldRotationColumns[1]),
+                        vectorAt(
+                            pose.runtimeWorldRotationColumns[2]),
+                    },
+            },
+        .translation = vectorAt(pose.runtimeWorldPosition),
+        .rawScalar = 1.0F,
+    };
+}
+
+void testPlayerVisualSeparateCcfTexturesAndTablePose() {
+    const auto pack = makePack({
+        .playerVisual = true,
+        .setup = FixtureOptions::SetupKind::authoredRoom,
+    });
+    auto session = openSession(pack);
+    auto manifest = buildManifest(session, true);
+    require(
+        manifest.success() &&
+            manifest.manifest->playerVisual().has_value(),
+        "player fixture manifest failed");
+    std::vector<std::size_t> ccfProgressTotals;
+    std::vector<std::size_t> ccfProgressCompleted;
+    std::vector<std::size_t> textureProgressCompleted;
+    const auto result = airfix::content::loadMissionWorldRoom(
+        session,
+        *manifest.manifest,
+        MissionWorldRoomLoadRequest{.requestedStartIndex = 0U},
+        {},
+        {},
+        [&](const auto &progress) {
+            if (progress.phase ==
+                MissionWorldRoomLoadPhase::loadingCcfSources) {
+                ccfProgressTotals.push_back(progress.totalItems);
+                ccfProgressCompleted.push_back(
+                    progress.completedItems);
+            }
+            if (progress.phase ==
+                MissionWorldRoomLoadPhase::loadingTextures) {
+                textureProgressCompleted.push_back(
+                    progress.completedItems);
+            }
+        });
+    require(result.success(), "separate player CCF load failed");
+    const auto &room = *result.room;
+    require(
+        room.playerVisual.has_value() &&
+            room.playerVisual == manifest.manifest->playerVisual() &&
+            room.playerVisualCcfCacheIndex ==
+                std::optional<std::size_t>{3U} &&
+            room.semanticCcfSourceCount == 4U &&
+            room.uniqueCcfSourceCount == 4U &&
+            room.ccfCacheIndexByLoadSource ==
+                std::vector<std::size_t>{0U, 1U, 2U, 2U} &&
+            std::ranges::all_of(
+                ccfProgressTotals,
+                [](const auto count) { return count == 4U; }) &&
+            ccfProgressCompleted ==
+                std::vector<std::size_t>{0U, 1U, 2U, 3U, 4U} &&
+            textureProgressCompleted ==
+                std::vector<std::size_t>{0U, 1U, 2U, 3U},
+        "player CCF did not join the physical cache after room sources");
+    require(
+        room.meshProvenance.size() == 1U &&
+            room.instanceProvenance.size() == 1U &&
+            room.model.meshes.size() == 2U &&
+            room.model.instances.size() == 2U &&
+            room.playerActorBinding ==
+                std::optional{
+                    airfix::render::PlayerActorSceneBinding{
+                        .firstMeshSlot = 1U,
+                        .meshCount = 1U,
+                        .firstInstanceIndex = 1U,
+                        .instanceCount = 1U}} &&
+            room.playerActorMeshProvenance.size() == 1U &&
+            room.playerActorInstanceProvenance.size() == 1U,
+        "player actor was not appended after the static room prefix");
+    const auto &actorProvenance =
+        room.playerActorInstanceProvenance.front();
+    const auto expected = airfix::render::composeNodeTransforms(
+        actorWorldFrom(room.playerSpawnPose),
+        actorProvenance.actorLocal);
+    require(
+        room.model.instances[1].modelLinear == expected.linear &&
+            room.model.instances[1].modelTranslation ==
+                expected.translation &&
+            room.model.instances[1].sourceNodeReference ==
+                actorProvenance.actor.blueprintReference &&
+            actorProvenance.actor.legacySkinSlot == 0U,
+        "table actor world/local transform was not composed exactly once");
+    require(
+        room.textures.size() == 3U,
+        "player texture merge count mismatch");
+    require(
+        room.textures[0].sourceFileIndex ==
+                session.sourceArchive()
+                    .lookup(
+                        airfix::testing::
+                            kSyntheticDetailGtiLogicalPath)
+                    .fileIndex,
+        "room primary texture identity changed");
+    require(
+        room.textures[1].sourceFileIndex ==
+                session.sourceArchive()
+                    .lookup(
+                        airfix::testing::
+                            kSyntheticWallGtiLogicalPath)
+                    .fileIndex,
+        "shared room/actor texture was duplicated or reordered");
+    require(
+        room.textures[2].sourceFileIndex ==
+                session.sourceArchive()
+                    .lookup(kActorOnlyGtiLogicalPath)
+                    .fileIndex,
+        "actor-only texture identity changed");
+    require(
+        room.submission.meshUploads.size() == 2U &&
+            room.submission.commands.size() == 2U &&
+            room.submission.commands[1].primary ==
+                std::optional<TextureAssetId>{TextureAssetId{0U}} &&
+            room.submission.commands[1].secondary ==
+                std::optional<TextureAssetId>{TextureAssetId{2U}},
+        "actor was not included in the single final submission");
+}
+
+void testPlayerVisualReusesRoomCcfAndRootPose() {
+    const auto pack = makePack({
+        .playerVisual = true,
+        .playerUsesMainCcf = true,
+    });
+    auto session = openSession(pack);
+    auto manifest = buildManifest(session, true);
+    require(manifest.success(), "reused player CCF manifest failed");
+    const auto result = airfix::content::loadMissionWorldRoom(
+        session, *manifest.manifest, rootRequest());
+    require(result.success(), "reused player CCF load failed");
+    const auto &room = *result.room;
+    require(
+        room.uniqueCcfSourceCount == 3U &&
+            room.playerVisualCcfCacheIndex ==
+                std::optional<std::size_t>{0U} &&
+            room.ccfCacheIndexByLoadSource ==
+                std::vector<std::size_t>{0U, 1U, 2U, 2U} &&
+            room.textures.size() == 2U &&
+            room.model.meshes.size() == 2U &&
+            room.model.instances.size() == 2U,
+        "player did not reuse room CCF/textures without changing room IDs");
+    const auto &provenance =
+        room.playerActorInstanceProvenance.front();
+    const auto expected = airfix::render::composeNodeTransforms(
+        actorWorldFrom(room.playerSpawnPose),
+        provenance.actorLocal);
+    require(
+        room.model.instances[1].modelLinear == expected.linear &&
+            room.model.instances[1].modelTranslation ==
+                expected.translation,
+        "root fallback actor transform was not applied exactly once");
 }
 
 void testAuthoredStartSelectsBackdropAndOwnsStart() {
@@ -828,6 +1094,246 @@ void testLateCcfAndGtiFailuresAreAtomic() {
     }
 }
 
+void testPlayerLateFailuresAndCallbacksAreAtomic() {
+    {
+        const auto pack = makePack({
+            .playerVisual = true,
+            .malformedPlayerCcf = true,
+        });
+        auto session = openSession(pack);
+        auto manifest = buildManifest(session, true);
+        require(
+            manifest.success(),
+            "manifest read malformed player CCF payload");
+        const auto result =
+            airfix::content::loadMissionWorldRoom(
+                session, *manifest.manifest, rootRequest());
+        requireAtomicFailure(
+            result,
+            MissionWorldRoomLoadIssueKind::ccfParseFailure,
+            "malformed player CCF published a room");
+        require(
+            result.issues.front().sourceIndex ==
+                std::optional<std::size_t>{4U},
+            "player CCF failure lost its semantic source index");
+    }
+    {
+        const auto pack = makePack({
+            .playerVisual = true,
+            .malformedActorGti = true,
+        });
+        auto session = openSession(pack);
+        auto manifest = buildManifest(session, true);
+        requireAtomicFailure(
+            airfix::content::loadMissionWorldRoom(
+                session, *manifest.manifest, rootRequest()),
+            MissionWorldRoomLoadIssueKind::texturePreparationFailure,
+            "malformed actor-only GTI published a room");
+    }
+    {
+        const auto pack = makePack({
+            .playerVisual = true,
+            .missingActorGti = true,
+        });
+        auto session = openSession(pack);
+        auto manifest = buildManifest(session, true);
+        requireAtomicFailure(
+            airfix::content::loadMissionWorldRoom(
+                session, *manifest.manifest, rootRequest()),
+            MissionWorldRoomLoadIssueKind::
+                playerTextureBindingFailure,
+            "missing actor texture dependency published a room");
+    }
+    {
+        const auto pack = makePack({.playerVisual = true});
+        auto session = openSession(pack);
+        auto manifest = buildManifest(session, true);
+        MissionWorldRoomLoadLimits limits;
+        limits.playerTextureBindings.maximumActorMaterials = 0U;
+        requireAtomicFailure(
+            airfix::content::loadMissionWorldRoom(
+                session,
+                *manifest.manifest,
+                rootRequest(),
+                limits),
+            MissionWorldRoomLoadIssueKind::
+                playerTextureBindingFailure,
+            "player texture binding limit published a room");
+    }
+    {
+        const auto pack = makePack({.playerVisual = true});
+        auto session = openSession(pack);
+        auto manifest = buildManifest(session, true);
+        MissionWorldRoomLoadLimits limits;
+        limits.playerVisual.maximumMeshes = 0U;
+        requireAtomicFailure(
+            airfix::content::loadMissionWorldRoom(
+                session,
+                *manifest.manifest,
+                rootRequest(),
+                limits),
+            MissionWorldRoomLoadIssueKind::
+                playerVisualAssemblyFailure,
+            "player visual limit published a room");
+    }
+    {
+        const auto pack = makePack({.playerVisual = true});
+        auto session = openSession(pack);
+        auto manifest = buildManifest(session, true);
+        MissionWorldRoomLoadLimits limits;
+        limits.playerScene.maximumMeshes = 1U;
+        requireAtomicFailure(
+            airfix::content::loadMissionWorldRoom(
+                session,
+                *manifest.manifest,
+                rootRequest(),
+                limits),
+            MissionWorldRoomLoadIssueKind::
+                playerSceneAssemblyFailure,
+            "player scene limit published a room");
+    }
+    {
+        const auto pack = makePack({.playerVisual = true});
+        auto session = openSession(pack);
+        auto manifest = buildManifest(session, true);
+        auto &descriptor =
+            const_cast<airfix::content::MissionPlayerVisualDescriptor &>(
+                *manifest.manifest->playerVisual());
+        descriptor.modelCcfSource.archiveFileIndex =
+            std::numeric_limits<std::size_t>::max();
+        bool callbackRan = false;
+        const auto result =
+            airfix::content::loadMissionWorldRoom(
+                session,
+                *manifest.manifest,
+                rootRequest(),
+                {},
+                {},
+                [&](const auto &) { callbackRan = true; });
+        requireAtomicFailure(
+            result,
+            MissionWorldRoomLoadIssueKind::
+                invalidPlayerVisualDescriptor,
+            "forged player descriptor was accepted");
+        require(
+            !callbackRan,
+            "forged player descriptor was not rejected before callbacks");
+    }
+    {
+        const auto pack = makePack({.playerVisual = true});
+        auto session = openSession(pack);
+        auto manifest = buildManifest(session, true);
+        bool destroyed = false;
+        const auto result =
+            airfix::content::loadMissionWorldRoom(
+                session,
+                *manifest.manifest,
+                rootRequest(),
+                {},
+                {},
+                [&](const auto &progress) {
+                    if (!destroyed &&
+                        progress.phase ==
+                            MissionWorldRoomLoadPhase::
+                                validatingInput) {
+                        manifest.manifest.reset();
+                        destroyed = true;
+                    }
+                });
+        require(
+            destroyed && result.success() &&
+                result.room->playerVisual.has_value(),
+            "loader dereferenced player descriptor after first callback");
+    }
+
+    constexpr std::array playerPhases{
+        MissionWorldRoomLoadPhase::preflightingPlayerCcfSource,
+        MissionWorldRoomLoadPhase::planningPlayerTextureBindings,
+        MissionWorldRoomLoadPhase::assemblingPlayerVisual,
+        MissionWorldRoomLoadPhase::assemblingPlayerScene,
+        MissionWorldRoomLoadPhase::validatingPublication,
+    };
+    const auto pack = makePack({.playerVisual = true});
+    for (const auto phase : playerPhases) {
+        {
+            auto session = openSession(pack);
+            auto manifest = buildManifest(session, true);
+            std::stop_source source;
+            bool reached = false;
+            const auto result =
+                airfix::content::loadMissionWorldRoom(
+                    session,
+                    *manifest.manifest,
+                    rootRequest(),
+                    {},
+                    source.get_token(),
+                    [&](const auto &progress) {
+                        if (!reached && progress.phase == phase) {
+                            reached = true;
+                            source.request_stop();
+                        }
+                    });
+            require(reached, "player cancellation phase was not reached");
+            requireAtomicFailure(
+                result,
+                MissionWorldRoomLoadIssueKind::cancelled,
+                "player phase cancellation published a room");
+        }
+        {
+            auto session = openSession(pack);
+            auto manifest = buildManifest(session, true);
+            bool reached = false;
+            const auto result =
+                airfix::content::loadMissionWorldRoom(
+                    session,
+                    *manifest.manifest,
+                    rootRequest(),
+                    {},
+                    {},
+                    [&](const auto &progress) {
+                        if (!reached && progress.phase == phase) {
+                            reached = true;
+                            throw std::runtime_error(
+                                "player callback failed");
+                        }
+                    });
+            require(reached, "player callback phase was not reached");
+            requireAtomicFailure(
+                result,
+                MissionWorldRoomLoadIssueKind::
+                    progressCallbackFailure,
+                "player callback failure published a room");
+        }
+        {
+            auto session = openSession(pack, 303U);
+            auto manifest = buildManifest(session, true);
+            auto replacement = openSession(pack, 303U);
+            bool reached = false;
+            const auto result =
+                airfix::content::loadMissionWorldRoom(
+                    session,
+                    *manifest.manifest,
+                    rootRequest(),
+                    {},
+                    {},
+                    [&](const auto &progress) {
+                        if (!reached && progress.phase == phase) {
+                            reached = true;
+                            session = std::move(replacement);
+                        }
+                    });
+            require(
+                reached,
+                "player session replacement phase was not reached");
+            requireAtomicFailure(
+                result,
+                MissionWorldRoomLoadIssueKind::
+                    sessionIdentityChanged,
+                "player session replacement published a room");
+        }
+    }
+}
+
 [[nodiscard]] std::uint64_t
 sourceFootprint(const VerifiedContentSession &session,
                 const std::string_view logicalPath) {
@@ -842,12 +1348,51 @@ sourceFootprint(const VerifiedContentSession &session,
                 : 0U);
 }
 
+[[nodiscard]] std::uint64_t independentModelLogicalBytes(
+    const airfix::render::DrawModelPayload &model,
+    const std::size_t firstMesh,
+    const std::size_t meshCount,
+    const std::size_t instanceCount) {
+    require(firstMesh <= model.meshes.size() &&
+                meshCount <= model.meshes.size() - firstMesh &&
+                instanceCount <= model.instances.size(),
+            "logical model byte range is invalid");
+    std::uint64_t total =
+        static_cast<std::uint64_t>(meshCount) *
+            sizeof(airfix::render::DrawMeshPayload) +
+        static_cast<std::uint64_t>(instanceCount) *
+            sizeof(airfix::render::DrawMeshInstance);
+    for (std::size_t index = firstMesh;
+         index < firstMesh + meshCount;
+         ++index) {
+        const auto &mesh = model.meshes[index];
+        total += static_cast<std::uint64_t>(mesh.vertices.size()) *
+                 sizeof(airfix::render::DrawVertex);
+        total += static_cast<std::uint64_t>(mesh.indices.size()) *
+                 sizeof(std::uint32_t);
+        total += static_cast<std::uint64_t>(mesh.materials.size()) *
+                 sizeof(airfix::render::DrawMaterial);
+        total += static_cast<std::uint64_t>(mesh.ranges.size()) *
+                 sizeof(airfix::render::DrawRange);
+    }
+    return total;
+}
+
 [[nodiscard]] std::uint64_t independentPublishedCpuBytes(
     const airfix::content::LoadedMissionWorldRoom &room) {
     std::uint64_t total = sizeof(airfix::content::LoadedMissionWorldRoom);
     total += room.setupEntry.logicalPath.size();
     total += room.textures.size() * sizeof(airfix::content::LoadedTextureAsset);
     total += room.ccfCacheIndexByLoadSource.size() * sizeof(std::size_t);
+    if (room.playerVisual.has_value()) {
+        total +=
+            room.playerVisual->objectDefinitionSource.logicalPath.size();
+        total += room.playerVisual->modelCcfSource.logicalPath.size();
+        total += room.playerVisual->blueprintSelector.size();
+        if (room.playerVisual->textureRoot.has_value()) {
+            total += room.playerVisual->textureRoot->size();
+        }
+    }
     if (room.selectedStart.has_value()) {
         total += room.selectedStart->roomName.size();
     }
@@ -873,6 +1418,10 @@ sourceFootprint(const VerifiedContentSession &session,
              sizeof(airfix::render::MissionWorldRoomMeshProvenance);
     total += room.instanceProvenance.size() *
              sizeof(airfix::render::MissionWorldRoomInstanceProvenance);
+    total += room.playerActorMeshProvenance.size() *
+             sizeof(airfix::render::PlayerActorSceneMeshProvenance);
+    total += room.playerActorInstanceProvenance.size() *
+             sizeof(airfix::render::PlayerActorSceneInstanceProvenance);
     total += room.submission.meshUploads.size() *
              sizeof(airfix::render::DrawMeshUploadMetadata);
     total += room.submission.commands.size() *
@@ -1099,19 +1648,398 @@ void testExactAndOneUnderBudgets() {
     }
 }
 
+void testPlayerExactAndOneUnderBudgets() {
+    const auto pack = makePack({
+        .compressedCcfs = true,
+        .playerVisual = true,
+    });
+    MissionWorldRoomLoadLimits exact;
+    std::size_t playerCcfSourceIndex = 0U;
+    std::size_t playerCcfFileIndex = 0U;
+    std::size_t playerCcfFootprint = 0U;
+    std::size_t playerVisualLogicalBytes = 0U;
+    std::size_t playerSceneLogicalBytes = 0U;
+    std::uint64_t publishedCpuBytesBeforeAssembly = 0U;
+    {
+        auto session = openSession(pack);
+        auto manifest = buildManifest(session, true);
+        require(
+            manifest.success() &&
+                manifest.manifest->playerVisual().has_value(),
+            "player budget fixture manifest failed");
+        const auto baseline =
+            airfix::content::loadMissionWorldRoom(
+                session, *manifest.manifest, rootRequest());
+        require(
+            baseline.success(),
+            "player budget baseline failed");
+        const auto &room = *baseline.room;
+        require(
+            room.publishedCpuBytes ==
+                independentPublishedCpuBytes(room),
+            "player published CPU accounting omitted owned data");
+        require(
+            room.playerActorBinding.has_value(),
+            "player budget baseline omitted actor binding");
+        const auto &actorBinding = *room.playerActorBinding;
+        const auto finalModelLogicalBytes =
+            independentModelLogicalBytes(
+                room.model,
+                0U,
+                room.model.meshes.size(),
+                room.model.instances.size());
+        const auto actorModelLogicalBytes =
+            independentModelLogicalBytes(
+                room.model,
+                actorBinding.firstMeshSlot,
+                actorBinding.meshCount,
+                actorBinding.instanceCount);
+        const auto visualLogicalBytes =
+            actorModelLogicalBytes +
+            static_cast<std::uint64_t>(actorBinding.meshCount) *
+                sizeof(airfix::render::PlayerActorVisualProvenance) +
+            static_cast<std::uint64_t>(actorBinding.instanceCount) *
+                sizeof(airfix::render::PlayerActorVisualProvenance);
+        const auto sceneLogicalBytes =
+            finalModelLogicalBytes +
+            static_cast<std::uint64_t>(
+                room.playerActorMeshProvenance.size()) *
+                sizeof(airfix::render::PlayerActorSceneMeshProvenance) +
+            static_cast<std::uint64_t>(
+                room.playerActorInstanceProvenance.size()) *
+                sizeof(airfix::render::PlayerActorSceneInstanceProvenance) +
+            sizeof(airfix::render::PlayerActorSceneBinding);
+        require(
+            visualLogicalBytes != 0U &&
+                visualLogicalBytes <=
+                    std::numeric_limits<std::size_t>::max() &&
+                sceneLogicalBytes > visualLogicalBytes &&
+                sceneLogicalBytes <=
+                    std::numeric_limits<std::size_t>::max(),
+            "player logical admission byte fixture is invalid");
+        playerVisualLogicalBytes =
+            static_cast<std::size_t>(visualLogicalBytes);
+        playerSceneLogicalBytes =
+            static_cast<std::size_t>(sceneLogicalBytes);
+
+        const auto publishedAfterAssembly =
+            finalModelLogicalBytes +
+            static_cast<std::uint64_t>(room.meshProvenance.size()) *
+                sizeof(airfix::render::MissionWorldRoomMeshProvenance) +
+            static_cast<std::uint64_t>(room.instanceProvenance.size()) *
+                sizeof(airfix::render::MissionWorldRoomInstanceProvenance) +
+            static_cast<std::uint64_t>(
+                room.playerActorMeshProvenance.size()) *
+                sizeof(airfix::render::PlayerActorSceneMeshProvenance) +
+            static_cast<std::uint64_t>(
+                room.playerActorInstanceProvenance.size()) *
+                sizeof(airfix::render::PlayerActorSceneInstanceProvenance) +
+            static_cast<std::uint64_t>(
+                room.submission.meshUploads.size()) *
+                sizeof(airfix::render::DrawMeshUploadMetadata) +
+            static_cast<std::uint64_t>(
+                room.submission.commands.size()) *
+                sizeof(airfix::render::DrawSubmissionCommand);
+        require(
+            publishedAfterAssembly <= room.publishedCpuBytes,
+            "player published pre-assembly byte fixture underflowed");
+        publishedCpuBytesBeforeAssembly =
+            room.publishedCpuBytes - publishedAfterAssembly;
+
+        exact.maximumCcfSources =
+            room.semanticCcfSourceCount + 1U;
+        exact.maximumUniqueCcfSources =
+            room.uniqueCcfSourceCount;
+        exact.maximumTotalUniqueCcfSourceBytes =
+            room.uniqueCcfSourceFootprintBytes;
+        exact.maximumRetainedCcfMetadataBytesAfterParse =
+            room.retainedCcfMetadataBytes;
+        exact.maximumTextureAssets = room.textures.size();
+        exact.maximumTotalTextureSourceBytes =
+            room.textureSourceFootprintBytes;
+        exact.maximumDecodedRgbaBytes = room.decodedRgbaBytes;
+        exact.maximumUploadRgbaBytes = room.uploadRgbaBytes;
+        exact.maximumResidentRgbaBytes =
+            room.residentRgbaBytes;
+        exact.maximumPublishedCpuBytes = room.publishedCpuBytes;
+        exact.playerTextureBindings.maximumBaseImports = 2U;
+        exact.playerTextureBindings.maximumGlobalImports =
+            room.textures.size();
+        exact.playerTextureBindings.maximumActorMaterials = 1U;
+        exact.playerVisual.maximumMeshes =
+            room.playerActorBinding->meshCount;
+        exact.playerVisual.maximumInstances =
+            room.playerActorBinding->instanceCount;
+        exact.playerVisual.maximumTotalBytes =
+            playerVisualLogicalBytes;
+        exact.playerScene.maximumMeshes = room.model.meshes.size();
+        exact.playerScene.maximumInstances =
+            room.model.instances.size();
+        exact.playerScene.maximumTotalBytes =
+            playerSceneLogicalBytes;
+
+        std::uint64_t maximumRoomCcfFootprint = 0U;
+        for (const auto &descriptor :
+             manifest.manifest->ccfLoads()) {
+            maximumRoomCcfFootprint = std::max(
+                maximumRoomCcfFootprint,
+                descriptor.sourceAllocationFootprintBytes);
+        }
+        const auto &player = *manifest.manifest->playerVisual();
+        require(
+            player.modelCcfSourceAllocationFootprintBytes >
+                    maximumRoomCcfFootprint &&
+                player.modelCcfSourceAllocationFootprintBytes <=
+                    std::numeric_limits<std::size_t>::max(),
+            "player CCF fixture is not the isolated peak source");
+        playerCcfSourceIndex = manifest.manifest->ccfLoads().size();
+        playerCcfFileIndex =
+            player.modelCcfSource.archiveFileIndex;
+        playerCcfFootprint = static_cast<std::size_t>(
+            player.modelCcfSourceAllocationFootprintBytes);
+        exact.maximumCcfSourceBytes = playerCcfFootprint;
+
+        std::uint64_t maximumTextureFootprint = 0U;
+        for (const auto &texture : room.textures) {
+            const auto &entry = session.sourceArchive()
+                                    .files()[texture.sourceFileIndex];
+            const auto footprint =
+                static_cast<std::uint64_t>(entry.storedSize) +
+                (entry.isCompressed()
+                     ? static_cast<std::uint64_t>(
+                           entry.unpackedSize)
+                     : 0U);
+            maximumTextureFootprint = std::max(
+                maximumTextureFootprint,
+                footprint);
+        }
+        exact.maximumTextureSourceBytes =
+            static_cast<std::size_t>(maximumTextureFootprint);
+        exact.gtiPerTexture.maximumSourceBytes =
+            exact.maximumTextureSourceBytes;
+    }
+    {
+        auto session = openSession(pack);
+        auto manifest = buildManifest(session, true);
+        require(
+            airfix::content::loadMissionWorldRoom(
+                session,
+                *manifest.manifest,
+                rootRequest(),
+                exact)
+                .success(),
+            "exact player loader budgets failed");
+    }
+
+    const auto requireOneUnder =
+        [&](MissionWorldRoomLoadLimits limits,
+            const MissionWorldRoomLoadIssueKind issue,
+            const std::string_view message) {
+            auto session = openSession(pack);
+            auto manifest = buildManifest(session, true);
+            requireAtomicFailure(
+                airfix::content::loadMissionWorldRoom(
+                    session,
+                    *manifest.manifest,
+                    rootRequest(),
+                    limits),
+                issue,
+                message);
+        };
+    {
+        auto limits = exact;
+        --limits.maximumCcfSources;
+        requireOneUnder(
+            limits,
+            MissionWorldRoomLoadIssueKind::
+                ccfSourceCountLimitExceeded,
+            "one-under room-plus-player source count succeeded");
+    }
+    {
+        auto limits = exact;
+        --limits.maximumCcfSourceBytes;
+        auto session = openSession(pack);
+        auto manifest = buildManifest(session, true);
+        const auto result =
+            airfix::content::loadMissionWorldRoom(
+                session,
+                *manifest.manifest,
+                rootRequest(),
+                limits);
+        requireAtomicFailure(
+            result,
+            MissionWorldRoomLoadIssueKind::ccfSourceLimitExceeded,
+            "one-under isolated player CCF source succeeded");
+        const auto issue = std::ranges::find_if(
+            result.issues,
+            [](const auto &candidate) {
+                return candidate.kind ==
+                       MissionWorldRoomLoadIssueKind::
+                           ccfSourceLimitExceeded;
+            });
+        require(
+            issue != result.issues.end() &&
+                issue->sourceIndex ==
+                    std::optional{playerCcfSourceIndex} &&
+                issue->sourceFileIndex ==
+                    std::optional{playerCcfFileIndex},
+            "player CCF limit issue lost its semantic or physical index");
+    }
+    {
+        auto limits = exact;
+        --limits.maximumUniqueCcfSources;
+        requireOneUnder(
+            limits,
+            MissionWorldRoomLoadIssueKind::
+                uniqueCcfSourceCountLimitExceeded,
+            "one-under player physical cache count succeeded");
+    }
+    {
+        auto limits = exact;
+        --limits.maximumTotalUniqueCcfSourceBytes;
+        requireOneUnder(
+            limits,
+            MissionWorldRoomLoadIssueKind::
+                aggregateCcfSourceLimitExceeded,
+            "one-under player physical CCF bytes succeeded");
+    }
+    {
+        auto limits = exact;
+        --limits.maximumRetainedCcfMetadataBytesAfterParse;
+        requireOneUnder(
+            limits,
+            MissionWorldRoomLoadIssueKind::
+                retainedCcfMetadataLimitExceeded,
+            "one-under player retained CCF metadata succeeded");
+    }
+    {
+        auto limits = exact;
+        --limits.maximumTextureAssets;
+        limits.playerTextureBindings.maximumGlobalImports =
+            limits.maximumTextureAssets;
+        requireOneUnder(
+            limits,
+            MissionWorldRoomLoadIssueKind::
+                playerTextureBindingFailure,
+            "one-under merged player texture count succeeded");
+    }
+    {
+        auto limits = exact;
+        --limits.maximumTotalTextureSourceBytes;
+        requireOneUnder(
+            limits,
+            MissionWorldRoomLoadIssueKind::
+                aggregateTextureSourceLimitExceeded,
+            "one-under merged player texture bytes succeeded");
+    }
+    {
+        auto limits = exact;
+        --limits.playerVisual.maximumMeshes;
+        requireOneUnder(
+            limits,
+            MissionWorldRoomLoadIssueKind::
+                playerVisualAssemblyFailure,
+            "one-under player visual mesh count succeeded");
+    }
+    {
+        auto limits = exact;
+        --limits.playerVisual.maximumTotalBytes;
+        requireOneUnder(
+            limits,
+            MissionWorldRoomLoadIssueKind::
+                playerVisualAssemblyFailure,
+            "one-under player visual logical bytes succeeded");
+    }
+    {
+        auto limits = exact;
+        --limits.playerScene.maximumMeshes;
+        requireOneUnder(
+            limits,
+            MissionWorldRoomLoadIssueKind::
+                playerSceneAssemblyFailure,
+            "one-under final player scene mesh count succeeded");
+    }
+    {
+        auto limits = exact;
+        --limits.playerScene.maximumTotalBytes;
+        requireOneUnder(
+            limits,
+            MissionWorldRoomLoadIssueKind::
+                playerSceneAssemblyFailure,
+            "one-under final player scene logical bytes succeeded");
+    }
+    {
+        auto limits = exact;
+        limits.maximumPublishedCpuBytes =
+            publishedCpuBytesBeforeAssembly +
+            playerSceneLogicalBytes;
+        auto session = openSession(pack);
+        auto manifest = buildManifest(session, true);
+        bool sceneAssemblyCompleted = false;
+        const auto result =
+            airfix::content::loadMissionWorldRoom(
+                session,
+                *manifest.manifest,
+                rootRequest(),
+                limits,
+                {},
+                [&](const auto &progress) {
+                    if (progress.phase ==
+                            MissionWorldRoomLoadPhase::
+                                assemblingPlayerScene &&
+                        progress.completedItems == 1U) {
+                        sceneAssemblyCompleted = true;
+                    }
+                });
+        require(
+            sceneAssemblyCompleted &&
+                !hasIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::
+                        playerSceneAssemblyFailure),
+            "exact remaining published CPU budget rejected player scene");
+
+        --limits.maximumPublishedCpuBytes;
+        session = openSession(pack);
+        manifest = buildManifest(session, true);
+        requireAtomicFailure(
+            airfix::content::loadMissionWorldRoom(
+                session,
+                *manifest.manifest,
+                rootRequest(),
+                limits),
+            MissionWorldRoomLoadIssueKind::
+                playerSceneAssemblyFailure,
+            "one-under remaining published CPU admitted player scene");
+    }
+    {
+        auto limits = exact;
+        --limits.maximumPublishedCpuBytes;
+        requireOneUnder(
+            limits,
+            MissionWorldRoomLoadIssueKind::
+                publishedCpuLimitExceeded,
+            "one-under player published CPU bytes succeeded");
+    }
+}
+
 } // namespace
 
 int main() {
     try {
         testRootFallbackOrderingCachingAndPoisonTexture();
+        testPlayerVisualSeparateCcfTexturesAndTablePose();
+        testPlayerVisualReusesRoomCcfAndRootPose();
         testAuthoredStartSelectsBackdropAndOwnsStart();
         testOnePhysicalCcfRetainsDifferentSemanticLoads();
         testProofRevisionAndSessionIdentityGuards();
         testCallerInputsAreSnapshottedBeforeCallbacks();
         testCancellationCallbacksAndInvalidStartsAreAtomic();
         testLateCcfAndGtiFailuresAreAtomic();
+        testPlayerLateFailuresAndCallbacksAreAtomic();
         testAccountingOverflowBoundaries();
         testExactAndOneUnderBudgets();
+        testPlayerExactAndOneUnderBudgets();
         std::cout << "Mission world room loader tests passed\n";
         return 0;
     } catch (const std::exception &error) {

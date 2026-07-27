@@ -93,6 +93,106 @@ void require(const bool condition, const std::string_view message) {
     return room;
 }
 
+[[nodiscard]] airfix::render::ConvertedNodeTransform
+actorWorldFrom(
+    const airfix::simulation::PlayerSpawnPose &pose) {
+    const auto vectorAt = [](const std::array<float, 3U> &value) {
+        return airfix::render::Vec3{
+            value[0], value[1], value[2]};
+    };
+    return {
+        .linear =
+            {
+                .columns =
+                    {
+                        vectorAt(
+                            pose.runtimeWorldRotationColumns[0]),
+                        vectorAt(
+                            pose.runtimeWorldRotationColumns[1]),
+                        vectorAt(
+                            pose.runtimeWorldRotationColumns[2]),
+                    },
+            },
+        .translation = vectorAt(pose.runtimeWorldPosition),
+        .rawScalar = 1.0F,
+    };
+}
+
+[[nodiscard]] LoadedMissionWorldRoom validPlayerRoom() {
+    auto room = validTableRoom();
+    room.semanticCcfSourceCount = 3U;
+    room.uniqueCcfSourceCount = 3U;
+    room.ccfCacheIndexByLoadSource = {0U, 1U, 1U};
+    room.playerVisualCcfCacheIndex = 2U;
+    room.playerVisual =
+        airfix::content::MissionPlayerVisualDescriptor{
+            .objectDefinitionSource =
+                {
+                    .logicalPath =
+                        "Game\\Objects\\Player.object",
+                    .archiveFileIndex = 7U,
+                },
+            .modelCcfSource =
+                {
+                    .logicalPath = "Graphics\\Player.ccf",
+                    .archiveFileIndex = 8U,
+                },
+            .blueprintSelector = "Root",
+            .textureRoot = std::string{"Graphics\\Textures"},
+            .legacySkinSlot = 0U,
+            .objectDefinitionSourceAllocationFootprintBytes =
+                64U,
+            .modelCcfSourceAllocationFootprintBytes = 128U,
+        };
+
+    room.model.meshes.resize(2U);
+    room.model.instances.push_back({
+        .meshSlot = 0U,
+        .sourceNodeReference = 11U,
+        .modelLinear = {},
+        .modelTranslation = {},
+    });
+    room.meshProvenance.resize(1U);
+    room.instanceProvenance.resize(1U);
+
+    const airfix::render::PlayerActorVisualProvenance actor{
+        .legacySkinSlot = 0U,
+        .blueprintIndex = 4U,
+        .blueprintReference = 77U,
+        .physicalMeshIndex = 5U,
+    };
+    const airfix::render::ConvertedNodeTransform actorLocal{
+        .linear = {},
+        .translation = {2.0F, 3.0F, 4.0F},
+        .rawScalar = 1.0F,
+    };
+    const auto absolute = airfix::render::composeNodeTransforms(
+        actorWorldFrom(room.playerSpawnPose), actorLocal);
+    room.model.instances.push_back({
+        .meshSlot = 1U,
+        .sourceNodeReference = actor.blueprintReference,
+        .modelLinear = absolute.linear,
+        .modelTranslation = absolute.translation,
+    });
+    room.playerActorMeshProvenance.push_back({
+        .actor = actor,
+        .finalMeshSlot = 1U,
+    });
+    room.playerActorInstanceProvenance.push_back({
+        .actor = actor,
+        .finalInstanceIndex = 1U,
+        .actorLocal = actorLocal,
+    });
+    room.playerActorBinding =
+        airfix::render::PlayerActorSceneBinding{
+            .firstMeshSlot = 1U,
+            .meshCount = 1U,
+            .firstInstanceIndex = 1U,
+            .instanceCount = 1U,
+        };
+    return room;
+}
+
 void requireIssue(const LoadedMissionWorldRoom &room,
                   const MissionWorldRoomPublicationIssue expected,
                   const std::string_view message) {
@@ -349,6 +449,196 @@ void testCcfCountAndCacheMutations() {
     }
 }
 
+void testPlayerActorPublicationBoundary() {
+    {
+        const auto room = validPlayerRoom();
+        require(
+            !airfix::content::validateMissionWorldRoomPublication(
+                 room, revision()).has_value(),
+            "valid player publication was rejected");
+    }
+    {
+        auto room = validRootRoom();
+        room.playerVisualCcfCacheIndex = 0U;
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerVisualCooccurrenceMismatch},
+            "orphan player cache index was accepted");
+    }
+    {
+        auto room = validPlayerRoom();
+        room.playerActorBinding.reset();
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerVisualCooccurrenceMismatch},
+            "player descriptor without binding was accepted");
+    }
+    {
+        auto room = validPlayerRoom();
+        room.playerActorMeshProvenance.clear();
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerVisualCooccurrenceMismatch},
+            "player descriptor with empty actor provenance was accepted");
+    }
+    {
+        auto room = validPlayerRoom();
+        room.playerVisual->blueprintSelector.clear();
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 invalidPlayerVisualDescriptor},
+            "invalid player descriptor was accepted");
+    }
+    {
+        auto room = validPlayerRoom();
+        room.playerVisualCcfCacheIndex = 3U;
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerVisualCcfCacheIndexOutOfRange,
+             .sourceIndex = 3U},
+            "out-of-range player cache index was accepted");
+    }
+    {
+        auto room = validPlayerRoom();
+        room.uniqueCcfSourceCount = 4U;
+        room.playerVisualCcfCacheIndex = 3U;
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 ccfCacheFirstUseOrderMismatch,
+             .sourceIndex = 3U},
+            "non-canonical player cache first use was accepted");
+    }
+    {
+        auto room = validPlayerRoom();
+        room.playerActorBinding->firstMeshSlot = 0U;
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 staticMeshProvenancePrefixMismatch},
+            "detached static mesh prefix was accepted");
+    }
+    {
+        auto room = validPlayerRoom();
+        room.playerActorBinding->firstMeshSlot =
+            std::numeric_limits<std::size_t>::max();
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerActorBindingRangeOverflow},
+            "overflowing player actor binding was accepted");
+    }
+    {
+        auto room = validPlayerRoom();
+        room.playerActorBinding->meshCount = 2U;
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerActorFinalMeshCountMismatch},
+            "forged final actor mesh range was accepted");
+    }
+    {
+        auto room = validPlayerRoom();
+        room.playerActorBinding->instanceCount = 2U;
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerActorFinalInstanceCountMismatch},
+            "forged final actor instance range was accepted");
+    }
+    {
+        auto room = validPlayerRoom();
+        room.playerActorMeshProvenance.push_back(
+            room.playerActorMeshProvenance.front());
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerActorMeshProvenanceCountMismatch},
+            "actor mesh provenance count mismatch was accepted");
+    }
+    {
+        auto room = validPlayerRoom();
+        room.playerActorInstanceProvenance.push_back(
+            room.playerActorInstanceProvenance.front());
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerActorInstanceProvenanceCountMismatch},
+            "actor instance provenance count mismatch was accepted");
+    }
+    {
+        auto room = validPlayerRoom();
+        room.playerActorMeshProvenance[0].finalMeshSlot = 0U;
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerActorFinalMeshSlotMismatch,
+             .sourceIndex = 0U},
+            "non-contiguous actor mesh slot was accepted");
+    }
+    {
+        auto room = validPlayerRoom();
+        room.playerActorInstanceProvenance[0].finalInstanceIndex =
+            0U;
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerActorFinalInstanceIndexMismatch,
+             .sourceIndex = 0U},
+            "non-contiguous actor instance index was accepted");
+    }
+    {
+        auto room = validPlayerRoom();
+        room.playerActorInstanceProvenance[0]
+            .actor.legacySkinSlot = 1U;
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerActorSkinSlotMismatch,
+             .sourceIndex = 0U},
+            "non-zero actor skin slot was accepted");
+    }
+    {
+        auto room = validPlayerRoom();
+        room.model.instances[1].sourceNodeReference ^= 1U;
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerActorSourceReferenceMismatch,
+             .sourceIndex = 0U},
+            "forged actor source reference was accepted");
+    }
+    {
+        auto room = validPlayerRoom();
+        room.playerActorInstanceProvenance[0]
+            .actor.physicalMeshIndex ^= 1U;
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerActorPhysicalMeshMismatch,
+             .sourceIndex = 0U},
+            "forged actor physical mesh identity was accepted");
+    }
+    {
+        auto room = validPlayerRoom();
+        room.model.instances[1].modelTranslation.x =
+            std::nextafter(
+                room.model.instances[1].modelTranslation.x,
+                std::numeric_limits<float>::infinity());
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerActorTransformMismatch,
+             .sourceIndex = 0U},
+            "bitwise actor transform mutation was accepted");
+    }
+}
+
 } // namespace
 
 int main() {
@@ -359,6 +649,7 @@ int main() {
         testTableMutationsAndFiniteness();
         testPlayerSpawnPoseBinding();
         testCcfCountAndCacheMutations();
+        testPlayerActorPublicationBoundary();
     } catch (const std::exception &error) {
         std::cerr << "Mission world publication tests failed: " << error.what()
                   << '\n';

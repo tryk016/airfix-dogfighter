@@ -7,10 +7,10 @@ Statuses: `not-investigated`, `observed`, `specified`, `implemented`, `verified`
 |---|---:|---|---|---|
 | Bootstrap and resource loading | P0 | not-investigated | SCN-BOOT-001 | Launcher/ICD boundary unknown |
 | Main menu and settings | P1 | not-investigated | SCN-UI-001 | |
-| Level/room loading | P0 | implemented | SCN-LEVEL-001 | Bounded atomic explicit-room loader plus authenticated revision-bound mission dependency manifest, ordered multi-CCF room catalog/start lookup, source-aware aggregate draw seam, and global multi-source texture binding; same-session CCF/GTI aggregate loading, native publication, and portal transitions pending |
+| Level/room loading | P0 | implemented | SCN-LEVEL-001 | Bounded atomic authenticated aggregate loader with ordered multi-CCF room/start lookup, shared physical CCF cache, global texture namespace, combined room/player draw model, and native publication boundary; portal transitions and device acceptance pending |
 | Aircraft flight model | P0 | observed | SCN-FLIGHT-001 | Scheduler, controls, and complete static equations recovered; physical units, runtime traces, and numeric tolerance remain unknown |
 | Deterministic player-control state | P0 | implemented | SCN-FLIGHT-001 | Frozen-pose flight/throttle/combat/camera/mission intent bridge; explicitly not behavior parity |
-| Player spawn and visual identity | P0 | observed | SCN-SPAWN-001 | Primary actor, start room, and complete selected-skin hierarchies recovered; dynamic publication pending |
+| Player spawn and visual identity | P0 | implemented | SCN-SPAWN-001 | Authenticated primary actor, start room, selected-skin hierarchy, textures, exact spawn transform, combined draw submission, and allocation-free publication proof implemented; physical-device visual acceptance pending |
 | Dynamic instance-pose transport | P0 | implemented | SCN-RENDER-001 | Scene-bound atomic SPSC transport; recovered player visual contract not yet published into it |
 | Camera | P0 | not-investigated | SCN-CAMERA-001 | |
 | Collision and damage | P0 | observed | SCN-COLLISION-001 | Static/BSP resolver and rigid-body impulse order located; damage semantics incomplete |
