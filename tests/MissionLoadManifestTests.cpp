@@ -39,6 +39,12 @@ using airfix::testing::Bytes;
 using airfix::testing::SyntheticAfPack;
 using airfix::testing::UdspInputEntry;
 
+constexpr std::string_view kPlayerObjectLogicalPath =
+    "Game/Objects/Player.object";
+constexpr std::string_view kPlayerCcfLogicalPath =
+    "Graphics/Player.ccf";
+constexpr std::string_view kPlayerBlueprintSelector = "PrimaryRoot";
+
 static_assert(!std::is_default_constructible_v<
     airfix::content::MissionLoadManifest>);
 static_assert(!std::is_copy_constructible_v<
@@ -159,6 +165,47 @@ private:
     return {source.begin(), source.end()};
 }
 
+[[nodiscard]] Bytes makePlayerObjectDefinition(
+    const std::optional<std::string_view> ccfPath =
+        kPlayerCcfLogicalPath,
+    const std::optional<std::string_view> selector =
+        kPlayerBlueprintSelector,
+    const std::optional<std::string_view> textureRoot =
+        airfix::testing::kSyntheticTextureRoot,
+    const airfix::assets::ObjectDefinitionKind kind =
+        airfix::assets::ObjectDefinitionKind::object) {
+    Bytes chunks;
+    if (textureRoot.has_value()) {
+        airfix::testing::legacy_detail::appendAfChunk(
+            chunks,
+            airfix::assets::fourCC('T', 'E', 'X', 'U'),
+            *textureRoot);
+    }
+    if (ccfPath.has_value()) {
+        airfix::testing::legacy_detail::appendAfChunk(
+            chunks,
+            airfix::assets::fourCC('C', 'C', 'F', 'F'),
+            *ccfPath);
+    }
+    if (selector.has_value()) {
+        airfix::testing::legacy_detail::appendAfChunk(
+            chunks,
+            airfix::assets::fourCC('M', 'E', 'S', 'H'),
+            *selector);
+    }
+
+    Bytes bytes;
+    airfix::testing::legacy_detail::appendU32(
+        bytes,
+        kind == airfix::assets::ObjectDefinitionKind::object
+            ? airfix::assets::kAfObjectRoot
+            : airfix::assets::kAfModelRoot);
+    airfix::testing::legacy_detail::appendU32(
+        bytes, static_cast<std::uint32_t>(chunks.size()));
+    airfix::testing::legacy_detail::appendBytes(bytes, chunks);
+    return bytes;
+}
+
 [[nodiscard]] std::vector<UdspInputEntry> happyEntries() {
     constexpr std::string_view objectPaths[]{
         airfix::testing::kSyntheticObjectLogicalPath,
@@ -239,6 +286,22 @@ private:
     };
 }
 
+[[nodiscard]] std::vector<UdspInputEntry> playerHappyEntries() {
+    auto entries = happyEntries();
+    entries.push_back({
+        .logicalPath = std::string(kPlayerObjectLogicalPath),
+        .bytes = makePlayerObjectDefinition(),
+    });
+    entries.push_back({
+        .logicalPath = std::string(kPlayerCcfLogicalPath),
+        // Unknown compression opcode: a CCF payload read must fail.
+        .bytes = {0xFFU},
+        .flags = airfix::udsp::kCompressedFlag,
+        .unpackedSize = 47U,
+    });
+    return entries;
+}
+
 [[nodiscard]] SyntheticAfPack makePack(
     const std::vector<UdspInputEntry>& entries) {
     return airfix::testing::makeSyntheticAfPack(
@@ -254,6 +317,13 @@ private:
         .levelLogicalPath = std::move(levelPath),
         .setupLogicalPath = std::move(setupPath),
     };
+}
+
+[[nodiscard]] MissionLoadManifestRequest playerRequest() {
+    auto result = request();
+    result.playerObjectLogicalPath =
+        std::string(kPlayerObjectLogicalPath);
+    return result;
 }
 
 [[nodiscard]] bool hasIssue(
@@ -420,7 +490,11 @@ void testHappyPathOrderingCachingAndOwnership() {
                 std::optional<std::size_t>{1U},
         "physical OBJE descriptors were reordered or deduplicated");
     require(
-        manifest.publishedCpuBytes() > 0U &&
+        !manifest.playerVisual().has_value() &&
+            manifest.plannedPlayerVisualCcfSourceFootprintBytes() == 0U &&
+            manifest.plannedTotalCcfSourceFootprintBytes() ==
+                manifest.plannedCcfSourceFootprintBytes() &&
+            manifest.publishedCpuBytes() > 0U &&
             manifest.definitionSourceFootprintBytes() > 0U &&
             manifest.plannedCcfSourceFootprintBytes() ==
                 loads[0].sourceAllocationFootprintBytes +
@@ -428,6 +502,513 @@ void testHappyPathOrderingCachingAndOwnership() {
                     loads[2].sourceAllocationFootprintBytes +
                     loads[3].sourceAllocationFootprintBytes,
         "manifest accounting mismatch");
+}
+
+void testAuthenticatedPlayerVisualDescriptor() {
+    const auto entries = playerHappyEntries();
+    const auto pack = makePack(entries);
+    auto session = openSession(pack);
+    const auto playerCcfLookup =
+        session.sourceArchive().lookup(kPlayerCcfLogicalPath);
+    require(
+        playerCcfLookup.status == airfix::udsp::LookupStatus::unique,
+        "player CCF fixture lookup failed");
+    bool poisonRejected = false;
+    try {
+        (void)session.readSourceFile(playerCcfLookup.fileIndex, 1024U);
+    }
+    catch (...) {
+        poisonRejected = true;
+    }
+    require(
+        poisonRejected,
+        "player CCF poison payload unexpectedly decoded");
+
+    auto authenticatedRequest = playerRequest();
+    authenticatedRequest.playerObjectLogicalPath =
+        "game\\objects\\PLAYER.object";
+    const auto result = airfix::content::buildMissionLoadManifest(
+        session, authenticatedRequest);
+    require(result.success(), "authenticated player descriptor failed");
+    const auto& manifest = *result.manifest;
+    require(
+        manifest.playerVisual().has_value() &&
+            manifest.playerVisual()->valid(),
+        "player descriptor was not published validly");
+    const auto& player = *manifest.playerVisual();
+    require(
+        player.objectDefinitionSource.logicalPath ==
+                "Game\\Objects\\Player.object" &&
+            player.modelCcfSource.logicalPath ==
+                "Graphics\\Player.ccf" &&
+            player.modelCcfSource.archiveFileIndex ==
+                playerCcfLookup.fileIndex &&
+            player.blueprintSelector == kPlayerBlueprintSelector &&
+            player.textureRoot ==
+                std::optional<std::string>{
+                    airfix::testing::kSyntheticTextureRoot} &&
+            player.legacySkinSlot == 0U,
+        "player descriptor lost canonical identity or derived OBJE fields");
+    require(
+        player.objectDefinitionSourceAllocationFootprintBytes ==
+                footprint(session, kPlayerObjectLogicalPath) &&
+            player.modelCcfSourceAllocationFootprintBytes ==
+                footprint(session, kPlayerCcfLogicalPath) &&
+            manifest.plannedPlayerVisualCcfSourceFootprintBytes() ==
+                player.modelCcfSourceAllocationFootprintBytes &&
+            manifest.plannedTotalCcfSourceFootprintBytes() ==
+                manifest.plannedCcfSourceFootprintBytes() +
+                    manifest
+                        .plannedPlayerVisualCcfSourceFootprintBytes(),
+        "player source footprint accounting mismatch");
+    require(
+        manifest.ccfLoads().size() == 4U &&
+            std::ranges::none_of(
+                manifest.ccfLoads(),
+                [&](const auto& load) {
+                    return load.source.archiveFileIndex ==
+                        player.modelCcfSource.archiveFileIndex;
+                }),
+        "player CCF leaked into the room CCF catalogue");
+
+    auto absentSession = openSession(pack);
+    const auto absent =
+        airfix::content::buildMissionLoadManifest(
+            absentSession, request());
+    const auto expectedPublishedDelta =
+        static_cast<std::uint64_t>(
+            player.objectDefinitionSource.logicalPath.size() +
+            player.modelCcfSource.logicalPath.size() +
+            player.blueprintSelector.size() +
+            player.textureRoot->size());
+    require(
+        absent.success() &&
+            !absent.manifest->playerVisual().has_value() &&
+            absent.manifest->ccfLoads() == manifest.ccfLoads() &&
+            absent.manifest->plannedCcfSourceFootprintBytes() ==
+                manifest.plannedCcfSourceFootprintBytes() &&
+            absent.manifest->publishedCpuBytes() +
+                    expectedPublishedDelta ==
+                manifest.publishedCpuBytes() &&
+            absent.manifest->definitionSourceFootprintBytes() +
+                    player
+                        .objectDefinitionSourceAllocationFootprintBytes ==
+                manifest.definitionSourceFootprintBytes(),
+        "absent player request changed room flow or player ownership accounting");
+
+    auto withoutRoot = playerHappyEntries();
+    withoutRoot[withoutRoot.size() - 2U].bytes =
+        makePlayerObjectDefinition(
+            kPlayerCcfLogicalPath,
+            kPlayerBlueprintSelector,
+            std::nullopt);
+    const auto withoutRootPack = makePack(withoutRoot);
+    auto withoutRootSession = openSession(withoutRootPack);
+    const auto withoutRootResult =
+        airfix::content::buildMissionLoadManifest(
+            withoutRootSession, playerRequest());
+    require(
+        withoutRootResult.success() &&
+            withoutRootResult.manifest->playerVisual().has_value() &&
+            !withoutRootResult.manifest->playerVisual()
+                 ->textureRoot.has_value(),
+        "optional player texture root was not preserved");
+}
+
+void testPlayerVisualFailuresAreTypedAndAtomic() {
+    const auto requireRequestFailure = [](
+        std::optional<std::string> playerPath,
+        const MissionLoadManifestIssueKind kind,
+        const std::string_view message) {
+        const auto pack = makePack(playerHappyEntries());
+        auto session = openSession(pack);
+        auto player = request();
+        player.playerObjectLogicalPath = std::move(playerPath);
+        requireAtomicFailure(
+            airfix::content::buildMissionLoadManifest(session, player),
+            kind,
+            MissionLoadDependencyKind::playerObjectDefinition,
+            message);
+    };
+    requireRequestFailure(
+        std::string{},
+        MissionLoadManifestIssueKind::missingLogicalPath,
+        "present empty player OBJE path was accepted");
+    requireRequestFailure(
+        "../Player.object",
+        MissionLoadManifestIssueKind::invalidLogicalPath,
+        "invalid player OBJE path was accepted");
+    requireRequestFailure(
+        "Game/Objects/MissingPlayer.object",
+        MissionLoadManifestIssueKind::notFound,
+        "missing player OBJE path was accepted");
+
+    const auto requireObjectFailure = [](
+        Bytes objectBytes,
+        const MissionLoadManifestIssueKind kind,
+        const MissionLoadDependencyKind dependency,
+        const std::string_view message) {
+        auto entries = playerHappyEntries();
+        entries[entries.size() - 2U].bytes = std::move(objectBytes);
+        const auto pack = makePack(entries);
+        auto session = openSession(pack);
+        requireAtomicFailure(
+            airfix::content::buildMissionLoadManifest(
+                session, playerRequest()),
+            kind,
+            dependency,
+            message);
+    };
+    requireObjectFailure(
+        {0x00U, 0x01U, 0x02U},
+        MissionLoadManifestIssueKind::parseFailure,
+        MissionLoadDependencyKind::playerObjectDefinition,
+        "malformed player OBJE was accepted");
+    {
+        auto entries = playerHappyEntries();
+        auto& object = entries[entries.size() - 2U];
+        object.bytes = {0xFFU};
+        object.flags = airfix::udsp::kCompressedFlag;
+        object.unpackedSize = 64U;
+        const auto pack = makePack(entries);
+        auto session = openSession(pack);
+        requireAtomicFailure(
+            airfix::content::buildMissionLoadManifest(
+                session, playerRequest()),
+            MissionLoadManifestIssueKind::readFailure,
+            MissionLoadDependencyKind::playerObjectDefinition,
+            "unreadable compressed player OBJE was accepted");
+    }
+    requireObjectFailure(
+        makePlayerObjectDefinition(
+            kPlayerCcfLogicalPath,
+            kPlayerBlueprintSelector,
+            airfix::testing::kSyntheticTextureRoot,
+            airfix::assets::ObjectDefinitionKind::model),
+        MissionLoadManifestIssueKind::objectDefinitionKindMismatch,
+        MissionLoadDependencyKind::playerObjectDefinition,
+        "player MODL-root definition was accepted");
+    requireObjectFailure(
+        makePlayerObjectDefinition(
+            kPlayerCcfLogicalPath, std::nullopt),
+        MissionLoadManifestIssueKind::missingBlueprintSelector,
+        MissionLoadDependencyKind::playerObjectDefinition,
+        "missing player blueprint selector was accepted");
+    requireObjectFailure(
+        makePlayerObjectDefinition(kPlayerCcfLogicalPath, ""),
+        MissionLoadManifestIssueKind::missingBlueprintSelector,
+        MissionLoadDependencyKind::playerObjectDefinition,
+        "empty player blueprint selector was accepted");
+    requireObjectFailure(
+        makePlayerObjectDefinition(std::nullopt),
+        MissionLoadManifestIssueKind::missingLogicalPath,
+        MissionLoadDependencyKind::playerModelCcf,
+        "missing derived player CCF path was accepted");
+    requireObjectFailure(
+        makePlayerObjectDefinition(""),
+        MissionLoadManifestIssueKind::missingLogicalPath,
+        MissionLoadDependencyKind::playerModelCcf,
+        "empty derived player CCF path was accepted");
+    requireObjectFailure(
+        makePlayerObjectDefinition("../Player.ccf"),
+        MissionLoadManifestIssueKind::invalidLogicalPath,
+        MissionLoadDependencyKind::playerModelCcf,
+        "invalid derived player CCF path was accepted");
+    requireObjectFailure(
+        makePlayerObjectDefinition("Graphics/MissingPlayer.ccf"),
+        MissionLoadManifestIssueKind::notFound,
+        MissionLoadDependencyKind::playerModelCcf,
+        "missing derived player CCF was accepted");
+
+    {
+        auto entries = playerHappyEntries();
+        entries.push_back(entries[entries.size() - 2U]);
+        const auto pack = makePack(entries);
+        auto session = openSession(pack);
+        requireAtomicFailure(
+            airfix::content::buildMissionLoadManifest(
+                session, playerRequest()),
+            MissionLoadManifestIssueKind::ambiguous,
+            MissionLoadDependencyKind::playerObjectDefinition,
+            "ambiguous player OBJE was accepted");
+    }
+    {
+        auto entries = playerHappyEntries();
+        entries.push_back(entries.back());
+        const auto pack = makePack(entries);
+        auto session = openSession(pack);
+        requireAtomicFailure(
+            airfix::content::buildMissionLoadManifest(
+                session, playerRequest()),
+            MissionLoadManifestIssueKind::ambiguous,
+            MissionLoadDependencyKind::playerModelCcf,
+            "ambiguous derived player CCF was accepted");
+    }
+    {
+        const auto pack = makePack(playerHappyEntries());
+        auto session = openSession(pack);
+        MissionLoadManifestLimits limits;
+        limits.maximumPlayerBlueprintSelectorBytes =
+            kPlayerBlueprintSelector.size() - 1U;
+        requireAtomicFailure(
+            airfix::content::buildMissionLoadManifest(
+                session, playerRequest(), limits),
+            MissionLoadManifestIssueKind::invalidBlueprintSelector,
+            MissionLoadDependencyKind::playerObjectDefinition,
+            "over-limit player blueprint selector was accepted");
+    }
+}
+
+void testPlayerVisualExactBudgetsAndLateAtomicity() {
+    auto entries = playerHappyEntries();
+    auto& playerObject = entries[entries.size() - 2U];
+    playerObject.unpackedSize =
+        static_cast<std::uint32_t>(playerObject.bytes.size());
+    playerObject.bytes = literalCompression(playerObject.bytes);
+    playerObject.flags = airfix::udsp::kCompressedFlag;
+    const auto pack = makePack(entries);
+
+    MissionLoadManifestResult baseline;
+    {
+        auto session = openSession(pack);
+        baseline = airfix::content::buildMissionLoadManifest(
+            session, playerRequest());
+    }
+    require(
+        baseline.success() &&
+            baseline.manifest->playerVisual().has_value(),
+        "player budget baseline failed");
+    const auto& descriptor = *baseline.manifest->playerVisual();
+    MissionLoadManifestLimits exact;
+    exact.maximumPlayerObjectDefinitionSourceBytes =
+        static_cast<std::size_t>(
+            descriptor
+                .objectDefinitionSourceAllocationFootprintBytes);
+    exact.maximumPlayerCcfSourceBytes = static_cast<std::size_t>(
+        descriptor.modelCcfSourceAllocationFootprintBytes);
+    exact.maximumTotalDefinitionSourceBytes =
+        baseline.manifest->definitionSourceFootprintBytes();
+    exact.maximumTotalCcfSourceBytes =
+        baseline.manifest->plannedTotalCcfSourceFootprintBytes();
+    exact.maximumCcfSources =
+        baseline.manifest->ccfLoads().size() + 1U;
+    exact.maximumPublishedCpuBytes =
+        baseline.manifest->publishedCpuBytes();
+    {
+        auto session = openSession(pack);
+        require(
+            airfix::content::buildMissionLoadManifest(
+                session, playerRequest(), exact).success(),
+            "exact player source/accounting limits failed");
+    }
+
+    const auto requireOneUnder = [&](
+        MissionLoadManifestLimits limits,
+        const MissionLoadManifestIssueKind kind,
+        const MissionLoadDependencyKind dependency,
+        const std::string_view message) {
+        auto session = openSession(pack);
+        requireAtomicFailure(
+            airfix::content::buildMissionLoadManifest(
+                session, playerRequest(), limits),
+            kind,
+            dependency,
+            message);
+    };
+    {
+        auto limits = exact;
+        --limits.maximumPlayerObjectDefinitionSourceBytes;
+        requireOneUnder(
+            limits,
+            MissionLoadManifestIssueKind::sourceLimitExceeded,
+            MissionLoadDependencyKind::playerObjectDefinition,
+            "one-under player OBJE source limit succeeded");
+    }
+    {
+        auto limits = exact;
+        --limits.maximumTotalDefinitionSourceBytes;
+        requireOneUnder(
+            limits,
+            MissionLoadManifestIssueKind::
+                aggregateDefinitionSourceLimitExceeded,
+            MissionLoadDependencyKind::playerObjectDefinition,
+            "one-under player definition aggregate succeeded");
+    }
+    {
+        auto limits = exact;
+        --limits.maximumPlayerCcfSourceBytes;
+        requireOneUnder(
+            limits,
+            MissionLoadManifestIssueKind::sourceLimitExceeded,
+            MissionLoadDependencyKind::playerModelCcf,
+            "one-under player CCF source limit succeeded");
+    }
+    {
+        auto limits = exact;
+        --limits.maximumTotalCcfSourceBytes;
+        requireOneUnder(
+            limits,
+            MissionLoadManifestIssueKind::
+                aggregateCcfSourceLimitExceeded,
+            MissionLoadDependencyKind::objectCcf,
+            "one-under total CCF aggregate succeeded");
+    }
+    {
+        auto limits = exact;
+        --limits.maximumCcfSources;
+        requireOneUnder(
+            limits,
+            MissionLoadManifestIssueKind::
+                ccfSourceCountLimitExceeded,
+            MissionLoadDependencyKind::playerModelCcf,
+            "one-under total CCF source count succeeded");
+    }
+    {
+        auto limits = exact;
+        --limits.maximumPublishedCpuBytes;
+        requireOneUnder(
+            limits,
+            MissionLoadManifestIssueKind::
+                publishedCpuLimitExceeded,
+            MissionLoadDependencyKind::level,
+            "one-under player published CPU limit succeeded");
+    }
+
+    {
+        auto session = openSession(pack);
+        std::optional<MissionLoadManifestRequest> externalRequest{
+            playerRequest()};
+        std::optional<MissionLoadManifestLimits> externalLimits{
+            MissionLoadManifestLimits{}};
+        bool destroyed = false;
+        const auto result =
+            airfix::content::buildMissionLoadManifest(
+                session,
+                *externalRequest,
+                *externalLimits,
+                {},
+                [&](const auto& progress) {
+                    if (!destroyed &&
+                        progress.phase ==
+                            MissionLoadManifestPhase::
+                                validatingRequest &&
+                        progress.completedItems == 0U) {
+                        externalRequest.reset();
+                        externalLimits.reset();
+                        destroyed = true;
+                    }
+                });
+        require(
+            destroyed && result.success() &&
+                result.manifest->playerVisual().has_value(),
+            "player request was dereferenced after the first callback");
+    }
+    {
+        constexpr std::array playerPhases{
+            MissionLoadManifestPhase::
+                lookingUpPlayerObjectDefinition,
+            MissionLoadManifestPhase::
+                readingPlayerObjectDefinition,
+            MissionLoadManifestPhase::
+                parsingPlayerObjectDefinition,
+            MissionLoadManifestPhase::resolvingPlayerModelCcf,
+        };
+        for (const auto phase : playerPhases) {
+            {
+                auto session = openSession(pack);
+                std::stop_source source;
+                bool requested = false;
+                const auto result =
+                    airfix::content::buildMissionLoadManifest(
+                        session,
+                        playerRequest(),
+                        {},
+                        source.get_token(),
+                        [&](const auto& progress) {
+                            if (!requested &&
+                                progress.phase == phase) {
+                                source.request_stop();
+                                requested = true;
+                            }
+                        });
+                require(
+                    requested,
+                    "player cancellation phase was not reached");
+                requireAtomicFailure(
+                    result,
+                    MissionLoadManifestIssueKind::cancelled,
+                    MissionLoadDependencyKind::level,
+                    "player phase cancellation published a manifest");
+            }
+            {
+                auto session = openSession(pack);
+                bool threw = false;
+                const auto result =
+                    airfix::content::buildMissionLoadManifest(
+                        session,
+                        playerRequest(),
+                        {},
+                        {},
+                        [&](const auto& progress) {
+                            if (!threw && progress.phase == phase) {
+                                threw = true;
+                                throw std::runtime_error(
+                                    "player phase callback failed");
+                            }
+                        });
+                require(
+                    threw,
+                    "player callback failure phase was not reached");
+                requireAtomicFailure(
+                    result,
+                    MissionLoadManifestIssueKind::
+                        progressCallbackFailure,
+                    MissionLoadDependencyKind::level,
+                    "player phase callback failure published a manifest");
+            }
+            {
+                auto session = openSession(pack, 81U);
+                auto replacement = openSession(pack, 81U);
+                bool replaced = false;
+                const auto result =
+                    airfix::content::buildMissionLoadManifest(
+                        session,
+                        playerRequest(),
+                        {},
+                        {},
+                        [&](const auto& progress) {
+                            if (!replaced &&
+                                progress.phase == phase) {
+                                session = std::move(replacement);
+                                replaced = true;
+                            }
+                        });
+                require(
+                    replaced,
+                    "player session replacement phase was not reached");
+                requireAtomicFailure(
+                    result,
+                    MissionLoadManifestIssueKind::
+                        sessionIdentityChanged,
+                    MissionLoadDependencyKind::level,
+                    "player phase session replacement published a manifest");
+            }
+        }
+    }
+
+    auto moveSession = openSession(pack);
+    auto moveSource = airfix::content::buildMissionLoadManifest(
+        moveSession, playerRequest());
+    MissionLoadManifestResult moved = std::move(moveSource);
+    require(
+        moveSource.manifest.has_value() &&
+            !moveSource.manifest->valid() &&
+            moved.success() &&
+            moved.manifest->playerVisual().has_value() &&
+            moved.manifest->playerVisual()
+                    ->objectDefinitionSource.logicalPath ==
+                "Game\\Objects\\Player.object",
+        "player descriptor identity did not survive a poisoned move");
 }
 
 void testLookupFailuresAreTypedAndAtomic() {
@@ -1427,6 +2008,9 @@ void testMovedFromProofsArePoisoned() {
 int main() {
     try {
         testHappyPathOrderingCachingAndOwnership();
+        testAuthenticatedPlayerVisualDescriptor();
+        testPlayerVisualFailuresAreTypedAndAtomic();
+        testPlayerVisualExactBudgetsAndLateAtomicity();
         testLookupFailuresAreTypedAndAtomic();
         testSetupParsingIsTypedBoundedAndOwned();
         testObjectRootAndLateFailuresAreAtomic();

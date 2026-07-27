@@ -65,13 +65,8 @@ superseded evidence.
 
 ## 2026-07-21 — MacBook escalation policy
 
-- Owner confirmed that work may move to a MacBook when genuinely needed.
-- Accepted two escalation thresholds: hard blocker without local Xcode/device
-  tooling, or a documented estimate of at least 20% acceleration for the
-  affected remaining task/milestone.
-- Added a required explicit `MACBOOK GATE` notification format, measurement
-  formula, likely trigger list, and hybrid Windows/Actions/Mac responsibility
-  boundary.
+- Owner confirmed that local Apple hardware will be available for later
+  physical-device debugging and profiling.
 - Current phase does not require a MacBook.
 
 ## 2026-07-21 — repository bootstrap and Phase 1 toolchain
@@ -421,8 +416,7 @@ superseded evidence.
   ignored `artifacts/private-model-preview/`; no private image or hash is in Git.
 - The selected aircraft object resolves to a null group, confirming that a
   faithful complete aircraft requires its blueprint hierarchy and transforms
-  rather than choosing an arbitrary child mesh. This is the next asset task,
-  not a MacBook blocker.
+  rather than choosing an arbitrary child mesh. This is the next asset task.
 - Commit `ee6229f` passed portable CI run `29911160578` on Ubuntu, Windows, and
   ARM64 macOS plus unsigned iOS run `29911160555` for `iphoneos` and
   `iphonesimulator` on Xcode 26.6.
@@ -1596,3 +1590,38 @@ superseded evidence.
   authenticated player object-definition source in the mission manifest,
   followed by tagged actor provenance in the combined room model and Metal
   publication.
+
+## 2026-07-27 - authenticated player visual admission and scene join
+
+- `MissionLoadManifest` now accepts an optional exact player `OBJE` logical
+  path. The same pinned content session authenticates and parses that
+  definition, then derives the model CCF identity, visible blueprint selector,
+  and texture root only from the parsed payload. The player CCF is planned and
+  bounded but is not read during manifest construction or inserted into the
+  room-catalogue load list.
+- Added a bounded player texture-binding adapter. It preserves the room's dense
+  texture-ID prefix, deduplicates actor textures by authenticated archive entry,
+  appends new entries in actor first-use order, and remaps primary, secondary,
+  and environment roles into one global namespace. All dependency, graph,
+  entry, binding, count, and byte failures are atomic.
+- Added a bounded player scene adapter. It appends actor meshes and instances
+  without cross-source mesh merging, composes the authenticated spawn-world
+  transform with each actor-local transform exactly once, and retains contiguous
+  final bindings plus actor-only provenance. The publication proof preserves
+  each exact pre-composition actor-local transform.
+- The optional private iOS request now carries an exact player definition path
+  as owned data through the serialized coordinator. Public unsigned pull-request
+  builds remain completely data-less and do not read repository secrets; a
+  future protected, manually approved workflow owns any non-empty private launch
+  inputs.
+- Independent reviews found and closed incomplete repeated-mesh provenance,
+  a non-representable binding range, a missing composed-transform error, and
+  public-PR secret exposure. Re-reviews approved the final scene, texture,
+  manifest, and iOS contracts. A full Windows GCC/Ninja build and all 47
+  portable tests pass; `actionlint`, `git diff --check`, and the source-boundary
+  rules are clean after the intentional documentation deletion is staged.
+- The repository landing page was rewritten as a concise project introduction.
+  The internal MacBook escalation document and its references were removed;
+  technical architecture decisions and tool requirements remain documented.
+  No private path, original payload, local analysis database, signing material,
+  or generated content was added.

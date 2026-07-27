@@ -8,8 +8,8 @@
 - The reference build is Windows PE32/x86 and uses DirectX 7-era APIs plus an
   optional Glide renderer.
 - iOS requires a native ARM64 application and Xcode build/signing, provided by
-  an explicit GitHub-hosted macOS runner. A local Mac is not required by default
-  and is introduced only under the blocker/20% acceleration gate.
+  an explicit GitHub-hosted macOS runner. A local Mac is required later for
+  interactive device debugging and profiling.
 - The original source code is unavailable. Decompiled output is evidence, not
   production-ready source.
 - Original assets are in custom `UDSP` packages and must be understood before a

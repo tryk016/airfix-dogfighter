@@ -142,6 +142,8 @@ add_library(airfix_render
     src/airfix/render/DrawSubmissionPlan.cpp
     src/airfix/render/LegacyGeometry.cpp
     src/airfix/render/ObjectVisualDrawAssembly.cpp
+    src/airfix/render/PlayerActorSceneAssembly.cpp
+    src/airfix/render/PlayerActorTextureBindings.cpp
     src/airfix/render/PlayerActorVisualDrawAssembly.cpp
     src/airfix/render/SnapshotGpuBudgetLedger.cpp
     src/airfix/render/TextureRuntimeData.cpp
@@ -464,6 +466,20 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_player_actor_visual_draw_assembly_tests
         COMMAND airfix_player_actor_visual_draw_assembly_tests)
+
+    add_executable(airfix_player_actor_scene_assembly_tests
+        tests/PlayerActorSceneAssemblyTests.cpp)
+    target_link_libraries(airfix_player_actor_scene_assembly_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_player_actor_scene_assembly_tests
+        COMMAND airfix_player_actor_scene_assembly_tests)
+
+    add_executable(airfix_player_actor_texture_bindings_tests
+        tests/PlayerActorTextureBindingsTests.cpp)
+    target_link_libraries(airfix_player_actor_texture_bindings_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_player_actor_texture_bindings_tests
+        COMMAND airfix_player_actor_texture_bindings_tests)
 
     add_executable(airfix_mission_world_room_draw_tests
         tests/MissionWorldRoomDrawTests.cpp)

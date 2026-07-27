@@ -429,6 +429,11 @@
   callback-driven session replacement or move-out returns
   `sessionIdentityChanged`, even with the same revision. Handle identity and
   revision are checked before/after callbacks and before publication.
+- The manifest optionally authenticates one explicit player `OBJE` definition.
+  Its canonical definition and model-CCF identities, visible slot-zero
+  blueprint selector, texture root, and checked source footprints are retained
+  as a separate descriptor. The player CCF is planned but never read during
+  manifest construction and is not inserted into the room-catalogue load list.
 - Added `MissionWorldRoomLoader`, the atomic consumer of that proof. It
   validates the full descriptor shape and exact logical-path/file-index
   identity, pins the loader session's revision and opaque transaction marker,
@@ -461,7 +466,14 @@
   compressed and aggregate budgets, callback-time destruction of snapshotted
   inputs, separately authenticated equal revisions, moved and replaced
   sessions, identity-versus-callback-error precedence, cancellation, and late
-  atomic failures. The portable suite now passes 43/43.
+  atomic failures. The portable suite now passes 47/47.
+- Added portable player-actor adapters below the loader boundary. They resolve
+  the complete selected blueprint subtree, apply the recovered visible
+  slot-zero root pose, retain actor-local transforms, merge actor texture
+  bindings into the existing dense global texture namespace, and append the
+  actor at its authenticated absolute spawn pose exactly once. Typed
+  provenance, count/byte limits, and independent reviews cover the complete
+  scene output. The final loader/publication join is in progress.
 - The authenticated setup-to-room provenance chain now crosses the native iOS
   publication boundary together with an immutable `PlayerSpawnPose`. Ghidra
   Headless and Rizin independently confirm x/y/z radians, mode zero, exact
@@ -472,11 +484,12 @@
   Runtime room switching still requires retaining the CCF/catalogue arena
   rather than reconstructing it from the published static room.
 - Added optional build-generated initial mission configuration. Public defaults
-  are empty/data-less. Private builds may supply Base64 setup and Level logical
-  paths plus a decimal `uint32_t` start index through three GitHub secrets;
-  CMake validates them and generates a local header without committing private
-  paths. AFPACK v1 contains no launch metadata; an authenticated bounded
-  mission catalogue remains a target for AFPACK v2.
+  are empty/data-less. A future protected private workflow may supply Base64
+  setup, Level, and optional player-object logical paths plus a decimal
+  `uint32_t` start index; CMake validates them and generates a local header
+  without committing private paths. Public pull-request workflows never read
+  these inputs or signing secrets. AFPACK v1 contains no launch metadata; an
+  authenticated bounded mission catalogue remains a target for AFPACK v2.
 
 ## Confirmed
 
@@ -496,12 +509,10 @@
   iPhone 17 Pro Max/iOS 26.6 and iPhone SE 3/iOS 26.3 runtime devices, Apple
   Developer account available, single-player only, no editors/multiplayer, and
   no original CD music.
-- GitHub Actions hosted macOS/Xcode is the accepted iOS build/signing host; no
-  local Mac is required. CI currently builds unsigned data-less bundles; future
-  private signing produces an IPA while original data remains local in an
-  imported `.afpack`.
-- MacBook policy accepted: request a move only for a clearly reported hard
-  blocker or documented >=20% acceleration of the affected remaining work.
+- GitHub Actions hosted macOS/Xcode currently provides unsigned iOS compile
+  validation. Interactive device debugging and profiling later use local Apple
+  tooling; private signing must keep original data local in an imported
+  `.afpack`.
 
 ## Next
 
@@ -511,9 +522,8 @@
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Implement explicit dynamic publication of the recovered primary actor and
-   its selected-skin hierarchies through the pose exchange, keeping auxiliary
-   weapons/effects separate.
+3. Complete the authenticated mission-loader and publication join for the
+   recovered primary actor, keeping auxiliary weapons/effects separate.
 4. Introduce a retained CCF/catalogue arena when runtime room switching is
    implemented; recover portal tracing, camera room traversal, and later
    transitions afterward.
@@ -538,4 +548,3 @@ These questions do not block static analysis or the archive work.
   secrets, and a Windows IPA installation path are required before that spike.
 - No public distribution is planned; private signed/converted artifacts must not
   be shared.
-- No MacBook blocker exists in the current project phase.

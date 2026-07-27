@@ -40,6 +40,7 @@ char kContentWorkQueueSpecificKey;
 struct RememberedMissionRequest final {
     std::string setupLogicalPath;
     std::string levelLogicalPath;
+    std::optional<std::string> playerObjectLogicalPath;
     std::uint32_t requestedStartIndex{};
 };
 
@@ -816,6 +817,18 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
                           levelLogicalPath:(NSString*)levelLogicalPath
                        requestedStartIndex:
                            (uint32_t)requestedStartIndex {
+    [self requestMissionWithSetupLogicalPath:setupLogicalPath
+                            levelLogicalPath:levelLogicalPath
+                     playerObjectLogicalPath:nil
+                         requestedStartIndex:requestedStartIndex];
+}
+
+- (void)requestMissionWithSetupLogicalPath:(NSString*)setupLogicalPath
+                          levelLogicalPath:(NSString*)levelLogicalPath
+                   playerObjectLogicalPath:
+                       (NSString* _Nullable)playerObjectLogicalPath
+                       requestedStartIndex:
+                           (uint32_t)requestedStartIndex {
     NSAssert(NSThread.isMainThread,
         @"Mission requests must start on the main thread");
     NSObject* const requestIdentity = [NSObject new];
@@ -830,9 +843,19 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
             [self scheduleMissionRequestFailure:requestIdentity];
             return;
         }
+        std::optional<std::string> playerObject;
+        if (playerObjectLogicalPath != nil) {
+            playerObject = copyPrivateLogicalPath(playerObjectLogicalPath);
+            if (!playerObject.has_value()) {
+                _rememberedMissionRequest.reset();
+                [self scheduleMissionRequestFailure:requestIdentity];
+                return;
+            }
+        }
         _rememberedMissionRequest = RememberedMissionRequest{
             .setupLogicalPath = std::move(*setup),
             .levelLogicalPath = std::move(*level),
+            .playerObjectLogicalPath = std::move(playerObject),
             .requestedStartIndex = requestedStartIndex,
         };
     }
@@ -968,6 +991,8 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
                     manifestRequest{
                         .levelLogicalPath = request.levelLogicalPath,
                         .setupLogicalPath = request.setupLogicalPath,
+                        .playerObjectLogicalPath =
+                            request.playerObjectLogicalPath,
                     };
                 auto manifestResult =
                     airfix::content::buildMissionLoadManifest(

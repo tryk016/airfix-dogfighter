@@ -278,10 +278,8 @@ Tasks:
 - Make the app boot without data and implement atomic `.afpack` import before the
   first full device slice.
 - Select and document a Windows-compatible installation path for the signed IPA.
-- Measure the complete Actions-to-device feedback loop. Request a MacBook only
-  for a hard local-Xcode/LLDB/Metal/Instruments gate or a documented >=20%
-  reduction in the remaining affected work, following
-  `docs/process/MACBOOK-GATE.md`.
+- Use local Xcode, LLDB, Metal tools, and Instruments when interactive
+  physical-device debugging and profiling begin.
 - Implement native UIKit/Game Controller adapters first. Add an SDL3 desktop or
   common adapter later only if the cross-platform shell makes it materially
   useful, as staged in ADR-0002.
@@ -387,7 +385,7 @@ contract, evidence, implementation, tests, parity result, and documentation agre
 | GitHub runner image changes Xcode | Breaks CI/reproducibility | Explicit runner/Xcode selection, preflight and build manifest |
 | Signed IPA cannot be installed from Windows | Blocks device tests | Prove the installation path in the first signed device spike |
 | No iOS 16.4 runtime device | Minimum-version behavior can regress | Treat 16.4 as build/availability coverage only and state the limitation |
-| Cloud build/device loop slows interactive tuning | Delays UI/Metal/debug work | Measure the loop; invoke MacBook gate only at blocker or >=20% saving |
+| Cloud build/device loop slows interactive tuning | Delays UI/Metal/debug work | Move interactive profiling and debugging to local Xcode |
 | Private artifacts are accidentally shared | Unauthorized redistribution | Ignore originals/converted assets and audit every packaged/staged artifact |
 | Scope expansion into enhancements | Delays playability | Lock faithful vertical slice before modern rendering work |
 

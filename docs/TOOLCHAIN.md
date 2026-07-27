@@ -69,9 +69,9 @@ compilation databases and machine-specific compiler paths remain local.
 The Windows workstation hosts static analysis, local conversion of private game
 data, the portable core, and desktop reference build. GitHub Actions supplies an
 ephemeral macOS runner with Xcode for simulator compilation and signed IPA
-export, so no owner-operated Mac/Xcode installation is required by default. A
-MacBook is introduced only at a hard blocker or documented >=20% acceleration
-under `docs/process/MACBOOK-GATE.md`.
+export, so no owner-operated Mac/Xcode installation is required for portable
+development and compile validation. Interactive device debugging and profiling
+later use local Xcode and Apple developer tools.
 
 Use an explicit runner label such as `macos-26`, select an explicit installed
 stable Xcode, and record runner/Xcode/SDK versions. Do not rely on the moving

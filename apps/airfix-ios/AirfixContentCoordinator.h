@@ -48,12 +48,19 @@ typedef NS_ENUM(NSInteger, AirfixContentReadiness) {
 - (void)applicationWillEnterForeground;
 - (void)applicationDidBecomeActive;
 
-// Remembers an explicit private mission setup/Level pair. If content is
-// validating or the app is inactive, loading begins after the next ready
-// inspection. The paths are never inferred, displayed, logged, or exposed by
-// the resulting public snapshot.
+// Remembers an explicit private mission setup/Level pair and an optional exact
+// player object-definition path. If content is validating or the app is
+// inactive, loading begins after the next ready inspection. The paths are
+// never inferred, displayed, logged, or exposed by the resulting public
+// snapshot.
 - (void)requestMissionWithSetupLogicalPath:(NSString*)setupLogicalPath
                           levelLogicalPath:(NSString*)levelLogicalPath
+                       requestedStartIndex:(uint32_t)requestedStartIndex;
+
+- (void)requestMissionWithSetupLogicalPath:(NSString*)setupLogicalPath
+                          levelLogicalPath:(NSString*)levelLogicalPath
+                   playerObjectLogicalPath:
+                       (NSString* _Nullable)playerObjectLogicalPath
                        requestedStartIndex:(uint32_t)requestedStartIndex;
 
 // Main-thread two-phase publication check. The caller checks after off-main

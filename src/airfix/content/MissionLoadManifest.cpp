@@ -153,10 +153,13 @@ void fail(
         limits.maximumLevelSourceBytes != 0U &&
         limits.maximumWorldSourceBytes != 0U &&
         limits.maximumObjectDefinitionSourceBytes != 0U &&
+        limits.maximumPlayerObjectDefinitionSourceBytes != 0U &&
         limits.maximumTotalDefinitionSourceBytes != 0U &&
         limits.maximumCcfSourceBytes != 0U &&
+        limits.maximumPlayerCcfSourceBytes != 0U &&
         limits.maximumTotalCcfSourceBytes != 0U &&
         limits.maximumCcfSources != 0U &&
+        limits.maximumPlayerBlueprintSelectorBytes != 0U &&
         limits.maximumPublishedCpuBytes != 0U;
 }
 
@@ -520,12 +523,17 @@ MissionLoadManifest& MissionLoadManifest::operator=(
     uniqueObjectDefinitions_ =
         std::move(other.uniqueObjectDefinitions_);
     ccfLoads_ = std::move(other.ccfLoads_);
+    playerVisual_ = std::move(other.playerVisual_);
     startPositions_ = std::move(other.startPositions_);
     setupSourceFootprintBytes_ = other.setupSourceFootprintBytes_;
     definitionSourceFootprintBytes_ =
         other.definitionSourceFootprintBytes_;
     plannedCcfSourceFootprintBytes_ =
         other.plannedCcfSourceFootprintBytes_;
+    plannedPlayerVisualCcfSourceFootprintBytes_ =
+        other.plannedPlayerVisualCcfSourceFootprintBytes_;
+    plannedTotalCcfSourceFootprintBytes_ =
+        other.plannedTotalCcfSourceFootprintBytes_;
     publishedCpuBytes_ = other.publishedCpuBytes_;
     valid_ = std::exchange(other.valid_, false);
     return *this;
@@ -586,6 +594,14 @@ MissionLoadManifest::calculatePublishedCpuBytes() const noexcept {
             !addOptionalString(total, load.textureRoot)) {
             return std::nullopt;
         }
+    }
+    if (playerVisual_.has_value() &&
+        (!addArchiveIdentity(
+             total, playerVisual_->objectDefinitionSource) ||
+         !addArchiveIdentity(total, playerVisual_->modelCcfSource) ||
+         !addString(total, playerVisual_->blueprintSelector) ||
+         !addOptionalString(total, playerVisual_->textureRoot))) {
+        return std::nullopt;
     }
     for (const auto& start : startPositions_) {
         if (!addString(total, start.roomName)) {
@@ -661,6 +677,17 @@ MissionLoadManifestResult buildMissionLoadManifest(
                 MissionLoadDependencyKind::missionSetup,
                 request.setupLogicalPath)) {
             return result;
+        }
+        if (externalRequest.playerObjectLogicalPath.has_value()) {
+            std::string playerObjectLogicalPath;
+            if (!snapshotPath(
+                    *externalRequest.playerObjectLogicalPath,
+                    MissionLoadDependencyKind::playerObjectDefinition,
+                    playerObjectLogicalPath)) {
+                return result;
+            }
+            request.playerObjectLogicalPath =
+                std::move(playerObjectLogicalPath);
         }
 
         MissionLoadManifestProgressCallback guardedProgress =
@@ -1250,6 +1277,256 @@ MissionLoadManifestResult buildMissionLoadManifest(
             }
         }
 
+        if (request.playerObjectLogicalPath.has_value()) {
+            if (!report(
+                    result,
+                    stopToken,
+                    guardedProgress,
+                    MissionLoadManifestPhase::
+                        lookingUpPlayerObjectDefinition,
+                    0U,
+                    1U)) {
+                return result;
+            }
+
+            MissionArchiveEntryIdentity objectIdentity;
+            if (!resolveExact(
+                    result,
+                    archive,
+                    *request.playerObjectLogicalPath,
+                    limits.entries.maximumLogicalPathBytes,
+                    MissionLoadDependencyKind::playerObjectDefinition,
+                    std::nullopt,
+                    objectIdentity)) {
+                return result;
+            }
+            if (!report(
+                    result,
+                    stopToken,
+                    guardedProgress,
+                    MissionLoadManifestPhase::
+                        lookingUpPlayerObjectDefinition,
+                    1U,
+                    1U)) {
+                return result;
+            }
+
+            const auto objectFootprint = sourceAllocationFootprint(
+                archive.files()[objectIdentity.archiveFileIndex]);
+            if (!preflightDefinitionSource(
+                    result,
+                    archive,
+                    objectIdentity,
+                    limits.maximumPlayerObjectDefinitionSourceBytes,
+                    limits.maximumTotalDefinitionSourceBytes,
+                    candidate.definitionSourceFootprintBytes_,
+                    MissionLoadDependencyKind::playerObjectDefinition,
+                    std::nullopt)) {
+                return result;
+            }
+            if (!report(
+                    result,
+                    stopToken,
+                    guardedProgress,
+                    MissionLoadManifestPhase::
+                        readingPlayerObjectDefinition,
+                    0U,
+                    1U)) {
+                return result;
+            }
+
+            std::vector<std::uint8_t> playerObjectBytes;
+            try {
+                playerObjectBytes = session.readSourceFile(
+                    objectIdentity.archiveFileIndex,
+                    limits.maximumPlayerObjectDefinitionSourceBytes);
+            }
+            catch (const std::bad_alloc&) {
+                throw;
+            }
+            catch (...) {
+                fail(
+                    result,
+                    MissionLoadManifestIssueKind::readFailure,
+                    MissionLoadDependencyKind::playerObjectDefinition,
+                    std::nullopt,
+                    objectIdentity.archiveFileIndex);
+                return result;
+            }
+            if (!report(
+                    result,
+                    stopToken,
+                    guardedProgress,
+                    MissionLoadManifestPhase::
+                        readingPlayerObjectDefinition,
+                    1U,
+                    1U) ||
+                !report(
+                    result,
+                    stopToken,
+                    guardedProgress,
+                    MissionLoadManifestPhase::
+                        parsingPlayerObjectDefinition,
+                    0U,
+                    1U)) {
+                return result;
+            }
+
+            assets::ObjectDefinition playerObject;
+            try {
+                playerObject =
+                    assets::parseObjectDefinition(playerObjectBytes);
+            }
+            catch (const std::bad_alloc&) {
+                throw;
+            }
+            catch (...) {
+                fail(
+                    result,
+                    MissionLoadManifestIssueKind::parseFailure,
+                    MissionLoadDependencyKind::playerObjectDefinition,
+                    std::nullopt,
+                    objectIdentity.archiveFileIndex);
+                return result;
+            }
+            std::vector<std::uint8_t>().swap(playerObjectBytes);
+            if (playerObject.kind !=
+                assets::ObjectDefinitionKind::object) {
+                fail(
+                    result,
+                    MissionLoadManifestIssueKind::
+                        objectDefinitionKindMismatch,
+                    MissionLoadDependencyKind::playerObjectDefinition,
+                    std::nullopt,
+                    objectIdentity.archiveFileIndex);
+                return result;
+            }
+            if (!playerObject.meshName.has_value() ||
+                playerObject.meshName->empty()) {
+                fail(
+                    result,
+                    MissionLoadManifestIssueKind::
+                        missingBlueprintSelector,
+                    MissionLoadDependencyKind::playerObjectDefinition,
+                    std::nullopt,
+                    objectIdentity.archiveFileIndex);
+                return result;
+            }
+            if (playerObject.meshName->size() >
+                limits.maximumPlayerBlueprintSelectorBytes) {
+                fail(
+                    result,
+                    MissionLoadManifestIssueKind::
+                        invalidBlueprintSelector,
+                    MissionLoadDependencyKind::playerObjectDefinition,
+                    std::nullopt,
+                    objectIdentity.archiveFileIndex);
+                return result;
+            }
+            if (!playerObject.ccfPath.has_value() ||
+                playerObject.ccfPath->empty()) {
+                fail(
+                    result,
+                    MissionLoadManifestIssueKind::missingLogicalPath,
+                    MissionLoadDependencyKind::playerModelCcf,
+                    std::nullopt,
+                    objectIdentity.archiveFileIndex);
+                return result;
+            }
+            if (!report(
+                    result,
+                    stopToken,
+                    guardedProgress,
+                    MissionLoadManifestPhase::
+                        parsingPlayerObjectDefinition,
+                    1U,
+                    1U) ||
+                !report(
+                    result,
+                    stopToken,
+                    guardedProgress,
+                    MissionLoadManifestPhase::resolvingPlayerModelCcf,
+                    0U,
+                    1U)) {
+                return result;
+            }
+
+            MissionArchiveEntryIdentity ccfIdentity;
+            if (!resolveExact(
+                    result,
+                    archive,
+                    *playerObject.ccfPath,
+                    limits.entries.maximumLogicalPathBytes,
+                    MissionLoadDependencyKind::playerModelCcf,
+                    std::nullopt,
+                    ccfIdentity)) {
+                return result;
+            }
+            const auto ccfFootprint = sourceAllocationFootprint(
+                archive.files()[ccfIdentity.archiveFileIndex]);
+            if (ccfFootprint > limits.maximumPlayerCcfSourceBytes) {
+                fail(
+                    result,
+                    MissionLoadManifestIssueKind::sourceLimitExceeded,
+                    MissionLoadDependencyKind::playerModelCcf,
+                    std::nullopt,
+                    ccfIdentity.archiveFileIndex);
+                return result;
+            }
+            auto aggregateCcf =
+                candidate.plannedTotalCcfSourceFootprintBytes_;
+            if (!checkedAdd(aggregateCcf, ccfFootprint)) {
+                fail(
+                    result,
+                    MissionLoadManifestIssueKind::integerOverflow,
+                    MissionLoadDependencyKind::playerModelCcf,
+                    std::nullopt,
+                    ccfIdentity.archiveFileIndex);
+                return result;
+            }
+            if (aggregateCcf > limits.maximumTotalCcfSourceBytes) {
+                fail(
+                    result,
+                    MissionLoadManifestIssueKind::
+                        aggregateCcfSourceLimitExceeded,
+                    MissionLoadDependencyKind::playerModelCcf,
+                    std::nullopt,
+                    ccfIdentity.archiveFileIndex);
+                return result;
+            }
+
+            candidate.playerVisual_ = MissionPlayerVisualDescriptor{
+                .objectDefinitionSource = std::move(objectIdentity),
+                .modelCcfSource = std::move(ccfIdentity),
+                .blueprintSelector = std::move(*playerObject.meshName),
+                .textureRoot = std::move(playerObject.textureRoot),
+                .legacySkinSlot = 0U,
+                .objectDefinitionSourceAllocationFootprintBytes =
+                    objectFootprint,
+                .modelCcfSourceAllocationFootprintBytes = ccfFootprint,
+            };
+            candidate.plannedPlayerVisualCcfSourceFootprintBytes_ =
+                ccfFootprint;
+            candidate.plannedTotalCcfSourceFootprintBytes_ =
+                aggregateCcf;
+            if (!candidate.playerVisual_->valid()) {
+                fail(
+                    result,
+                    MissionLoadManifestIssueKind::internalFailure,
+                    MissionLoadDependencyKind::playerObjectDefinition);
+                return result;
+            }
+            if (!report(
+                    result,
+                    stopToken,
+                    guardedProgress,
+                    MissionLoadManifestPhase::resolvingPlayerModelCcf,
+                    1U,
+                    1U)) {
+                return result;
+            }
+        }
+
         const auto appendCcfLoad = [&](
             const std::string_view logicalPath,
             const std::optional<std::string>& textureRoot,
@@ -1259,8 +1536,13 @@ MissionLoadManifestResult buildMissionLoadManifest(
             const std::optional<std::size_t> dependencyIndex,
             const std::optional<std::size_t> objectPlacementIndex,
             const std::optional<std::size_t> uniqueObjectDefinitionIndex) {
+            const auto playerSourceCount =
+                candidate.playerVisual_.has_value() ? 1U : 0U;
             if (candidate.ccfLoads_.size() >=
-                limits.maximumCcfSources) {
+                    limits.maximumCcfSources ||
+                playerSourceCount >=
+                    limits.maximumCcfSources -
+                        candidate.ccfLoads_.size()) {
                 fail(
                     result,
                     MissionLoadManifestIssueKind::
@@ -1293,7 +1575,7 @@ MissionLoadManifestResult buildMissionLoadManifest(
                 return false;
             }
             auto aggregate =
-                candidate.plannedCcfSourceFootprintBytes_;
+                candidate.plannedTotalCcfSourceFootprintBytes_;
             if (!checkedAdd(aggregate, footprint)) {
                 fail(
                     result,
@@ -1330,7 +1612,18 @@ MissionLoadManifestResult buildMissionLoadManifest(
                     uniqueObjectDefinitionIndex,
                 .sourceAllocationFootprintBytes = footprint,
             });
-            candidate.plannedCcfSourceFootprintBytes_ = aggregate;
+            if (!checkedAdd(
+                    candidate.plannedCcfSourceFootprintBytes_,
+                    footprint)) {
+                fail(
+                    result,
+                    MissionLoadManifestIssueKind::integerOverflow,
+                    dependency,
+                    dependencyIndex,
+                    candidate.ccfLoads_.back().source.archiveFileIndex);
+                return false;
+            }
+            candidate.plannedTotalCcfSourceFootprintBytes_ = aggregate;
             return true;
         };
 
@@ -1359,6 +1652,14 @@ MissionLoadManifestResult buildMissionLoadManifest(
                 result,
                 MissionLoadManifestIssueKind::ccfSourceCountLimitExceeded,
                 MissionLoadDependencyKind::mainWorldCcf);
+            return result;
+        }
+        if (candidate.playerVisual_.has_value() &&
+            expectedCcfSources == limits.maximumCcfSources) {
+            fail(
+                result,
+                MissionLoadManifestIssueKind::ccfSourceCountLimitExceeded,
+                MissionLoadDependencyKind::playerModelCcf);
             return result;
         }
         candidate.ccfLoads_.reserve(expectedCcfSources);

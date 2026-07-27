@@ -18,6 +18,10 @@ namespace airfix::content {
 struct MissionLoadManifestRequest {
     std::string levelLogicalPath;
     std::string setupLogicalPath;
+    // Optional exact logical path of an authenticated OBJE definition. The
+    // model CCF, texture root, and blueprint selector are derived exclusively
+    // from that definition.
+    std::optional<std::string> playerObjectLogicalPath;
 };
 
 struct MissionLoadManifestLimits {
@@ -33,13 +37,20 @@ struct MissionLoadManifestLimits {
     std::size_t maximumLevelSourceBytes{64U * 1024U * 1024U};
     std::size_t maximumWorldSourceBytes{64U * 1024U * 1024U};
     std::size_t maximumObjectDefinitionSourceBytes{64U * 1024U * 1024U};
-    // Includes setup, Level, World, and unique object-definition allocation
-    // footprints.
+    std::size_t maximumPlayerObjectDefinitionSourceBytes{
+        64U * 1024U * 1024U};
+    // Includes setup, Level, World, unique placed-object definitions, and the
+    // optional player OBJE allocation footprint.
     std::uint64_t maximumTotalDefinitionSourceBytes{
         512U * 1024U * 1024U};
     std::size_t maximumCcfSourceBytes{256U * 1024U * 1024U};
+    std::size_t maximumPlayerCcfSourceBytes{256U * 1024U * 1024U};
+    // Includes room catalogue loads plus the optional player model CCF.
     std::uint64_t maximumTotalCcfSourceBytes{1024U * 1024U * 1024U};
+    // Counts room catalogue loads plus the optional player model CCF as
+    // semantic sources, even when identities happen to coincide.
     std::size_t maximumCcfSources{65'536U};
+    std::size_t maximumPlayerBlueprintSelectorBytes{4'096U};
     std::uint64_t maximumPublishedCpuBytes{512U * 1024U * 1024U};
 };
 
@@ -57,6 +68,10 @@ enum class MissionLoadManifestPhase : std::uint8_t {
     readingObjectDefinitions,
     resolvingCcfSources,
     complete,
+    lookingUpPlayerObjectDefinition,
+    readingPlayerObjectDefinition,
+    parsingPlayerObjectDefinition,
+    resolvingPlayerModelCcf,
 };
 
 struct MissionLoadManifestProgress {
@@ -77,6 +92,8 @@ enum class MissionLoadDependencyKind : std::uint8_t {
     mainWorldCcf,
     backdropCcf,
     objectCcf,
+    playerObjectDefinition,
+    playerModelCcf,
 };
 
 enum class MissionLoadManifestIssueKind : std::uint8_t {
@@ -100,6 +117,8 @@ enum class MissionLoadManifestIssueKind : std::uint8_t {
     allocationFailure,
     progressCallbackFailure,
     internalFailure,
+    missingBlueprintSelector,
+    invalidBlueprintSelector,
 };
 
 struct MissionLoadManifestIssue {
@@ -125,6 +144,29 @@ struct MissionArchiveEntryIdentity {
 struct MissionUniqueObjectDefinition {
     MissionArchiveEntryIdentity source;
     assets::ObjectDefinition definition;
+};
+
+struct MissionPlayerVisualDescriptor {
+    MissionArchiveEntryIdentity objectDefinitionSource;
+    MissionArchiveEntryIdentity modelCcfSource;
+    std::string blueprintSelector;
+    std::optional<std::string> textureRoot;
+    // Legacy SetSkin slot zero is the neutral/default player visual slot.
+    std::uint8_t legacySkinSlot{};
+    // storedSize + unpackedSize for compressed entries, otherwise storedSize.
+    std::uint64_t objectDefinitionSourceAllocationFootprintBytes{};
+    std::uint64_t modelCcfSourceAllocationFootprintBytes{};
+
+    [[nodiscard]] bool valid() const noexcept {
+        return !objectDefinitionSource.logicalPath.empty() &&
+            !modelCcfSource.logicalPath.empty() &&
+            !blueprintSelector.empty() &&
+            legacySkinSlot == 0U;
+    }
+
+    friend bool operator==(
+        const MissionPlayerVisualDescriptor&,
+        const MissionPlayerVisualDescriptor&) = default;
 };
 
 enum class MissionCcfLoadRole : std::uint8_t {
@@ -210,6 +252,10 @@ public:
     ccfLoads() const noexcept {
         return ccfLoads_;
     }
+    [[nodiscard]] const std::optional<MissionPlayerVisualDescriptor>&
+    playerVisual() const noexcept {
+        return playerVisual_;
+    }
     [[nodiscard]] const std::vector<assets::MissionStartPosition>&
     startPositions() const noexcept {
         return startPositions_;
@@ -224,6 +270,15 @@ public:
     [[nodiscard]] std::uint64_t plannedCcfSourceFootprintBytes()
         const noexcept {
         return plannedCcfSourceFootprintBytes_;
+    }
+    // Player visual CCF is deliberately not a room catalogue load.
+    [[nodiscard]] std::uint64_t
+    plannedPlayerVisualCcfSourceFootprintBytes() const noexcept {
+        return plannedPlayerVisualCcfSourceFootprintBytes_;
+    }
+    [[nodiscard]] std::uint64_t plannedTotalCcfSourceFootprintBytes()
+        const noexcept {
+        return plannedTotalCcfSourceFootprintBytes_;
     }
     [[nodiscard]] std::uint64_t publishedCpuBytes() const noexcept {
         return publishedCpuBytes_;
@@ -253,10 +308,13 @@ private:
     std::vector<std::size_t> objectDefinitionIndices_;
     std::vector<MissionUniqueObjectDefinition> uniqueObjectDefinitions_;
     std::vector<MissionCcfLoadDescriptor> ccfLoads_;
+    std::optional<MissionPlayerVisualDescriptor> playerVisual_;
     std::vector<assets::MissionStartPosition> startPositions_;
     std::uint64_t setupSourceFootprintBytes_{};
     std::uint64_t definitionSourceFootprintBytes_{};
     std::uint64_t plannedCcfSourceFootprintBytes_{};
+    std::uint64_t plannedPlayerVisualCcfSourceFootprintBytes_{};
+    std::uint64_t plannedTotalCcfSourceFootprintBytes_{};
     std::uint64_t publishedCpuBytes_{};
     bool valid_{};
 };
@@ -271,11 +329,13 @@ struct MissionLoadManifestResult {
 
 // Authenticates the explicit setup/Level pair, the mission dependency graph,
 // and planned CCF source identities. Setup AFS, Level, World, and each unique
-// Level OBJE definition are read through session's already-authenticated
-// handle. Setup parsing recognizes only bounded AddStartPos calls and never
-// executes script. CCF/GTI payloads are never read here. Level MODL references
-// are resolved as metadata but are neither parsed nor promoted to mission-root
-// CCF loads.
+// Level OBJE definition and optional explicit player OBJE are read through
+// session's already-authenticated handle. Player model identity, texture root,
+// and blueprint selector are derived only from that OBJE. Setup parsing
+// recognizes only bounded AddStartPos calls and never executes script. CCF/GTI
+// payloads are never read here. Level MODL references are resolved as metadata
+// but are neither parsed nor promoted to mission-root CCF loads. The optional
+// player CCF likewise remains outside the room CCF catalogue.
 [[nodiscard]] MissionLoadManifestResult buildMissionLoadManifest(
     VerifiedContentSession& session,
     const MissionLoadManifestRequest& request,

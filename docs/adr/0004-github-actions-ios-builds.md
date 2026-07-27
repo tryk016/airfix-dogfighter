@@ -69,9 +69,9 @@ if hosted-runner/Xcode constraints make a required build impossible.
   accepted device matrix.
 - The Windows-compatible installation path for the produced IPA must be proven
   during the first device spike.
-- A MacBook is not a default prerequisite. Escalate clearly if work becomes
-  blocked without local Xcode or measured evidence shows at least 20% saving for
-  the affected remaining work; see `docs/process/MACBOOK-GATE.md`.
+- A local Mac is not a prerequisite for portable development or unsigned
+  compile validation. It becomes part of the toolchain for interactive device
+  debugging and profiling.
 
 ## Revisit conditions
 
@@ -79,7 +79,7 @@ if hosted-runner/Xcode constraints make a required build impossible.
 - Actions costs or queue times become unacceptable.
 - A secure/private content transfer method cannot be made usable.
 - The owner later provides a local Mac or self-hosted macOS runner and prefers it.
-- The MacBook gate reports a hard blocker or >=20% measured acceleration.
+- Interactive LLDB, Metal, Instruments, or physical-device iteration begins.
 - Actual runtime verification on iOS 16.4 becomes a requirement.
 
 ## Action items

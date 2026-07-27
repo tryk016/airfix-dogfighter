@@ -85,6 +85,8 @@ Trigger: every pull request and push after the iOS target exists.
   runner image metadata into a build manifest.
 - Build ARM64 `iphoneos` and ARM64 `iphonesimulator` bundles with code signing
   disabled.
+- Keep every pull-request invocation data-less. This workflow never reads
+  repository secrets or forwards private initial-mission inputs.
 - Do not upload either bundle from the public repository.
 - Verify `IPHONEOS_DEPLOYMENT_TARGET=16.4` and fail if a dependency raises it.
 
@@ -109,32 +111,35 @@ tag. Never run for pull requests or untrusted branches.
 Physical installation and testing are manual after artifact download. GitHub
 Actions does not replace the device test pass.
 
-A MacBook is introduced only under `docs/process/MACBOOK-GATE.md`: a hard
-blocker or evidence that it reduces the remaining affected work by at least 20%.
-
 ## Optional private initial-mission configuration
 
-The iOS target accepts three optional CMake cache inputs:
+The iOS target accepts four optional CMake cache inputs for a future protected
+private build workflow or an explicit local build:
 
 | GitHub secret | Generated value |
 |---|---|
 | `AIRFIX_IOS_INITIAL_SETUP_LOGICAL_PATH_BASE64` | Base64 of the explicit private setup logical path |
 | `AIRFIX_IOS_INITIAL_LEVEL_LOGICAL_PATH_BASE64` | Base64 of the explicit private Level logical path |
+| `AIRFIX_IOS_INITIAL_PLAYER_OBJECT_LOGICAL_PATH_BASE64` | Base64 of the optional exact player object-definition logical path |
 | `AIRFIX_IOS_INITIAL_START_INDEX` | decimal unsigned start index in `0..4294967295` |
 
-The workflow forwards these values only as build configuration. CMake validates
-the Base64 alphabet/padding and `uint32_t` range, then `configure_file`
-generates `AirfixPrivateMissionConfig.h` inside the build directory. The
-generated header and decoded logical paths are never source files and must not
-be uploaded as artifacts or caches. Base64 is a safe source-generation
-transport, not encryption.
+The public `ios-unsigned` workflow deliberately leaves all four values at their
+defaults. A separate protected private workflow may forward them only after
+manual environment approval and only from trusted source. CMake validates the
+Base64 alphabet/padding and `uint32_t` range, then `configure_file` generates
+`AirfixPrivateMissionConfig.h` inside the build directory. The generated header
+and decoded logical paths are never source files and must not be uploaded as
+artifacts or caches. Base64 is a safe source-generation transport, not
+encryption.
 
-Both path secrets default to empty in public and unconfigured builds. Automatic
-loading is disabled unless both decode as non-empty UTF-8; supplying only one
-is treated as incomplete configuration. The start index defaults to zero.
+All path inputs default to empty in public and unconfigured builds. Automatic
+loading is disabled unless setup and Level both decode as non-empty UTF-8;
+supplying only one is treated as incomplete configuration. The player object
+path is optional, but a non-empty value is rejected unless the setup/Level pair
+is complete and it decodes as non-empty UTF-8. The start index defaults to zero.
 After the private package is authenticated, the native coordinator submits the
-explicit setup + Level + `uint32_t` request and builds the mission manifest and
-aggregate room through the same verified session.
+explicit setup + Level + optional player object + `uint32_t` request and builds
+the mission manifest and aggregate room through the same verified session.
 
 AFPACK v1 deliberately contains no launch metadata. A future AFPACK v2 may
 replace these build inputs with an authenticated, bounded mission catalogue,
@@ -247,7 +252,7 @@ Store publication.
 | IPA cannot reach device without Mac | validate Windows installation path in the first device spike |
 | iOS 16.4 regression remains unseen | label it build-time compatibility only; add older runtime/device only if required |
 | Actions success mistaken for device success | separate physical scenario checklist on both phones |
-| cloud/device feedback loop becomes too slow | measure one full loop and apply the MacBook 20% acceleration gate |
+| cloud/device feedback loop becomes too slow | use a local Mac for interactive profiling and debugging |
 
 ## Implementation order
 
@@ -261,8 +266,8 @@ Store publication.
 8. Select/verify Windows-to-iPhone IPA installation method.
 9. Import the locally converted private data package.
 10. Execute device scenarios on iOS 26.6 and 26.3.
-11. Measure Actions queue/build/download/install/debug feedback time and evaluate
-    the MacBook gate before intensive Metal/input/performance iteration.
+11. Use local Xcode, LLDB, Metal tooling, or Instruments when interactive
+    device profiling and debugging begin.
 
 ## Authoritative references
 

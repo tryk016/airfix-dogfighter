@@ -133,15 +133,28 @@ namespace {
     const std::string_view configuredLevel =
         airfix::ios::private_mission_config::
             initialLevelLogicalPathBase64;
-    if (!configuredSetup.empty() && !configuredLevel.empty()) {
+    const std::string_view configuredPlayerObject =
+        airfix::ios::private_mission_config::
+            initialPlayerObjectLogicalPathBase64;
+    const bool hasCompleteMissionPair =
+        !configuredSetup.empty() && !configuredLevel.empty();
+    const bool hasAnyMissionPath =
+        !configuredSetup.empty() || !configuredLevel.empty();
+    if (hasCompleteMissionPair) {
         NSString* const setupLogicalPath =
             decodePrivateLogicalPath(configuredSetup);
         NSString* const levelLogicalPath =
             decodePrivateLogicalPath(configuredLevel);
-        if (setupLogicalPath != nil && levelLogicalPath != nil) {
+        NSString* const playerObjectLogicalPath =
+            decodePrivateLogicalPath(configuredPlayerObject);
+        if (setupLogicalPath != nil && levelLogicalPath != nil &&
+            (configuredPlayerObject.empty() ||
+             playerObjectLogicalPath != nil)) {
             [self.contentCoordinator
                 requestMissionWithSetupLogicalPath:setupLogicalPath
                                   levelLogicalPath:levelLogicalPath
+                           playerObjectLogicalPath:
+                               playerObjectLogicalPath
                                requestedStartIndex:
                                    airfix::ios::private_mission_config::
                                        initialStartIndex];
@@ -152,7 +165,12 @@ namespace {
                  @"Private mission configuration is invalid";
         }
     }
-    else if (!configuredSetup.empty() || !configuredLevel.empty()) {
+    else if (!configuredPlayerObject.empty()) {
+        label.text =
+            @"Airfix Dogfighter reconstruction\n"
+             @"Private mission configuration is invalid";
+    }
+    else if (hasAnyMissionPath) {
         label.text =
             @"Airfix Dogfighter reconstruction\n"
              @"Private mission configuration is incomplete";

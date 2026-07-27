@@ -5,12 +5,15 @@ set(AIRFIX_IOS_INITIAL_SETUP_LOGICAL_PATH_BASE64 "" CACHE STRING
     "Optional Base64-encoded private setup logical path used by the iOS shell")
 set(AIRFIX_IOS_INITIAL_LEVEL_LOGICAL_PATH_BASE64 "" CACHE STRING
     "Optional Base64-encoded private Level logical path used by the iOS shell")
+set(AIRFIX_IOS_INITIAL_PLAYER_OBJECT_LOGICAL_PATH_BASE64 "" CACHE STRING
+    "Optional Base64-encoded private player object logical path used by the iOS shell")
 set(AIRFIX_IOS_INITIAL_START_INDEX "0" CACHE STRING
     "Optional initial mission start index used by the iOS shell")
 
 foreach(_airfix_ios_base64_variable IN ITEMS
         AIRFIX_IOS_INITIAL_SETUP_LOGICAL_PATH_BASE64
-        AIRFIX_IOS_INITIAL_LEVEL_LOGICAL_PATH_BASE64)
+        AIRFIX_IOS_INITIAL_LEVEL_LOGICAL_PATH_BASE64
+        AIRFIX_IOS_INITIAL_PLAYER_OBJECT_LOGICAL_PATH_BASE64)
     set(_airfix_ios_base64_value "${${_airfix_ios_base64_variable}}")
     if(NOT _airfix_ios_base64_value MATCHES "^[A-Za-z0-9+/]*=?=?$")
         message(FATAL_ERROR
