@@ -162,6 +162,36 @@ void requireValidNodeTransform(
     return Vec3{left.x + right.x, left.y + right.y, left.z + right.z};
 }
 
+void rotateLegacyByXAxis(Mat3& matrix, const float radians) noexcept {
+    const float cosine = std::cos(radians);
+    const float sine = std::sin(radians);
+    for (auto& column : matrix.columns) {
+        const float oldY = column.y;
+        column.y = sine * column.z + cosine * oldY;
+        column.z = cosine * column.z - sine * oldY;
+    }
+}
+
+void rotateLegacyByYAxis(Mat3& matrix, const float radians) noexcept {
+    const float cosine = std::cos(radians);
+    const float sine = std::sin(radians);
+    for (auto& column : matrix.columns) {
+        const float oldX = column.x;
+        column.x = sine * column.z + cosine * oldX;
+        column.z = cosine * column.z - sine * oldX;
+    }
+}
+
+void rotateLegacyByZAxis(Mat3& matrix, const float radians) noexcept {
+    const float cosine = std::cos(radians);
+    const float sine = std::sin(radians);
+    for (auto& column : matrix.columns) {
+        const float oldX = column.x;
+        column.x = sine * column.y + cosine * oldX;
+        column.y = cosine * column.y - sine * oldX;
+    }
+}
+
 } // namespace
 
 GeometryError::GeometryError(const GeometryErrorCode code, const std::string& message)
@@ -277,6 +307,80 @@ ConvertedNodeTransform convertLegacyTransform(
             .orientation = *orientation,
         },
         basis);
+}
+
+ConvertedNodeTransform convertLegacyAxisRotationWorldPose(
+    const Vec3& sourceWorldPosition,
+    const std::array<float, 3>& axisRotationRadians,
+    const BasisTransform& basis) {
+    requireValidBasis(basis);
+    requireFinite(sourceWorldPosition, "legacy world position");
+    for (const auto radians : axisRotationRadians) {
+        if (!finite(radians)) {
+            fail(GeometryErrorCode::nonFiniteValue,
+                 "legacy axis rotation contains a non-finite value");
+        }
+    }
+
+    const auto result = tryConvertLegacyAxisRotationWorldPose(
+        sourceWorldPosition, axisRotationRadians, basis);
+    if (!result.has_value()) {
+        fail(GeometryErrorCode::singularTransform,
+             "legacy axis-rotation world pose is invalid");
+    }
+    return *result;
+}
+
+std::optional<ConvertedNodeTransform>
+tryConvertLegacyAxisRotationWorldPose(
+    const Vec3& sourceWorldPosition,
+    const std::array<float, 3>& axisRotationRadians,
+    const BasisTransform& basis) noexcept {
+    if (!finite(sourceWorldPosition) ||
+        !finite(basis.sourceToRuntime) ||
+        !finite(basis.runtimeUnitsPerSourceUnit) ||
+        basis.runtimeUnitsPerSourceUnit <= 0.0F) {
+        return std::nullopt;
+    }
+    for (const auto radians : axisRotationRadians) {
+        if (!finite(radians)) {
+            return std::nullopt;
+        }
+    }
+    const auto basisInverse = inverse(basis.sourceToRuntime);
+    if (!basisInverse.has_value()) {
+        return std::nullopt;
+    }
+
+    Mat3 rawLegacyMatrix;
+    rotateLegacyByZAxis(rawLegacyMatrix, axisRotationRadians[2]);
+    rotateLegacyByXAxis(rawLegacyMatrix, axisRotationRadians[0]);
+    rotateLegacyByYAxis(rawLegacyMatrix, axisRotationRadians[1]);
+    if (!finite(rawLegacyMatrix)) {
+        return std::nullopt;
+    }
+
+    Vec3 translation =
+        applyRuntimeColumn(basis.sourceToRuntime, sourceWorldPosition);
+    translation.x *= basis.runtimeUnitsPerSourceUnit;
+    translation.y *= basis.runtimeUnitsPerSourceUnit;
+    translation.z *= basis.runtimeUnitsPerSourceUnit;
+    const Mat3 runtimeRotation = multiply(
+        multiply(basis.sourceToRuntime, transpose(rawLegacyMatrix)),
+        *basisInverse);
+    if (!finite(translation) || !finite(runtimeRotation)) {
+        return std::nullopt;
+    }
+    const float runtimeDeterminant = determinant(runtimeRotation);
+    if (!finite(runtimeDeterminant) || runtimeDeterminant == 0.0F) {
+        return std::nullopt;
+    }
+
+    return ConvertedNodeTransform{
+        .linear = runtimeRotation,
+        .translation = translation,
+        .rawScalar = 1.0F,
+    };
 }
 
 ConvertedNodeTransform deriveLocalTransform(

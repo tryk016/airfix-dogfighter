@@ -14,10 +14,12 @@ struct SnapshotStorage final {
         airfix::content::LoadedMissionWorldRoom&& loadedRoom)
         : ticket(std::move(publicationTicket)),
           resultRevision(loadedRoom.revision),
+          playerSpawnPose(loadedRoom.playerSpawnPose),
           room(std::move(loadedRoom)) {}
 
     airfix::content::WorldRoomPublicationTicket ticket;
     airfix::content::ContentRevision resultRevision;
+    airfix::simulation::PlayerSpawnPose playerSpawnPose;
     std::optional<airfix::content::LoadedMissionWorldRoom> room;
 };
 
@@ -161,6 +163,20 @@ content::ContentRevision missionWorldRoomResultRevision(
             "mission room snapshot storage is unavailable");
     }
     return storage->resultRevision;
+}
+
+std::optional<simulation::PlayerSpawnPose>
+missionWorldRoomPlayerSpawnPose(
+    AirfixMissionWorldRoomSnapshot* const snapshot) noexcept {
+    if (snapshot == nil) {
+        return std::nullopt;
+    }
+    auto* const storage =
+        static_cast<SnapshotStorage*>([snapshot airfix_privateStorage]);
+    if (storage == nullptr) {
+        return std::nullopt;
+    }
+    return storage->playerSpawnPose;
 }
 
 } // namespace airfix::ios

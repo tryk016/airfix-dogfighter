@@ -207,6 +207,7 @@ add_library(airfix_content
     src/airfix/content/MissionLoadManifest.cpp
     src/airfix/content/MissionWorldRoomPublication.cpp
     src/airfix/content/MissionWorldRoomLoader.cpp
+    src/airfix/content/PlayerSpawnPoseBuilder.cpp
     src/airfix/content/VerifiedContentSession.cpp
     src/airfix/content/WorldRoomPublicationGate.cpp
     src/airfix/content/WorldRoomLoader.cpp
@@ -218,7 +219,8 @@ target_include_directories(airfix_content
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
 )
 target_compile_features(airfix_content PUBLIC cxx_std_20)
-target_link_libraries(airfix_content PUBLIC airfix::afpack airfix::render)
+target_link_libraries(airfix_content
+    PUBLIC airfix::afpack airfix::render airfix::simulation)
 
 if(MSVC)
     target_compile_options(airfix_content PRIVATE /W4 /permissive-)

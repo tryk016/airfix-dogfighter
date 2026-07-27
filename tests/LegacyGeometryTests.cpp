@@ -531,6 +531,134 @@ void testValidationFailures() {
     }, "out-of-range triangle index was accepted");
 }
 
+void testMissionStartAxisRotationConversion() {
+    constexpr float halfPi = 1.57079632679489661923F;
+    const auto identity =
+        airfix::render::convertLegacyAxisRotationWorldPose(
+            Vec3{2.0F, 3.0F, 4.0F}, {0.0F, 0.0F, 0.0F});
+    requireVec(identity.translation, Vec3{2.0F, 3.0F, 4.0F},
+               "zero start pose changed source position");
+    requireMatrix(identity.linear, Mat3{},
+                  "zero start axis rotation was not identity");
+
+    const auto x = airfix::render::convertLegacyAxisRotationWorldPose(
+        {}, {halfPi, 0.0F, 0.0F});
+    requireVec(
+        airfix::render::applyRuntimeColumn(
+            x.linear, Vec3{0.0F, 1.0F, 0.0F}),
+        Vec3{0.0F, 0.0F, 1.0F},
+        "positive legacy X did not rotate +Y toward +Z");
+
+    const auto y = airfix::render::convertLegacyAxisRotationWorldPose(
+        {}, {0.0F, halfPi, 0.0F});
+    requireVec(
+        airfix::render::applyRuntimeColumn(
+            y.linear, Vec3{1.0F, 0.0F, 0.0F}),
+        Vec3{0.0F, 0.0F, 1.0F},
+        "positive legacy Y did not rotate +X toward +Z");
+    requireVec(
+        airfix::render::applyRuntimeColumn(
+            y.linear, Vec3{0.0F, 0.0F, 1.0F}),
+        Vec3{-1.0F, 0.0F, 0.0F},
+        "positive legacy Y did not rotate +Z toward -X");
+
+    const auto z = airfix::render::convertLegacyAxisRotationWorldPose(
+        {}, {0.0F, 0.0F, halfPi});
+    requireVec(
+        airfix::render::applyRuntimeColumn(
+            z.linear, Vec3{1.0F, 0.0F, 0.0F}),
+        Vec3{0.0F, 1.0F, 0.0F},
+        "positive legacy Z did not rotate +X toward +Y");
+
+    constexpr std::array<float, 3> mixed{0.3F, -0.7F, 1.1F};
+    const auto mixedPose =
+        airfix::render::convertLegacyAxisRotationWorldPose({}, mixed);
+    const float cx = std::cos(mixed[0]);
+    const float sx = std::sin(mixed[0]);
+    const float cy = std::cos(mixed[1]);
+    const float sy = std::sin(mixed[1]);
+    const float cz = std::cos(mixed[2]);
+    const float sz = std::sin(mixed[2]);
+    const Mat3 runtimeX{{
+        Vec3{1.0F, 0.0F, 0.0F},
+        Vec3{0.0F, cx, sx},
+        Vec3{0.0F, -sx, cx},
+    }};
+    const Mat3 runtimeYNegative{{
+        Vec3{cy, 0.0F, sy},
+        Vec3{0.0F, 1.0F, 0.0F},
+        Vec3{-sy, 0.0F, cy},
+    }};
+    const Mat3 runtimeZ{{
+        Vec3{cz, sz, 0.0F},
+        Vec3{-sz, cz, 0.0F},
+        Vec3{0.0F, 0.0F, 1.0F},
+    }};
+    requireMatrix(
+        mixedPose.linear,
+        airfix::render::multiply(
+            runtimeZ,
+            airfix::render::multiply(runtimeX, runtimeYNegative)),
+        "mixed start rotation did not preserve Z-X-Y legacy order");
+
+    const Mat3 basis{{
+        Vec3{0.0F, 1.0F, 0.0F},
+        Vec3{-1.0F, 0.0F, 0.0F},
+        Vec3{0.0F, 0.0F, 1.0F},
+    }};
+    const auto converted =
+        airfix::render::convertLegacyAxisRotationWorldPose(
+            Vec3{2.0F, 3.0F, 4.0F}, mixed,
+            BasisTransform{basis, 2.0F});
+    requireVec(converted.translation, Vec3{-6.0F, 4.0F, 8.0F},
+               "start pose did not use the room basis and unit scale");
+    const auto inverseBasis = airfix::render::inverse(basis);
+    require(inverseBasis.has_value(), "valid start basis was singular");
+    requireMatrix(
+        converted.linear,
+        airfix::render::multiply(
+            airfix::render::multiply(basis, mixedPose.linear),
+            *inverseBasis),
+        "start rotation was not conjugated through the room basis");
+
+    (void)airfix::render::convertLegacyAxisRotationWorldPose(
+        {}, {std::numeric_limits<float>::max(), 0.0F, 0.0F});
+    requireGeometryError(
+        GeometryErrorCode::nonFiniteValue,
+        [] {
+            (void)airfix::render::convertLegacyAxisRotationWorldPose(
+                {}, {0.0F, std::numeric_limits<float>::infinity(), 0.0F});
+        },
+        "non-finite start angle was accepted");
+    requireGeometryError(
+        GeometryErrorCode::singularBasis,
+        [] {
+            const Mat3 singular{{
+                Vec3{1.0F, 0.0F, 0.0F},
+                Vec3{2.0F, 0.0F, 0.0F},
+                Vec3{0.0F, 0.0F, 1.0F},
+            }};
+            (void)airfix::render::convertLegacyAxisRotationWorldPose(
+                {}, {}, BasisTransform{singular, 1.0F});
+        },
+        "start pose accepted a singular basis");
+    require(
+        !airfix::render::tryConvertLegacyAxisRotationWorldPose(
+             {}, {0.0F, std::numeric_limits<float>::infinity(), 0.0F})
+             .has_value(),
+        "no-throw start conversion accepted a non-finite angle");
+    const Mat3 singular{{
+        Vec3{1.0F, 0.0F, 0.0F},
+        Vec3{2.0F, 0.0F, 0.0F},
+        Vec3{0.0F, 0.0F, 1.0F},
+    }};
+    require(
+        !airfix::render::tryConvertLegacyAxisRotationWorldPose(
+             {}, {}, BasisTransform{singular, 1.0F})
+             .has_value(),
+        "no-throw start conversion accepted a singular basis");
+}
+
 } // namespace
 
 int main() {
@@ -547,6 +675,7 @@ int main() {
         testParentRelativeRoundTripAndOrder();
         testGeneralInverseAndTranslationOnly();
         testNodeTransformValidationFailures();
+        testMissionStartAxisRotationConversion();
         testValidationFailures();
         std::cout << "Legacy geometry tests passed\n";
         return 0;

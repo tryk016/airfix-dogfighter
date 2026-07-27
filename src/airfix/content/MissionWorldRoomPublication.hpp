@@ -27,6 +27,7 @@ enum class MissionWorldRoomPublicationIssueKind : std::uint8_t {
     tableSelectedStartRoomNameEmpty,
     selectedStartPositionNotFinite,
     selectedStartAxisRotationNotFinite,
+    playerSpawnPoseMismatch,
     semanticCcfSourceCountZero,
     semanticCcfSourceCountMismatch,
     uniqueCcfSourceCountZero,

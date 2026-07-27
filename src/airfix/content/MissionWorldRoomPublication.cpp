@@ -1,5 +1,8 @@
 #include "airfix/content/MissionWorldRoomPublication.hpp"
 
+#include "airfix/content/PlayerSpawnPoseBuilder.hpp"
+
+#include <bit>
 #include <cmath>
 
 namespace airfix::content {
@@ -22,6 +25,46 @@ indexedIssue(const MissionWorldRoomPublicationIssueKind kind,
         .sourceIndex = sourceIndex,
         .componentIndex = std::nullopt,
     };
+}
+
+[[nodiscard]] bool sameFloatBits(
+    const float left, const float right) noexcept {
+    return std::bit_cast<std::uint32_t>(left) ==
+           std::bit_cast<std::uint32_t>(right);
+}
+
+[[nodiscard]] bool samePlayerSpawnPose(
+    const simulation::PlayerSpawnPose& left,
+    const simulation::PlayerSpawnPose& right) noexcept {
+    if (left.source != right.source ||
+        left.startPositionIndex != right.startPositionIndex ||
+        left.worldRoomIndex != right.worldRoomIndex) {
+        return false;
+    }
+    for (std::size_t index = 0U;
+         index < left.legacyWorldPosition.size(); ++index) {
+        if (!sameFloatBits(left.legacyWorldPosition[index],
+                           right.legacyWorldPosition[index]) ||
+            !sameFloatBits(left.legacyAxisRotationRadians[index],
+                           right.legacyAxisRotationRadians[index]) ||
+            !sameFloatBits(left.runtimeWorldPosition[index],
+                           right.runtimeWorldPosition[index])) {
+            return false;
+        }
+    }
+    for (std::size_t column = 0U;
+         column < left.runtimeWorldRotationColumns.size(); ++column) {
+        for (std::size_t component = 0U;
+             component <
+             left.runtimeWorldRotationColumns[column].size(); ++component) {
+            if (!sameFloatBits(
+                    left.runtimeWorldRotationColumns[column][component],
+                    right.runtimeWorldRotationColumns[column][component])) {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 } // namespace
@@ -113,6 +156,13 @@ validateMissionWorldRoomPublication(
                 };
             }
         }
+    }
+    const auto expectedPose = buildPlayerSpawnPose(
+        room.startSelection, room.selectedStart, room.runtimeBasis);
+    if (!expectedPose.success() ||
+        !samePlayerSpawnPose(*expectedPose.pose, room.playerSpawnPose)) {
+        return issue(
+            MissionWorldRoomPublicationIssueKind::playerSpawnPoseMismatch);
     }
 
     if (room.semanticCcfSourceCount == 0U) {

@@ -1,10 +1,11 @@
 # Player spawn and visual identity
 
 **Status:** player/type/primary-actor and mission start-room paths recovered;
-authenticated bounded AFS loading and ordered multi-CCF world-room lookup
-implemented; dynamic actor publication is pending
+authenticated bounded AFS loading, ordered multi-CCF lookup, and atomic
+portable start-pose publication implemented; dynamic actor publication is
+pending
 
-**Evidence:** `EV-20260724-005`, `EV-20260724-006`
+**Evidence:** `EV-20260724-005`, `EV-20260724-006`, `EV-20260727-003`
 
 **Reference build:** SHA-256 values in
 `docs/evidence/source-manifest.sha256`
@@ -76,6 +77,32 @@ It performs an exact room-name lookup, converts the axis rotation to a matrix,
 stores the resulting room pointer in the orientation, and increments the
 count. An editor call site independently shows that generated setup source
 takes the name from the actual `CcSrtNode` room.
+
+### Axis rotation and world-pose semantics
+
+The three rotation fields are radians in x/y/z order. `CcAxisRot` remains in
+mode zero, and `CcMatrixRot` starts at identity before applying Z (`rz`), X
+(`rx`), then Y (`ry`). The primitive functions pass each value directly to
+`FSIN`/`FCOS`; the inverse path stores `FPATAN` results without degree
+conversion. The portable implementation therefore uses the recovered
+equations explicitly instead of a library Euler convention.
+
+The complete selected `CcOrientation` is copied unchanged. Spawn then applies
+position, matrix rotation, and room membership as separate events. The vehicle
+copies the position and converts the matrix directly to its quaternion; no
+room transform participates. The start is an absolute source-world pose with
+separate room membership, not a room-local transform.
+
+The legacy row-vector matrix is transposed and conjugated through the same
+source-to-runtime basis used by room geometry:
+
+```text
+Rruntime = B * transpose(Rlegacy) * inverse(B)
+truntime = B * tlegacy * runtimeUnitsPerSourceUnit
+```
+
+No physical length unit is claimed. The default remains one runtime unit per
+source unit.
 
 ## World lookup and ordered CCF publication
 
@@ -188,9 +215,21 @@ setup identity and footprint into the loaded result. A successfully
 authenticated setup with zero `AddStartPos` records deliberately takes the
 anonymous root-room fallback.
 
+`PlayerSpawnPose` is a separate trivially copyable state, so the established
+input-intention `PlayerAircraftState` and canonical hash remain unchanged. It
+retains the exact authenticated source position/radians plus converted runtime
+world position and column-vector matrix. The publication boundary recomputes
+the pose from the selected start and retained room basis and rejects any
+mismatch.
+
+The Objective-C++ snapshot keeps an independent immutable pose copy after the
+large room payload moves to Metal preparation. On the main thread, the exact
+ticket is consumed, the validated Metal room is committed, and only then are
+the pose and fresh deterministic input state assigned before content becomes
+ready. A new request, stale callback, preparation failure, or validation
+failure leaves the previously committed player state intact.
+
 The implementation deliberately does not execute AFS or infer a setup path. It
-also does not yet convert the recovered axis rotation into the final portable
-player pose, create the primary actor, publish the selected mission room to the
-native iOS coordinator, or publish the actor's skin hierarchies to Metal. Those
-native player-pose and dynamic actor-to-instance handoffs remain the next
-runtime boundary.
+does not yet instantiate the recovered primary actor or publish its selected
+skin hierarchies to Metal. That explicit actor-to-instance join remains the
+next dynamic runtime boundary.

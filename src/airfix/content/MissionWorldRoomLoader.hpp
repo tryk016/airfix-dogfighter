@@ -6,6 +6,7 @@
 #include "airfix/render/DrawSubmissionPlan.hpp"
 #include "airfix/render/MissionWorldRoomDrawAssembly.hpp"
 #include "airfix/render/MissionWorldRoomTextureBindings.hpp"
+#include "airfix/simulation/PlayerSpawnPose.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -132,6 +133,8 @@ struct LoadedMissionWorldRoom {
     std::uint64_t setupSourceFootprintBytes{};
     assets::MissionWorldStartSelection startSelection;
     std::optional<assets::MissionStartPosition> selectedStart;
+    render::BasisTransform runtimeBasis;
+    simulation::PlayerSpawnPose playerSpawnPose;
     render::DrawModelPayload model;
     std::vector<render::MissionWorldRoomMeshProvenance> meshProvenance;
     std::vector<render::MissionWorldRoomInstanceProvenance> instanceProvenance;

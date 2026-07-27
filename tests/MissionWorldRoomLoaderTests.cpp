@@ -390,7 +390,9 @@ void testRootFallbackOrderingCachingAndPoisonTexture() {
                     airfix::assets::MissionWorldStartSelectionSource::
                         rootRoomFallback &&
                 room.startSelection.worldRoomIndex == 0U &&
-                !room.selectedStart.has_value(),
+                !room.selectedStart.has_value() &&
+                room.playerSpawnPose ==
+                    airfix::simulation::PlayerSpawnPose{},
             "authenticated empty setup did not select the root fallback");
     require(
         room.semanticCcfSourceCount == 4U && room.uniqueCcfSourceCount == 3U &&
@@ -458,6 +460,17 @@ void testAuthoredStartSelectsBackdropAndOwnsStart() {
                 room.selectedStart.has_value() &&
                 room.selectedStart->roomName == "Room" &&
                 room.selectedStart->position ==
+                    std::array<float, 3U>{10.0F, 20.0F, 30.0F} &&
+                room.playerSpawnPose.source ==
+                    airfix::simulation::PlayerSpawnPoseSource::
+                        authenticatedStartTable &&
+                room.playerSpawnPose.startPositionIndex == 0U &&
+                room.playerSpawnPose.worldRoomIndex == 1U &&
+                room.playerSpawnPose.legacyWorldPosition ==
+                    std::array<float, 3U>{10.0F, 20.0F, 30.0F} &&
+                room.playerSpawnPose.legacyAxisRotationRadians ==
+                    std::array<float, 3U>{0.1F, 0.2F, 0.3F} &&
+                room.playerSpawnPose.runtimeWorldPosition ==
                     std::array<float, 3U>{10.0F, 20.0F, 30.0F},
             "authenticated setup provenance or authored start changed");
     requireOneTriangle(room, 1U, {4.0F, 5.0F, 6.0F});

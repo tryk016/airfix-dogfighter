@@ -1,5 +1,6 @@
 #include "airfix/content/MissionWorldRoomLoader.hpp"
 #include "airfix/content/MissionWorldRoomLoaderDetail.hpp"
+#include "airfix/content/PlayerSpawnPoseBuilder.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -1004,6 +1005,17 @@ loadMissionWorldRoom(VerifiedContentSession &session,
                     MissionWorldRoomLoadPhase::resolvingStart, 1U, 1U)) {
             return result;
         }
+        const auto playerSpawnPose =
+            buildPlayerSpawnPose(*selection, selectedStart, request.basis);
+        if (!playerSpawnPose.success()) {
+            addIssue(
+                result,
+                playerSpawnPose.issue ==
+                        PlayerSpawnPoseBuildIssue::invalidSelection
+                    ? MissionWorldRoomLoadIssueKind::startSelectionFailure
+                    : MissionWorldRoomLoadIssueKind::invalidRequest);
+            return result;
+        }
 
         if (!report(result, stopToken, guardedProgress,
                     MissionWorldRoomLoadPhase::planningTextureBindings, 0U,
@@ -1151,6 +1163,8 @@ loadMissionWorldRoom(VerifiedContentSession &session,
                 pinnedManifest.setupSourceFootprintBytes,
             .startSelection = *selection,
             .selectedStart = std::move(selectedStart),
+            .runtimeBasis = request.basis,
+            .playerSpawnPose = *playerSpawnPose.pose,
             .model = {},
             .meshProvenance = {},
             .instanceProvenance = {},

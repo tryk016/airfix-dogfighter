@@ -3,8 +3,8 @@
 **State:** mesh/model payload, conservative explicit-room assembly, stable
 runtime texture plans, atomic RGBA8 upload preparation, fail-closed draw
 submission, private CPU diagnostic, public synthetic Metal bootstrap, and
-two-phase authenticated aggregate-mission Metal publication implemented;
-selected-start simulation pose and physical-device visual acceptance pending
+two-phase authenticated aggregate-mission Metal publication and selected-start
+pose commit implemented; physical-device visual acceptance pending
 
 **Evidence:** `EV-20260721-030` through `EV-20260721-034`,
 `EV-20260727-002`
@@ -285,9 +285,10 @@ load sources, and requires every draw-source CCF identity to match that list
 before allocation. The existing `DrawSubmissionPlan` accepts the combined
 model directly. `MissionWorldRoomLoader` now connects the authenticated
 manifest to this complete portable CCF/texture/binding/draw path. Native
-aggregate-mission publication now consumes that owned result. Retained scene
-data for later room changes and applying the selected start room/pose to the
-reconstructed player remain unimplemented.
+aggregate-mission publication now consumes that owned result and commits its
+authenticated selected start as a separate immutable player world pose.
+Retained scene data for later room changes and dynamic actor instantiation
+remain unimplemented.
 
 ## Metal handoff
 
@@ -434,12 +435,15 @@ charged and permanently closes the ledger to new snapshots; the documented
 post-creation page-rounding path instead obtains and absorbs a separately
 admitted token.
 
-Native publication does not yet mutate simulation state. The retained selected
-start records the authenticated room choice and authored pose, but there is no
-simulation pose model to apply it to the reconstructed player. The published
-render room also does not retain the full parsed CCF/catalogue arena; runtime
-room switching must introduce that explicitly before portal or later-room
-transitions can be implemented.
+Native publication now commits one immutable `PlayerSpawnPose` beside the
+fresh input-intention state only after exact ticket consumption and the
+validated Metal pointer swap. The pose is derived from the authenticated start
+and the same basis used for room geometry; the publication validator
+recomputes it and rejects detached or forged values. It is not yet a dynamic
+render override because the static room payload has no proven primary-actor
+instance index. The published render room also does not retain the full parsed
+CCF/catalogue arena; runtime room switching must introduce that explicitly
+before portal or later-room transitions can be implemented.
 
 ## Dynamic instance-pose boundary
 

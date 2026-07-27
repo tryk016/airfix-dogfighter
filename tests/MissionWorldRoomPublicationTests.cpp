@@ -1,4 +1,5 @@
 #include "airfix/content/MissionWorldRoomPublication.hpp"
+#include "airfix/content/PlayerSpawnPoseBuilder.hpp"
 
 #include <array>
 #include <cmath>
@@ -83,6 +84,12 @@ void require(const bool condition, const std::string_view message) {
             },
         .sourceOffset = std::numeric_limits<std::uint64_t>::max(),
     };
+    const auto pose = airfix::content::buildPlayerSpawnPose(
+        room.startSelection, room.selectedStart, room.runtimeBasis);
+    if (!pose.success()) {
+        throw std::runtime_error("valid table pose fixture failed to build");
+    }
+    room.playerSpawnPose = *pose.pose;
     return room;
 }
 
@@ -247,6 +254,36 @@ void testTableMutationsAndFiniteness() {
     }
 }
 
+void testPlayerSpawnPoseBinding() {
+    {
+        auto room = validRootRoom();
+        room.playerSpawnPose.startPositionIndex = 0U;
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerSpawnPoseMismatch},
+            "forged root player pose was accepted");
+    }
+    {
+        auto room = validTableRoom();
+        room.playerSpawnPose.legacyAxisRotationRadians[2] = 0.0F;
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerSpawnPoseMismatch},
+            "table player pose lost the authenticated negative zero");
+    }
+    {
+        auto room = validTableRoom();
+        room.runtimeBasis.runtimeUnitsPerSourceUnit = 2.0F;
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerSpawnPoseMismatch},
+            "player pose detached from the room basis was accepted");
+    }
+}
+
 void testCcfCountAndCacheMutations() {
     {
         auto room = validRootRoom();
@@ -320,6 +357,7 @@ int main() {
         testIdentityAndParallelProvenance();
         testRootFallbackMutations();
         testTableMutationsAndFiniteness();
+        testPlayerSpawnPoseBinding();
         testCcfCountAndCacheMutations();
     } catch (const std::exception &error) {
         std::cerr << "Mission world publication tests failed: " << error.what()

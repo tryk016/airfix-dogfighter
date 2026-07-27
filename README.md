@@ -74,7 +74,7 @@ sources.
 | Rendering | Bounded source-aware multi-CCF runtime-room assembly, globally deduplicated source-local texture binding, numeric provenance, stable texture IDs, atomic RGBA8 upload preparation, CPU diagnostics, two-phase aggregate-mission Metal publication, and neutral scene-bound pose transport implemented |
 | Input core | Deterministic semantic router for touch/controller/test sources implemented |
 | Native controls | Full V1 gameplay-action transport implemented for the UIKit overlay and one Apple extended controller; profiles, remapping, haptics, finished menus, and device acceptance remain pending |
-| Game simulation | Frozen-pose deterministic player-control intent state implemented for flight, throttle, combat, camera, mission, and pause actions; the player spawn/primary-actor path, campaign start table, ordered multi-CCF room lookup/draw plan, grouped skin hierarchy, and complete static 12 ms aircraft force law are documented, while applying the authenticated start pose, portal traversal, dynamic publication, runtime traces, physical units, and numeric tolerance remain pending |
+| Game simulation | Deterministic player-control intent state plus an independently authenticated absolute-world spawn pose are implemented; the player/primary-actor path, campaign start table, ordered multi-CCF room lookup/draw plan, grouped skin hierarchy, and complete static 12 ms aircraft force law are documented, while actor instantiation, portal traversal, dynamic publication, runtime traces, physical units, and numeric tolerance remain pending |
 | Continuous integration | Portable C++ tests plus unsigned device/simulator iOS builds |
 
 Detailed, frequently updated progress lives in
@@ -196,10 +196,12 @@ session for the same revision remains valid. CCF/GTI source admission, RGBA and
 published-CPU budgets are checked; retained CCF metadata additionally has
 explicit post-parse logical accounting, not a process-memory ceiling. No
 partial textures or geometry escape a late failure. Native iOS aggregate
-mission publication is implemented. The selected start record is retained and
-auditable, but its pose is not yet applied to the reconstructed player because
-the simulation pose model is not implemented. Runtime room switching likewise
-still requires a deliberately retained CCF/catalogue arena.
+mission publication is implemented. The selected start is converted with the
+same room basis into an immutable player world pose and committed atomically
+with a fresh deterministic control state after exact ticket consumption.
+Primary-actor instantiation and the actor-to-render-instance join remain open.
+Runtime room switching likewise still requires a deliberately retained
+CCF/catalogue arena.
 
 The mission layer also reconstructs the ordered runtime room namespace across
 the main scene, optional backdrop, and object CCF loads. It keeps the anonymous

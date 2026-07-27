@@ -89,9 +89,13 @@ skin's complete hierarchy for every present slot among up to three blueprints.
 publication masks, receiver fallback, source-local resource identity, room
 ownership, and `FreezeAll` static-BSP rebuilding. The portable source-aware
 plan/assembly now combines all contributors without treating BSP as geometry.
-Physical units, runtime contact traces, authenticated mission/global-texture
-loading, dynamic actor-to-instance publication, projectile creation, and the
-original roles of the three blueprint slots remain open. See
+`EV-20260727-003` independently cross-checks the mission start pose: x/y/z
+radians, mode zero, exact Z-X-Y matrix construction, and absolute-world
+position/matrix semantics with separate room membership. The portable
+publication now derives and atomically commits that authenticated pose.
+Physical units, runtime contact traces, a retained runtime-room catalogue,
+dynamic actor-to-instance publication, projectile creation, and the original
+roles of the three blueprint slots remain open. See
 `docs/re/systems/AIRCRAFT-FLIGHT.md`,
 `docs/re/systems/AIRCRAFT-FLIGHT-LAW.md`, and
 `docs/re/systems/PLAYER-SPAWN.md`.

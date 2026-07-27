@@ -1521,3 +1521,36 @@ superseded evidence.
   and runtime room switching still requires a retained CCF/catalogue arena.
   This entry records implementation scope; it does not claim completion of the
   current GitHub Actions validation.
+
+## 2026-07-27 - authenticated player start-pose publication
+
+- Ghidra Headless and an independent Rizin pass closed the `AddStartPos`
+  transform contract. The three fields are x/y/z radians in mode zero; the
+  legacy matrix starts at identity and applies Z, X, then Y. Player spawn uses
+  the resulting position and matrix as an absolute world pose and applies room
+  membership separately. Physical source length units remain unknown.
+- Added an explicit portable converter rather than relying on a library Euler
+  convention. It preserves the recovered signs/order, transposes legacy
+  row-vector storage, conjugates through the same room basis, and applies the
+  configured runtime-unit scale only to position. Data-less tests cover
+  identity, every positive quarter-turn, mixed order, basis conversion,
+  maximum finite input, non-finite values, and a singular basis.
+- Added a trivially copyable `PlayerSpawnPose` separate from the frozen
+  input-intention `PlayerAircraftState`; the canonical state hash and advance
+  rules remain unchanged. The mission loader retains authenticated raw values,
+  converted runtime values, exact room/index selection, and the basis used.
+  Publication recomputes the pose and rejects any mismatch.
+- The private Objective-C++ snapshot keeps an independent pose copy after its
+  large room payload moves to the renderer. A new mission request no longer
+  clears the prior deterministic state. After read-only Metal validation, the
+  coordinator consumes the exact ticket, performs the no-fail Metal commit,
+  then assigns the new pose and fresh input state before setting content ready.
+  Stale or failed candidates leave the earlier committed state intact.
+- Both the incremental code-intelligence build and a fresh 148-step Windows
+  Ninja Release build completed; all 43 portable tests passed in each build
+  tree. The 244-file public-boundary scan and an independent post-fix review
+  also passed.
+  Binary Ninja Free was opened for a planned third manual view, but the
+  Computer Use approval expired before any binary was opened; the empty
+  session was closed and contributed no evidence. No private path, game
+  binary, tool database, or original-derived payload was committed.

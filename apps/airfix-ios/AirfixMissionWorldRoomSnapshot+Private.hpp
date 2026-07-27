@@ -4,6 +4,9 @@
 
 #include "airfix/content/MissionWorldRoomLoader.hpp"
 #include "airfix/content/WorldRoomPublicationGate.hpp"
+#include "airfix/simulation/PlayerSpawnPose.hpp"
+
+#include <optional>
 
 namespace airfix::ios {
 
@@ -26,5 +29,10 @@ missionWorldRoomPublicationTicket(
     AirfixMissionWorldRoomSnapshot* snapshot);
 [[nodiscard]] content::ContentRevision missionWorldRoomResultRevision(
     AirfixMissionWorldRoomSnapshot* snapshot);
+// Independent immutable copy; remains available after the one-shot large
+// room payload has moved to the renderer.
+[[nodiscard]] std::optional<simulation::PlayerSpawnPose>
+missionWorldRoomPlayerSpawnPose(
+    AirfixMissionWorldRoomSnapshot* snapshot) noexcept;
 
 } // namespace airfix::ios

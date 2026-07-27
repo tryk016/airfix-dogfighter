@@ -13,7 +13,9 @@
 #include "AirfixIOSInputCoordinator+Private.hpp"
 #include "airfix/runtime/AppSession.hpp"
 #include "airfix/simulation/PlayerAircraftSimulation.hpp"
+#include "airfix/simulation/PlayerSpawnPose.hpp"
 
+#include <optional>
 #include <string_view>
 #include <utility>
 
@@ -52,6 +54,7 @@ namespace {
     <AirfixContentCoordinatorDelegate, AirfixIOSInputCoordinatorDelegate> {
     airfix::runtime::AppSession _session;
     airfix::simulation::PlayerAircraftState _playerAircraftState;
+    std::optional<airfix::simulation::PlayerSpawnPose> _playerSpawnPose;
     dispatch_queue_t _rendererPreparationQueue;
 }
 @property(nonatomic, strong) AirfixMetalRenderer* renderer;
@@ -368,9 +371,8 @@ namespace {
     (AirfixContentCoordinator*)coordinator {
     (void)coordinator;
     _session.setContentState(airfix::runtime::ContentState::validating);
-    // A newly requested mission owns a fresh deterministic gameplay state.
-    // Lifecycle and input-source resets do not otherwise erase this state.
-    _playerAircraftState = {};
+    // Keep the previously committed mission state intact until the new room,
+    // spawn pose, and fresh deterministic input state commit together.
     [self.inputCoordinator resetForGameplayBoundary];
     [self updateDiagnosticsLabelWithInputDiagnostics:
         self.inputCoordinator.diagnostics];
@@ -457,6 +459,21 @@ namespace {
             }
 
             NSError* publicationError = nil;
+            const auto playerSpawnPose =
+                airfix::ios::missionWorldRoomPlayerSpawnPose(snapshot);
+            if (!playerSpawnPose.has_value()) {
+                [strongSelf.contentCoordinator
+                    abandonMissionWorldRoomSnapshot:snapshot];
+                strongSelf->_session.setContentState(
+                    airfix::runtime::ContentState::rejected);
+                [strongSelf.inputCoordinator resetForGameplayBoundary];
+                ((MTKView*)strongSelf.view).paused = YES;
+                strongSelf.touchControlsView.hidden = YES;
+                strongSelf.statusLabel.text =
+                    @"Airfix Dogfighter reconstruction\n"
+                     @"Player start publication failed";
+                return;
+            }
             if (![renderer
                     validatePreparedRoomForCommit:preparedRoom
                                            error:&publicationError]) {
@@ -485,6 +502,8 @@ namespace {
                 return;
             }
             [renderer commitValidatedPreparedRoom:preparedRoom];
+            strongSelf->_playerSpawnPose = *playerSpawnPose;
+            strongSelf->_playerAircraftState = {};
 
             strongSelf->_session.setContentState(
                 airfix::runtime::ContentState::ready);

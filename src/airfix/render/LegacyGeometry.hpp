@@ -123,6 +123,25 @@ struct ConvertedNodeTransform {
     const assets::CcfPlacedSrtMetadata& source,
     const BasisTransform& basis = {});
 
+// Reconstructs the exact mode-zero CcAxisRot path used by AddStartPos:
+// identity, then RotateByZ(rz), RotateByX(rx), RotateByY(ry). Angles are
+// radians and the authored position is an absolute source-world position.
+// The result uses the runtime column-vector convention and the same basis and
+// unit conversion as room geometry.
+[[nodiscard]] ConvertedNodeTransform convertLegacyAxisRotationWorldPose(
+    const Vec3& sourceWorldPosition,
+    const std::array<float, 3>& axisRotationRadians,
+    const BasisTransform& basis = {});
+
+// Allocation-free fail-closed form for native/content publication boundaries.
+// Invalid input, a singular basis, or a non-finite/singular result returns no
+// value and never constructs a diagnostic string.
+[[nodiscard]] std::optional<ConvertedNodeTransform>
+tryConvertLegacyAxisRotationWorldPose(
+    const Vec3& sourceWorldPosition,
+    const std::array<float, 3>& axisRotationRadians,
+    const BasisTransform& basis = {}) noexcept;
+
 // The blueprint loader stores authored world transforms. These helpers derive
 // the parent-relative transform used by the runtime scene graph and compose it
 // back using column-vector order.

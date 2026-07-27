@@ -463,11 +463,14 @@
   sessions, identity-versus-callback-error precedence, cancellation, and late
   atomic failures. The portable suite now passes 43/43.
 - The authenticated setup-to-room provenance chain now crosses the native iOS
-  publication boundary. The selected start record remains retained and
-  auditable, but its pose is not yet applied to the reconstructed player
-  because the simulation pose model is absent. Runtime room switching still
-  requires retaining the CCF/catalogue arena rather than reconstructing it from
-  the published static room.
+  publication boundary together with an immutable `PlayerSpawnPose`. Ghidra
+  Headless and Rizin independently confirm x/y/z radians, mode zero, exact
+  Z-X-Y construction, and absolute-world runtime semantics. The loader uses
+  the room's basis and unit policy for both geometry and pose; native
+  publication recomputes the pose, consumes the exact ticket, commits Metal,
+  then assigns pose and a fresh input-intention state before readiness.
+  Runtime room switching still requires retaining the CCF/catalogue arena
+  rather than reconstructing it from the published static room.
 - Added optional build-generated initial mission configuration. Public defaults
   are empty/data-less. Private builds may supply Base64 setup and Level logical
   paths plus a decimal `uint32_t` start index through three GitHub secrets;
@@ -511,10 +514,9 @@
 3. Implement explicit dynamic publication of the recovered primary actor and
    its selected-skin hierarchies through the pose exchange, keeping auxiliary
    weapons/effects separate.
-4. Add the simulation pose model and apply the already retained authenticated
-   start room/pose to the reconstructed player. Introduce a retained
-   CCF/catalogue arena when runtime room switching is implemented; recover
-   portal tracing, camera room traversal, and later transitions afterward.
+4. Introduce a retained CCF/catalogue arena when runtime room switching is
+   implemented; recover portal tracing, camera room traversal, and later
+   transitions afterward.
 5. Keep BSP culling and portal traversal disabled until their runtime semantics
    are proven against executable evidence.
 
