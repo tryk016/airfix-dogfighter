@@ -141,6 +141,7 @@ add_library(airfix_render
     src/airfix/render/DrawMesh.cpp
     src/airfix/render/DrawSubmissionPlan.cpp
     src/airfix/render/LegacyGeometry.cpp
+    src/airfix/render/LegacyScreenProjection.cpp
     src/airfix/render/ObjectVisualDrawAssembly.cpp
     src/airfix/render/PlayerActorPoseFrame.cpp
     src/airfix/render/PlayerActorPoseRuntime.cpp
@@ -421,6 +422,13 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_render_tests tests/LegacyGeometryTests.cpp)
     target_link_libraries(airfix_render_tests PRIVATE airfix::render)
     add_test(NAME airfix_render_tests COMMAND airfix_render_tests)
+
+    add_executable(airfix_legacy_screen_projection_tests
+        tests/LegacyScreenProjectionTests.cpp)
+    target_link_libraries(airfix_legacy_screen_projection_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_legacy_screen_projection_tests
+        COMMAND airfix_legacy_screen_projection_tests)
 
     add_executable(airfix_dynamic_instance_pose_tests
         tests/DynamicInstancePoseTests.cpp)
