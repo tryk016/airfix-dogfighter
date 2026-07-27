@@ -1,7 +1,8 @@
 # Camera and projection contract
 
-**Status:** legacy scalar screen projection and world-to-view implemented;
-reverse depth, 4:3 canvas, and room/portal render chains recovered
+**Status:** legacy scalar projection, world-to-view, depth presets, gameplay
+camera presets, and 4:3 layout implemented; stateful chase pose and Metal join
+remain
 
 This document separates confirmed legacy behavior from reconstruction
 decisions. The complete evidence record is
@@ -112,42 +113,104 @@ The D3D viewport depth range is `[0,1]`. This is a conventional Z-buffer
 carrying manually reversed reciprocal depth. Modes two through four separately
 select unconditional comparison and/or disable depth writes.
 
-The exact legacy clear call/value is still untraced. Clearing a reverse-depth
-target to zero is logically required for `greaterEqual`, but remains a port
-requirement rather than a confirmed original callsite.
+The recovered mode order inside `CcCamera` is `2 -> 2 -> 1 -> 3` for room
+passes, followed by mode `4` for lens overlays:
+
+| Mode | Compare | Write | Confirmed category |
+|---:|---|---:|---|
+| `1` | `greaterEqual` | yes | primary depth-tested geometry and 3D lines |
+| `2` | `always` | yes | unconditional replacement, 2D, font, and radar draws |
+| `3` | `greaterEqual` | no | ordered/layer geometry |
+| `4` | `always` | no | lens and unoccluded overlays |
+
+The Direct3D setter flushes pending transformed vertices before each actual
+compare/write state change, preserving the old state for already staged
+triangles.
+
+Both recovered Direct3D clear paths pass `D3DCLEAR_TARGET |
+D3DCLEAR_ZBUFFER` and exact depth `0.0f`. The whole-target path clears to color
+`0x00000000`; the embedded-scene rectangular path flushes first and clears to
+`0xFF000000`. Their confirmed callers are `NfMain::ProcessEvent` and
+`GadScene::Render`, respectively. Static evidence does not claim that the
+conditional whole-target path runs for every gameplay frame.
 
 See
 [EXP-20260727-006](../../experiments/EXP-20260727-006-reverse-depth.md)
 for the embedded `GtVertex`, transformed-vertex layout, FVF, D3D states, and
-dormant hardware-W branch.
+dormant hardware-W branch, and
+[EXP-20260727-008](../../experiments/EXP-20260727-008-depth-clear.md)
+for the exact clear calls, ordering, and callers.
+[EXP-20260727-009](../../experiments/EXP-20260727-009-depth-mode-callers.md)
+records the complete direct-caller inventory and frame ordering.
 
 ## Legacy canvas and aspect
 
 The application starts in exclusive fullscreen `640x480`. Camera windows and
-centres are pixel coordinates. Main gameplay uses a fixed window embedded in
-the HUD:
+centres are pixel coordinates. The engine has a full-current-screen setter
+path, and menu/widget scenes use their own rectangles.
 
 ```text
 logical canvas = 640 x 480
-gameplay window = (35,35) - (555,345)
-gameplay size = 520 x 310
-gameplay centre = (295,190)
 ```
+
+The fixed `(35,35)-(555,345)` window and `(295,190)` centre previously labeled
+as gameplay belong to the House Editor camera. Symbols, frontend resource
+strings, `freecam`/`fixedcam` state, and its test-world load independently
+confirm that correction. House Editor remains outside version 1 scope, so its
+rectangle is not part of the portable canvas contract.
 
 The camera FOV is horizontal; focal length depends on window width only.
 Window height does not enter projection. No adaptive letterbox, pillarbox,
-Hor+, or widescreen policy was found, and the fixed gameplay rectangle is not
-recomputed after a console resolution change.
+Hor+, or widescreen policy was found in the audited setters.
 
 The safe first iOS presentation policy is therefore an explicit reconstruction
-decision: aspect-fit the logical 4:3 canvas and keep the legacy gameplay
-window/HUD coordinates unchanged. A widescreen/Hor+ mode must remain a
+decision: aspect-fit the logical 4:3 canvas without treating a modern device
+aspect as extra legacy camera extent. A widescreen/Hor+ mode must remain a
 separate option with its own HUD, culling, touch-layout, and visual tests.
 
 See
 [EXP-20260727-007](../../experiments/EXP-20260727-007-viewport-aspect.md)
 for setter callsites, display setup, resize behavior, and preview/widget camera
 rectangles.
+
+## Gameplay camera
+
+The actual gameplay camera is owned by `NfEngine + 0x30`. Event case five
+assigns the complete current screen as its window and the screen midpoint as
+its centre. At startup:
+
+```text
+window = (0,0) - (640,480)
+centre = (320,240)
+near/far/FOV = 0.25 / 200 / 90
+```
+
+Three persistent chase presets cycle `0 -> 1 -> 2 -> 0`; rear view is a held
+override and does not change the persistent mode:
+
+| Preset | Speed | Offset `(x,y,z)` |
+|---|---:|---|
+| `camera0` | `0.7` | `(0, 0.1, -0.75)` |
+| `camera1` | `0.07` | `(0, 0.2, -0.85)` |
+| `camera2` | `0.7` | `(0, 1.8, -0.75)` |
+| `camera_rear` | `0.7` | `(0, 0.1, +1.0)` |
+
+The chase update rotates `(offset.x, 0, offset.z)` by vehicle rotation and adds
+offset Y in world-up space. It applies the recovered nonlinear per-refresh
+step without a time multiplier, resolves portal/sphere/line collision, then
+rebuilds camera rotation to look at the vehicle. No normal player-triggered
+legacy recenter binding was found.
+
+`LegacyGameplayCameraPreset.cpp` implements only the exact tuples, persistent
+cycle, held rear selection, and projection defaults. Invalid raw modes fail
+closed. The allocation-free `noexcept` boundary intentionally excludes
+smoothing, collision, portal mutation, and final pose until those stateful
+steps have their own bounded implementation.
+
+See
+[EXP-20260727-010](../../experiments/EXP-20260727-010-gameplay-camera-modes.md)
+for field offsets, input bindings, formulas, collision order, SRT mutation,
+call graph, and the House Editor correction.
 
 ## Current room and portals
 
@@ -270,17 +333,23 @@ configuration, atomic failure, overflow, and repeated zero-allocation use.
 
 `src/airfix/render/LegacyCanvasLayout.cpp` keeps the recovered facts and the
 port decision separate. It exposes compile-time constants for the 640x480
-logical canvas and 520x310 gameplay rectangle, then provides a validated
-aspect-fit policy for a caller-supplied target rectangle. The immutable build
-result is backend-neutral, `noexcept`, allocation-free, and rejects non-finite,
+logical canvas, then provides a validated aspect-fit policy for a
+caller-supplied target rectangle. The immutable build result is
+backend-neutral, `noexcept`, allocation-free, and rejects non-finite,
 non-positive, underflowing, or overflowing layouts. It deliberately knows
 nothing about UIKit points, display scale, orientation, safe areas, or Metal.
 
+`src/airfix/render/LegacyDepthState.cpp` maps untrusted raw mode numbers
+`1` through `4` to the confirmed active-path compare/write presets and rejects
+every other value. It also exposes the confirmed reverse-depth clear scalar.
+This is an allocation-free backend-neutral contract; it does not alter the
+current diagnostic Metal renderer or decide batching/encoder policy.
+
 ## Still unknown
 
-- gameplay camera modes, chase offsets, smoothing, rear view, and recentering;
-- the exact original depth-clear call/value and which gameplay draws select
-  each of the four depth modes;
+- runtime parity of the recovered chase recurrence and collision-axis factors;
+- first/third-person pose differences in actor plugins other than the examined
+  aircraft path;
 - final Metal clip-matrix packaging and raster-space Y convention;
 - optional widescreen/Hor+ behavior beyond the confirmed parity-first 4:3
   policy;
@@ -303,3 +372,6 @@ evidence is recovered.
 - [Camera world-to-view experiment](../../experiments/EXP-20260727-005-camera-world-to-view.md)
 - [Direct3D reverse-depth experiment](../../experiments/EXP-20260727-006-reverse-depth.md)
 - [Viewport/aspect experiment](../../experiments/EXP-20260727-007-viewport-aspect.md)
+- [Depth-clear experiment](../../experiments/EXP-20260727-008-depth-clear.md)
+- [Depth-mode caller experiment](../../experiments/EXP-20260727-009-depth-mode-callers.md)
+- [Gameplay camera experiment](../../experiments/EXP-20260727-010-gameplay-camera-modes.md)

@@ -503,14 +503,23 @@
   immutable, normalized-Gram-validated, allocation-free C++20 boundary.
   The active Direct3D path is now confirmed as a normal Z-buffer carrying
   manual reverse depth `near / cameraZ`, with `greaterEqual` comparison and
-  `[0,1]` viewport depth. Startup uses a logical 640x480 canvas and fixed
-  gameplay camera window `(35,35)-(555,345)`; no adaptive widescreen policy was
-  found. The portable projection result now preserves camera Z and the exact
-  reciprocal-depth scalar, while an immutable, allocation-free layout contract
-  aspect-fits the recovered 640x480 canvas without presenting that port policy
-  as original behavior. Gameplay camera pose/modes and the exact clear-depth
-  call remain unknown, so Metal is still explicitly diagnostic and no full
-  parity matrix has been introduced.
+  `[0,1]` viewport depth. Both concrete Direct3D clear paths use
+  `TARGET|ZBUFFER` with exact depth `0.0`. Startup uses a logical 640x480
+  canvas; no adaptive widescreen policy was found. A follow-up symbol/string
+  audit corrected the fixed `(35,35)-(555,345)` rectangle from “gameplay” to
+  the deferred House Editor. The portable projection result now preserves
+  camera Z and the exact reciprocal-depth scalar, while an immutable,
+  allocation-free layout contract aspect-fits the recovered 640x480 canvas
+  without presenting that port policy as original behavior. A second portable
+  contract fail-closed maps raw depth modes `1` through `4` to the recovered
+  compare/write presets and confirmed zero clear. The actual gameplay camera
+  is now separated from the House Editor: it uses a full-current-screen
+  viewport, projection defaults `0.25/200/90`, three persistent chase tuples,
+  and a held rear tuple. Preset selection/cycling is implemented as another
+  fail-closed portable contract; the recovered per-refresh smoothing,
+  portal/collision correction, and look-at pose are documented but not yet
+  implemented. Metal remains explicitly diagnostic and no full parity matrix
+  has been introduced.
 - The authenticated setup-to-room provenance chain now crosses the native iOS
   publication boundary together with an immutable `PlayerSpawnPose`. Ghidra
   Headless and Rizin independently confirm x/y/z radians, mode zero, exact
@@ -559,11 +568,12 @@
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Recover gameplay camera pose/modes and the exact legacy depth-clear call
-   before introducing a Metal camera matrix or performing physical-device
-   visual acceptance. World-to-camera, scalar projection with reciprocal
-   depth, and parity-first 4:3 presentation are implemented as portable
-   contracts. Auxiliary weapons and effects remain separate.
+3. Implement the bounded gameplay chase recurrence, portal/collision join, and
+   look-at pose before introducing a Metal camera matrix or performing
+   physical-device visual acceptance. World-to-camera, scalar projection with
+   reciprocal depth, exact zero clear, depth modes, camera presets, and
+   parity-first 4:3 presentation are recovered; the safe stateless subsets are
+   implemented. Auxiliary weapons and effects remain separate.
 4. Introduce a retained CCF/catalogue arena when runtime room switching is
    implemented; recover portal tracing, camera room traversal, and later
    transitions afterward.

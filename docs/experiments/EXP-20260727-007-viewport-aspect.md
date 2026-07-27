@@ -30,19 +30,20 @@ was not used.
 ## Result
 
 The original application starts unconditionally at `640x480` and uses an
-exclusive fullscreen DirectDraw mode. The main gameplay camera uses a fixed
-pixel rectangle inside that logical canvas:
+exclusive fullscreen DirectDraw mode. Camera setter coordinates are pixels,
+not normalized values.
 
-```text
-window = (35, 35) - (555, 345)
-size   = 520 x 310
-centre = (295, 190)
-aspect = 52 / 31 ~= 1.677419
-```
+The fixed `(35,35)-(555,345)` rectangle originally labeled as the main
+gameplay viewport in this audit is a House Editor camera. A follow-up
+symbol/string audit found the `Graphics\Frontend\HouseEditor` resources,
+`freecam`/`fixedcam` state, camera controls, and test-world load in the same
+object. The examined setter paths still contain no automatic letterbox,
+pillarbox, Hor+, or widescreen policy.
 
-This is an embedded 3D viewport inside the HUD, not an adaptive 16:9 mode.
-The examined code contains no automatic letterbox, pillarbox, Hor+, or
-widescreen policy.
+The same follow-up found the actual gameplay path in
+`NfEngine::ProcessEvent`: it assigns the full current screen to the camera.
+At startup this is `(0,0)-(640,480)` with centre `(320,240)`. The parity-first
+640x480 canvas therefore remains independently supported.
 
 ## Camera setter callsites
 
@@ -54,29 +55,29 @@ external callsites are:
 | `AfEngine` `NfEngine::ProcessEvent` | `[0x00040250, 0x0004203B)` | window `0x4068E`, centre `0x406B1` | Full current `GtScreen`: `(0,0,width,height)`, midpoint |
 | `AfEngine` `GadScene::Render` | `[0x00071E80, 0x00071F68)` | window `0x71EEC`, centre `0x71F18` | Widget pixel rectangle and midpoint, refreshed each render |
 | `Dogfighter` preview function | `[0x0001AC20, 0x0001B29E)` | window `0x1B21F`, centre `0x1B24B` | Menu/aircraft-preview widget rectangle |
-| `Dogfighter` gameplay camera init/reset | `[0x0002B8D0, 0x0002B9CF)` | window `0x2B8F8`, centre `0x2B90E` | Fixed `(35,35)-(555,345)`, centre `(295,190)` |
+| `Dogfighter` House Editor camera reset | `[0x0002B8D0, 0x0002B9CF)` | window `0x2B8F8`, centre `0x2B90E` | Fixed `(35,35)-(555,345)`, centre `(295,190)` |
 
 Working names for the two private `Dogfighter.exe` functions are semantic and
 carry confidence 2/3; their exact callsites and constants are confidence 3/3.
 
-Related camera functions:
+Related House Editor camera functions:
 
 | Function | RVA / callsite | Confirmed behavior |
 |---|---:|---|
-| gameplay render function | RVA `0x0002B450` | Sets screen and renders; mirror/rear branch changes room/clipping, not window/centre |
-| gameplay FOV state | RVA `0x0002AB80`, call `0x2B224` | Applies FOV stored at object `+0x4E4` |
-| preview scene constructor | RVA `0x00032130`, call `0x32194` | Sets FOV `50` |
+| House Editor render function | RVA `0x0002B450` | Sets screen and renders the editor camera |
+| House Editor FOV state | RVA `0x0002AB80`, call `0x2B224` | Applies FOV stored at object `+0x4E4` |
+| House Editor scene constructor | RVA `0x00032130`, call `0x32194` | Sets FOV `50` |
 | `NfEngine` constructor | RVA `0x0003F8E0`, call `0x3FA3A` | Sets FOV `90` |
 | `NfEngine::ConsoleCommand` | RVA `0x000422A0`, call `0x42640` | Can change FOV |
 
-Gameplay initialization has two recovered parameter branches:
+House Editor reset has two recovered parameter branches:
 
 ```text
 near 0.1, far 500, FOV 90
 near 8,   far 500, FOV 50
 ```
 
-Their gameplay-mode meanings remain to be named.
+They select fixed and free editor-camera behavior.
 
 ## Horizontal FOV and aspect consequence
 
@@ -147,42 +148,38 @@ two or three numeric arguments.
 
 The audit found no automatic resize event or scaling policy. A console-selected
 wider mode changes full-screen camera dimensions where that caller reads the
-screen, but the fixed gameplay window remains `(35,35)-(555,345)`.
+screen, but the fixed House Editor window remains `(35,35)-(555,345)`.
 
 ## Port consequence
 
 Binary facts:
 
 - logical startup display is `640x480` / 4:3;
-- gameplay 3D renders inside the fixed 520x310 HUD rectangle;
 - menu/widget cameras receive their own pixel rectangles;
 - the FOV is horizontal and projection has no implicit aspect correction;
-- mirror/rear rendering reuses the gameplay window;
+- the 520x310 fixed rectangle belongs to the deferred House Editor;
 - no adaptive widescreen policy was found.
 
 Safe first parity policy for iOS, explicitly a reconstruction decision:
 
 1. Retain a logical `640x480` canvas.
-2. Preserve gameplay camera window `(35,35)-(555,345)` and centre `(295,190)`.
-3. Aspect-fit the logical 4:3 canvas inside the physical drawable.
-4. Treat pillar/letterbox regions and device safe areas as presentation space,
+2. Aspect-fit the logical 4:3 canvas inside the physical drawable.
+3. Treat pillar/letterbox regions and device safe areas as presentation space,
    not as extra legacy camera extent.
-5. Add widescreen/Hor+ only as a separate option with dedicated HUD, culling,
+4. Add widescreen/Hor+ only as a separate option with dedicated HUD, culling,
    touch-layout, and visual-parity tests.
 
-This policy prevents a modern device aspect from silently changing vertical
-framing or moving the original HUD.
+This policy prevents a modern device aspect from silently changing framing.
 
 `LegacyCanvasLayout` now implements that policy as a backend-neutral,
-allocation-free C++20 factory. Recovered canvas/gameplay constants are exposed
-separately from the aspect-fit result, and the factory validates target
-extents and derived endpoints before publishing an immutable layout. UIKit
-safe areas, orientation, display scale, and Metal drawable conversion remain
-outer-platform responsibilities.
+allocation-free C++20 factory. The recovered 640x480 canvas constants are
+exposed separately from the aspect-fit result, and the factory validates
+target extents and derived endpoints before publishing an immutable layout.
+UIKit safe areas, orientation, display scale, and Metal drawable conversion
+remain outer-platform responsibilities.
 
 ## Remaining limits
 
-- The full semantics of `NfEngine::ProcessEvent` case five are unnamed.
 - Later scripts/configuration could invoke console resizing; full
   `system.ini` behavior was not part of this audit.
 - The available display-mode list and selected bit depth require runtime
@@ -190,3 +187,6 @@ outer-platform responsibilities.
 - `gt3DFX.dll` is outside this result; the active Direct3D path is confirmed.
 - Exhaustive raw writes that bypass the named camera setters were not proven
   absent.
+
+The gameplay ownership, mode, and pose path is detailed in
+[EXP-20260727-010](EXP-20260727-010-gameplay-camera-modes.md).

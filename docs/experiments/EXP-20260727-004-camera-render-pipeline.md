@@ -203,6 +203,13 @@ The following are still unknown:
 - whether any path raises the portal recursion limit above its default;
 - widescreen policy and whether faithful 4:3 or expanded framing is intended.
 
+This list records the boundary of this experiment when it was completed.
+Follow-up experiments
+[EXP-20260727-005](EXP-20260727-005-camera-world-to-view.md) through
+[EXP-20260727-010](EXP-20260727-010-gameplay-camera-modes.md) subsequently
+closed the world-to-view, depth, clear, viewport, and gameplay-camera facts
+without changing the evidence reported above.
+
 ## Reconstruction consequence
 
 `LegacyScreenProjection` now reproduces and tests the confirmed scalar

@@ -247,17 +247,18 @@ camera-space Z and the exact projection factor as `legacyRhw`. This is a
 bounded C++20 implementation of the confirmed scalar contract; it does not yet
 select a Metal compare function, clear value, or clip-space matrix.
 
-A reverse-depth buffer would logically be cleared to zero, but the exact
-legacy clear call and value were not recovered in this bounded audit.
-`0.0` must remain a reconstruction requirement pending either that callsite or
-a native render test, not be mislabeled as a confirmed original constant.
+The follow-up
+[depth-clear audit](EXP-20260727-008-depth-clear.md) recovered both concrete
+Direct3D clear calls. Each uses `TARGET|ZBUFFER` and exact depth `0.0f`, so zero
+is now confirmed original evidence rather than only a reconstruction
+requirement.
 
 ## Remaining limits
 
-- Exact depth-clear call/value is not yet statically confirmed.
 - No runtime D3D7 capture has been performed.
 - Reachability of the dormant hardware-W branch in other driver versions is
   unknown; the examined DLL contains no enabling write.
 - Some attributes interpolated by `GtVertex::ClipFrom` remain unnamed.
-- Gameplay camera pose construction and viewport presentation remain separate
-  contracts.
+- Gameplay camera pose and viewport facts are recorded in
+  [EXP-20260727-010](EXP-20260727-010-gameplay-camera-modes.md); their stateful
+  implementation and Metal packaging remain separate contracts.

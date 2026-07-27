@@ -257,6 +257,13 @@ Still open:
 - legacy W-buffer and exact Metal `[0,1]` depth mapping;
 - widescreen and final viewport policy.
 
+This list records the boundary of this experiment when it was completed.
+Follow-up experiments
+[EXP-20260727-006](EXP-20260727-006-reverse-depth.md) through
+[EXP-20260727-010](EXP-20260727-010-gameplay-camera-modes.md) subsequently
+closed the depth, clear, viewport, and gameplay-camera facts. Stateful chase
+pose implementation and the final Metal join remain separate.
+
 ## Reconstruction consequence
 
 `LegacyCameraTransform` now validates an orthogonal uniformly scaled camera

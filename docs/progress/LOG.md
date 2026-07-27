@@ -1796,25 +1796,58 @@ superseded evidence.
   `ALWAYS` or `GREATEREQUAL` with writes enabled or disabled.
 - Confirmed inclusive near/far clipping, reciprocal depth range
   `[near/far, 1]`, and D3D viewport depth `[0,1]`. This gives Metal an exact
-  reverse-depth scalar contract. The original depth-clear call/value remains
-  untraced; clearing to zero is logically required but is not yet labeled as
-  original evidence.
+  reverse-depth scalar contract.
 - Enumerated all named `SetWindow`/`SetCentre` callers. Startup requests
-  exclusive fullscreen `640x480`; main gameplay installs fixed pixel window
-  `(35,35)-(555,345)` with centre `(295,190)`, while menu scenes use their
-  widget rectangles. Horizontal FOV depends only on window width, and no
-  adaptive widescreen, Hor+, letterbox, or pillarbox policy was found.
+  exclusive fullscreen `640x480`; the engine has a full-screen caller, while
+  menu/widget scenes use their own pixel rectangles. Horizontal FOV depends
+  only on window width, and no adaptive widescreen, Hor+, letterbox, or
+  pillarbox policy was found.
 - Selected a parity-first iOS presentation policy: retain a logical 640x480
-  canvas, preserve the embedded 520x310 gameplay/HUD window, and aspect-fit
-  that canvas into the physical target. This is explicitly a port decision;
-  optional widescreen remains a separate later feature with its own HUD,
-  culling, touch-layout, and visual acceptance.
+  canvas and aspect-fit it into the physical target. This is explicitly a port
+  decision; optional widescreen remains a separate later feature with its own
+  HUD, culling, touch-layout, and visual acceptance.
 - Extended `LegacyScreenProjection` to publish camera-space Z and the exact
   recovered reciprocal-depth factor without introducing Metal state or
   clipping. Boundary, monotonicity, atomic-failure, and zero-allocation tests
   cover the new result.
-- Added `LegacyCanvasLayout`, separating recovered 640x480/gameplay constants
-  from a validated, immutable, backend-neutral aspect-fit port policy.
+- Added `LegacyCanvasLayout`, separating the recovered 640x480 extent from a
+  validated, immutable, backend-neutral aspect-fit port policy.
   Independent review identified a float-endpoint overflow edge case; checked
   double-width endpoint headroom and regression tests close it.
 - A clean Ninja build completed all 175 steps and all 52 CTest targets pass.
+- A follow-up symbol/string audit corrected the fixed 520x310 window at
+  `Dogfighter.exe` RVA `0x2B8D0`: it belongs to the deferred House Editor, not
+  the main gameplay camera. Removed that incorrectly labeled rectangle from
+  the portable layout contract; the recovered 640x480 startup canvas is
+  unaffected.
+- Recovered the two concrete Direct3D clear implementations. Whole-target and
+  clipped-rectangle paths both call `IDirect3DDevice7::Clear` with
+  `TARGET|ZBUFFER`, exact depth `0.0`, and stencil zero; their colors are
+  respectively `0x00000000` and `0xFF000000`. This closes the original
+  reverse-depth clear-value gap.
+- Enumerated the depth-state callers and recovered the room-pass order
+  `2 -> 2 -> 1 -> 3`, followed by mode `4` for lens overlays. Mode changes
+  flush pending geometry before changing compare/write state; radar, fonts,
+  2D primitives, and two mission-menu renderers consistently select mode `2`.
+- Added `LegacyDepthState`, a `noexcept`, allocation-free and fail-closed
+  portable mapping for the four confirmed active-path presets. It records the
+  zero clear scalar but deliberately leaves the diagnostic Metal state
+  untouched until gameplay camera integration.
+- Correctly located the gameplay camera at `NfEngine + 0x30`. It uses the
+  current full screen, giving `(0,0)-(640,480)` and centre `(320,240)` at
+  startup, with projection defaults near `0.25`, far `200`, and horizontal FOV
+  `90`.
+- Recovered persistent chase tuples `camera0`, `camera1`, and `camera2`, their
+  `0 -> 1 -> 2 -> 0` cycle, and the held `camera_rear` override. The vehicle
+  rotates only offset X/Z while applying Y as world-up, advances through an
+  exact nonlinear per-refresh recurrence, resolves portals plus sphere/line
+  collisions, and finally looks at the vehicle.
+- Added `LegacyGameplayCameraPreset`, a fail-closed and allocation-free
+  portable implementation of the exact four tuples and persistent cycle.
+  Smoothing, collisions, pose mutation, optional free look, and Metal
+  integration remain deliberately separate.
+- Independent review approved both portable contracts after one stale
+  canvas/gameplay wording issue was corrected. A clean Ninja build completed
+  all 181 steps and all 54 CTest targets pass; the public-boundary scan checks
+  285 files, the function catalogue contains 206 unique entries, and
+  `actionlint` plus `git diff --check` are clean.
