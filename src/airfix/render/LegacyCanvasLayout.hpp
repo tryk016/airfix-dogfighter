@@ -32,23 +32,6 @@ namespace recovered_legacy_canvas {
 inline constexpr float width = 640.0F;
 inline constexpr float height = 480.0F;
 
-inline constexpr float gameplayLeft = 35.0F;
-inline constexpr float gameplayTop = 35.0F;
-inline constexpr float gameplayRight = 555.0F;
-inline constexpr float gameplayBottom = 345.0F;
-inline constexpr float gameplayWidth = gameplayRight - gameplayLeft;
-inline constexpr float gameplayHeight = gameplayBottom - gameplayTop;
-inline constexpr LegacyCanvasRect gameplayRect{
-    gameplayLeft,
-    gameplayTop,
-    gameplayWidth,
-    gameplayHeight,
-};
-inline constexpr LegacyCanvasPoint gameplayCentre{
-    (gameplayLeft + gameplayRight) * 0.5F,
-    (gameplayTop + gameplayBottom) * 0.5F,
-};
-
 } // namespace recovered_legacy_canvas
 
 enum class LegacyCanvasLayoutBuildIssueKind : std::uint8_t {

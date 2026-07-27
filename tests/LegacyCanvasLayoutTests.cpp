@@ -63,15 +63,6 @@ static_assert(
 
 static_assert(recovered_legacy_canvas::width == 640.0F);
 static_assert(recovered_legacy_canvas::height == 480.0F);
-static_assert(recovered_legacy_canvas::gameplayLeft == 35.0F);
-static_assert(recovered_legacy_canvas::gameplayTop == 35.0F);
-static_assert(recovered_legacy_canvas::gameplayRight == 555.0F);
-static_assert(recovered_legacy_canvas::gameplayBottom == 345.0F);
-static_assert(recovered_legacy_canvas::gameplayWidth == 520.0F);
-static_assert(recovered_legacy_canvas::gameplayHeight == 310.0F);
-static_assert(
-    recovered_legacy_canvas::gameplayCentre ==
-    LegacyCanvasPoint{295.0F, 190.0F});
 
 void require(const bool condition, const char* const message) {
     if (!condition) {
@@ -109,12 +100,7 @@ void requireBuildIssue(
         message);
 }
 
-void testRecoveredConstantsAndFourByThreeTarget() {
-    require(
-        recovered_legacy_canvas::gameplayRect ==
-            LegacyCanvasRect{35.0F, 35.0F, 520.0F, 310.0F},
-        "recovered gameplay rectangle changed");
-
+void testRecoveredCanvasAndFourByThreeTarget() {
     const LegacyCanvasRect target{0.0F, 0.0F, 1280.0F, 960.0F};
     const auto built = buildLegacyCanvasAspectFitLayout(target);
     const auto& layout =
@@ -247,7 +233,7 @@ void testBuildIsImmutableAndDoesNotAllocate() {
 
 int main() {
     try {
-        testRecoveredConstantsAndFourByThreeTarget();
+        testRecoveredCanvasAndFourByThreeTarget();
         testWidescreenTarget();
         testPortraitTarget();
         testNonzeroTargetOrigin();
