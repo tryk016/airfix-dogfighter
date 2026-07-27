@@ -1973,3 +1973,33 @@ superseded evidence.
   nominally allocation-free publication validator. The corrected validator
   uses `tryComposeNodeTransforms`; a global-allocation counter proves zero
   allocations for a complete valid player room.
+
+## 2026-07-27 - runtime/source-world spatial adapter
+
+- Added an allocation-free `noexcept` render-layer boundary that converts
+  runtime segments through the mission `BasisTransform`, queries the retained
+  source-world BSP, and transforms authored hit points and plane normals back
+  to runtime coordinates. Points use the established basis and positive unit
+  scale in both directions; normals use inverse transpose without a duplicate
+  reflection flip and remain explicitly unnormalized plane covectors.
+- Kept the source tracer's non-clamped legacy fraction as diagnostic evidence
+  while adding the typed `outOfSegmentHit` result required by a future camera
+  state publisher. No fraction is clamped and no hit point is reconstructed
+  from a modified value.
+- Added an opt-in strict portal mode that validates every local hit in
+  `[0,1]` before its gate, segment advance, or room change. The runtime portal
+  adapter always enables it, preventing an earlier invalid hop from being
+  hidden by a later valid hit or partially publishing an intermediate room.
+- Synthetic tests distinguish inverse transpose from direct normal mapping
+  under shear, cover scale and reflection, both epsilon directions, exact
+  endpoints, valid and invalid multi-room transitions, fail-closed basis/input
+  handling, and 4,096 allocation-counted line/portal calls.
+- Independent review found no blocking or significant issue. Its one
+  nonblocking coverage suggestion was closed with a direct runtime-adapter
+  test proving that a valid first hop followed by an invalid second hop keeps
+  the intermediate room diagnostic-only.
+- A fresh Release Ninja build completes all 199 steps and all 60 CTest targets
+  pass. The code-intelligence build and its 60-test suite also pass, and the
+  generated database contains the new translation units. Focused clangd checks
+  with the selected trusted GCC query driver, the public-boundary suite,
+  12 Rizin normalization tests, `actionlint`, and `git diff --check` are clean.

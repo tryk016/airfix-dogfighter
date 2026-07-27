@@ -526,8 +526,12 @@
   order including binary32 spills and unordered traversal, portal
   mesh/type/visibility gates, and source-aware runtime-room targets. Catalog
   replay, pre-allocation aggregate limits, exact publication topology, and a
-  hard 256-transition safety ceiling protect the retained backend.
-  Sphere/contact resolution, runtime-basis and stateful camera publication,
+  hard 256-transition safety ceiling protect the retained backend. A new
+  allocation-free runtime/source-world adapter now applies the mission basis
+  and units in both directions, transforms plane normals by inverse transpose,
+  preserves diagnostic legacy fractions, and rejects any out-of-segment hit
+  before a camera-facing portal trace can change rooms.
+  Sphere/contact resolution, stateful camera/room publication,
   dynamic-object collision, and the Metal join remain unimplemented. Metal
   remains explicitly diagnostic and no full parity matrix has been
   introduced.
@@ -579,15 +583,15 @@
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Implement sphere/contact resolution plus the runtime-basis and stateful
-   camera publication join before introducing a Metal camera matrix or performing
+3. Implement sphere/contact resolution plus the stateful camera/room
+   publication join before introducing a Metal camera matrix or performing
    physical-device visual acceptance. World-to-camera, scalar projection with
    reciprocal depth, exact zero clear, depth modes, camera presets, quaternion
    matrix, stateless chase target/smoothing, collision/factor/line primitives,
    look-at pose math, and parity-first 4:3 presentation are recovered and
    implemented. Auxiliary weapons and effects remain separate.
-4. Join the retained portal traversal to camera/simulation room state, then
-   validate multi-room movement against controlled executable traces.
+4. Join the runtime-adapted portal traversal to camera/simulation room state,
+   then validate multi-room movement against controlled executable traces.
 5. Keep BSP render culling disabled until its separate runtime semantics are
    proven against executable evidence.
 

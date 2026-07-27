@@ -76,6 +76,7 @@ enum class MissionWorldPortalTraceStatus : std::uint8_t {
     invalidInput,
     traversalDepthExceeded,
     transitionLimitExceeded,
+    outOfSegmentHit,
 };
 
 struct MissionWorldPortalTraceResult {
@@ -99,6 +100,11 @@ struct MissionWorldPortalTraceOptions {
     // Values above kMissionWorldSpatialMaximumPortalTransitions are rejected
     // as invalid input rather than disabling the safety ceiling.
     std::size_t maximumTransitions{64U};
+    // Portable state publication can require every local portal hit to have
+    // an exact finite fraction in [0, 1]. The raw legacy backend defaults to
+    // false because its epsilon endpoint gate intentionally admits crossings
+    // just outside the current recursion interval.
+    bool requireHitsWithinSegment{false};
 };
 
 // Reconstructs the default PhLine/CcRoom::TracePortals path on this game
