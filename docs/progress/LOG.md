@@ -1759,3 +1759,29 @@ superseded evidence.
   implementation and tests is also clean. Independent review found no P0-P3
   issue; the public-boundary scan checks 267 files, `actionlint`, and
   `git diff --check` are clean.
+- A follow-up Ghidra/Rizin audit recovered the full camera SRT relation that
+  precedes that projection. `GetNodeRelation` subtracts camera translation,
+  evaluates the object/world triplets against the transposed camera basis, and
+  applies cached `q = 1 / scale²`; the renderer consumes this scratch relation
+  only after `AddVisibleObjectsToRenderList` prepares it. Light and projector
+  paths independently corroborate the same operation order and show no hidden
+  X/Y/Z reflection.
+- Camera render snapshots at `+0x978` and `+0x9B0` retain the prior and current
+  world SRT for motion blur. Their roles are confirmed, but the detailed
+  motion-blur endpoint contract, gameplay camera modes, Metal depth mapping,
+  and widescreen policy remain open and are not part of the portable view
+  transform.
+- Implemented the confirmed world-point subset as immutable
+  `LegacyCameraTransform`. The allocation-free `noexcept` builder validates
+  finite values, normalized Gram orthogonality, uniform column length,
+  `q * scale²`, tiny scales, and a fail-closed range that excludes subnormal
+  inverse-square parity. The hot path preserves subtract, dot, then `q`
+  operation order and reports non-finite input/output atomically.
+- Independent review found and resolved a large-scale/subnormal tolerance
+  gap and an rvalue getter lifetime hazard; the focused re-review reports both
+  resolved with no remaining P0-P3 finding. A 172-step clean Windows
+  GCC/Ninja build followed by the final incremental rebuild and all 51
+  portable tests pass, including tiny/large scale, transpose/order, negative
+  scale, overflow, immutability, and zero-allocation coverage. The
+  public-boundary scan checks 271 files; `actionlint`, the function-catalog
+  uniqueness check, and `git diff --check` are clean.

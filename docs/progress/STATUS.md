@@ -496,9 +496,14 @@
   with a default depth limit of two; it does not traverse static-BSP children.
   Portal-BSP is instead confirmed in camera movement room transitions. The
   exact scalar projection is now implemented as a validated, allocation-free
-  portable C++20 contract. The complete view transform, gameplay camera modes,
-  legacy depth-to-Metal mapping, and widescreen policy remain unknown, so
-  Metal is still explicitly diagnostic and no parity matrix has been guessed.
+  portable C++20 contract. The camera SRT layout and exact world-to-camera
+  transform are also recovered: subtract camera translation, apply three
+  transposed-basis dot products, then multiply by cached inverse-square scale,
+  without changing axis signs. That point transform is implemented behind an
+  immutable, normalized-Gram-validated, allocation-free C++20 boundary.
+  Gameplay camera modes, legacy depth-to-Metal mapping, and widescreen policy
+  remain unknown, so Metal is still explicitly diagnostic and no full parity
+  matrix has been introduced.
 - The authenticated setup-to-room provenance chain now crosses the native iOS
   publication boundary together with an immutable `PlayerSpawnPose`. Ghidra
   Headless and Rizin independently confirm x/y/z radians, mode zero, exact
@@ -547,10 +552,10 @@
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Recover the world-to-view basis and legacy depth mapping before introducing
-   a Metal camera matrix or performing physical-device visual acceptance. The
-   camera-space-to-screen scalar contract is implemented and tested. Auxiliary
-   weapons and effects remain separate.
+3. Recover legacy depth mapping before introducing a Metal camera matrix or
+   performing physical-device visual acceptance. The world-to-camera point
+   and camera-space-to-screen scalar contracts are implemented and tested.
+   Auxiliary weapons and effects remain separate.
 4. Introduce a retained CCF/catalogue arena when runtime room switching is
    implemented; recover portal tracing, camera room traversal, and later
    transitions afterward.

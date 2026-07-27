@@ -1,7 +1,7 @@
 # Camera and projection contract
 
-**Status:** legacy scalar screen projection implemented and room/portal render
-chain recovered; world-to-view and Metal depth mapping remain open
+**Status:** legacy scalar screen projection implemented; world-to-view and
+room/portal render chains recovered; Metal depth mapping remains open
 
 This document separates confirmed legacy behavior from reconstruction
 decisions. The complete evidence record is
@@ -122,6 +122,52 @@ start-side child first, tests polygons on a crossed plane, then visits the
 end-side child while retaining the nearest hit. The hit polygon resolves the
 next room through its owning portal object.
 
+## World-to-view
+
+The camera world SRT contains a 3x3 orthogonal basis with uniform scale, a
+translation, and cached `q = 1 / scale²`. Legacy composition uses row vectors.
+For one world point:
+
+```text
+delta  = worldPoint - cameraWorldTranslation
+view   = q * delta * transpose(cameraWorldLinear)
+```
+
+The implementation subtracts first, evaluates the three basis dot products,
+and multiplies the results by `q`. `CcSrtNode::GetNodeRelation` uses the same
+inverse to prepare object-to-camera scratch SRT before
+`AddVisiblePolygonsToRenderList` consumes it:
+
+```text
+relation.linear =
+    q * objectWorldLinear * transpose(cameraWorldLinear)
+relation.translation =
+    q * (objectWorldTranslation - cameraWorldTranslation)
+      * transpose(cameraWorldLinear)
+```
+
+`CcLight::GetCameraRelation` delegates to this path, while
+`CcProjector::GetCameraRelation` independently repeats the same equations.
+There is no hidden axis reflection: `+X` is right, `+Y` is up, and `+Z` is
+forward in camera space.
+
+The complete layout, render snapshot fields, function boundaries, and
+cross-checks are recorded in
+[EXP-20260727-005](../../experiments/EXP-20260727-005-camera-world-to-view.md).
+
+`src/airfix/render/LegacyCameraTransform.cpp` implements only the confirmed
+world-point portion. Its factory validates finite inputs, a nonzero uniform
+scale, positive cached `q`, normalized Gram orthogonality and column lengths,
+and `q * scale²` consistency. A scale requiring subnormal or unrepresentable
+inverse-square `float` is rejected explicitly. The immutable hot path is
+allocation-free and `noexcept`; it preserves the exact subtraction,
+dot-product, and `q` multiplication order and rejects non-finite input or
+output atomically.
+
+It does not publish an affine matrix because precomposing translation changes
+float operation order. It also does not copy the unverified relation-`q`
+cache, construct gameplay camera poses, or expose Metal types.
+
 ## Reconstructed renderer boundary
 
 The current Metal renderer still applies only a diagnostic aspect correction
@@ -154,7 +200,6 @@ beyond far, invalid configuration, overflow, and repeated zero-allocation use.
 
 ## Still unknown
 
-- complete `CcCamera` view/basis layout and `viewFromWorld`;
 - gameplay camera modes, chase offsets, smoothing, rear view, and recentering;
 - legacy W-buffer semantics and the exact Metal `[0,1]` depth mapping;
 - final NDC/viewport conversion and any additional backend Y convention;
@@ -175,3 +220,4 @@ evidence is recovered.
 - [Startup and plugin chain](STARTUP-PLUGINS.md)
 - [Static tool cross-check](../../experiments/EXP-20260727-001-static-tool-crosscheck.md)
 - [Camera render experiment](../../experiments/EXP-20260727-004-camera-render-pipeline.md)
+- [Camera world-to-view experiment](../../experiments/EXP-20260727-005-camera-world-to-view.md)

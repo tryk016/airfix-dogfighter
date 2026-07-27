@@ -50,9 +50,9 @@ Implemented foundations include:
   scene-placement, and publication integration in the mission-world loader;
 - a preallocated per-scene pose runtime that publishes authenticated actor
   frames for accepted simulation steps and is resolved once per Metal frame;
-- a validated, allocation-free reconstruction of the legacy camera-space
-  screen projection, kept separate from still-unknown view and Metal depth
-  transforms.
+- validated, allocation-free reconstructions of the legacy world-to-camera
+  point transform and camera-space screen projection, kept separate from the
+  still-unknown Metal depth transform.
 
 The portable authenticated load now produces one validated room-and-player
 draw model. The actor still remains at its authenticated spawn transform until
