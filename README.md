@@ -53,8 +53,9 @@ Implemented foundations include:
 - validated, allocation-free reconstructions of the legacy world-to-camera
   point transform and camera-space screen projection, including the recovered
   reverse-depth scalar, four depth presets, gameplay camera preset selection,
-  exact quaternion-to-matrix and chase-target/nonlinear smoothing steps, and a
-  parity-first 640x480 aspect-fit layout kept separate from Metal.
+  exact quaternion-to-matrix and chase-target/nonlinear smoothing steps,
+  backend-neutral collision/factor/line primitives and look-at pose math, and
+  a parity-first 640x480 aspect-fit layout kept separate from Metal.
 
 The portable authenticated load now produces one validated room-and-player
 draw model. The actor still remains at its authenticated spawn transform until

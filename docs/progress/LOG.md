@@ -1906,3 +1906,27 @@ superseded evidence.
   `windows-2025`, matching the repository's required status-check context.
   The prior mismatch left a fully green PR unmergeable even though no review
   approval was required.
+
+## 2026-07-27 - gameplay-camera collision and look-at primitives
+
+- Closed the backend-neutral event-5 camera algebra: exact near-plane sphere
+  multiplier, collision-axis reduction, `AirCraft` factor recovery, normalized
+  vehicle-to-camera line interpolation, raw portal-call arguments, and
+  `CcAxisRot::FromDirection` followed by the mode-zero X/Y look-at matrix.
+- Added `LegacyGameplayCameraCollision`, a pure allocation-free `noexcept`
+  boundary. It rejects non-finite inputs, intermediate overflow, invalid near
+  planes, out-of-range line fractions, and the still-unverified zero-direction
+  look-at case without partial output.
+- Verified the camera matrix convention through the existing recovered
+  world-to-camera transform: right, up, and asymmetric `(1,1,1)` golden
+  matrices map the target to positive camera-space Z. The widened
+  trigonometric path is a portable approximation and does not claim universal
+  x87/libm bit identity.
+- Kept the real sphere contact solver, BSP line trace, room/portal mutation,
+  dynamic-object collision, and stateful camera publication outside this
+  module. Those remain the next retained-spatial-backend integration step.
+- Independent review reports no P0-P3 finding and passes the focused GCC
+  build with warnings as errors. The complete local build and all 57 CTest
+  targets pass; the public-boundary scan checks 294 files, the function
+  catalogue contains 209 unique entries, and Ghidra/Rizin wrapper tests,
+  12 Rizin normalization tests, `actionlint`, and `git diff --check` pass.

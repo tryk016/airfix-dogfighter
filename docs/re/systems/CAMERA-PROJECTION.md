@@ -1,8 +1,10 @@
 # Camera and projection contract
 
 **Status:** legacy scalar projection, world-to-view, depth presets, gameplay
-camera presets, quaternion adapter, stateless chase smoothing, and 4:3 layout
-implemented; portal/collision/look-at pose and Metal join remain
+camera presets, quaternion adapter, stateless chase smoothing, collision
+scalars/factors/line interpolation, look-at pose math, and 4:3 layout
+implemented; BSP/portal integration, stateful publication, and Metal join
+remain
 
 This document separates confirmed legacy behavior from reconstruction
 decisions. The complete evidence record is
@@ -222,6 +224,21 @@ normalize: zero produces identity and finite non-unit input is retained.
 Non-finite input or an unrepresentable final binary32 matrix fails atomically.
 The portable `double` staging does not claim bit-identical x87 extended
 precision for every possible input.
+
+`LegacyGameplayCameraCollision.cpp` supplies the next backend-neutral stage.
+It implements the exact `near * 1.1` sphere radius, post-sphere per-axis
+factor reduction without an upper clamp, aircraft-specific factor recovery,
+normalized line-hit interpolation, exact raw portal-call arguments `0.2` and
+`0.1`, and the recovered `CcAxisRot::FromDirection` plus X-then-Y camera
+look-at matrix. The returned raw camera-world matrix is directly compatible
+with `LegacyCameraTransformConfig::linear` and maps the anchor onto positive
+camera-space Z.
+
+All helpers are allocation-free, `noexcept`, and fail atomically on
+non-finite input or intermediate overflow. The look-at uses widened
+intermediates as a portable approximation and rejects the still-unverified
+zero-direction case. No actual sphere resolver, BSP line trace, portal/room
+mutation, dynamic-object query, or final camera publication is present yet.
 
 See
 [EXP-20260727-010](../../experiments/EXP-20260727-010-gameplay-camera-modes.md)

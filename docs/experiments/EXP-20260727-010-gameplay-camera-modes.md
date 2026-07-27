@@ -383,10 +383,10 @@ stage:
 7. Trace a line between the vehicle world anchor and camera. If it hits,
    move the camera to the hit fraction and trace that position through
    portals with third argument `0.1`.
-8. Form:
+8. Form, using the vehicle world anchor at `AfVehicle +0x1A4..+0x1AC`:
 
    ```text
-   direction = vehicleWorldPosition - cameraPosition
+   direction = vehicleWorldAnchor - cameraPosition
    ```
 
 9. Convert the direction with `CcAxisRot::FromDirection`.
@@ -394,6 +394,48 @@ stage:
     `CcMatrixRot::RotateByAxisRot`, and publish with `NotifyChange`.
 
 This makes the final camera face the vehicle for chase and rear-view tuples.
+
+The independently checked stateless algebra is:
+
+```text
+sphereRadius = nearClipping * bit_cast<float>(0x3F8CCCCD)
+
+factor[i] =
+    max(0, factor[i] - 2 * abs(resolved[i] - original[i]))
+
+lineHit =
+    vehicleWorldAnchor
+    + hitFraction * (cameraPosition - vehicleWorldAnchor)
+
+axis.x = atan2(direction.y,
+               sqrt(direction.z * direction.z
+                  + direction.x * direction.x))
+axis.y = atan2(direction.x, direction.z)
+axis.z = 0
+```
+
+`PhLine +0x38` is the nearest normalized fraction in `[0,1]`. The two
+post-collision portal calls receive exact binary32 third arguments `0.2` after
+the sphere stage and `0.1` after the line stage. Their call position and bits
+are confirmed; this report does not assign a physical unit to that argument.
+
+Mode-zero `RotateByAxisRot` calls Z, X, then Y. Since Z is zero here, let
+`p = axis.x`, `q = axis.y`, `sp = sin(p)`, `cp = cos(p)`,
+`sq = sin(q)`, and `cq = cos(q)`. The raw camera-world SRT matrix has columns:
+
+```text
+right   = ( cq,       0, -sq      )
+up      = (-sq * sp, cp, -cq * sp)
+forward = ( sq * cp, sp,  cq * cp)
+```
+
+`forward` is the normalized look direction. The existing legacy row-vector
+world-to-camera relation transposes this matrix, so the vehicle anchor maps
+to `(0,0,length(direction))`: positive camera-space Z. Axis-aligned and
+`direction=(1,1,1)` golden matrices independently verify signs, transpose, and
+X/Y order. Exact x87/libm bit identity is not claimed on modern targets.
+Behavior for a zero direction remains unverified and the portable boundary
+rejects it instead of inventing an orientation.
 
 The base constructor initializes all three axis factors to one and the event-5
 path performs the listed collision reductions. A follow-up audit found the
@@ -412,6 +454,14 @@ else:
 This applies independently to X, Y, and Z. The constants and ordering are
 confidence **3/3** for `AirCraft`; the physical unit of `refreshArgument` and
 the equivalent behavior of other vehicle types remain unverified.
+
+`LegacyGameplayCameraCollision.cpp` implements these backend-neutral
+primitives as pure, allocation-free `noexcept` operations. It rejects
+non-finite inputs, intermediate overflow, invalid near planes, and line
+fractions outside `[0,1]`. It deliberately does not implement sphere contact
+resolution, BSP line tracing, room/portal mutation, dynamic-object collision,
+or the stateful publication sequence; those require the retained spatial
+backend.
 
 ## SRT and pose mutation
 
