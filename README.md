@@ -133,19 +133,33 @@ receiver rooms, multiple CCF candidates, deduplication, cancellation, malformed
 later dependencies, compressed-source peak memory, and exact/one-under limits.
 
 `MissionLoadManifest` provides the corresponding authenticated mission
-dependency transaction and planned CCF source identities. It is a move-only,
-private-constructor proof carrying the session's exact `ContentRevision`. The
-published destination is valid and the moved-from source is explicitly invalid;
-`belongsTo()` requires a valid proof with the same authenticated content
-revision, not the same session object. During construction the builder
-additionally pins the exact authenticated handle identity. It resolves one
-Level, its World, the World's main `CCFF`, the optional first `BCKD`, and every
-physical Level `OBJE` definition plus that definition's `CCFF`. Level, World,
-and each unique object definition are read only through the same
-`VerifiedContentSession` handle; repeated object-definition file indices reuse
-one parsed definition while their CCF load descriptors remain repeated in
-physical placement order. Level `MODL` entries are resolved as metadata only
-and never become mission-root CCF sources.
+dependency transaction and planned CCF source identities. Its request requires
+both an explicit `setupLogicalPath` and a Level logical path. The setup path is
+resolved exactly as supplied against the authenticated archive; it is never
+derived from the Level name, searched by extension, or replaced by a sibling
+fallback. The move-only, private-constructor proof carries the session's exact
+`ContentRevision`. The published destination is valid and the moved-from source
+is explicitly invalid; `belongsTo()` requires a valid proof with the same
+authenticated content revision, not the same session object. During
+construction the builder additionally pins the exact authenticated handle
+identity.
+
+The setup AFS, Level, World, and each unique object definition are read only
+through the same `VerifiedContentSession` handle. Setup parsing is a bounded,
+non-executing scan for the exact `AddStartPos` call shape. It treats other
+script constructs as opaque, accepts only finite numbers, and enforces the
+legacy hard capacity of 16 starts. The manifest retains the canonical setup
+logical-path/file-index identity, its checked compressed-source footprint, and
+owned parsed start records; raw AFS bytes and parser views are discarded before
+publication. An authenticated setup containing no `AddStartPos` records is
+valid and deliberately selects the root-room fallback later.
+
+The remaining graph resolves one Level, its World, the World's main `CCFF`, the
+optional first `BCKD`, and every physical Level `OBJE` definition plus that
+definition's `CCFF`. Repeated object-definition file indices reuse one parsed
+definition while their CCF load descriptors remain repeated in physical
+placement order. Level `MODL` entries are resolved as metadata only and never
+become mission-root CCF sources.
 
 The descriptor order is main World, optional first backdrop, then every Level
 `OBJE`. A referenced `OBJE` must parse as an object definition rather than a
@@ -163,15 +177,20 @@ from reviving a displaced session identity.
 mission-room transaction. It validates every ordered descriptor against the
 same authenticated revision, reads and parses each unique physical CCF once,
 while preserving repeated semantic loads, builds the multi-source room
-catalogue, resolves the legacy start table, creates one room-global texture ID
-namespace, materializes every selected GTI, assembles the model and provenance,
-and validates the final draw submission. Exact session identity and revision
-are pinned throughout. CCF/GTI source admission, RGBA and published-CPU
-budgets are checked; retained CCF metadata additionally has explicit
-post-parse logical accounting, not a process-memory ceiling. No partial
-textures or geometry escape a late failure.
-Start positions are currently caller-supplied parsed records; authenticated AFS
-loading and native mission publication are later integration boundaries.
+catalogue, resolves the manifest-owned legacy start table, creates one
+room-global texture ID namespace, materializes every selected GTI, assembles
+the model and provenance, and validates the final draw submission. Its request
+contains selection and transform policy but no caller-provided start span. The
+published room carries the canonical setup identity and setup-source footprint
+alongside the selected owned start, so setup provenance remains auditable
+without retaining script bytes. Exact loader-session identity and the
+manifest's `ContentRevision` are pinned throughout; a separately authenticated
+session for the same revision remains valid. CCF/GTI source admission, RGBA and
+published-CPU budgets are checked; retained CCF metadata additionally has
+explicit post-parse logical accounting, not a process-memory ceiling. No
+partial textures or geometry escape a late failure. Native iOS mission
+publication and applying the selected room/pose to the reconstructed player
+remain later integration boundaries.
 
 The mission layer also reconstructs the ordered runtime room namespace across
 the main scene, optional backdrop, and object CCF loads. It keeps the anonymous

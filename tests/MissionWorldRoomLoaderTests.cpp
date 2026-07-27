@@ -28,7 +28,6 @@
 
 namespace {
 
-using airfix::assets::MissionStartPosition;
 using airfix::content::ContentRevision;
 using airfix::content::MissionLoadManifestResult;
 using airfix::content::MissionWorldRoomLoadIssueKind;
@@ -150,6 +149,11 @@ struct FixtureOptions {
     bool malformedDetailGti{};
     bool objectUsesMainCcf{};
     bool backdropUsesMainCcf{};
+    enum class SetupKind : std::uint8_t {
+        empty,
+        authoredRoom,
+        missingRoom,
+    } setup{SetupKind::empty};
 };
 
 [[nodiscard]] std::vector<UdspInputEntry>
@@ -200,7 +204,32 @@ missionEntries(const FixtureOptions options = {}) {
         maybeCompress(std::move(backdropCcf));
     auto [objectStored, objectUnpacked] = maybeCompress(std::move(objectCcf));
 
+    Bytes setup;
+    switch (options.setup) {
+    case FixtureOptions::SetupKind::empty: {
+        constexpr std::string_view source = "object MissionSetup {}";
+        setup.assign(source.begin(), source.end());
+        break;
+    }
+    case FixtureOptions::SetupKind::authoredRoom:
+        setup = airfix::testing::makeSyntheticMissionSetup();
+        break;
+    case FixtureOptions::SetupKind::missingRoom: {
+        constexpr std::string_view source =
+            R"afs(AddStartPos("MissingRoom", coord3d(1, 2, 3), coord3d(0, 0, 0));)afs";
+        setup.assign(source.begin(), source.end());
+        break;
+    }
+    }
+
     return {
+        {
+            .logicalPath =
+                std::string(airfix::testing::kSyntheticMissionSetupLogicalPath),
+            .bytes = std::move(setup),
+            .flags = 0U,
+            .unpackedSize = std::nullopt,
+        },
         {
             .logicalPath =
                 std::string(airfix::testing::kSyntheticLevelLogicalPath),
@@ -286,8 +315,13 @@ missionEntries(const FixtureOptions options = {}) {
 [[nodiscard]] MissionLoadManifestResult
 buildManifest(VerifiedContentSession &session) {
     return airfix::content::buildMissionLoadManifest(
-        session, {.levelLogicalPath = std::string(
-                      airfix::testing::kSyntheticLevelLogicalPath)});
+        session,
+        {
+            .levelLogicalPath =
+                std::string(airfix::testing::kSyntheticLevelLogicalPath),
+            .setupLogicalPath =
+                std::string(airfix::testing::kSyntheticMissionSetupLogicalPath),
+        });
 }
 
 [[nodiscard]] bool hasIssue(const MissionWorldRoomLoadResult &result,
@@ -306,15 +340,6 @@ void requireAtomicFailure(const MissionWorldRoomLoadResult &result,
 }
 
 [[nodiscard]] MissionWorldRoomLoadRequest rootRequest() { return {}; }
-
-[[nodiscard]] std::array<MissionStartPosition, 1U> roomStartPositions() {
-    return {MissionStartPosition{
-        .roomName = "Room",
-        .position = {10.0F, 20.0F, 30.0F},
-        .axisRotation = {0.1F, 0.2F, 0.3F},
-        .sourceOffset = 44U,
-    }};
-}
 
 void requireOneTriangle(const airfix::content::LoadedMissionWorldRoom &room,
                         const std::size_t expectedSourceIndex,
@@ -358,12 +383,15 @@ void testRootFallbackOrderingCachingAndPoisonTexture() {
             "valid aggregate root load failed");
     const auto &room = *result.room;
     require(room.revision == revisionFor(pack) &&
+                room.setupEntry == manifest.manifest->setupEntry() &&
+                room.setupSourceFootprintBytes ==
+                    manifest.manifest->setupSourceFootprintBytes() &&
                 room.startSelection.source ==
                     airfix::assets::MissionWorldStartSelectionSource::
                         rootRoomFallback &&
                 room.startSelection.worldRoomIndex == 0U &&
                 !room.selectedStart.has_value(),
-            "empty start table did not select the root fallback");
+            "authenticated empty setup did not select the root fallback");
     require(
         room.semanticCcfSourceCount == 4U && room.uniqueCcfSourceCount == 3U &&
             room.ccfCacheIndexByLoadSource ==
@@ -400,14 +428,14 @@ void testRootFallbackOrderingCachingAndPoisonTexture() {
 }
 
 void testAuthoredStartSelectsBackdropAndOwnsStart() {
-    const auto pack = makePack();
+    const auto pack = makePack({
+        .setup = FixtureOptions::SetupKind::authoredRoom,
+    });
     auto session = openSession(pack);
     auto manifest = buildManifest(session);
     require(manifest.success(), "start fixture manifest failed");
-    auto starts = roomStartPositions();
     const MissionWorldRoomLoadRequest request{
         .initialRootName = {},
-        .startPositions = starts,
         .requestedStartIndex = std::numeric_limits<std::uint32_t>::max(),
         .basis = {},
         .uvPolicy = airfix::render::UvPolicy::preserveRaw,
@@ -415,12 +443,14 @@ void testAuthoredStartSelectsBackdropAndOwnsStart() {
 
     const auto result = airfix::content::loadMissionWorldRoom(
         session, *manifest.manifest, request);
-    starts[0].roomName = "mutated-after-call";
 
     require(result.success() && result.room.has_value(),
             "valid authored start load failed");
     const auto &room = *result.room;
-    require(room.startSelection.source ==
+    require(room.setupEntry == manifest.manifest->setupEntry() &&
+                room.setupSourceFootprintBytes ==
+                    manifest.manifest->setupSourceFootprintBytes() &&
+                room.startSelection.source ==
                     airfix::assets::MissionWorldStartSelectionSource::table &&
                 room.startSelection.startPositionIndex ==
                     std::optional<std::size_t>{0U} &&
@@ -429,7 +459,7 @@ void testAuthoredStartSelectsBackdropAndOwnsStart() {
                 room.selectedStart->roomName == "Room" &&
                 room.selectedStart->position ==
                     std::array<float, 3U>{10.0F, 20.0F, 30.0F},
-            "authored start selection or owned copy changed");
+            "authenticated setup provenance or authored start changed");
     requireOneTriangle(room, 1U, {4.0F, 5.0F, 6.0F});
     require(room.textures.size() == 2U &&
                 room.submission.commands[0].primary ==
@@ -578,17 +608,15 @@ void testProofRevisionAndSessionIdentityGuards() {
 }
 
 void testCallerInputsAreSnapshottedBeforeCallbacks() {
-    const auto pack = makePack();
+    const auto pack = makePack({
+        .setup = FixtureOptions::SetupKind::authoredRoom,
+    });
     auto session = openSession(pack);
     auto manifest = buildManifest(session);
     require(manifest.success(), "snapshot fixture manifest failed");
-    auto startsArray = roomStartPositions();
-    std::vector<MissionStartPosition> starts(startsArray.begin(),
-                                             startsArray.end());
     MissionWorldRoomLoadLimits limits;
-    const MissionWorldRoomLoadRequest request{
+    MissionWorldRoomLoadRequest request{
         .initialRootName = {},
-        .startPositions = starts,
         .requestedStartIndex = 0U,
         .basis = {},
         .uvPolicy = airfix::render::UvPolicy::preserveRaw,
@@ -600,9 +628,10 @@ void testCallerInputsAreSnapshottedBeforeCallbacks() {
             if (!invalidated &&
                 progress.phase == MissionWorldRoomLoadPhase::validatingInput) {
                 manifest.manifest.reset();
-                starts.clear();
-                starts.shrink_to_fit();
                 limits.maximumCcfSourceBytes = 0U;
+                request.requestedStartIndex =
+                    std::numeric_limits<std::uint32_t>::max();
+                request.initialRootName.name = "mutated-after-callback";
                 invalidated = true;
             }
         });
@@ -618,54 +647,24 @@ void testCallerInputsAreSnapshottedBeforeCallbacks() {
 void testCancellationCallbacksAndInvalidStartsAreAtomic() {
     const auto pack = makePack();
     {
-        auto session = openSession(pack);
+        const auto authoredPack = makePack({
+            .setup = FixtureOptions::SetupKind::authoredRoom,
+        });
+        auto session = openSession(authoredPack);
         auto manifest = buildManifest(session);
-        std::vector<MissionStartPosition> starts(
-            airfix::assets::legacyMissionStartCapacity + 1U);
-        bool callbackRan = false;
-        const auto result = airfix::content::loadMissionWorldRoom(
-            session, *manifest.manifest,
-            {
-                .initialRootName = {},
-                .startPositions = starts,
-                .requestedStartIndex = 0U,
-                .basis = {},
-                .uvPolicy = airfix::render::UvPolicy::preserveRaw,
-            },
-            {}, {}, [&](const auto &) { callbackRan = true; });
-        requireAtomicFailure(
-            result, MissionWorldRoomLoadIssueKind::startResolutionFailure,
-            "oversized legacy start table was snapshotted");
-        require(!callbackRan && result.issues.front().startIssue ==
-                                    airfix::assets::MissionWorldStartIssueKind::
-                                        startPositionLimitExceeded,
-                "oversized start table was not rejected before callbacks");
-    }
-    {
-        auto session = openSession(pack);
-        auto manifest = buildManifest(session);
-        auto starts = roomStartPositions();
-        starts[0].roomName = "123456789";
         MissionWorldRoomLoadLimits limits;
-        limits.starts.maximumNameComponentBytes = 8U;
+        limits.starts.maximumNameComponentBytes = 3U;
         bool callbackRan = false;
         const auto result = airfix::content::loadMissionWorldRoom(
-            session, *manifest.manifest,
-            {
-                .initialRootName = {},
-                .startPositions = starts,
-                .requestedStartIndex = 0U,
-                .basis = {},
-                .uvPolicy = airfix::render::UvPolicy::preserveRaw,
-            },
-            limits, {}, [&](const auto &) { callbackRan = true; });
+            session, *manifest.manifest, rootRequest(), limits, {},
+            [&](const auto &) { callbackRan = true; });
         requireAtomicFailure(
             result, MissionWorldRoomLoadIssueKind::startResolutionFailure,
-            "oversized start name was deep-copied");
+            "oversized authenticated start name was accepted");
         require(!callbackRan && result.issues.front().startIssue ==
                                     airfix::assets::MissionWorldStartIssueKind::
                                         nameComponentLimitExceeded,
-                "oversized start name was not rejected before callbacks");
+                "manifest start name was not admitted before callbacks");
     }
     {
         auto session = openSession(pack);
@@ -746,38 +745,14 @@ void testCancellationCallbacksAndInvalidStartsAreAtomic() {
             "complete callback failure published a room");
     }
     {
-        auto session = openSession(pack);
+        const auto missingRoomPack = makePack({
+            .setup = FixtureOptions::SetupKind::missingRoom,
+        });
+        auto session = openSession(missingRoomPack);
         auto manifest = buildManifest(session);
-        auto starts = roomStartPositions();
-        starts[0].position[1] = std::numeric_limits<float>::infinity();
         requireAtomicFailure(
-            airfix::content::loadMissionWorldRoom(
-                session, *manifest.manifest,
-                {
-                    .initialRootName = {},
-                    .startPositions = starts,
-                    .requestedStartIndex = 0U,
-                    .basis = {},
-                    .uvPolicy = airfix::render::UvPolicy::preserveRaw,
-                }),
-            MissionWorldRoomLoadIssueKind::invalidStartPosition,
-            "non-finite player start was accepted");
-    }
-    {
-        auto session = openSession(pack);
-        auto manifest = buildManifest(session);
-        auto starts = roomStartPositions();
-        starts[0].roomName = "MissingRoom";
-        requireAtomicFailure(
-            airfix::content::loadMissionWorldRoom(
-                session, *manifest.manifest,
-                {
-                    .initialRootName = {},
-                    .startPositions = starts,
-                    .requestedStartIndex = 0U,
-                    .basis = {},
-                    .uvPolicy = airfix::render::UvPolicy::preserveRaw,
-                }),
+            airfix::content::loadMissionWorldRoom(session, *manifest.manifest,
+                                                  rootRequest()),
             MissionWorldRoomLoadIssueKind::startResolutionFailure,
             "missing authored room published a result");
     }
@@ -857,6 +832,7 @@ sourceFootprint(const VerifiedContentSession &session,
 [[nodiscard]] std::uint64_t independentPublishedCpuBytes(
     const airfix::content::LoadedMissionWorldRoom &room) {
     std::uint64_t total = sizeof(airfix::content::LoadedMissionWorldRoom);
+    total += room.setupEntry.logicalPath.size();
     total += room.textures.size() * sizeof(airfix::content::LoadedTextureAsset);
     total += room.ccfCacheIndexByLoadSource.size() * sizeof(std::size_t);
     if (room.selectedStart.has_value()) {

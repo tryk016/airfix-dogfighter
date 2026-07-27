@@ -220,10 +220,18 @@ invalidates the source; `belongsTo()` requires validity and an equal revision.
 For the construction transaction, the builder also pins the opaque identity of
 the exact authenticated handle. That token is not retained: `belongsTo()`
 intentionally accepts a separately authenticated session for the same content
-revision. All Level, World, and unique physical Level `OBJE` definition reads
-use the one guarded handle. Exact unique lookup proceeds through Level to World,
-main World `CCFF`, optional first `BCKD`, and each `OBJE` definition to its
-`CCFF`; an `OBJE` whose parsed definition root is `MODL` is rejected.
+revision. The caller supplies `setupLogicalPath` and the Level logical path
+independently. The setup lookup is exact and has no Level-name inference,
+extension search, sibling search, or path fallback.
+
+The setup AFS, Level, World, and unique physical Level `OBJE` definition reads
+use the one guarded handle. A bounded, non-executing parser recognizes only the
+exact `AddStartPos` form and enforces the legacy 16-entry capacity. The proof
+owns the canonical setup path/index, checked setup-source footprint, and parsed
+start records; raw AFS bytes and all parser views are released. Exact unique
+lookup then proceeds through Level to World, main World `CCFF`, optional first
+`BCKD`, and each `OBJE` definition to its `CCFF`; an `OBJE` whose parsed
+definition root is `MODL` is rejected.
 
 CCF load descriptors preserve legacy order: main World, optional backdrop, then
 one descriptor for every `OBJE` in physical placement order. Repeated
@@ -255,16 +263,19 @@ loads remain repeated catalogue and draw sources even when their physical CCF
 payload is cached once.
 
 The loader selects a room through `resolveMissionStartsInWorld` and
-`selectMissionWorldStart`, builds the global selected-room bindings, prepares
-all GTIs, and passes those bindings into
+`selectMissionWorldStart` using only the manifest-owned start records. Its
+public request has no caller-provided start span. A successfully authenticated
+setup with no start records takes the root-room fallback. The loader builds the
+global selected-room bindings, prepares all GTIs, and passes those bindings into
 `buildMissionWorldRoomDrawAssembly`. The owned model, numeric provenance,
 texture upload data, and validated `DrawSubmissionPlan` are published together
-under one `ContentRevision`; working CCF metadata and views are destroyed.
-Every callback and payload read is surrounded by session identity/revision
-checks. Source-admission, RGBA, assembly, submission, and semantic
-published-CPU limits fail closed. Retained CCF metadata is measured by a
-separate post-parse logical counter; it does not claim to cap peak allocation
-or process RSS beyond the parser's existing hard caps.
+under one `ContentRevision`; the result also carries the canonical setup
+identity and setup-source footprint. Raw AFS, working CCF metadata, and views
+are destroyed. Every callback and payload read is surrounded by session
+identity/revision checks. Source-admission, RGBA, assembly, submission, and
+semantic published-CPU limits fail closed. Retained CCF metadata is measured
+by a separate post-parse logical counter; it does not claim to cap peak
+allocation or process RSS beyond the parser's existing hard caps.
 
 `buildMissionWorldRoomDrawAssembly` consumes those per-source bindings and
 produces one `DrawModelPayload` plus parallel numeric mesh/instance provenance.
@@ -274,8 +285,8 @@ load sources, and requires every draw-source CCF identity to match that list
 before allocation. The existing `DrawSubmissionPlan` accepts the combined
 model directly. `MissionWorldRoomLoader` now connects the authenticated
 manifest to this complete portable CCF/texture/binding/draw path. Native
-mission publication and retained scene data for later room changes remain
-unimplemented.
+mission publication, retained scene data for later room changes, and applying
+the selected start room/pose to the reconstructed player remain unimplemented.
 
 ## Metal handoff
 

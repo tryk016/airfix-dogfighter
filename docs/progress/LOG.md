@@ -1368,35 +1368,44 @@ superseded evidence.
 
 - Added move-only, private-constructor `MissionLoadManifest` publication bound
   to the exact `ContentRevision`. The construction transaction additionally
-  pins the opaque identity of the authenticated session handle. It uses that
-  one `VerifiedContentSession` for the Level, World, and every unique physical
-  Level `OBJE` definition; no diagnostic label or package path is reopened.
-  Move transfers a valid proof and poisons the source, while `belongsTo()` and
-  result `success()` reject moved-from state. The token is construction-only;
-  `belongsTo()` accepts any separately authenticated session with the same
-  `ContentRevision`.
-- Exact unique lookup now covers Level -> World -> main `CCFF`, optional first
-  `BCKD`, and every physical `OBJE` definition -> `CCFF`. Descriptors retain
-  main/backdrop/physical-placement order and repeated CCF loads. Repeated object
-  definitions are read and parsed once by archive file index, while an `OBJE`
-  dependency with a `MODL` root fails closed. Level `MODL` references remain
-  metadata-only and do not become mission-root CCF sources.
-- This phase reads no CCF or GTI payload. It preflights compressed definition
-  read peaks, aggregate unique definition source bytes, each and all planned CCF
-  source footprints (charging every ordered descriptor, including repeats),
-  descriptor count, and owned published CPU state. Cancellation, callback
-  failure, overflow/allocation failure, or any late dependency error returns no
-  partial manifest. World/`OBJE`/`MODL` metadata resolution checks cancellation
-  per item. Exact handle identity and revision are checked before and after
-  callbacks and again before publication. Callback-driven replacement or
-  move-out returns `sessionIdentityChanged`, including same-revision
-  replacement.
-- Synthetic coverage includes a non-openable diagnostic label, two `BCKD`
-  chunks with first-only selection, repeated `OBJE` definition/CCF identities,
-  deliberately malformed metadata-only `MODL` and CCF payloads, a `MODL` root
-  reached through `OBJE`, missing/ambiguous and late dependencies, compressed
-  exact/one-under budgets, cancellation, callback failure, exact
-  handle/revision binding, same-revision replacement, and callback move-out.
+  pins the opaque identity of the authenticated session handle. Its request
+  requires independent explicit setup and Level logical paths; setup lookup
+  never derives a name from the Level and never tries a sibling or fallback.
+  That one `VerifiedContentSession` reads the setup AFS, Level, World, and every
+  unique physical Level `OBJE` definition; no diagnostic label or package path
+  is reopened. Move transfers a valid proof and poisons the source, while
+  `belongsTo()` and result `success()` reject moved-from state. The token is
+  construction-only; `belongsTo()` accepts any separately authenticated
+  session with the same `ContentRevision`.
+- Exact unique lookup now covers the explicit setup, Level -> World -> main
+  `CCFF`, optional first `BCKD`, and every physical `OBJE` definition ->
+  `CCFF`. The bounded setup scanner never executes AFS and retains no more than
+  16 finite `AddStartPos` records. The manifest owns their canonical setup
+  path/index identity and source footprint, while raw AFS bytes are discarded.
+  Descriptors retain main/backdrop/physical-placement order and repeated CCF
+  loads. Repeated object definitions are read and parsed once by archive file
+  index, while an `OBJE` dependency with a `MODL` root fails closed. Level
+  `MODL` references remain metadata-only and do not become mission-root CCF
+  sources.
+- This phase reads no CCF or GTI payload. It preflights the compressed setup
+  and definition read peaks, aggregate unique definition source bytes, each and
+  all planned CCF source footprints (charging every ordered descriptor,
+  including repeats), descriptor count, and owned published CPU state.
+  Published accounting includes the setup identity, start records, and room
+  names. Cancellation, callback failure, overflow/allocation failure, or any
+  late dependency error returns no partial manifest. Setup/World/`OBJE`/`MODL`
+  metadata resolution checks cancellation per item. Exact handle identity and
+  revision are checked before and after callbacks and again before publication.
+  Callback-driven replacement or move-out returns `sessionIdentityChanged`,
+  including same-revision replacement.
+- Synthetic coverage includes exact setup identity and present-empty setup,
+  malformed and over-capacity `AddStartPos`, typed setup offsets, a non-openable
+  diagnostic label, two `BCKD` chunks with first-only selection, repeated
+  `OBJE` definition/CCF identities, deliberately malformed metadata-only
+  `MODL` and CCF payloads, a `MODL` root reached through `OBJE`,
+  missing/ambiguous and late dependencies, compressed exact/one-under budgets,
+  cancellation, callback failure, exact handle/revision binding, same-revision
+  replacement, and callback move-out.
 - CCF parsing, ordered room construction, global texture binding, aggregate
   draw/submission assembly, and native publication are deliberately not wired
   yet. The manifest supplies their authenticated same-session input rather than
@@ -1425,9 +1434,9 @@ superseded evidence.
   `AddStartPos` table with modulo or anonymous-root fallback, constructs the
   selected room's dense global texture namespace, prepares every GTI, preserves
   mesh/instance source provenance, assembles the combined model, and validates
-  its `DrawSubmissionPlan`. Start positions are copied into the result but are
-  still caller-supplied parsed data; authenticated AFS loading remains later
-  work.
+  its `DrawSubmissionPlan`. The authenticated-setup follow-up below replaces
+  the temporary external start-table seam with manifest-owned records and
+  carries setup provenance into the result.
 - Per-entry and unique-aggregate CCF/GTI footprints,
   decoded/upload/resident RGBA, and published CPU ownership are independently
   checked. Retained CCF metadata has post-parse logical accounting on top of
@@ -1445,5 +1454,32 @@ superseded evidence.
 - A fresh Windows GCC/Ninja build completes and all 42 portable CTest targets
   pass. No private game data, original-derived payload, generated analysis
   database, or local source path was added. Native mission publication,
-  authenticated setup-script loading, and retained CCF/catalogue data for
-  runtime room switching remain the next integration boundaries.
+  retained CCF/catalogue data for runtime room switching, and player-pose
+  application remain the next integration boundaries.
+
+## 2026-07-27 - authenticated mission setup provenance
+
+- `MissionLoadManifestRequest` now requires an explicit `setupLogicalPath`
+  independently of the Level path. The builder performs one exact unique lookup
+  against the authenticated UDSP archive and never derives, searches, or falls
+  back to a setup path based on the Level name.
+- The same pinned `VerifiedContentSession` and `ContentRevision` cover setup,
+  Level, World, and unique object-definition reads. All request paths and limits
+  are bounded and snapshotted before the first callback. The setup parser is
+  non-executing, recognizes only the exact `AddStartPos` form, accepts finite
+  locale-independent numbers, and enforces the hard legacy capacity of 16.
+- A valid manifest owns the canonical setup path/index identity, the checked
+  compressed-source footprint, and every parsed start record. Raw AFS bytes and
+  borrowed views are destroyed before publication. A successfully
+  authenticated setup containing no starts is valid and requests the anonymous
+  root-room fallback.
+- `MissionWorldRoomLoader` no longer accepts a caller start span. It snapshots
+  the manifest-owned records, resolves them against the complete ordered
+  semantic CCF room catalogue, and publishes the canonical setup identity and
+  source footprint alongside the selected owned start, model, textures,
+  provenance, and submission plan. Late setup, CCF, GTI, callback,
+  cancellation, or identity failure remains atomic.
+- Native iOS mission publication, applying the selected start room and pose to
+  the reconstructed player, and retaining CCF/catalogue state for later room
+  transitions remain open. No private content name, path, script, or
+  original-derived payload was added.

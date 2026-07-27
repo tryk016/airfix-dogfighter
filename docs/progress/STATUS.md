@@ -390,17 +390,26 @@
   owns every published path/index identity. Moving transfers validity and
   explicitly invalidates the source; `valid()`, `belongsTo()`, and result
   `success()` reject moved-from state. During construction, the builder also
-  pins the opaque identity of the exact authenticated handle. One
-  `VerifiedContentSession` handle performs the exact Level and World reads plus
-  one read/parse for every unique physical Level `OBJE` definition; repeated
-  object-definition archive indices reuse that cache entry. The handle token is
-  not published: `belongsTo()` means the same authenticated `ContentRevision`
-  and intentionally permits a separately authenticated session for those bytes.
-- Exact unique lookup covers Level -> World -> main `CCFF`, optional first
-  `BCKD`, and every physical `OBJE` definition -> `CCFF`. CCF descriptors retain
-  main/backdrop/physical-OBJE order and repeated entries. A referenced `OBJE`
-  that parses with a `MODL` root fails closed. Level `MODL` paths are resolved
-  as metadata only, are not read, and never become mission-root CCF sources.
+  pins the opaque identity of the exact authenticated handle. The request
+  requires independent explicit setup and Level logical paths. It performs
+  exact setup lookup only; there is no Level-name derivation, extension search,
+  sibling search, or path fallback.
+- One `VerifiedContentSession` handle reads the setup AFS, Level, World, and
+  every unique physical Level `OBJE` definition. The non-executing setup parser
+  recognizes only bounded `AddStartPos` calls, accepts finite values, and
+  enforces the fixed 16-entry legacy capacity. The manifest owns the canonical
+  setup path/index, checked setup-source footprint, and parsed starts; it
+  retains no raw AFS bytes or parser views. A present but empty authenticated
+  setup is valid. The handle token is not published: `belongsTo()` means the
+  same authenticated `ContentRevision` and intentionally permits a separately
+  authenticated session for those bytes.
+- Exact unique lookup continues from Level -> World -> main `CCFF`, optional
+  first `BCKD`, and every physical `OBJE` definition -> `CCFF`. Repeated
+  object-definition archive indices reuse one parse-cache entry, while CCF
+  descriptors retain main/backdrop/physical-OBJE order and repeated entries. A
+  referenced `OBJE` that parses with a `MODL` root fails closed. Level `MODL`
+  paths are resolved as metadata only, are not read, and never become
+  mission-root CCF sources.
 - No CCF or GTI payload is read in this phase. Per-entry compressed-source peak,
   aggregate unique definition source, per-entry and aggregate planned CCF,
   descriptor-count, and published-CPU limits are checked before publication;
@@ -418,16 +427,19 @@
   descriptors remain separate semantic sources and produce the exact
   main/backdrop/physical-OBJE catalogue order; the result records the
   descriptor-to-cache mapping without publishing raw metadata pointers.
-- The loader builds `MissionWorldRoomCatalog`, resolves the fixed legacy start
-  table with modulo/root fallback, constructs one selected-room global texture
-  namespace, materializes every unique GTI, preserves mesh/instance source
-  provenance, and validates `DrawSubmissionPlan`. CCF/GTI source footprints,
-  decoded/upload/resident RGBA, and published CPU have independent checked
-  limits. Retained CCF metadata has a separate post-parse logical counter;
-  parser admission remains governed by the CCF parser's hard caps, so this is
-  not a peak-allocation or process-RSS ceiling. A late CCF, GTI, assembly,
-  submission, callback, cancellation, or session-identity failure publishes no
-  room.
+- The loader request contains no caller start span. It copies the
+  manifest-owned starts, builds `MissionWorldRoomCatalog`, resolves the fixed
+  table with modulo selection, and uses root fallback for a present-empty
+  setup. It then constructs one selected-room global texture namespace,
+  materializes every unique GTI, preserves mesh/instance source provenance,
+  and validates `DrawSubmissionPlan`. The loaded result carries the canonical
+  setup identity and source footprint without retaining raw AFS. CCF/GTI source
+  footprints, decoded/upload/resident RGBA, and published CPU have independent
+  checked limits. Retained CCF metadata has a separate post-parse logical
+  counter; parser admission remains governed by the CCF parser's hard caps, so
+  this is not a peak-allocation or process-RSS ceiling. A late CCF, GTI,
+  assembly, submission, callback, cancellation, or session-identity failure
+  publishes no room.
 - `VerifiedContentTransactionIdentity` now uses a retained private marker rather
   than an `ifstream` address. Session moves carry the marker, copied guard
   tokens keep displaced markers alive, and independently opened same-revision
@@ -435,14 +447,16 @@
 - Public synthetic coverage proves four semantic loads over three physical CCF
   reads, and a second case reuses one physical CCF across different semantic
   roots and `0x2000` placement flags. It covers legacy start selection,
-  first-use texture-ID ordering, independently recomputed ownership counters,
-  exact/N-1 compressed and aggregate budgets, callback-time destruction of
-  borrowed inputs, separately authenticated equal revisions, moved and
-  replaced sessions, identity-versus-callback-error precedence, cancellation,
-  and late atomic failures. The portable suite now passes 42/42.
-- Start positions are still caller-supplied parsed records, retained CCF/catalog
-  arenas for runtime room switching are not implemented, and native mission
-  publication remains the next content integration.
+  authenticated empty-setup root fallback, exact setup provenance, first-use
+  texture-ID ordering, independently recomputed ownership counters, exact/N-1
+  compressed and aggregate budgets, callback-time destruction of snapshotted
+  inputs, separately authenticated equal revisions, moved and replaced
+  sessions, identity-versus-callback-error precedence, cancellation, and late
+  atomic failures. The portable suite now passes 42/42.
+- The authenticated setup-to-room provenance chain is closed. Retained
+  CCF/catalog arenas for runtime room switching, native iOS mission
+  publication, and application of the selected room/pose to the reconstructed
+  player remain the next content boundaries.
 
 ## Confirmed
 
@@ -480,10 +494,10 @@
 3. Implement explicit dynamic publication of the recovered primary actor and
    its selected-skin hierarchies through the pose exchange, keeping auxiliary
    weapons/effects separate.
-4. Consume the authenticated mission manifest in one same-session CCF/GTI load,
-   connect the resulting ordered sources to the completed multi-source room,
-   texture-binding, draw, and submission seams, then publish the aggregate
-   result natively. Recover portal tracing, camera room traversal, and later
+4. Publish the authenticated aggregate mission room through the native iOS
+   coordinator and apply its selected start room/pose to the reconstructed
+   player. Retain the CCF/catalog arena only when runtime room switching is
+   introduced; recover portal tracing, camera room traversal, and later
    transitions afterward.
 5. Keep BSP culling and portal traversal disabled until their runtime semantics
    are proven against executable evidence.

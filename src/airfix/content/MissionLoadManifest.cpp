@@ -16,12 +16,17 @@ class SessionIdentityChanged final {};
     const MissionLoadManifestIssueKind kind,
     const MissionLoadDependencyKind dependency,
     const std::optional<std::size_t> dependencyIndex = std::nullopt,
-    const std::optional<std::size_t> sourceFileIndex = std::nullopt) noexcept {
+    const std::optional<std::size_t> sourceFileIndex = std::nullopt,
+    const std::optional<assets::MissionSetupParseErrorCode> setupParseError =
+        std::nullopt,
+    const std::optional<std::uint64_t> sourceOffset = std::nullopt) noexcept {
     return {
         .kind = kind,
         .dependency = dependency,
         .dependencyIndex = dependencyIndex,
         .sourceFileIndex = sourceFileIndex,
+        .setupParseError = setupParseError,
+        .sourceOffset = sourceOffset,
     };
 }
 
@@ -30,11 +35,19 @@ void fail(
     const MissionLoadManifestIssueKind kind,
     const MissionLoadDependencyKind dependency,
     const std::optional<std::size_t> dependencyIndex = std::nullopt,
-    const std::optional<std::size_t> sourceFileIndex = std::nullopt) {
+    const std::optional<std::size_t> sourceFileIndex = std::nullopt,
+    const std::optional<assets::MissionSetupParseErrorCode> setupParseError =
+        std::nullopt,
+    const std::optional<std::uint64_t> sourceOffset = std::nullopt) {
     result.manifest.reset();
     result.issues.clear();
-    result.issues.push_back(
-        makeIssue(kind, dependency, dependencyIndex, sourceFileIndex));
+    result.issues.push_back(makeIssue(
+        kind,
+        dependency,
+        dependencyIndex,
+        sourceFileIndex,
+        setupParseError,
+        sourceOffset));
 }
 
 [[nodiscard]] bool report(
@@ -135,6 +148,8 @@ void fail(
 [[nodiscard]] bool validLimits(
     const MissionLoadManifestLimits& limits) noexcept {
     return limits.entries.maximumLogicalPathBytes != 0U &&
+        limits.maximumSetupSourceBytes != 0U &&
+        limits.setup.maximumSourceBytes != 0U &&
         limits.maximumLevelSourceBytes != 0U &&
         limits.maximumWorldSourceBytes != 0U &&
         limits.maximumObjectDefinitionSourceBytes != 0U &&
@@ -280,6 +295,66 @@ void fail(
                 aggregateDefinitionSourceLimitExceeded,
             dependency,
             dependencyIndex,
+            identity.archiveFileIndex);
+        return false;
+    }
+    return true;
+}
+
+[[nodiscard]] bool preflightSetupSource(
+    MissionLoadManifestResult& result,
+    const udsp::Archive& archive,
+    const MissionArchiveEntryIdentity& identity,
+    const std::uint64_t allocationFootprintLimit,
+    const std::uint64_t decodedSourceLimit,
+    const std::uint64_t aggregateLimit,
+    std::uint64_t& aggregate,
+    std::uint64_t& footprint) {
+    if (identity.archiveFileIndex >= archive.files().size()) {
+        fail(
+            result,
+            MissionLoadManifestIssueKind::internalFailure,
+            MissionLoadDependencyKind::missionSetup);
+        return false;
+    }
+    const auto& entry = archive.files()[identity.archiveFileIndex];
+    footprint = sourceAllocationFootprint(entry);
+    if (footprint > allocationFootprintLimit) {
+        fail(
+            result,
+            MissionLoadManifestIssueKind::sourceLimitExceeded,
+            MissionLoadDependencyKind::missionSetup,
+            std::nullopt,
+            identity.archiveFileIndex);
+        return false;
+    }
+    const auto decodedSourceBytes = static_cast<std::uint64_t>(
+        entry.isCompressed() ? entry.unpackedSize : entry.storedSize);
+    if (decodedSourceBytes > decodedSourceLimit) {
+        fail(
+            result,
+            MissionLoadManifestIssueKind::sourceLimitExceeded,
+            MissionLoadDependencyKind::missionSetup,
+            std::nullopt,
+            identity.archiveFileIndex);
+        return false;
+    }
+    if (!checkedAdd(aggregate, footprint)) {
+        fail(
+            result,
+            MissionLoadManifestIssueKind::integerOverflow,
+            MissionLoadDependencyKind::missionSetup,
+            std::nullopt,
+            identity.archiveFileIndex);
+        return false;
+    }
+    if (aggregate > aggregateLimit) {
+        fail(
+            result,
+            MissionLoadManifestIssueKind::
+                aggregateDefinitionSourceLimitExceeded,
+            MissionLoadDependencyKind::missionSetup,
+            std::nullopt,
             identity.archiveFileIndex);
         return false;
     }
@@ -433,6 +508,7 @@ MissionLoadManifest& MissionLoadManifest::operator=(
         return *this;
     }
     revision_ = std::move(other.revision_);
+    setupEntry_ = std::move(other.setupEntry_);
     levelEntry_ = std::move(other.levelEntry_);
     worldEntry_ = std::move(other.worldEntry_);
     level_ = std::move(other.level_);
@@ -444,6 +520,8 @@ MissionLoadManifest& MissionLoadManifest::operator=(
     uniqueObjectDefinitions_ =
         std::move(other.uniqueObjectDefinitions_);
     ccfLoads_ = std::move(other.ccfLoads_);
+    startPositions_ = std::move(other.startPositions_);
+    setupSourceFootprintBytes_ = other.setupSourceFootprintBytes_;
     definitionSourceFootprintBytes_ =
         other.definitionSourceFootprintBytes_;
     plannedCcfSourceFootprintBytes_ =
@@ -456,7 +534,8 @@ MissionLoadManifest& MissionLoadManifest::operator=(
 std::optional<std::uint64_t>
 MissionLoadManifest::calculatePublishedCpuBytes() const noexcept {
     std::uint64_t total = sizeof(MissionLoadManifest);
-    if (!addArchiveIdentity(total, levelEntry_) ||
+    if (!addArchiveIdentity(total, setupEntry_) ||
+        !addArchiveIdentity(total, levelEntry_) ||
         !addArchiveIdentity(total, worldEntry_) ||
         !addLevelDefinition(total, level_) ||
         !addWorldDefinition(total, world_) ||
@@ -479,7 +558,11 @@ MissionLoadManifest::calculatePublishedCpuBytes() const noexcept {
         !addBytes(
             total,
             ccfLoads_.size(),
-            sizeof(MissionCcfLoadDescriptor))) {
+            sizeof(MissionCcfLoadDescriptor)) ||
+        !addBytes(
+            total,
+            startPositions_.size(),
+            sizeof(assets::MissionStartPosition))) {
         return std::nullopt;
     }
     for (const auto& entry : objectEntries_) {
@@ -504,13 +587,18 @@ MissionLoadManifest::calculatePublishedCpuBytes() const noexcept {
             return std::nullopt;
         }
     }
+    for (const auto& start : startPositions_) {
+        if (!addString(total, start.roomName)) {
+            return std::nullopt;
+        }
+    }
     return total;
 }
 
 MissionLoadManifestResult buildMissionLoadManifest(
     VerifiedContentSession& session,
-    const MissionLoadManifestRequest& request,
-    const MissionLoadManifestLimits& limits,
+    const MissionLoadManifestRequest& externalRequest,
+    const MissionLoadManifestLimits& externalLimits,
     const std::stop_token stopToken,
     MissionLoadManifestProgressCallback progress) {
     MissionLoadManifestResult result;
@@ -525,6 +613,56 @@ MissionLoadManifestResult buildMissionLoadManifest(
                 MissionLoadDependencyKind::level);
             return result;
         }
+
+        // Snapshot every caller-owned input before the first callback. Logical
+        // paths are validated against the copied limit before allocation, so a
+        // callback may destroy or mutate request/limits without invalidating
+        // anything used by the transaction.
+        const MissionLoadManifestLimits limits = externalLimits;
+        if (!validLimits(limits)) {
+            fail(
+                result,
+                MissionLoadManifestIssueKind::invalidLimits,
+                MissionLoadDependencyKind::level);
+            return result;
+        }
+        MissionLoadManifestRequest request;
+        const auto snapshotPath = [&](
+            const std::string& externalPath,
+            const MissionLoadDependencyKind dependency,
+            std::string& destination) {
+            if (externalPath.empty()) {
+                fail(
+                    result,
+                    MissionLoadManifestIssueKind::missingLogicalPath,
+                    dependency);
+                return false;
+            }
+            if (externalPath.size() >
+                    limits.entries.maximumLogicalPathBytes ||
+                !udsp::isLogicalPathValid(
+                    externalPath,
+                    limits.entries.maximumLogicalPathBytes)) {
+                fail(
+                    result,
+                    MissionLoadManifestIssueKind::invalidLogicalPath,
+                    dependency);
+                return false;
+            }
+            destination = externalPath;
+            return true;
+        };
+        if (!snapshotPath(
+                externalRequest.levelLogicalPath,
+                MissionLoadDependencyKind::level,
+                request.levelLogicalPath) ||
+            !snapshotPath(
+                externalRequest.setupLogicalPath,
+                MissionLoadDependencyKind::missionSetup,
+                request.setupLogicalPath)) {
+            return result;
+        }
+
         MissionLoadManifestProgressCallback guardedProgress =
             [&](const MissionLoadManifestProgress& update) {
                 const auto requireExpectedSession = [&] {
@@ -555,33 +693,137 @@ MissionLoadManifestResult buildMissionLoadManifest(
                 1U)) {
             return result;
         }
-        if (!validLimits(limits)) {
-            fail(
-                result,
-                MissionLoadManifestIssueKind::invalidLimits,
-                MissionLoadDependencyKind::level);
-            return result;
-        }
 
         MissionLoadManifest candidate;
         candidate.revision_ = expectedRevision;
         const auto& archive = session.sourceArchive();
-        if (!udsp::isLogicalPathValid(
-                request.levelLogicalPath,
-                limits.entries.maximumLogicalPathBytes)) {
-            fail(
+        if (!report(
                 result,
-                request.levelLogicalPath.empty()
-                    ? MissionLoadManifestIssueKind::missingLogicalPath
-                    : MissionLoadManifestIssueKind::invalidLogicalPath,
-                MissionLoadDependencyKind::level);
+                stopToken,
+                guardedProgress,
+                MissionLoadManifestPhase::validatingRequest,
+                1U,
+                1U) ||
+            !report(
+                result,
+                stopToken,
+                guardedProgress,
+                MissionLoadManifestPhase::lookingUpMissionSetup,
+                0U,
+                1U)) {
+            return result;
+        }
+        if (!resolveExact(
+                result,
+                archive,
+                request.setupLogicalPath,
+                limits.entries.maximumLogicalPathBytes,
+                MissionLoadDependencyKind::missionSetup,
+                std::nullopt,
+                candidate.setupEntry_)) {
             return result;
         }
         if (!report(
                 result,
                 stopToken,
                 guardedProgress,
-                MissionLoadManifestPhase::validatingRequest,
+                MissionLoadManifestPhase::lookingUpMissionSetup,
+                1U,
+                1U)) {
+            return result;
+        }
+
+        assets::MissionSetupParseLimits setupLimits = limits.setup;
+        setupLimits.maximumStartPositions = std::min(
+            setupLimits.maximumStartPositions,
+            assets::legacyMissionStartCapacity);
+        if (!preflightSetupSource(
+                result,
+                archive,
+                candidate.setupEntry_,
+                limits.maximumSetupSourceBytes,
+                setupLimits.maximumSourceBytes,
+                limits.maximumTotalDefinitionSourceBytes,
+                candidate.definitionSourceFootprintBytes_,
+                candidate.setupSourceFootprintBytes_)) {
+            return result;
+        }
+        if (!report(
+                result,
+                stopToken,
+                guardedProgress,
+                MissionLoadManifestPhase::readingMissionSetup,
+                0U,
+                1U)) {
+            return result;
+        }
+        std::vector<std::uint8_t> setupBytes;
+        try {
+            setupBytes = session.readSourceFile(
+                candidate.setupEntry_.archiveFileIndex,
+                setupLimits.maximumSourceBytes);
+        }
+        catch (const std::bad_alloc&) {
+            throw;
+        }
+        catch (...) {
+            fail(
+                result,
+                MissionLoadManifestIssueKind::readFailure,
+                MissionLoadDependencyKind::missionSetup,
+                std::nullopt,
+                candidate.setupEntry_.archiveFileIndex);
+            return result;
+        }
+        if (!report(
+                result,
+                stopToken,
+                guardedProgress,
+                MissionLoadManifestPhase::readingMissionSetup,
+                1U,
+                1U) ||
+            !report(
+                result,
+                stopToken,
+                guardedProgress,
+                MissionLoadManifestPhase::parsingMissionSetup,
+                0U,
+                1U)) {
+            return result;
+        }
+        try {
+            candidate.startPositions_ =
+                assets::parseMissionStartPositions(setupBytes, setupLimits);
+        }
+        catch (const assets::MissionSetupParseError& error) {
+            fail(
+                result,
+                MissionLoadManifestIssueKind::parseFailure,
+                MissionLoadDependencyKind::missionSetup,
+                std::nullopt,
+                candidate.setupEntry_.archiveFileIndex,
+                error.code(),
+                error.offset());
+            return result;
+        }
+        catch (const std::bad_alloc&) {
+            throw;
+        }
+        catch (...) {
+            fail(
+                result,
+                MissionLoadManifestIssueKind::parseFailure,
+                MissionLoadDependencyKind::missionSetup,
+                std::nullopt,
+                candidate.setupEntry_.archiveFileIndex);
+            return result;
+        }
+        std::vector<std::uint8_t>().swap(setupBytes);
+        if (!report(
+                result,
+                stopToken,
+                guardedProgress,
+                MissionLoadManifestPhase::parsingMissionSetup,
                 1U,
                 1U) ||
             !report(

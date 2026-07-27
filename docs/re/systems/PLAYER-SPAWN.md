@@ -1,8 +1,8 @@
 # Player spawn and visual identity
 
 **Status:** player/type/primary-actor and mission start-room paths recovered;
-bounded AFS parsing and ordered multi-CCF world-room lookup implemented;
-dynamic actor publication is pending
+authenticated bounded AFS loading and ordered multi-CCF world-room lookup
+implemented; dynamic actor publication is pending
 
 **Evidence:** `EV-20260724-005`, `EV-20260724-006`
 
@@ -172,9 +172,25 @@ publication and world-wide start lookup. Together they:
   portable; and
 - fail closed on structural, limit, missing, ambiguous, or forged state.
 
-The implementation deliberately does not execute AFS, convert the recovered
-axis rotation into a portable runtime matrix, create an actor, or publish its
-skin hierarchies to Metal. Connecting the catalog's contributor lists to
-combined room draw publication remains separate from the now-implemented
-lookup contract. Actor creation and Metal publication still require the dynamic
-actor-to-instance contract and runtime validation.
+The production provenance chain begins with a required, explicit
+`setupLogicalPath`; the Level path is supplied separately. `MissionLoadManifest`
+resolves that setup identity exactly through the same guarded
+`VerifiedContentSession` used for the Level, World, and object-definition
+metadata. It never derives a setup name from the Level and never searches a
+sibling or fallback path. The manifest retains the canonical setup
+logical-path/file-index identity, checked compressed-source footprint, and
+owned ordered starts. Raw AFS bytes are released after parsing.
+
+`MissionWorldRoomLoader` accepts no caller-owned start table. It copies the
+manifest-owned starts before callbacks, resolves them against the complete
+ordered main/backdrop/object CCF room namespace, and carries the canonical
+setup identity and footprint into the loaded result. A successfully
+authenticated setup with zero `AddStartPos` records deliberately takes the
+anonymous root-room fallback.
+
+The implementation deliberately does not execute AFS or infer a setup path. It
+also does not yet convert the recovered axis rotation into the final portable
+player pose, create the primary actor, publish the selected mission room to the
+native iOS coordinator, or publish the actor's skin hierarchies to Metal. Those
+native player-pose and dynamic actor-to-instance handoffs remain the next
+runtime boundary.

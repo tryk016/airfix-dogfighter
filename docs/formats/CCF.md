@@ -335,17 +335,24 @@ and bind its entry index in one immutable transaction. Identical archive file
 indices deduplicate across sources and roles while equal local material
 references remain isolated.
 
-`MissionLoadManifest` now provides the preceding authenticated dependency proof.
-Starting from one Level, it uniquely resolves the World, main `CCFF`, optional
-first `BCKD`, and the `CCFF` of every physical Level `OBJE`. Its ordered
-descriptors are main, optional backdrop, then one object descriptor per physical
-placement. Repeated CCFs remain repeated in this list, even when repeated
-`OBJE` entries reuse one object-definition parse cached by archive file index.
-An `OBJE` dependency whose parsed root is `MODL` fails closed. Level `MODL`
-references are retained as metadata identities only and never become
-mission-root CCF sources. Main and backdrop descriptors use legacy flags `0`;
-object descriptors use `0x2000`, keep room sections enabled, and disable placed
-scene publication.
+`MissionLoadManifest` now provides the preceding authenticated dependency
+proof. Its request requires an explicit setup AFS logical path in addition to
+the Level path. The setup identity is resolved exactly in the same authenticated
+archive; it is never inferred from the Level name and has no path fallback. A
+bounded, non-executing scanner retains at most 16 ordered `AddStartPos` records.
+The manifest owns those records, the canonical setup logical-path/file-index
+identity, and the setup source footprint, while raw AFS bytes are discarded.
+
+Starting from the independently supplied Level path, the manifest uniquely
+resolves the World, main `CCFF`, optional first `BCKD`, and the `CCFF` of every
+physical Level `OBJE`. Its ordered descriptors are main, optional backdrop,
+then one object descriptor per physical placement. Repeated CCFs remain
+repeated in this list, even when repeated `OBJE` entries reuse one
+object-definition parse cached by archive file index. An `OBJE` dependency
+whose parsed root is `MODL` fails closed. Level `MODL` references are retained
+as metadata identities only and never become mission-root CCF sources. Main
+and backdrop descriptors use legacy flags `0`; object descriptors use
+`0x2000`, keep room sections enabled, and disable placed scene publication.
 
 This manifest reads no CCF or GTI payload. It records owned logical-path/index
 identities and planned source-allocation footprints under per-entry, aggregate,
@@ -364,15 +371,18 @@ share one read/parse but still contribute repeated legacy room loads with
 `0x2000` placed-scene suppression. Stable CCF pointers are created only after
 the exact cache size has been reserved and filled.
 
-The resulting catalogue resolves the fixed start table and root fallback before
+The resulting catalogue resolves the manifest-owned fixed start table before
 the existing global texture binder, source-aware draw assembly, and submission
-validator run. Selected GTIs are materialized in dense first-use ID order.
+validator run. A present but empty authenticated setup selects the root-room
+fallback. Selected GTIs are materialized in dense first-use ID order.
 Malformed later CCFs or GTIs, source/revision replacement, cancellation, and
 late draw/submission failures clear the complete candidate. The published
-result owns only the selected room, start copy, provenance, textures, and
-submission; parsed CCFs and pointer-bearing working lists do not escape.
-Retaining the catalogue/CCF arena for room switching and publishing this result
-to the native mission coordinator remain later integrations.
+result owns only the canonical setup identity and footprint, selected room and
+start copy, provenance, textures, and submission; raw AFS, parsed CCFs, and
+pointer-bearing working lists do not escape. Retaining the catalogue/CCF arena
+for room switching, publishing the result to the native iOS mission
+coordinator, and applying the selected room/pose to the player remain later
+integrations.
 
 BSP culling, collision, and portal traversal remain later runtime features; no
 geometry is hidden until those traversal semantics are separately proven.

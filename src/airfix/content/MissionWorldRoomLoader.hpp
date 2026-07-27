@@ -11,7 +11,6 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
-#include <span>
 #include <stop_token>
 #include <vector>
 
@@ -19,7 +18,6 @@ namespace airfix::content {
 
 struct MissionWorldRoomLoadRequest {
     assets::CcNameState initialRootName;
-    std::span<const assets::MissionStartPosition> startPositions;
     std::uint32_t requestedStartIndex{};
     render::BasisTransform basis;
     render::UvPolicy uvPolicy{render::UvPolicy::preserveRaw};
@@ -130,6 +128,8 @@ struct MissionWorldRoomLoadIssue {
 
 struct LoadedMissionWorldRoom {
     ContentRevision revision;
+    MissionArchiveEntryIdentity setupEntry;
+    std::uint64_t setupSourceFootprintBytes{};
     assets::MissionWorldStartSelection startSelection;
     std::optional<assets::MissionStartPosition> selectedStart;
     render::DrawModelPayload model;

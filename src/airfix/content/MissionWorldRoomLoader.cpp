@@ -31,10 +31,13 @@ struct CachedCcf {
 
 struct PinnedMissionWorldRoomManifestInput {
     ContentRevision revision;
+    MissionArchiveEntryIdentity setupEntry;
     std::vector<MissionCcfLoadDescriptor> descriptors;
+    std::vector<assets::MissionStartPosition> startPositions;
     bool worldHasBackdrop{};
     std::size_t objectEntryCount{};
     std::vector<std::size_t> objectDefinitionIndices;
+    std::uint64_t setupSourceFootprintBytes{};
     std::uint64_t plannedCcfSourceFootprintBytes{};
 };
 
@@ -437,16 +440,6 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             addIssue(result, MissionWorldRoomLoadIssueKind::invalidLimits);
             return result;
         }
-        if (externalRequest.startPositions.size() >
-            assets::legacyMissionStartCapacity) {
-            auto issue = makeIssue(
-                MissionWorldRoomLoadIssueKind::startResolutionFailure);
-            issue.startPositionIndex = assets::legacyMissionStartCapacity;
-            issue.startIssue =
-                assets::MissionWorldStartIssueKind::startPositionLimitExceeded;
-            addIssue(result, std::move(issue));
-            return result;
-        }
         std::size_t initialRootBytes = 0U;
         for (const auto *component :
              {&externalRequest.initialRootName.name,
@@ -480,9 +473,21 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             addIssue(result, std::move(issue));
             return result;
         }
+
+        const auto &externalStartPositions = externalManifest.startPositions();
+        if (externalStartPositions.size() >
+            assets::legacyMissionStartCapacity) {
+            auto issue = makeIssue(
+                MissionWorldRoomLoadIssueKind::startResolutionFailure);
+            issue.startPositionIndex = assets::legacyMissionStartCapacity;
+            issue.startIssue =
+                assets::MissionWorldStartIssueKind::startPositionLimitExceeded;
+            addIssue(result, std::move(issue));
+            return result;
+        }
         for (std::size_t index = 0U;
-             index < externalRequest.startPositions.size(); ++index) {
-            if (externalRequest.startPositions[index].roomName.size() >
+             index < externalStartPositions.size(); ++index) {
+            if (externalStartPositions[index].roomName.size() >
                 limits.starts.maximumNameComponentBytes) {
                 auto issue = makeIssue(
                     MissionWorldRoomLoadIssueKind::startResolutionFailure);
@@ -495,15 +500,18 @@ loadMissionWorldRoom(VerifiedContentSession &session,
         }
 
         const auto &externalDescriptors = externalManifest.ccfLoads();
+        const auto externalObjectEntryCount =
+            externalManifest.objectEntries().size();
+        const auto &externalObjectDefinitionIndices =
+            externalManifest.objectDefinitionIndices();
         if (externalDescriptors.size() > limits.maximumCcfSources) {
             addIssue(
                 result,
                 MissionWorldRoomLoadIssueKind::ccfSourceCountLimitExceeded);
             return result;
         }
-        if (externalManifest.objectEntries().size() >
-                limits.maximumCcfSources ||
-            externalManifest.objectDefinitionIndices().size() >
+        if (externalObjectEntryCount > limits.maximumCcfSources ||
+            externalObjectDefinitionIndices.size() >
                 limits.maximumCcfSources) {
             addIssue(result, MissionWorldRoomLoadIssueKind::invalidManifest);
             return result;
@@ -526,23 +534,17 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             }
         }
 
-        std::vector<assets::MissionStartPosition> pinnedStartPositions(
-            externalRequest.startPositions.begin(),
-            externalRequest.startPositions.end());
-        const MissionWorldRoomLoadRequest request{
-            .initialRootName = externalRequest.initialRootName,
-            .startPositions = pinnedStartPositions,
-            .requestedStartIndex = externalRequest.requestedStartIndex,
-            .basis = externalRequest.basis,
-            .uvPolicy = externalRequest.uvPolicy,
-        };
-        const PinnedMissionWorldRoomManifestInput pinnedManifest{
+        const MissionWorldRoomLoadRequest request = externalRequest;
+        PinnedMissionWorldRoomManifestInput pinnedManifest{
             .revision = externalManifest.revision(),
-            .descriptors = externalManifest.ccfLoads(),
+            .setupEntry = externalManifest.setupEntry(),
+            .descriptors = externalDescriptors,
+            .startPositions = externalStartPositions,
             .worldHasBackdrop = externalManifest.world().backdrop.has_value(),
-            .objectEntryCount = externalManifest.objectEntries().size(),
-            .objectDefinitionIndices =
-                externalManifest.objectDefinitionIndices(),
+            .objectEntryCount = externalObjectEntryCount,
+            .objectDefinitionIndices = externalObjectDefinitionIndices,
+            .setupSourceFootprintBytes =
+                externalManifest.setupSourceFootprintBytes(),
             .plannedCcfSourceFootprintBytes =
                 externalManifest.plannedCcfSourceFootprintBytes(),
         };
@@ -574,9 +576,9 @@ loadMissionWorldRoom(VerifiedContentSession &session,
                     MissionWorldRoomLoadPhase::validatingInput, 0U, 1U)) {
             return result;
         }
-        for (std::size_t index = 0U; index < request.startPositions.size();
-             ++index) {
-            if (!finiteStart(request.startPositions[index])) {
+        for (std::size_t index = 0U;
+             index < pinnedManifest.startPositions.size(); ++index) {
+            if (!finiteStart(pinnedManifest.startPositions[index])) {
                 auto issue = makeIssue(
                     MissionWorldRoomLoadIssueKind::invalidStartPosition);
                 issue.startPositionIndex = index;
@@ -959,7 +961,7 @@ loadMissionWorldRoom(VerifiedContentSession &session,
         assets::MissionWorldStartResolution startResolution;
         try {
             startResolution = assets::resolveMissionStartsInWorld(
-                request.startPositions, catalog, limits.starts);
+                pinnedManifest.startPositions, catalog, limits.starts);
         } catch (const std::bad_alloc &) {
             throw;
         } catch (...) {
@@ -991,12 +993,12 @@ loadMissionWorldRoom(VerifiedContentSession &session,
         std::optional<assets::MissionStartPosition> selectedStart;
         if (selection->startPositionIndex.has_value()) {
             const auto index = *selection->startPositionIndex;
-            if (index >= request.startPositions.size()) {
+            if (index >= pinnedManifest.startPositions.size()) {
                 addIssue(result,
                          MissionWorldRoomLoadIssueKind::startSelectionFailure);
                 return result;
             }
-            selectedStart = request.startPositions[index];
+            selectedStart = pinnedManifest.startPositions[index];
         }
         if (!report(result, stopToken, guardedProgress,
                     MissionWorldRoomLoadPhase::resolvingStart, 1U, 1U)) {
@@ -1122,7 +1124,9 @@ loadMissionWorldRoom(VerifiedContentSession &session,
         }
 
         std::uint64_t publishedCpuBytes = sizeof(LoadedMissionWorldRoom);
-        if (!accountPublished(publishedCpuBytes, binding.imports.size(),
+        if (!accountString(publishedCpuBytes,
+                           pinnedManifest.setupEntry.logicalPath) ||
+            !accountPublished(publishedCpuBytes, binding.imports.size(),
                               sizeof(LoadedTextureAsset),
                               limits.maximumPublishedCpuBytes) ||
             !accountPublished(publishedCpuBytes, cacheIndexByLoadSource.size(),
@@ -1142,6 +1146,9 @@ loadMissionWorldRoom(VerifiedContentSession &session,
 
         LoadedMissionWorldRoom candidate{
             .revision = expectedRevision,
+            .setupEntry = std::move(pinnedManifest.setupEntry),
+            .setupSourceFootprintBytes =
+                pinnedManifest.setupSourceFootprintBytes,
             .startSelection = *selection,
             .selectedStart = std::move(selectedStart),
             .model = {},

@@ -25,6 +25,8 @@ inline constexpr std::string_view kSyntheticWorldLogicalPath =
     "Game/Worlds/Test.world";
 inline constexpr std::string_view kSyntheticLevelLogicalPath =
     "Game/Levels/Test.level";
+inline constexpr std::string_view kSyntheticMissionSetupLogicalPath =
+    "Game/Missions/Setup/DetachedFlight.afs";
 inline constexpr std::string_view kSyntheticObjectLogicalPath =
     "Game/Objects/Crate.object";
 inline constexpr std::string_view kSyntheticModelLogicalPath =
@@ -305,6 +307,19 @@ inline void validateCcf(
 }
 
 } // namespace legacy_detail
+
+[[nodiscard]] inline LegacyAssetBytes makeSyntheticMissionSetup() {
+    constexpr std::string_view source = R"afs(
+        object MissionSetup {
+            AddStartPos(
+                "Room",
+                coord3d(10, 20, 30),
+                coord3d(0.1, 0.2, 0.3)
+            );
+        }
+    )afs";
+    return {source.begin(), source.end()};
+}
 
 [[nodiscard]] inline LegacyAssetBytes makeSyntheticWorldWithBackdrops(
     std::string_view ccfLogicalPath,

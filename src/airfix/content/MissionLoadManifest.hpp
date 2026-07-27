@@ -2,6 +2,7 @@
 
 #include "airfix/assets/AfChunkContainer.hpp"
 #include "airfix/assets/MissionEntryResolver.hpp"
+#include "airfix/assets/MissionSetup.hpp"
 #include "airfix/content/VerifiedContentSession.hpp"
 
 #include <cstddef>
@@ -16,16 +17,24 @@ namespace airfix::content {
 
 struct MissionLoadManifestRequest {
     std::string levelLogicalPath;
+    std::string setupLogicalPath;
 };
 
 struct MissionLoadManifestLimits {
     assets::DefinitionParseLimits level{};
     assets::DefinitionParseLimits world{};
+    assets::MissionSetupParseLimits setup{};
     assets::MissionEntryResolutionLimits entries{};
 
+    // Peak source allocation admission: storedSize + unpackedSize for
+    // compressed entries, otherwise storedSize. setup.maximumSourceBytes
+    // independently bounds the decoded AFS payload.
+    std::size_t maximumSetupSourceBytes{1024U * 1024U};
     std::size_t maximumLevelSourceBytes{64U * 1024U * 1024U};
     std::size_t maximumWorldSourceBytes{64U * 1024U * 1024U};
     std::size_t maximumObjectDefinitionSourceBytes{64U * 1024U * 1024U};
+    // Includes setup, Level, World, and unique object-definition allocation
+    // footprints.
     std::uint64_t maximumTotalDefinitionSourceBytes{
         512U * 1024U * 1024U};
     std::size_t maximumCcfSourceBytes{256U * 1024U * 1024U};
@@ -36,6 +45,9 @@ struct MissionLoadManifestLimits {
 
 enum class MissionLoadManifestPhase : std::uint8_t {
     validatingRequest,
+    lookingUpMissionSetup,
+    readingMissionSetup,
+    parsingMissionSetup,
     lookingUpLevel,
     readingLevel,
     parsingLevel,
@@ -57,6 +69,7 @@ using MissionLoadManifestProgressCallback =
     std::function<void(const MissionLoadManifestProgress&)>;
 
 enum class MissionLoadDependencyKind : std::uint8_t {
+    missionSetup,
     level,
     world,
     objectDefinition,
@@ -95,6 +108,8 @@ struct MissionLoadManifestIssue {
     MissionLoadDependencyKind dependency{MissionLoadDependencyKind::level};
     std::optional<std::size_t> dependencyIndex;
     std::optional<std::size_t> sourceFileIndex;
+    std::optional<assets::MissionSetupParseErrorCode> setupParseError;
+    std::optional<std::uint64_t> sourceOffset;
 };
 
 struct MissionArchiveEntryIdentity {
@@ -161,6 +176,10 @@ public:
         const noexcept {
         return levelEntry_;
     }
+    [[nodiscard]] const MissionArchiveEntryIdentity& setupEntry()
+        const noexcept {
+        return setupEntry_;
+    }
     [[nodiscard]] const MissionArchiveEntryIdentity& worldEntry()
         const noexcept {
         return worldEntry_;
@@ -191,6 +210,13 @@ public:
     ccfLoads() const noexcept {
         return ccfLoads_;
     }
+    [[nodiscard]] const std::vector<assets::MissionStartPosition>&
+    startPositions() const noexcept {
+        return startPositions_;
+    }
+    [[nodiscard]] std::uint64_t setupSourceFootprintBytes() const noexcept {
+        return setupSourceFootprintBytes_;
+    }
     [[nodiscard]] std::uint64_t definitionSourceFootprintBytes()
         const noexcept {
         return definitionSourceFootprintBytes_;
@@ -217,6 +243,7 @@ private:
         MissionLoadManifestProgressCallback);
 
     ContentRevision revision_;
+    MissionArchiveEntryIdentity setupEntry_;
     MissionArchiveEntryIdentity levelEntry_;
     MissionArchiveEntryIdentity worldEntry_;
     assets::LevelDefinition level_;
@@ -226,6 +253,8 @@ private:
     std::vector<std::size_t> objectDefinitionIndices_;
     std::vector<MissionUniqueObjectDefinition> uniqueObjectDefinitions_;
     std::vector<MissionCcfLoadDescriptor> ccfLoads_;
+    std::vector<assets::MissionStartPosition> startPositions_;
+    std::uint64_t setupSourceFootprintBytes_{};
     std::uint64_t definitionSourceFootprintBytes_{};
     std::uint64_t plannedCcfSourceFootprintBytes_{};
     std::uint64_t publishedCpuBytes_{};
@@ -240,11 +269,13 @@ struct MissionLoadManifestResult {
     [[nodiscard]] bool success() const noexcept;
 };
 
-// Authenticates only the mission dependency graph and planned CCF source
-// identities. Level, World, and each unique Level OBJE definition are read
-// through session's already-authenticated handle. CCF/GTI payloads are never
-// read here. Level MODL references are resolved as metadata but are neither
-// parsed nor promoted to mission-root CCF loads.
+// Authenticates the explicit setup/Level pair, the mission dependency graph,
+// and planned CCF source identities. Setup AFS, Level, World, and each unique
+// Level OBJE definition are read through session's already-authenticated
+// handle. Setup parsing recognizes only bounded AddStartPos calls and never
+// executes script. CCF/GTI payloads are never read here. Level MODL references
+// are resolved as metadata but are neither parsed nor promoted to mission-root
+// CCF loads.
 [[nodiscard]] MissionLoadManifestResult buildMissionLoadManifest(
     VerifiedContentSession& session,
     const MissionLoadManifestRequest& request,

@@ -283,17 +283,31 @@ splice metadata and payload bytes from different backing objects. A separate
 full-verification stream entry point is retained for synthetic and isolated
 callers that do not already possess a recovery lease.
 
-`airfix::content::MissionLoadManifest` authenticates the mission dependency
-graph and planned CCF source identities without reopening that handle. It is
-move-only, has no public constructor, and retains the exact `ContentRevision`
-for later `belongsTo()` checks. Moving transfers its valid state and poisons the
-source; `valid()`, `belongsTo()`, and result `success()` therefore cannot accept
-a moved-from proof. During construction the builder pins both that revision and
-the opaque identity of the exact authenticated session handle. It resolves the
-requested Level, that Level's World, the World's main `CCFF`, optional first
-`BCKD`, and every physical Level `OBJE` definition followed by its `CCFF`. The
-Level, World, and each unique object definition are read and parsed through one
-serialized `VerifiedContentSession`; repeated object-definition archive indices
+`airfix::content::MissionLoadManifest` authenticates an explicit mission setup,
+the mission dependency graph, and planned CCF source identities without
+reopening that handle. The request must provide `setupLogicalPath` and the Level
+logical path independently. Setup lookup uses only the supplied logical path:
+there is no Level-basename derivation, extension search, sibling lookup, or
+fallback. The move-only result has no public constructor and retains the exact
+`ContentRevision` for later `belongsTo()` checks. Moving transfers its valid
+state and poisons the source; `valid()`, `belongsTo()`, and result `success()`
+therefore cannot accept a moved-from proof. During construction the builder
+pins both that revision and the opaque identity of the exact authenticated
+session handle.
+
+The setup AFS, Level, World, and each unique object definition are read and
+parsed through one serialized `VerifiedContentSession`. The setup parser never
+executes AFS. It scans only the exact `AddStartPos` form, rejects malformed
+matching calls atomically, accepts finite locale-independent numbers, and
+clamps the start table to the legacy hard capacity of 16. The manifest owns the
+canonical setup logical-path/file-index identity, its allocation footprint, and
+the parsed starts. Raw setup bytes and parser views are released before
+publication. A successfully authenticated setup with no start calls remains
+distinct from a missing setup and later requests the root-room fallback.
+
+The remaining lookup resolves the requested Level, that Level's World, the
+World's main `CCFF`, optional first `BCKD`, and every physical Level `OBJE`
+definition followed by its `CCFF`. Repeated object-definition archive indices
 use one parse-cache entry while ordered CCF descriptors remain repeated. Level
 `MODL` references are uniquely resolved as metadata but their payloads are not
 read and they do not become mission-root CCF sources.
@@ -302,29 +316,33 @@ The opaque handle token is not published in the manifest. `belongsTo()` means
 the supplied session has the same authenticated content revision; a separately
 authenticated session for the same size and digest is intentionally accepted.
 
-The manifest stores owned logical paths and archive indices rather than stream
-views or pointers. It publishes only after all exact lookups, object-root
-checks, per-entry and aggregate definition-source limits, planned CCF-source
-limits, published-CPU accounting, cancellation checks, and the final progress
-callback succeed. The planned CCF aggregate conservatively charges every
-ordered descriptor, including repeated archive entries. Compressed definition
-reads budget the stored and unpacked buffers together before I/O. Resolution
-checks cancellation between the World and every `OBJE`/`MODL` item. The builder
-rechecks both handle identity and revision before and after callbacks and before
-publication. Callback-driven replacement or move-out therefore fails atomically
-with `sessionIdentityChanged`, even when the replacement carries the same
-revision. It does not read or parse any CCF or GTI payload.
+The manifest stores owned logical paths, archive indices, and start records
+rather than stream views or pointers. It publishes only after all exact
+lookups, setup and object-root parsing, per-entry and aggregate source limits,
+planned CCF-source limits, published-CPU accounting, cancellation checks, and
+the final progress callback succeed. Setup and compressed definition reads
+budget the stored and unpacked buffers together before I/O. Published-CPU
+accounting includes the canonical setup path, start-vector elements, and every
+owned room-name string. The planned CCF aggregate conservatively charges every
+ordered descriptor, including repeated archive entries. Resolution checks
+cancellation between the setup, World, and every `OBJE`/`MODL` item. The
+builder rechecks both handle identity and revision before and after callbacks
+and before publication. Callback-driven replacement or move-out therefore
+fails atomically with `sessionIdentityChanged`, even when the replacement
+carries the same revision. It does not read or parse any CCF or GTI payload.
 
 `airfix::content::MissionWorldRoomLoader` is the next authenticated transaction.
 It accepts only that manifest, a session for the same cryptographic
-`ContentRevision`, and caller-owned start-selection data. The loader pins the
-exact session marker and revision for its lifetime, revalidates every CCF
-logical path and archive index, and reads all CCF/GTI payloads exclusively
-through the guarded session. Unique CCF file indices are read and parsed once,
-but repeated ordered descriptors remain separate room-catalogue sources. The
-loader then resolves a legacy start, binds one selected-room texture namespace,
-prepares GTIs, assembles the source-aware model, and validates its draw
-submission before publishing an owned revision-tagged result. No CCF pointer,
+`ContentRevision`, and a request containing no start span. The loader copies
+the manifest-owned starts before its first callback, pins the exact session
+marker and revision for its lifetime, revalidates every CCF logical path and
+archive index, and reads all CCF/GTI payloads exclusively through the guarded
+session. Unique CCF file indices are read and parsed once, but repeated ordered
+descriptors remain separate room-catalogue sources. The loader then resolves a
+legacy start, binds one selected-room texture namespace, prepares GTIs,
+assembles the source-aware model, and validates its draw submission before
+publishing an owned revision-tagged result. The result repeats the canonical
+setup identity and source footprint for provenance. No raw AFS, CCF pointer,
 span, string view, or working catalogue escapes the transaction.
 
 The transaction identity now owns a private shared marker rather than copying
@@ -337,8 +355,8 @@ CCF/GTI source peaks and aggregates, logical retained CCF metadata,
 decoded/upload/resident RGBA, and published CPU ownership are separately
 bounded. Retained CCF accounting is checked after the parser's existing hard
 caps; it is semantic ownership accounting, not an exact allocator/RSS ceiling.
-Setup-script authentication and native mission publication remain separate
-later stages.
+Native iOS mission publication and application of the selected start room and
+pose to the reconstructed player remain separate later stages.
 
 `publishedCpuBytes` is explicit semantic accounting for the retained manifest
 object, vector elements, and owned string contents; it is not a claim about

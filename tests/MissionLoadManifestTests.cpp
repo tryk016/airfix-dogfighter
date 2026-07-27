@@ -3,6 +3,7 @@
 #include "support/SyntheticLegacyAssets.hpp"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstddef>
@@ -33,6 +34,7 @@ using airfix::content::MissionLoadManifestPhase;
 using airfix::content::MissionLoadManifestRequest;
 using airfix::content::MissionLoadManifestResult;
 using airfix::content::VerifiedContentSession;
+using airfix::assets::MissionSetupParseErrorCode;
 using airfix::testing::Bytes;
 using airfix::testing::SyntheticAfPack;
 using airfix::testing::UdspInputEntry;
@@ -153,6 +155,10 @@ private:
     return encoded;
 }
 
+[[nodiscard]] Bytes sourceBytes(const std::string_view source) {
+    return {source.begin(), source.end()};
+}
+
 [[nodiscard]] std::vector<UdspInputEntry> happyEntries() {
     constexpr std::string_view objectPaths[]{
         airfix::testing::kSyntheticObjectLogicalPath,
@@ -225,6 +231,11 @@ private:
             .flags = airfix::udsp::kCompressedFlag,
             .unpackedSize = 64U,
         },
+        {
+            .logicalPath = std::string(
+                airfix::testing::kSyntheticMissionSetupLogicalPath),
+            .bytes = airfix::testing::makeSyntheticMissionSetup(),
+        },
     };
 }
 
@@ -236,8 +247,13 @@ private:
 
 [[nodiscard]] MissionLoadManifestRequest request(
     std::string levelPath =
-        std::string(airfix::testing::kSyntheticLevelLogicalPath)) {
-    return {.levelLogicalPath = std::move(levelPath)};
+        std::string(airfix::testing::kSyntheticLevelLogicalPath),
+    std::string setupPath =
+        std::string(airfix::testing::kSyntheticMissionSetupLogicalPath)) {
+    return {
+        .levelLogicalPath = std::move(levelPath),
+        .setupLogicalPath = std::move(setupPath),
+    };
 }
 
 [[nodiscard]] bool hasIssue(
@@ -277,6 +293,20 @@ void requireAtomicFailure(
         (entry.isCompressed()
             ? static_cast<std::uint64_t>(entry.unpackedSize)
             : 0U);
+}
+
+[[nodiscard]] std::uint64_t decodedSize(
+    const VerifiedContentSession& session,
+    const std::string_view logicalPath) {
+    const auto lookup = session.sourceArchive().lookup(logicalPath);
+    require(
+        lookup.status == airfix::udsp::LookupStatus::unique,
+        "decoded-size fixture lookup was not unique");
+    const auto& entry =
+        session.sourceArchive().files().at(lookup.fileIndex);
+    return entry.isCompressed()
+        ? static_cast<std::uint64_t>(entry.unpackedSize)
+        : static_cast<std::uint64_t>(entry.storedSize);
 }
 
 void requirePoisonPayloadsAreUnreadable(
@@ -322,6 +352,25 @@ void testHappyPathOrderingCachingAndOwnership() {
         manifest.belongsTo(session) &&
             manifest.revision() == revisionFor(pack),
         "manifest did not retain the authenticated revision");
+    require(
+        manifest.setupEntry().logicalPath ==
+                "Game\\Missions\\Setup\\DetachedFlight.afs" &&
+            manifest.setupEntry().archiveFileIndex <
+                session.sourceArchive().files().size() &&
+            manifest.setupSourceFootprintBytes() ==
+                footprint(
+                    session,
+                    airfix::testing::kSyntheticMissionSetupLogicalPath),
+        "manifest did not retain exact setup identity and footprint");
+    require(
+        manifest.startPositions().size() == 1U &&
+            manifest.startPositions()[0].roomName == "Room" &&
+            manifest.startPositions()[0].position ==
+                std::array<float, 3U>{10.0F, 20.0F, 30.0F} &&
+            manifest.startPositions()[0].axisRotation ==
+                std::array<float, 3U>{0.1F, 0.2F, 0.3F} &&
+            manifest.startPositions()[0].sourceOffset > 0U,
+        "manifest did not own the parsed authenticated start table");
     require(
         manifest.level().objects.size() == 2U &&
             manifest.level().models.size() == 1U &&
@@ -397,6 +446,48 @@ void testLookupFailuresAreTypedAndAtomic() {
             MissionLoadManifestIssueKind::notFound,
             MissionLoadDependencyKind::level,
             "missing Level was not rejected");
+        requireAtomicFailure(
+            airfix::content::buildMissionLoadManifest(
+                session,
+                request(
+                    std::string(
+                        airfix::testing::kSyntheticLevelLogicalPath),
+                    "")),
+            MissionLoadManifestIssueKind::missingLogicalPath,
+            MissionLoadDependencyKind::missionSetup,
+            "missing setup path was not rejected");
+        requireAtomicFailure(
+            airfix::content::buildMissionLoadManifest(
+                session,
+                request(
+                    std::string(
+                        airfix::testing::kSyntheticLevelLogicalPath),
+                    "../escape.afs")),
+            MissionLoadManifestIssueKind::invalidLogicalPath,
+            MissionLoadDependencyKind::missionSetup,
+            "invalid setup path was not rejected");
+        requireAtomicFailure(
+            airfix::content::buildMissionLoadManifest(
+                session,
+                request(
+                    std::string(
+                        airfix::testing::kSyntheticLevelLogicalPath),
+                    "Game/Missions/Missing.afs")),
+            MissionLoadManifestIssueKind::notFound,
+            MissionLoadDependencyKind::missionSetup,
+            "missing setup entry was not rejected");
+    }
+    {
+        auto entries = happyEntries();
+        entries.push_back(entries.back());
+        const auto pack = makePack(entries);
+        auto session = openSession(pack);
+        requireAtomicFailure(
+            airfix::content::buildMissionLoadManifest(
+                session, request()),
+            MissionLoadManifestIssueKind::ambiguous,
+            MissionLoadDependencyKind::missionSetup,
+            "ambiguous setup entry was not rejected");
     }
     {
         auto entries = happyEntries();
@@ -547,6 +638,121 @@ void testLookupFailuresAreTypedAndAtomic() {
     }
 }
 
+void testSetupParsingIsTypedBoundedAndOwned() {
+    {
+        auto entries = happyEntries();
+        entries.back().bytes =
+            sourceBytes("object EmptySetup { event Setup {} }");
+        const auto pack = makePack(entries);
+        auto session = openSession(pack);
+        const auto result =
+            airfix::content::buildMissionLoadManifest(
+                session, request());
+        require(
+            result.success() && result.manifest->startPositions().empty() &&
+                result.manifest->setupEntry().logicalPath ==
+                    "Game\\Missions\\Setup\\DetachedFlight.afs",
+            "authenticated setup without starts did not publish an empty table");
+    }
+
+    const auto requireSetupParseFailure = [](
+        Bytes source,
+        const MissionSetupParseErrorCode expected,
+        const std::string_view message) {
+        auto entries = happyEntries();
+        entries.back().bytes = std::move(source);
+        const auto pack = makePack(entries);
+        auto session = openSession(pack);
+        const auto result =
+            airfix::content::buildMissionLoadManifest(
+                session, request());
+        requireAtomicFailure(
+            result,
+            MissionLoadManifestIssueKind::parseFailure,
+            MissionLoadDependencyKind::missionSetup,
+            message);
+        require(
+            result.issues.size() == 1U &&
+                result.issues.front().setupParseError ==
+                    std::optional<MissionSetupParseErrorCode>{expected} &&
+                result.issues.front().sourceOffset.has_value() &&
+                result.issues.front().sourceFileIndex.has_value(),
+            "setup parse failure lost its typed code, offset, or source index");
+    };
+
+    requireSetupParseFailure(
+        sourceBytes(
+            "AddStartPos(\"Room\",coord3d(1,2),coord3d(4,5,6));"),
+        MissionSetupParseErrorCode::malformedText,
+        "malformed setup call was not typed");
+
+    auto embeddedNul = sourceBytes("/* setup ");
+    embeddedNul.push_back(0U);
+    const auto nulOffset = embeddedNul.size() - 1U;
+    embeddedNul.insert(
+        embeddedNul.end(),
+        {' ', '*', '/'});
+    {
+        auto entries = happyEntries();
+        entries.back().bytes = std::move(embeddedNul);
+        const auto pack = makePack(entries);
+        auto session = openSession(pack);
+        const auto result =
+            airfix::content::buildMissionLoadManifest(
+                session, request());
+        requireAtomicFailure(
+            result,
+            MissionLoadManifestIssueKind::parseFailure,
+            MissionLoadDependencyKind::missionSetup,
+            "embedded setup NUL was not rejected");
+        require(
+            result.issues.front().setupParseError ==
+                    std::optional<MissionSetupParseErrorCode>{
+                        MissionSetupParseErrorCode::malformedText} &&
+                result.issues.front().sourceOffset ==
+                    std::optional<std::uint64_t>{nulOffset},
+            "embedded setup NUL lost its exact parser offset");
+    }
+
+    requireSetupParseFailure(
+        sourceBytes(
+            "AddStartPos(\"Room\",coord3d(1e999,2,3),coord3d(4,5,6));"),
+        MissionSetupParseErrorCode::invalidNumber,
+        "non-finite setup number was not typed");
+
+    std::string tooManyStarts;
+    for (std::size_t index = 0U;
+         index <= airfix::assets::legacyMissionStartCapacity;
+         ++index) {
+        tooManyStarts +=
+            "AddStartPos(\"Room\",coord3d(1,2,3),coord3d(4,5,6));";
+    }
+    requireSetupParseFailure(
+        sourceBytes(tooManyStarts),
+        MissionSetupParseErrorCode::startPositionLimitExceeded,
+        "seventeenth setup start was not rejected");
+
+    {
+        const auto pack = makePack(happyEntries());
+        auto session = openSession(pack);
+        MissionLoadManifestLimits limits;
+        limits.setup.maximumRoomNameBytes = 3U;
+        const auto result =
+            airfix::content::buildMissionLoadManifest(
+                session, request(), limits);
+        requireAtomicFailure(
+            result,
+            MissionLoadManifestIssueKind::parseFailure,
+            MissionLoadDependencyKind::missionSetup,
+            "setup room-name limit was not enforced");
+        require(
+            result.issues.front().setupParseError ==
+                std::optional<MissionSetupParseErrorCode>{
+                    MissionSetupParseErrorCode::roomNameLimitExceeded},
+            "setup room-name failure lost its typed parser code");
+    }
+}
+
 void testObjectRootAndLateFailuresAreAtomic() {
     {
         auto entries = happyEntries();
@@ -659,6 +865,12 @@ void testReadParseAndStructuralLimitFailures() {
         MissionLoadManifestIssueKind::readFailure,
         "OBJE read failure was not typed");
     requireEntryFailure(
+        happyEntries().size() - 1U,
+        true,
+        MissionLoadDependencyKind::missionSetup,
+        MissionLoadManifestIssueKind::readFailure,
+        "setup read failure was not typed");
+    requireEntryFailure(
         0U,
         false,
         MissionLoadDependencyKind::level,
@@ -704,7 +916,9 @@ void testExactAndOneUnderBudgets() {
             entry.logicalPath ==
                 airfix::testing::kSyntheticWorldLogicalPath ||
             entry.logicalPath ==
-                airfix::testing::kSyntheticObjectLogicalPath) {
+                airfix::testing::kSyntheticObjectLogicalPath ||
+            entry.logicalPath ==
+                airfix::testing::kSyntheticMissionSetupLogicalPath) {
             const auto unpackedSize =
                 static_cast<std::uint32_t>(entry.bytes.size());
             entry.bytes = literalCompression(entry.bytes);
@@ -717,6 +931,14 @@ void testExactAndOneUnderBudgets() {
     MissionLoadManifestLimits exact;
     {
         auto session = openSession(pack);
+        exact.maximumSetupSourceBytes = static_cast<std::size_t>(
+            footprint(
+                session,
+                airfix::testing::kSyntheticMissionSetupLogicalPath));
+        exact.setup.maximumSourceBytes = static_cast<std::size_t>(
+            decodedSize(
+                session,
+                airfix::testing::kSyntheticMissionSetupLogicalPath));
         exact.maximumLevelSourceBytes = static_cast<std::size_t>(
             footprint(
                 session,
@@ -737,6 +959,30 @@ void testExactAndOneUnderBudgets() {
             session, request(), exact);
     }
     require(baseline.success(), "exact compressed source limits failed");
+    {
+        auto session = openSession(pack);
+        const auto expectedDefinitionFootprint =
+            footprint(
+                session,
+                airfix::testing::kSyntheticMissionSetupLogicalPath) +
+            footprint(
+                session,
+                airfix::testing::kSyntheticLevelLogicalPath) +
+            footprint(
+                session,
+                airfix::testing::kSyntheticWorldLogicalPath) +
+            footprint(
+                session,
+                airfix::testing::kSyntheticObjectLogicalPath);
+        require(
+            baseline.manifest->definitionSourceFootprintBytes() ==
+                    expectedDefinitionFootprint &&
+                baseline.manifest->setupSourceFootprintBytes() ==
+                    footprint(
+                        session,
+                        airfix::testing::kSyntheticMissionSetupLogicalPath),
+            "definition aggregate did not include setup allocation footprint");
+    }
 
     exact.maximumTotalDefinitionSourceBytes =
         baseline.manifest->definitionSourceFootprintBytes();
@@ -773,6 +1019,35 @@ void testExactAndOneUnderBudgets() {
             dependency,
             message);
     };
+    {
+        auto limits = exact;
+        --limits.maximumSetupSourceBytes;
+        requireOneUnder(
+            limits,
+            MissionLoadManifestIssueKind::sourceLimitExceeded,
+            MissionLoadDependencyKind::missionSetup,
+            "one-under compressed setup allocation limit succeeded");
+    }
+    {
+        auto limits = exact;
+        --limits.setup.maximumSourceBytes;
+        requireOneUnder(
+            limits,
+            MissionLoadManifestIssueKind::sourceLimitExceeded,
+            MissionLoadDependencyKind::missionSetup,
+            "one-under clamped setup parser source limit succeeded");
+    }
+    {
+        auto limits = exact;
+        limits.maximumTotalDefinitionSourceBytes =
+            baseline.manifest->setupSourceFootprintBytes() - 1U;
+        requireOneUnder(
+            limits,
+            MissionLoadManifestIssueKind::
+                aggregateDefinitionSourceLimitExceeded,
+            MissionLoadDependencyKind::missionSetup,
+            "setup was not charged to the definition aggregate");
+    }
     {
         auto limits = exact;
         --limits.maximumLevelSourceBytes;
@@ -863,6 +1138,54 @@ void testCancellationCallbacksAndRevisionBinding() {
             MissionLoadManifestIssueKind::cancelled,
             MissionLoadDependencyKind::level,
             "pre-cancelled manifest build succeeded");
+    }
+    {
+        auto session = openSession(pack);
+        std::optional<MissionLoadManifestRequest> externalRequest{
+            request()};
+        std::optional<MissionLoadManifestLimits> externalLimits{
+            MissionLoadManifestLimits{}};
+        bool destroyed = false;
+        const auto result =
+            airfix::content::buildMissionLoadManifest(
+                session,
+                *externalRequest,
+                *externalLimits,
+                {},
+                [&](const auto& progress) {
+                    if (!destroyed &&
+                        progress.phase ==
+                            MissionLoadManifestPhase::validatingRequest &&
+                        progress.completedItems == 0U) {
+                        externalRequest.reset();
+                        externalLimits.reset();
+                        destroyed = true;
+                    }
+                });
+        require(
+            destroyed && result.success() &&
+                result.manifest->startPositions().size() == 1U,
+            "manifest dereferenced request or limits after its first callback");
+    }
+    {
+        auto session = openSession(pack);
+        std::stop_source source;
+        requireAtomicFailure(
+            airfix::content::buildMissionLoadManifest(
+                session,
+                request(),
+                {},
+                source.get_token(),
+                [&](const auto& progress) {
+                    if (progress.phase ==
+                            MissionLoadManifestPhase::parsingMissionSetup &&
+                        progress.completedItems == 1U) {
+                        source.request_stop();
+                    }
+                }),
+            MissionLoadManifestIssueKind::cancelled,
+            MissionLoadDependencyKind::level,
+            "post-setup cancellation published a manifest");
     }
     {
         auto session = openSession(pack);
@@ -1052,6 +1375,17 @@ void testCancellationCallbacksAndRevisionBinding() {
 void testMovedFromProofsArePoisoned() {
     const auto pack = makePack(happyEntries());
     auto session = openSession(pack);
+    const auto expectedSetupFootprint = footprint(
+        session,
+        airfix::testing::kSyntheticMissionSetupLogicalPath);
+    const auto retainsSetupProof = [&](const auto& manifest) {
+        return manifest.setupEntry().logicalPath ==
+                "Game\\Missions\\Setup\\DetachedFlight.afs" &&
+            manifest.startPositions().size() == 1U &&
+            manifest.startPositions()[0].roomName == "Room" &&
+            manifest.setupSourceFootprintBytes() ==
+                expectedSetupFootprint;
+    };
     auto source =
         airfix::content::buildMissionLoadManifest(
             session, request());
@@ -1069,8 +1403,9 @@ void testMovedFromProofsArePoisoned() {
     require(
         moved.success() &&
             moved.manifest->valid() &&
-            moved.manifest->belongsTo(session),
-        "move construction poisoned the destination proof");
+            moved.manifest->belongsTo(session) &&
+            retainsSetupProof(*moved.manifest),
+        "move construction lost or poisoned setup provenance");
 
     auto assignmentSource =
         airfix::content::buildMissionLoadManifest(
@@ -1082,8 +1417,9 @@ void testMovedFromProofsArePoisoned() {
             !assignmentSource.success() &&
             !assignmentSource.manifest->valid() &&
             assignmentDestination.success() &&
-            assignmentDestination.manifest->valid(),
-        "move assignment did not poison only the source proof");
+            assignmentDestination.manifest->valid() &&
+            retainsSetupProof(*assignmentDestination.manifest),
+        "move assignment did not preserve setup proof while poisoning source");
 }
 
 } // namespace
@@ -1092,6 +1428,7 @@ int main() {
     try {
         testHappyPathOrderingCachingAndOwnership();
         testLookupFailuresAreTypedAndAtomic();
+        testSetupParsingIsTypedBoundedAndOwned();
         testObjectRootAndLateFailuresAreAtomic();
         testReadParseAndStructuralLimitFailures();
         testExactAndOneUnderBudgets();
