@@ -6,6 +6,8 @@ An evidence-driven, native reimplementation of **Airfix Dogfighter v1.01
 (2000)**, with a private iOS port as its first target. The project reconstructs
 observable formats and behaviour as maintainable C++20 and Objective-C++ code;
 it does not attempt to run or translate the original x86 executable on iOS.
+The goal is to preserve the single-player experience on modern Apple hardware,
+with faithful behaviour first and optional visual enhancements kept separate.
 
 > **Project status:** active research and development. The repository builds
 > and tests its portable core and an unsigned, data-less UIKit/Metal shell, but
