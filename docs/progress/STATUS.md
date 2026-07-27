@@ -383,8 +383,39 @@
   does not prove independently constructed metadata provenance. Late-source,
   ambiguous, forged, overflow, and exact/one-under limit failures clear all
   output.
-- The mission texture-binding regression target brings the portable suite to
+- The mission texture-binding regression target brought the portable suite to
   40/40.
+- Added the authenticated `MissionLoadManifest` metadata transaction. The
+  move-only, private-constructor result retains the exact `ContentRevision` and
+  owns every published path/index identity. Moving transfers validity and
+  explicitly invalidates the source; `valid()`, `belongsTo()`, and result
+  `success()` reject moved-from state. During construction, the builder also
+  pins the opaque identity of the exact authenticated handle. One
+  `VerifiedContentSession` handle performs the exact Level and World reads plus
+  one read/parse for every unique physical Level `OBJE` definition; repeated
+  object-definition archive indices reuse that cache entry. The handle token is
+  not published: `belongsTo()` means the same authenticated `ContentRevision`
+  and intentionally permits a separately authenticated session for those bytes.
+- Exact unique lookup covers Level -> World -> main `CCFF`, optional first
+  `BCKD`, and every physical `OBJE` definition -> `CCFF`. CCF descriptors retain
+  main/backdrop/physical-OBJE order and repeated entries. A referenced `OBJE`
+  that parses with a `MODL` root fails closed. Level `MODL` paths are resolved
+  as metadata only, are not read, and never become mission-root CCF sources.
+- No CCF or GTI payload is read in this phase. Per-entry compressed-source peak,
+  aggregate unique definition source, per-entry and aggregate planned CCF,
+  descriptor-count, and published-CPU limits are checked before publication;
+  the conservative CCF aggregate charges every descriptor, including repeats.
+  Cancellation, callback exceptions, allocation/overflow, or any late
+  lookup/read/parse/type/limit error clears the candidate and returns no partial
+  manifest. World/`OBJE`/`MODL` resolution is cancellable per item, and a
+  callback-driven session replacement or move-out returns
+  `sessionIdentityChanged`, even with the same revision. Handle identity and
+  revision are checked before/after callbacks and before publication.
+- The manifest is not yet connected to CCF parsing, the ordered room catalog,
+  global texture binding, draw assembly, `WorldRoomLoader`, or native
+  publication. That authenticated aggregate load remains the next content
+  integration.
+- The mission-manifest regression target brings the portable suite to 41/41.
 
 ## Confirmed
 
@@ -422,10 +453,11 @@
 3. Implement explicit dynamic publication of the recovered primary actor and
    its selected-skin hierarchies through the pose exchange, keeping auxiliary
    weapons/effects separate.
-4. Add the authenticated mission load manifest around the completed
-   multi-source room, texture-binding, draw, and submission seams, then connect
-   the aggregate result to native publication. Recover portal tracing, camera
-   room traversal, and later transitions afterward.
+4. Consume the authenticated mission manifest in one same-session CCF/GTI load,
+   connect the resulting ordered sources to the completed multi-source room,
+   texture-binding, draw, and submission seams, then publish the aggregate
+   result natively. Recover portal tracing, camera room traversal, and later
+   transitions afterward.
 5. Keep BSP culling and portal traversal disabled until their runtime semantics
    are proven against executable evidence.
 

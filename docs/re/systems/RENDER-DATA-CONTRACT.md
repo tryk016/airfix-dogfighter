@@ -212,6 +212,41 @@ does not prove the provenance of independently constructed `CcfMetadata`.
 It reads no payload and any late identity, resolution, binding, overflow, or
 limit failure clears all renderer-facing output atomically.
 
+`MissionLoadManifest` establishes the authenticated metadata input that will
+precede this renderer boundary. Its builder consumes one
+`VerifiedContentSession` and publishes a move-only, private-constructor proof
+carrying the exact `ContentRevision`. Move transfers its valid state and
+invalidates the source; `belongsTo()` requires validity and an equal revision.
+For the construction transaction, the builder also pins the opaque identity of
+the exact authenticated handle. That token is not retained: `belongsTo()`
+intentionally accepts a separately authenticated session for the same content
+revision. All Level, World, and unique physical Level `OBJE` definition reads
+use the one guarded handle. Exact unique lookup proceeds through Level to World,
+main World `CCFF`, optional first `BCKD`, and each `OBJE` definition to its
+`CCFF`; an `OBJE` whose parsed definition root is `MODL` is rejected.
+
+CCF load descriptors preserve legacy order: main World, optional backdrop, then
+one descriptor for every `OBJE` in physical placement order. Repeated
+descriptors are not deduplicated, although repeated object-definition archive
+indices reuse one parsed cache entry. Level `MODL` paths are resolved only to
+owned metadata identities; their payloads are not read and they do not enter
+the CCF load-source list. Main/backdrop descriptors retain flags `0`; object
+descriptors retain `0x2000`, enabled room sections, and disabled placed-scene
+publication. The transaction preflights compressed definition source peaks,
+aggregate unique definition bytes, each planned CCF source, aggregate planned
+CCF bytes charged per descriptor including repeats, descriptor count, and
+semantic published CPU ownership. Cancellation, callback failure, or any late
+lookup/read/parse/type/limit failure returns no manifest. Resolution is
+cancellable between each World/`OBJE`/`MODL` item, and every progress callback
+is surrounded by exact handle-identity and revision checks. The same guard runs
+before publication, so replacement or move-out returns
+`sessionIdentityChanged` even if the visible revision is unchanged.
+
+The manifest intentionally reads no CCF or GTI payload. It is not yet wired to
+CCF parsing, `MissionWorldRoomCatalog`, global texture binding, draw assembly,
+`WorldRoomLoader`, or native publication; therefore it does not by itself
+authenticate independently constructed renderer metadata.
+
 `buildMissionWorldRoomDrawAssembly` consumes those per-source bindings and
 produces one `DrawModelPayload` plus parallel numeric mesh/instance provenance.
 It fails atomically on a late source, transform, binding, limit, or
@@ -219,8 +254,8 @@ forged-catalog error, re-resolves the plan from the canonical catalog and exact
 load sources, and requires every draw-source CCF identity to match that list
 before allocation. The existing `DrawSubmissionPlan` accepts the combined
 model directly. The authenticated mission load manifest is not yet connected
-to this completed metadata/binding/draw path, `WorldRoomLoader`, or the native
-coordinator.
+to this completed CCF/texture/binding/draw path, `WorldRoomLoader`, or the
+native coordinator.
 
 ## Metal handoff
 

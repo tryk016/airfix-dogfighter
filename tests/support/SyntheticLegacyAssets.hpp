@@ -23,10 +23,18 @@ using LegacyAssetBytes = std::vector<std::uint8_t>;
 
 inline constexpr std::string_view kSyntheticWorldLogicalPath =
     "Game/Worlds/Test.world";
+inline constexpr std::string_view kSyntheticLevelLogicalPath =
+    "Game/Levels/Test.level";
+inline constexpr std::string_view kSyntheticObjectLogicalPath =
+    "Game/Objects/Crate.object";
+inline constexpr std::string_view kSyntheticModelLogicalPath =
+    "Game/Objects/Decoration.model";
 inline constexpr std::string_view kSyntheticCcfLogicalPath =
     "Graphics/World.ccf";
 inline constexpr std::string_view kSyntheticAlternateCcfLogicalPath =
     "Graphics/Alternate.ccf";
+inline constexpr std::string_view kSyntheticBackdropCcfLogicalPath =
+    "Graphics/Backdrop.ccf";
 inline constexpr std::string_view kSyntheticTextureRoot =
     "Graphics/Textures";
 inline constexpr std::string_view kSyntheticWallGtiLogicalPath =
@@ -250,6 +258,26 @@ inline void appendAfChunk(
     bytes.push_back(0U);
 }
 
+inline void appendAfChunkPayload(
+    LegacyAssetBytes& bytes,
+    const std::uint32_t id,
+    const std::span<const std::uint8_t> payload) {
+    if (payload.size() > std::numeric_limits<std::uint32_t>::max()) {
+        throw std::runtime_error(
+            "synthetic AfChunk payload exceeds its 32-bit size");
+    }
+    appendU32(bytes, id);
+    appendU32(bytes, static_cast<std::uint32_t>(payload.size()));
+    appendBytes(bytes, payload);
+}
+
+inline void appendCString(
+    LegacyAssetBytes& bytes,
+    const std::string_view value) {
+    bytes.insert(bytes.end(), value.begin(), value.end());
+    bytes.push_back(0U);
+}
+
 inline void validateCcf(
     const LegacyAssetBytes& bytes,
     const SyntheticLegacyCcfOptions& options) {
@@ -276,14 +304,33 @@ inline void validateCcf(
 
 } // namespace legacy_detail
 
+[[nodiscard]] inline LegacyAssetBytes makeSyntheticWorldWithBackdrops(
+    std::string_view ccfLogicalPath,
+    std::string_view textureRoot,
+    std::span<const std::string_view> backdrops);
+
 [[nodiscard]] inline LegacyAssetBytes makeSyntheticWorld(
     const std::string_view ccfLogicalPath = kSyntheticCcfLogicalPath,
     const std::string_view textureRoot = kSyntheticTextureRoot) {
+    return makeSyntheticWorldWithBackdrops(
+        ccfLogicalPath,
+        textureRoot,
+        std::span<const std::string_view>{});
+}
+
+[[nodiscard]] inline LegacyAssetBytes makeSyntheticWorldWithBackdrops(
+    const std::string_view ccfLogicalPath,
+    const std::string_view textureRoot,
+    const std::span<const std::string_view> backdrops) {
     LegacyAssetBytes chunks;
     legacy_detail::appendAfChunk(
         chunks, assets::fourCC('T', 'E', 'X', 'U'), textureRoot);
     legacy_detail::appendAfChunk(
         chunks, assets::fourCC('C', 'C', 'F', 'F'), ccfLogicalPath);
+    for (const auto backdrop : backdrops) {
+        legacy_detail::appendAfChunk(
+            chunks, assets::fourCC('B', 'C', 'K', 'D'), backdrop);
+    }
 
     LegacyAssetBytes bytes;
     legacy_detail::appendU32(bytes, assets::kAfHouseRoot);
@@ -293,9 +340,108 @@ inline void validateCcf(
 
     const auto parsed = assets::parseWorldDefinition(bytes);
     if (parsed.textureRoot != std::optional<std::string>{textureRoot} ||
-        parsed.ccfPath != std::optional<std::string>{ccfLogicalPath}) {
+        parsed.ccfPath != std::optional<std::string>{ccfLogicalPath} ||
+        parsed.backdrop !=
+            (backdrops.empty()
+                ? std::optional<std::string>{}
+                : std::optional<std::string>{
+                      std::string(backdrops.front())}) ||
+        parsed.ignoredDuplicateChunks.size() !=
+            (backdrops.empty() ? 0U : backdrops.size() - 1U)) {
         throw std::runtime_error(
             "synthetic World failed its semantic self-check");
+    }
+    return bytes;
+}
+
+[[nodiscard]] inline LegacyAssetBytes makeSyntheticObjectDefinition(
+    const std::string_view ccfLogicalPath =
+        kSyntheticAlternateCcfLogicalPath,
+    const std::string_view textureRoot = kSyntheticTextureRoot,
+    const assets::ObjectDefinitionKind kind =
+        assets::ObjectDefinitionKind::object) {
+    LegacyAssetBytes chunks;
+    legacy_detail::appendAfChunk(
+        chunks, assets::fourCC('T', 'E', 'X', 'U'), textureRoot);
+    legacy_detail::appendAfChunk(
+        chunks, assets::fourCC('C', 'C', 'F', 'F'), ccfLogicalPath);
+
+    LegacyAssetBytes bytes;
+    legacy_detail::appendU32(
+        bytes,
+        kind == assets::ObjectDefinitionKind::object
+            ? assets::kAfObjectRoot
+            : assets::kAfModelRoot);
+    legacy_detail::appendU32(
+        bytes, static_cast<std::uint32_t>(chunks.size()));
+    legacy_detail::appendBytes(bytes, chunks);
+
+    const auto parsed = assets::parseObjectDefinition(bytes);
+    if (parsed.kind != kind ||
+        parsed.textureRoot != std::optional<std::string>{textureRoot} ||
+        parsed.ccfPath != std::optional<std::string>{ccfLogicalPath}) {
+        throw std::runtime_error(
+            "synthetic object definition failed its semantic self-check");
+    }
+    return bytes;
+}
+
+[[nodiscard]] inline LegacyAssetBytes makeSyntheticLevel(
+    const std::string_view worldLogicalPath,
+    const std::span<const std::string_view> objectLogicalPaths = {},
+    const std::span<const std::string_view> modelLogicalPaths = {}) {
+    LegacyAssetBytes chunks;
+    legacy_detail::appendAfChunk(
+        chunks, assets::fourCC('H', 'O', 'U', 'S'), worldLogicalPath);
+
+    for (std::size_t index = 0U;
+         index < objectLogicalPaths.size();
+         ++index) {
+        LegacyAssetBytes payload;
+        for (const auto value :
+             {static_cast<float>(index), 2.0F, 3.0F,
+              0.0F, 0.0F, 0.0F}) {
+            legacy_detail::appendFloat(payload, value);
+        }
+        legacy_detail::appendCString(payload, "Room");
+        legacy_detail::appendCString(payload, objectLogicalPaths[index]);
+        legacy_detail::appendAfChunkPayload(
+            chunks, assets::fourCC('O', 'B', 'J', 'E'), payload);
+    }
+    for (std::size_t index = 0U;
+         index < modelLogicalPaths.size();
+         ++index) {
+        LegacyAssetBytes payload;
+        for (const auto value :
+             {static_cast<float>(index), 5.0F, 6.0F,
+              0.0F, 0.0F, 0.0F}) {
+            legacy_detail::appendFloat(payload, value);
+        }
+        legacy_detail::appendCString(payload, "Room");
+        legacy_detail::appendCString(payload, modelLogicalPaths[index]);
+        for (std::uint32_t stateIndex = 0U;
+             stateIndex < 3U;
+             ++stateIndex) {
+            legacy_detail::appendCString(payload, "state");
+            legacy_detail::appendU32(payload, stateIndex);
+        }
+        legacy_detail::appendAfChunkPayload(
+            chunks, assets::fourCC('M', 'O', 'D', 'L'), payload);
+    }
+
+    LegacyAssetBytes bytes;
+    legacy_detail::appendU32(bytes, assets::kAfFullHouseRoot);
+    legacy_detail::appendU32(
+        bytes, static_cast<std::uint32_t>(chunks.size()));
+    legacy_detail::appendBytes(bytes, chunks);
+
+    const auto parsed = assets::parseLevelDefinition(bytes);
+    if (parsed.worldPath !=
+            std::optional<std::string>{worldLogicalPath} ||
+        parsed.objects.size() != objectLogicalPaths.size() ||
+        parsed.models.size() != modelLogicalPaths.size()) {
+        throw std::runtime_error(
+            "synthetic Level failed its semantic self-check");
     }
     return bytes;
 }

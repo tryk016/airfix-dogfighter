@@ -330,6 +330,10 @@ VerifiedContentSession VerifiedContentSession::adopt(
 std::vector<std::uint8_t> VerifiedContentSession::readSourceFilePrefix(
     const std::size_t fileIndex,
     const std::size_t maximumBytes) {
+    if (!input_) {
+        throw VerifiedContentError(
+            "verified content session has no authenticated stream handle");
+    }
     return udsp::readFilePrefix(
         *input_,
         revision_.pack.size,
@@ -342,6 +346,10 @@ std::vector<std::uint8_t> VerifiedContentSession::readSourceFilePrefix(
 std::vector<std::uint8_t> VerifiedContentSession::readSourceFile(
     const std::size_t fileIndex,
     const std::size_t outputLimit) {
+    if (!input_) {
+        throw VerifiedContentError(
+            "verified content session has no authenticated stream handle");
+    }
     return udsp::readFile(
         *input_,
         revision_.pack.size,

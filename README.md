@@ -68,10 +68,10 @@ sources.
 | Reverse engineering | Ongoing, with functions and claims tied to reproducible evidence |
 | `UDSP` archives | Bounded single-handle metadata/parser and entry-read APIs, lookup, decompression, verification, and CLI implemented |
 | Legacy assets | GTI textures plus bounded CCF scene, room/fog/BSP, mesh, material, blueprint, and placed-node parsing implemented |
-| Dependency resolution | Object-to-scene, blueprint/placed graphs, BSP polygons, verified world-to-CCF binding, rooms, meshes, portals, materials, and texture edges implemented |
+| Dependency resolution | Object-to-scene, blueprint/placed graphs, BSP polygons, verified world-to-CCF binding, rooms, meshes, portals, materials, texture edges, and an authenticated mission dependency manifest implemented |
 | Private packaging | AFPACK writer, validation, transactional install/recovery, and native iOS import/rollback UI implemented |
 | Runtime content loading | Exact authenticated active lease/session, atomic World → CCF → GTI → draw-submission room loading, and revision/serial-gated one-shot native handoff implemented |
-| Rendering | Bounded explicit-room and source-aware multi-CCF runtime-room assembly, globally deduplicated source-local texture binding, numeric provenance, stable texture IDs, atomic RGBA8 upload preparation, CPU diagnostics, two-phase private-room Metal publication, and neutral scene-bound pose transport implemented; authenticated mission loading remains pending |
+| Rendering | Bounded explicit-room and source-aware multi-CCF runtime-room assembly, globally deduplicated source-local texture binding, numeric provenance, stable texture IDs, atomic RGBA8 upload preparation, CPU diagnostics, two-phase private-room Metal publication, and neutral scene-bound pose transport implemented; mission CCF/GTI materialization and native aggregate publication remain pending |
 | Input core | Deterministic semantic router for touch/controller/test sources implemented |
 | Native controls | Full V1 gameplay-action transport implemented for the UIKit overlay and one Apple extended controller; profiles, remapping, haptics, finished menus, and device acceptance remain pending |
 | Game simulation | Frozen-pose deterministic player-control intent state implemented for flight, throttle, combat, camera, mission, and pause actions; the player spawn/primary-actor path, campaign start table, ordered multi-CCF room lookup/draw plan, grouped skin hierarchy, and complete static 12 ms aircraft force law are documented, while portal traversal, authenticated mission publication, dynamic publication, runtime traces, physical units, and numeric tolerance remain pending |
@@ -131,13 +131,41 @@ private package, original-derived bytes, or generated artifacts were committed.
 The public synthetic end-to-end tests include valid texture ID zero, empty
 receiver rooms, multiple CCF candidates, deduplication, cancellation, malformed
 later dependencies, compressed-source peak memory, and exact/one-under limits.
+
+`MissionLoadManifest` provides the corresponding authenticated mission
+dependency transaction and planned CCF source identities. It is a move-only,
+private-constructor proof carrying the session's exact `ContentRevision`. The
+published destination is valid and the moved-from source is explicitly invalid;
+`belongsTo()` requires a valid proof with the same authenticated content
+revision, not the same session object. During construction the builder
+additionally pins the exact authenticated handle identity. It resolves one
+Level, its World, the World's main `CCFF`, the optional first `BCKD`, and every
+physical Level `OBJE` definition plus that definition's `CCFF`. Level, World,
+and each unique object definition are read only through the same
+`VerifiedContentSession` handle; repeated object-definition file indices reuse
+one parsed definition while their CCF load descriptors remain repeated in
+physical placement order. Level `MODL` entries are resolved as metadata only
+and never become mission-root CCF sources.
+
+The descriptor order is main World, optional first backdrop, then every Level
+`OBJE`. A referenced `OBJE` must parse as an object definition rather than a
+model definition. The manifest reads no CCF or GTI payload and is not yet
+connected to multi-source room assembly, global texture binding, or native
+publication. Per-entry and aggregate definition-source limits, planned CCF
+source limits, published-CPU accounting, cancellation, and late dependency
+failure are fail-closed. Entry resolution checks cancellation between the World,
+each `OBJE`, and each `MODL`. A callback cannot replace or move out the session
+handle even with the same revision: identity is checked before and after every
+callback and again before publication. No partial or identity-mismatched
+manifest is returned.
+
 The mission layer also reconstructs the ordered runtime room namespace across
 the main scene, optional backdrop, and object CCF loads. It keeps the anonymous
 root separate, merges ordinary rooms with bounded ASCII case-insensitive
 lookup, records every source/physical-room contributor, and resolves the fixed
 mission start table without executing setup scripts. A private aggregate check
 of all 20 campaign starts reports unique main-scene matches and no published
-original names or paths. The portable suite passes 39/39 synthetic tests.
+original names or paths. The portable suite passes 41/41 synthetic tests.
 Physical-device rendering and visual acceptance remain pending.
 
 ## Architecture

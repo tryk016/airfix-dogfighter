@@ -1361,5 +1361,46 @@ superseded evidence.
   synthetic coverage.
 - The result feeds `MissionWorldRoomDrawAssembly` and `DrawSubmissionPlan`
   without an adapter. A complete Windows CMake/Ninja build and all 40 portable
-  CTest targets pass. The authenticated mission manifest/loader remains the
-  next content integration; no private game data or local path was added.
+  CTest targets pass. The authenticated mission manifest was the next content
+  integration at this checkpoint; no private game data or local path was added.
+
+## 2026-07-27 - authenticated mission load manifest
+
+- Added move-only, private-constructor `MissionLoadManifest` publication bound
+  to the exact `ContentRevision`. The construction transaction additionally
+  pins the opaque identity of the authenticated session handle. It uses that
+  one `VerifiedContentSession` for the Level, World, and every unique physical
+  Level `OBJE` definition; no diagnostic label or package path is reopened.
+  Move transfers a valid proof and poisons the source, while `belongsTo()` and
+  result `success()` reject moved-from state. The token is construction-only;
+  `belongsTo()` accepts any separately authenticated session with the same
+  `ContentRevision`.
+- Exact unique lookup now covers Level -> World -> main `CCFF`, optional first
+  `BCKD`, and every physical `OBJE` definition -> `CCFF`. Descriptors retain
+  main/backdrop/physical-placement order and repeated CCF loads. Repeated object
+  definitions are read and parsed once by archive file index, while an `OBJE`
+  dependency with a `MODL` root fails closed. Level `MODL` references remain
+  metadata-only and do not become mission-root CCF sources.
+- This phase reads no CCF or GTI payload. It preflights compressed definition
+  read peaks, aggregate unique definition source bytes, each and all planned CCF
+  source footprints (charging every ordered descriptor, including repeats),
+  descriptor count, and owned published CPU state. Cancellation, callback
+  failure, overflow/allocation failure, or any late dependency error returns no
+  partial manifest. World/`OBJE`/`MODL` metadata resolution checks cancellation
+  per item. Exact handle identity and revision are checked before and after
+  callbacks and again before publication. Callback-driven replacement or
+  move-out returns `sessionIdentityChanged`, including same-revision
+  replacement.
+- Synthetic coverage includes a non-openable diagnostic label, two `BCKD`
+  chunks with first-only selection, repeated `OBJE` definition/CCF identities,
+  deliberately malformed metadata-only `MODL` and CCF payloads, a `MODL` root
+  reached through `OBJE`, missing/ambiguous and late dependencies, compressed
+  exact/one-under budgets, cancellation, callback failure, exact
+  handle/revision binding, same-revision replacement, and callback move-out.
+- CCF parsing, ordered room construction, global texture binding, aggregate
+  draw/submission assembly, and native publication are deliberately not wired
+  yet. The manifest supplies their authenticated same-session input rather than
+  claiming that work is complete.
+- A fresh complete CMake/Ninja build passes and all 41 portable CTest targets
+  pass, including the new manifest regression target. No private game data,
+  original-derived payload, or local path was added.

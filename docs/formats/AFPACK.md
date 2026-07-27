@@ -283,6 +283,44 @@ splice metadata and payload bytes from different backing objects. A separate
 full-verification stream entry point is retained for synthetic and isolated
 callers that do not already possess a recovery lease.
 
+`airfix::content::MissionLoadManifest` authenticates the mission dependency
+graph and planned CCF source identities without reopening that handle. It is
+move-only, has no public constructor, and retains the exact `ContentRevision`
+for later `belongsTo()` checks. Moving transfers its valid state and poisons the
+source; `valid()`, `belongsTo()`, and result `success()` therefore cannot accept
+a moved-from proof. During construction the builder pins both that revision and
+the opaque identity of the exact authenticated session handle. It resolves the
+requested Level, that Level's World, the World's main `CCFF`, optional first
+`BCKD`, and every physical Level `OBJE` definition followed by its `CCFF`. The
+Level, World, and each unique object definition are read and parsed through one
+serialized `VerifiedContentSession`; repeated object-definition archive indices
+use one parse-cache entry while ordered CCF descriptors remain repeated. Level
+`MODL` references are uniquely resolved as metadata but their payloads are not
+read and they do not become mission-root CCF sources.
+
+The opaque handle token is not published in the manifest. `belongsTo()` means
+the supplied session has the same authenticated content revision; a separately
+authenticated session for the same size and digest is intentionally accepted.
+
+The manifest stores owned logical paths and archive indices rather than stream
+views or pointers. It publishes only after all exact lookups, object-root
+checks, per-entry and aggregate definition-source limits, planned CCF-source
+limits, published-CPU accounting, cancellation checks, and the final progress
+callback succeed. The planned CCF aggregate conservatively charges every
+ordered descriptor, including repeated archive entries. Compressed definition
+reads budget the stored and unpacked buffers together before I/O. Resolution
+checks cancellation between the World and every `OBJE`/`MODL` item. The builder
+rechecks both handle identity and revision before and after callbacks and before
+publication. Callback-driven replacement or move-out therefore fails atomically
+with `sessionIdentityChanged`, even when the replacement carries the same
+revision. It does not read or parse any CCF or GTI payload, and it is not yet
+connected to multi-source room assembly, texture binding, or native
+publication.
+
+`publishedCpuBytes` is explicit semantic accounting for the retained manifest
+object, vector elements, and owned string contents; it is not a claim about
+allocator capacity or bookkeeping overhead.
+
 `airfix::content::WorldRoomLoader` then performs the first complete portable
 runtime transaction over that handle: exact World lookup, exact `CCFF` binding,
 explicit physical CCF room selection, GTI dependency resolution/materialization,

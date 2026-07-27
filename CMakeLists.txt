@@ -204,6 +204,7 @@ else()
 endif()
 
 add_library(airfix_content
+    src/airfix/content/MissionLoadManifest.cpp
     src/airfix/content/VerifiedContentSession.cpp
     src/airfix/content/WorldRoomPublicationGate.cpp
     src/airfix/content/WorldRoomLoader.cpp
@@ -293,6 +294,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::content)
     add_test(NAME airfix_world_room_loader_tests
         COMMAND airfix_world_room_loader_tests)
+
+    add_executable(airfix_mission_load_manifest_tests
+        tests/MissionLoadManifestTests.cpp)
+    target_link_libraries(airfix_mission_load_manifest_tests
+        PRIVATE airfix::content)
+    add_test(NAME airfix_mission_load_manifest_tests
+        COMMAND airfix_mission_load_manifest_tests)
 
     add_executable(airfix_world_room_publication_gate_tests
         tests/WorldRoomPublicationGateTests.cpp)

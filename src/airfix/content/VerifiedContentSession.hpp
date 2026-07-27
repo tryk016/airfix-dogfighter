@@ -72,6 +72,35 @@ public:
     VerifiedContentCancelled();
 };
 
+class VerifiedContentTransactionIdentity final {
+public:
+    VerifiedContentTransactionIdentity(
+        const VerifiedContentTransactionIdentity&) noexcept = default;
+    VerifiedContentTransactionIdentity& operator=(
+        const VerifiedContentTransactionIdentity&) noexcept = default;
+    VerifiedContentTransactionIdentity(
+        VerifiedContentTransactionIdentity&&) noexcept = default;
+    VerifiedContentTransactionIdentity& operator=(
+        VerifiedContentTransactionIdentity&&) noexcept = default;
+
+    [[nodiscard]] bool valid() const noexcept {
+        return streamIdentity_ != nullptr;
+    }
+
+    friend bool operator==(
+        const VerifiedContentTransactionIdentity&,
+        const VerifiedContentTransactionIdentity&) = default;
+
+private:
+    friend class VerifiedContentSession;
+
+    explicit VerifiedContentTransactionIdentity(
+        const void* streamIdentity) noexcept
+        : streamIdentity_(streamIdentity) {}
+
+    const void* streamIdentity_{};
+};
+
 // Owns the one seekable stream that was authenticated against an active
 // content revision. Every AFPACK and nested Resource.up operation remains
 // bound to this handle; sourceLabel is diagnostic text and is never opened.
@@ -113,6 +142,13 @@ public:
     }
     [[nodiscard]] const std::string& sourceLabel() const noexcept {
         return sourceLabel_;
+    }
+    // Opaque identity of the exact authenticated stream handle. The token is
+    // invalid for a moved-from session and changes when another session is
+    // move-assigned, even if both sessions describe the same content revision.
+    [[nodiscard]] VerifiedContentTransactionIdentity transactionIdentity()
+        const noexcept {
+        return VerifiedContentTransactionIdentity(input_.get());
     }
 
     // These operations share one seekable handle and are intentionally

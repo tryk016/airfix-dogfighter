@@ -330,11 +330,33 @@ shader or Metal draw algorithm change is required.
 `buildMissionWorldRoomTextureBindings` now replays the canonical plan, validates
 each supplied CCF logical-path/file-index pair against the same UDSP metadata,
 resolves each source-local `TEXU`, and assigns one deterministic global
-texture-ID namespace. This check is metadata-only: the future loader must parse
-the CCF and bind its entry index in one immutable transaction. Identical archive
-file indices deduplicate across sources and roles while equal local material
-references remain isolated. An authenticated mission loader remains the next
-integration step.
+texture-ID namespace. This check is metadata-only: the caller must parse the CCF
+and bind its entry index in one immutable transaction. Identical archive file
+indices deduplicate across sources and roles while equal local material
+references remain isolated.
+
+`MissionLoadManifest` now provides the preceding authenticated dependency proof.
+Starting from one Level, it uniquely resolves the World, main `CCFF`, optional
+first `BCKD`, and the `CCFF` of every physical Level `OBJE`. Its ordered
+descriptors are main, optional backdrop, then one object descriptor per physical
+placement. Repeated CCFs remain repeated in this list, even when repeated
+`OBJE` entries reuse one object-definition parse cached by archive file index.
+An `OBJE` dependency whose parsed root is `MODL` fails closed. Level `MODL`
+references are retained as metadata identities only and never become
+mission-root CCF sources. Main and backdrop descriptors use legacy flags `0`;
+object descriptors use `0x2000`, keep room sections enabled, and disable placed
+scene publication.
+
+This manifest reads no CCF or GTI payload. It records owned logical-path/index
+identities and planned source-allocation footprints under per-entry, aggregate,
+published-CPU, and descriptor-count bounds. Its conservative CCF aggregate
+charges repeated descriptors rather than assuming a later read cache.
+Each footprint is `storedSize + unpackedSize` for a compressed entry and
+`storedSize` otherwise; published CPU is semantic retained ownership, not
+allocator overhead.
+Connecting these identities to CCF parsing, the room catalog, global texture
+binding, draw assembly, and native publication remains the next integration
+step.
 
 BSP culling, collision, and portal traversal remain later runtime features; no
 geometry is hidden until those traversal semantics are separately proven.
