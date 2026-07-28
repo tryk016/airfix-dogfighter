@@ -535,6 +535,43 @@ MissionWorldRoomCatalog buildMissionWorldRoomCatalog(
     return result;
 }
 
+std::optional<std::int32_t> legacyCcRoomIdForWorldRoomIndex(
+    const MissionWorldRoomCatalog& catalog,
+    const std::size_t worldRoomIndex) noexcept {
+    if (!catalog.complete() ||
+        worldRoomIndex >= catalog.rooms.size() ||
+        catalog.rooms.size() - 1U >
+            static_cast<std::size_t>(
+                std::numeric_limits<std::int32_t>::max())) {
+        return std::nullopt;
+    }
+    if (worldRoomIndex == 0U) {
+        return 0;
+    }
+    return static_cast<std::int32_t>(
+        catalog.rooms.size() - worldRoomIndex);
+}
+
+std::optional<std::size_t> worldRoomIndexForLegacyCcRoomId(
+    const MissionWorldRoomCatalog& catalog,
+    const std::int32_t roomId) noexcept {
+    if (!catalog.complete() ||
+        roomId < 0 ||
+        catalog.rooms.size() - 1U >
+            static_cast<std::size_t>(
+                std::numeric_limits<std::int32_t>::max())) {
+        return std::nullopt;
+    }
+    if (roomId == 0) {
+        return 0U;
+    }
+    const auto unsignedRoomId = static_cast<std::size_t>(roomId);
+    if (unsignedRoomId >= catalog.rooms.size()) {
+        return std::nullopt;
+    }
+    return catalog.rooms.size() - unsignedRoomId;
+}
+
 MissionWorldStartResolution resolveMissionStartsInWorld(
     const std::span<const MissionStartPosition> starts,
     const MissionWorldRoomCatalog& catalog,
