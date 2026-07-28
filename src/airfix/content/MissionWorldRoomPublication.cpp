@@ -238,6 +238,10 @@ indexedIssue(const MissionWorldRoomPublicationIssueKind kind,
                total,
                room.playerActorInstanceProvenance.size(),
                sizeof(render::PlayerActorSceneInstanceProvenance)) &&
+        (!room.playerActorCollision.has_value() ||
+         detail::checkedMissionWorldRoomByteAdd(
+             total,
+             room.playerActorCollision->retainedPayloadBytes)) &&
         addPublishedCount(
                total,
                room.submission.meshUploads.size(),
@@ -558,6 +562,10 @@ validateMissionWorldRoomPublication(
     }
     const bool hasPlayer = room.playerVisual.has_value();
     if (!hasPlayer) {
+        if (room.playerActorCollision.has_value()) {
+            return issue(MissionWorldRoomPublicationIssueKind::
+                             playerCollisionCooccurrenceMismatch);
+        }
         if (room.playerVisualCcfCacheIndex.has_value() ||
             room.playerActorBinding.has_value() ||
             !room.playerActorMeshProvenance.empty() ||
@@ -581,6 +589,10 @@ validateMissionWorldRoomPublication(
         room.playerActorInstanceProvenance.empty()) {
         return issue(MissionWorldRoomPublicationIssueKind::
                          playerVisualCooccurrenceMismatch);
+    }
+    if (hasPlayer && !room.playerActorCollision.has_value()) {
+        return issue(MissionWorldRoomPublicationIssueKind::
+                         playerCollisionCooccurrenceMismatch);
     }
     if (hasPlayer && !room.playerVisual->valid()) {
         return issue(MissionWorldRoomPublicationIssueKind::
@@ -865,6 +877,72 @@ validateMissionWorldRoomPublication(
                     MissionWorldRoomPublicationIssueKind::
                         playerActorTransformMismatch,
                     actorInstanceIndex);
+            }
+        }
+
+        const auto& collision = *room.playerActorCollision;
+        if (!collision.complete()) {
+            return issue(
+                MissionWorldRoomPublicationIssueKind::
+                    playerCollisionIncomplete);
+        }
+        if (collision.meshes.size() !=
+            room.playerActorMeshProvenance.size()) {
+            return issue(
+                MissionWorldRoomPublicationIssueKind::
+                    playerCollisionMeshCountMismatch);
+        }
+        if (collision.instances.size() !=
+            room.playerActorInstanceProvenance.size()) {
+            return issue(
+                MissionWorldRoomPublicationIssueKind::
+                    playerCollisionInstanceCountMismatch);
+        }
+        for (std::size_t meshIndex = 0U;
+             meshIndex < collision.meshProvenance.size();
+             ++meshIndex) {
+            if (collision.meshProvenance[meshIndex].actor !=
+                room.playerActorMeshProvenance[meshIndex].actor) {
+                return indexedIssue(
+                    MissionWorldRoomPublicationIssueKind::
+                        playerCollisionProvenanceMismatch,
+                    meshIndex);
+            }
+        }
+        for (std::size_t instanceIndex = 0U;
+             instanceIndex < collision.instances.size();
+             ++instanceIndex) {
+            const auto& collisionInstance =
+                collision.instances[instanceIndex];
+            const auto& sceneInstance =
+                room.playerActorInstanceProvenance[instanceIndex];
+            const auto& modelInstance =
+                room.model.instances[
+                    sceneInstance.finalInstanceIndex];
+            const auto collisionMeshIndex =
+                static_cast<std::size_t>(modelInstance.meshSlot) -
+                binding.firstMeshSlot;
+            if (collisionInstance.actor != sceneInstance.actor ||
+                collisionInstance.collisionMeshIndex !=
+                    collisionMeshIndex) {
+                return indexedIssue(
+                    MissionWorldRoomPublicationIssueKind::
+                        playerCollisionProvenanceMismatch,
+                    instanceIndex);
+            }
+            if (!sameFloatBits(
+                    collisionInstance.actorLocal.rawScalar,
+                    sceneInstance.actorLocal.rawScalar) ||
+                !sameMatBits(
+                    collisionInstance.actorLocal.linear,
+                    sceneInstance.actorLocal.linear) ||
+                !sameVecBits(
+                    collisionInstance.actorLocal.translation,
+                    sceneInstance.actorLocal.translation)) {
+                return indexedIssue(
+                    MissionWorldRoomPublicationIssueKind::
+                        playerCollisionTransformMismatch,
+                    instanceIndex);
             }
         }
     }

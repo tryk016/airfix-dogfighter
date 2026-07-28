@@ -7,6 +7,7 @@
 #include "airfix/render/DrawSubmissionPlan.hpp"
 #include "airfix/render/MissionWorldRoomDrawAssembly.hpp"
 #include "airfix/render/MissionWorldRoomTextureBindings.hpp"
+#include "airfix/render/PlayerActorCollisionAssembly.hpp"
 #include "airfix/render/PlayerActorSceneAssembly.hpp"
 #include "airfix/render/PlayerActorTextureBindings.hpp"
 #include "airfix/simulation/PlayerSpawnPose.hpp"
@@ -39,6 +40,7 @@ struct MissionWorldRoomLoadLimits {
     render::GtiUploadDataLimits gtiPerTexture{};
     render::PlayerActorTextureBindingLimits playerTextureBindings{};
     render::ObjectVisualDrawLimits playerVisual{};
+    render::PlayerActorCollisionLimits playerCollision{};
     render::PlayerActorSceneLimits playerScene{};
 
     // Room semantic sources plus the optional player visual CCF.
@@ -78,6 +80,7 @@ enum class MissionWorldRoomLoadPhase : std::uint8_t {
     complete,
     planningPlayerTextureBindings,
     assemblingPlayerVisual,
+    assemblingPlayerCollision,
     assemblingPlayerScene,
     validatingPublication,
     preflightingPlayerCcfSource,
@@ -132,6 +135,7 @@ enum class MissionWorldRoomLoadIssueKind : std::uint8_t {
     invalidPlayerVisualDescriptor,
     playerTextureBindingFailure,
     playerVisualAssemblyFailure,
+    playerCollisionAssemblyFailure,
     playerSceneAssemblyFailure,
     publicationFailure,
 };
@@ -159,6 +163,8 @@ struct MissionWorldRoomLoadIssue {
         playerTextureBindingIssue;
     std::optional<render::PlayerActorVisualDrawIssueKind>
         playerVisualAssemblyIssue;
+    std::optional<render::PlayerActorCollisionIssueKind>
+        playerCollisionAssemblyIssue;
     std::optional<render::PlayerActorSceneIssueKind> playerSceneAssemblyIssue;
     std::optional<MissionWorldRoomPublicationIssueKind> publicationIssue;
 };
@@ -184,6 +190,10 @@ struct LoadedMissionWorldRoom {
     std::vector<render::PlayerActorSceneInstanceProvenance>
         playerActorInstanceProvenance;
     std::optional<render::PlayerActorSceneBinding> playerActorBinding;
+    // Authenticated actor-local collision assets. A frame publisher composes
+    // these immutable instances with the live actor pose and room.
+    std::optional<render::PlayerActorCollisionAssembly>
+        playerActorCollision;
     render::DrawSubmissionPlan submission;
     // Dense order: textures[index].assetId.value == index.
     std::vector<LoadedTextureAsset> textures;
@@ -216,7 +226,8 @@ struct MissionWorldRoomLoadResult {
 };
 
 // Loads one start-selected runtime room and optional authenticated player
-// visual. Physical CCF and GTI payloads are read only through session.
+// visual/collision asset. Physical CCF and GTI payloads are read only through
+// session.
 // Repeated room/player CCF identities share one physical parse. The player is
 // appended after the static room prefix and receives one final submission
 // plan with the room. No partial result is published.

@@ -59,6 +59,12 @@ enum class MissionWorldRoomPublicationIssueKind : std::uint8_t {
     playerActorSourceReferenceMismatch,
     playerActorPhysicalMeshMismatch,
     playerActorTransformMismatch,
+    playerCollisionCooccurrenceMismatch,
+    playerCollisionIncomplete,
+    playerCollisionMeshCountMismatch,
+    playerCollisionInstanceCountMismatch,
+    playerCollisionProvenanceMismatch,
+    playerCollisionTransformMismatch,
 };
 
 struct MissionWorldRoomPublicationIssue {

@@ -137,6 +137,9 @@ void require(const bool condition, const std::string_view message) {
         sizeof(airfix::render::PlayerActorSceneMeshProvenance);
     total += room.playerActorInstanceProvenance.size() *
         sizeof(airfix::render::PlayerActorSceneInstanceProvenance);
+    if (room.playerActorCollision.has_value()) {
+        total += room.playerActorCollision->retainedPayloadBytes;
+    }
     total += room.submission.meshUploads.size() *
         sizeof(airfix::render::DrawMeshUploadMetadata);
     total += room.submission.commands.size() *
@@ -306,6 +309,48 @@ actorWorldFrom(
             .firstInstanceIndex = 1U,
             .instanceCount = 1U,
         };
+    airfix::render::ConvertedMeshGeometry collisionGeometry;
+    collisionGeometry.reference = 88U;
+    collisionGeometry.vertices = {
+        {{-1.0F, -1.0F, 0.0F}},
+        {{1.0F, -1.0F, 0.0F}},
+        {{0.0F, 1.0F, 0.0F}},
+    };
+    collisionGeometry.triangles = {
+        {
+            .vertexIndices = {0U, 1U, 2U},
+            .materialReference = 99U,
+        },
+    };
+    auto collisionMesh =
+        airfix::render::buildLegacyDynamicBsp(
+            collisionGeometry);
+    if (!collisionMesh.complete()) {
+        throw std::runtime_error(
+            "valid player collision fixture failed to build");
+    }
+    airfix::render::PlayerActorCollisionAssembly collision;
+    collision.meshes.push_back(std::move(collisionMesh));
+    collision.meshProvenance.push_back({
+        .actor = actor,
+        .collisionMeshIndex = 0U,
+        .sourceMeshReference = 88U,
+    });
+    collision.instances.push_back({
+        .collisionMeshIndex = 0U,
+        .actor = actor,
+        .actorLocal = actorLocal,
+    });
+    collision.retainedPayloadBytes =
+        sizeof(airfix::render::LegacyDynamicBspMesh) +
+        sizeof(airfix::render::PlayerActorCollisionMeshProvenance) +
+        sizeof(airfix::render::PlayerActorCollisionInstance) +
+        collision.meshes[0].retainedPayloadBytes;
+    if (!collision.complete()) {
+        throw std::runtime_error(
+            "valid player collision fixture is incomplete");
+    }
+    room.playerActorCollision = std::move(collision);
     refreshPublishedCpuBytes(room);
     return room;
 }
@@ -694,6 +739,26 @@ void testPlayerActorPublicationBoundary() {
     }
     {
         auto room = validPlayerRoom();
+        room.playerActorCollision.reset();
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerCollisionCooccurrenceMismatch},
+            "player descriptor without collision assets was accepted");
+    }
+    {
+        auto player = validPlayerRoom();
+        auto room = validRootRoom();
+        room.playerActorCollision =
+            std::move(player.playerActorCollision);
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerCollisionCooccurrenceMismatch},
+            "orphan player collision assets were accepted");
+    }
+    {
+        auto room = validPlayerRoom();
         room.playerActorMeshProvenance.clear();
         requireIssue(
             room,
@@ -853,6 +918,53 @@ void testPlayerActorPublicationBoundary() {
                  playerActorTransformMismatch,
              .sourceIndex = 0U},
             "bitwise actor transform mutation was accepted");
+    }
+    {
+        auto room = validPlayerRoom();
+        ++room.playerActorCollision->retainedPayloadBytes;
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerCollisionIncomplete},
+            "forged collision retained bytes were accepted");
+    }
+    {
+        auto room = validPlayerRoom();
+        room.playerActorCollision->meshProvenance[0]
+            .actor.blueprintReference ^= 1U;
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerCollisionProvenanceMismatch,
+             .sourceIndex = 0U},
+            "forged collision mesh provenance was accepted");
+    }
+    {
+        auto room = validPlayerRoom();
+        room.playerActorCollision->instances[0]
+            .actorLocal.translation.x =
+            std::nextafter(
+                room.playerActorCollision->instances[0]
+                    .actorLocal.translation.x,
+                std::numeric_limits<float>::infinity());
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerCollisionTransformMismatch,
+             .sourceIndex = 0U},
+            "bitwise collision-local transform mutation was accepted");
+    }
+    {
+        auto room = validPlayerRoom();
+        room.playerActorCollision->instances.push_back(
+            room.playerActorCollision->instances.front());
+        room.playerActorCollision->retainedPayloadBytes +=
+            sizeof(airfix::render::PlayerActorCollisionInstance);
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 playerCollisionInstanceCountMismatch},
+            "collision instance count mismatch was accepted");
     }
 }
 

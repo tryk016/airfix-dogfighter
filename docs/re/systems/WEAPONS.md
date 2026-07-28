@@ -306,13 +306,21 @@ hit, composes the whole-segment fraction, returns no collision when no later
 hit exists, and stops cycles at an explicit maximum of 256 transitions. The
 hot path remains allocation-free.
 
-A live coordinator must still publish authenticated mesh colliders and room
-membership, supply actor identity/gates, repeat the separate projectile-level
-`followPortal` outcome when required, and dispatch callbacks. See
-[EXP-20260728-034](../../experiments/EXP-20260728-034-projectile-collision-decision.md)
+A first authenticated live boundary now exists for the primary player.
+`PlayerActorCollisionAssembly` builds immutable per-mesh colliders from the
+same verified CCF and actor-local visual used by the mission loader; its
+allocation-free frame adapter publishes the supplied player pose, object ID,
+active flag, and current room in exact hierarchy-instance order.
+
+A live coordinator must still consume those player frames, publish all other
+actors and dynamic portal objects in recovered room/list order, supply actor
+gates, repeat the separate projectile-level `followPortal` outcome when
+required, and dispatch callbacks. See
+[EXP-20260728-034](../../experiments/EXP-20260728-034-projectile-collision-decision.md),
 [EXP-20260728-035](../../experiments/EXP-20260728-035-dynamic-bsp-line-adapter.md),
+[EXP-20260728-036](../../experiments/EXP-20260728-036-combined-line-portal-continuation.md),
 and
-[EXP-20260728-036](../../experiments/EXP-20260728-036-combined-line-portal-continuation.md).
+[EXP-20260728-037](../../experiments/EXP-20260728-037-authenticated-player-collision-publication.md).
 
 ## Actor damage and surface reaction
 
@@ -386,9 +394,9 @@ allocation failure without inventing a projectile or effect.
 
 - Consume the prepared-shot transaction through private type allocation and
   event dispatch without rolling back fire state on allocation failure.
-- Join projectile movement to dynamic actors by publishing the implemented
-  per-mesh collider and ordered room-object ranges; then compose the remaining
-  projectile-level portal/actor decision loop.
+- Consume the implemented player collider frame, extend the same authenticated
+  publication to other live actors and dynamic portal objects, then compose
+  the remaining projectile-level portal/actor decision loop.
 - Recreate the optional `mguntracer` and `FxRicochet` visual/effect adapters.
 - Trace sample/effect commands associated with a shot.
 - Recover secondary weapon selection and each secondary projectile family.
