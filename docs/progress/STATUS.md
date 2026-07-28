@@ -193,9 +193,13 @@
   constructor-field joins in slot45 are now statically mapped. The surrounding
   signed 64-bit rest timer, exact 2000 ms sleep gate, ground/water speed
   thresholds, exported `IsOnGround` byte, and threshold transition are also
-  recovered. An isolated allocation-free C++20 helper specifies that lifecycle
-  without pretending the frozen player simulation owns rigid-body integration.
-  Physical units, runtime contact traces, x87 numeric tolerance, and dynamic
+  recovered. Slot 44's engine-start transition now proves the `+0x564`
+  smoothing branch, while slot 30 and slot 44 prove the full `+0x568`
+  collision-degraded thrust-integrity lifecycle and its next-step timing.
+  Isolated allocation-free C++20 helpers specify sleep, smoothing, collision
+  degradation, recovery, and clamp without pretending the frozen player
+  simulation owns rigid-body integration. Physical units, runtime contact
+  traces, deterministic PRNG ownership, x87 numeric tolerance, and dynamic
   actor-to-render publication remain unknown.
 - Recovered the complete player spawn/type/primary-actor event chain and the
   fixed 16-entry mission start table. The selector uses requested index modulo
@@ -631,8 +635,9 @@
 ## Next
 
 1. Obtain controlled runtime traces for free flight and the ground, inverted,
-   water, and too-high branches; establish x87-versus-portable numeric
-   tolerances before implementing the statically recovered 12 ms flight law.
+   water, collision, engine-transition, and too-high branches; establish
+   x87-versus-portable numeric tolerances and deterministic replacement PRNG
+   sequencing before composing the statically recovered 12 ms flight law.
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.

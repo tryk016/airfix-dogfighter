@@ -131,6 +131,14 @@ held direction) to stop or reverse the change. The exported
 but does not make the separately named `EVENT_THROTTLE_*` events active for an
 aircraft.
 
+The smoothed thrust at `+0x560` has two exact recurrences. In normal operation
+it advances by `(x + 0.3f) * (target - x) * 0.02f`. While byte `+0x564` is set
+it advances only by `(target - x) * 0.0004f`. The slot-44 engine-sound state
+machine proves that this byte means an active engine-start transition: it sets
+the byte when smoothed thrust becomes strictly greater than `0.001f`, maintains
+the seconds timer at `+0x55C`, and clears it after the timer becomes strictly
+greater than `4.0f`.
+
 ### Collision/auxiliary method
 
 Vtable slot 30 points to `[0x10007920, 0x1000851D)`. It consumes a
@@ -157,6 +165,18 @@ present, and then enables BSP participation again. The normal slot-30 path:
 applying its impulse. This slot is the per-vehicle static/BSP collision-list
 resolver. Primary vtable slot 29 remains the separate inherited
 `AfVehicle::ActorCollision(NfActor*)` hook.
+
+This slot also degrades the AirCraft float at `+0x568`. For every collision
+response whose normal/velocity dot is strictly greater than `0.9f` and whose
+dot times the local collision scalar is strictly greater than `2.0f`, it
+accumulates the fourth power of the dot. After the loop it subtracts one half
+of the average qualified fourth power from `+0x568`, without clamping.
+
+The constructor initializes `+0x568` to `1.0f`, and the live-health thrust
+equation multiplies by it. Slot 44 later adds
+`rand() * dt * bit_cast<float>(0x38000100)` while the factor is below one and
+then clamps it to `[0,1]`. This establishes the behavior-backed working name
+`thrustIntegrityFactor`; it is distinct from current actor health at `+0x98`.
 
 ### Scheduler and force lifecycle
 
@@ -185,6 +205,12 @@ The branch that skips physics/collision still invokes slot 44, but not slot 45.
 The original C++ names of slots 44 and 45 are unavailable. Timer labels support
 the working roles “Physics” for slot 45 and “Refresh” for slot 44; those labels
 are semantic descriptions rather than recovered symbols.
+
+This order also fixes thrust-integrity timing. Slot 45 prepares force from the
+factor at refresh entry, slot 30 can reduce it after that force is prepared,
+and slot 44 slightly recovers and clamps it. The resulting factor is first
+consumed by the next force step. A sleeping refresh skips both force and
+collision but still performs the slot-44 recovery.
 
 Active refreshes also maintain a signed 64-bit rest duration whose low and
 high DWORDs occupy `+0x458` and `+0x45C`. It starts at 1999 ms. When all five
@@ -339,6 +365,8 @@ constants without another confirming source.
 - semantic aerodynamic labels for the now-recovered force, torque, contact,
   throttle, and damping equations;
 - the collision scalar's exact range and meaning;
+- deterministic replacement and exact sequence ownership for the native global
+  random source used by thrust-integrity recovery;
 - the point at which fire intent spawns a projectile.
 
 ## Portable implementation boundary
@@ -352,6 +380,12 @@ Until those unknowns are resolved, the portable simulation may:
 - maintain its own completed-step count;
 - reject invalid or non-increasing input atomically; and
 - produce a canonical cross-compiler diagnostic hash.
+
+Separate pure helpers may also preserve already confirmed local contracts for
+the vehicle sleep gate, smoothed thrust, collision-driven thrust-integrity
+degradation, and later recovery/clamping. They remain unwired until a runtime
+owns the native 12 ms scheduler, rigid-body/collision state, engine phase, and
+deterministic random sequence.
 
 It must not yet move or rotate the aircraft, apply throttle, spawn a weapon,
 or label provisional constants as original behavior. That narrow state bridge
