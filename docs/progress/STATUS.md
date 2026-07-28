@@ -190,9 +190,13 @@
   the prior accumulated forces; slot45 prepares the next integration step.
   AirCraft uses a 12 ms dependant interval converted to `0.012f` seconds.
   All 21 force/torque sites, direct state transitions, helper transforms, and
-  constructor-field joins in slot45 are now statically mapped. Physical units,
-  runtime contact traces, and dynamic actor-to-render publication remain
-  unknown.
+  constructor-field joins in slot45 are now statically mapped. The surrounding
+  signed 64-bit rest timer, exact 2000 ms sleep gate, ground/water speed
+  thresholds, exported `IsOnGround` byte, and threshold transition are also
+  recovered. An isolated allocation-free C++20 helper specifies that lifecycle
+  without pretending the frozen player simulation owns rigid-body integration.
+  Physical units, runtime contact traces, x87 numeric tolerance, and dynamic
+  actor-to-render publication remain unknown.
 - Recovered the complete player spawn/type/primary-actor event chain and the
   fixed 16-entry mission start table. The selector uses requested index modulo
   count, with the primary receiving CCF room as the empty-table fallback.
@@ -627,8 +631,8 @@
 ## Next
 
 1. Obtain controlled runtime traces for free flight and the ground, inverted,
-   water, and too-high branches; assign field meanings and numeric tolerances
-   before implementing the statically recovered 12 ms flight law.
+   water, and too-high branches; establish x87-versus-portable numeric
+   tolerances before implementing the statically recovered 12 ms flight law.
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.

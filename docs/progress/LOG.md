@@ -2318,3 +2318,29 @@ superseded evidence.
   changed C++ translation units. The three RE wrapper suites, 12 Rizin tests,
   342-file public scan, 227-entry catalogue, `actionlint`, local-path scan, and
   `git diff --check` pass.
+
+## 2026-07-28 - AfVehicle rest/sleep gate
+
+- `EV-20260728-011` / `EXP-20260728-026`: proved that `AfVehicle +0x458` and
+  `+0x45C` are the low and high DWORDs of one signed 64-bit rest-duration
+  accumulator in scheduler milliseconds. The constructor writes 1999 ms and
+  the refresh entry gate skips active physics at 2000 ms.
+- Ghidra establishes the MSVC control flow and exported
+  `AfVehicle::IsOnGround` symbol; independently regenerated Rizin reports
+  confirm the constructor writes, byte `+0x464` getter, five exact-zero control
+  tests, strict `0.03f` ground and `0.08f` water speed-squared thresholds,
+  signed `ADD`/`ADC`, reset, and threshold comparison.
+- The threshold-crossing step still integrates and then resets force/torque
+  plus six rigid-body dynamic-state floats. A later sleeping refresh skips the
+  active path but still invokes the post-collision refresh slot. AirCraft's
+  water-unit predicate is false, so only its on-ground leg applies.
+- Added a pure, allocation-free C++20 transition with exact recovered
+  constants, signed delta behavior, one-shot clearing, strict predicates, and
+  explicit checked-overflow deviation. It deliberately accepts precomputed
+  velocity squared and remains separate from the frozen player simulation and
+  control-event wake transition.
+- Fresh Release and code-intelligence Ninja/GCC 15.2 builds each compile all
+  226 steps and pass 69/69 portable tests; focused clangd 22.1.8 checks report
+  zero errors. The three reverse-engineering wrapper suites, 12 Rizin tests,
+  346-file public scan, 228-entry catalogue, `actionlint`, local-path scan, and
+  `git diff --check` pass. GitHub Actions publication gates remain pending.

@@ -3,7 +3,7 @@
 **Status:** observed, not yet specified or implemented for parity
 **Evidence:** `EV-20260724-001`, `EV-20260724-002`,
 `EV-20260724-003`, `EV-20260724-004`, `EV-20260724-005`,
-`EV-20260728-010`
+`EV-20260728-010`, `EV-20260728-011`
 **Reference build:** SHA-256 values in `docs/evidence/source-manifest.sha256`
 
 This note records the current clean-room boundary around
@@ -17,6 +17,9 @@ system boundary, event joins, and implementation policy.
 The Ghidra/Rizin cross-check that names actor health, the vehicle inactive
 latch, and the complete gameplay-camera live-input set is recorded in
 [EXP-20260728-025](../../experiments/EXP-20260728-025-camera-aircraft-input-contract.md).
+The signed 64-bit vehicle rest accumulator, exact two-second sleep gate, and
+exported `IsOnGround` field are recorded in
+[EXP-20260728-026](../../experiments/EXP-20260728-026-vehicle-rest-sleep-gate.md).
 
 The player spawn, primary-actor, mission start-room, and selected-skin
 hierarchy contract is maintained in `PLAYER-SPAWN.md`. That static identity
@@ -183,6 +186,17 @@ The original C++ names of slots 44 and 45 are unavailable. Timer labels support
 the working roles “Physics” for slot 45 and “Refresh” for slot 44; those labels
 are semantic descriptions rather than recovered symbols.
 
+Active refreshes also maintain a signed 64-bit rest duration whose low and
+high DWORDs occupy `+0x458` and `+0x45C`. It starts at 1999 ms. When all five
+control floats are exactly zero, the vehicle is on the ground with squared
+speed below `0.03f`, or a water unit with squared speed below `0.08f`, the
+native signed scheduler delta is accumulated. Other active states reset it to
+zero. The threshold-crossing step at 2000 ms still runs physics, then resets
+force/torque and clears six rigid-body dynamic-state floats; later sleeping
+refreshes skip the active path while still invoking slot 44. AirCraft's water
+predicate is false, so only its on-ground leg applies. The exported
+`AfVehicle::IsOnGround` returns byte `+0x464`.
+
 `CcODE::EulerODE` itself performs:
 
 1. virtual slot 0 `Derive(state, derivative)`;
@@ -233,8 +247,8 @@ values locally and delegates these control events to
 32-bit integer at event offset `+0x11`. The pitch, bank, and thrust cases are
 skipped while the inactive latch at vehicle offset `+0x460` is nonzero.
 `AfVehicle::Activate` clears this byte; `Deactivate` and death paths set it. A
-successful nonzero control write also clears two still-unnamed fields at
-`+0x458` and `+0x45C`.
+successful nonzero control write also clears the signed 64-bit rest duration
+whose low and high DWORDs occupy `+0x458` and `+0x45C`.
 
 The apparent `APPLY` alternatives for pitch/bank and both `THROTTLE` events
 fall through the complete `AirCraft -> AfVehicle -> NfActor ->
@@ -319,7 +333,6 @@ constants without another confirming source.
 - the full scheduler target-mask and large-gap policy;
 - the complete actor-vs-actor slot-29 order outside the shown static/BSP path;
 - the semantic meaning of the `AICONTROL` index enum names;
-- the meaning of AirCraft/AfVehicle fields `+0x458` and `+0x45C`;
 - the gameplay meanings of several constructor fields even though every tuple
   value is now joined to its exact storage and immediate consumers;
 - world distance, mass, force, and torque units;
