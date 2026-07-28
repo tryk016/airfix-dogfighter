@@ -7,6 +7,9 @@
 #include "airfix/content/MissionWorldRoomPublication.hpp"
 #include "airfix/render/DrawModel.hpp"
 #include "airfix/render/DrawSubmissionPlan.hpp"
+#include "airfix/render/LegacyCanvasLayout.hpp"
+#include "airfix/render/LegacyDepthState.hpp"
+#include "airfix/render/LegacyGameplayCameraClipPacket.hpp"
 #include "airfix/render/PlayerActorPoseRuntime.hpp"
 #include "airfix/render/SnapshotGpuBudgetLedger.hpp"
 
@@ -77,9 +80,21 @@ struct alignas(16) GpuUniforms {
     simd_float4x4 mvp;
 };
 
+struct alignas(16) GpuGameplayUniforms {
+    simd_float4x4 modelFromLocal;
+    simd_float4 cameraAxisX;
+    simd_float4 cameraAxisY;
+    simd_float4 cameraAxisZ;
+    simd_float4 cameraTranslationAndInverseScaleSquared;
+    simd_float4 projection;
+    simd_float4 logicalCanvas;
+};
+
 static_assert(sizeof(GpuVertex) == 48U);
 static_assert(alignof(GpuVertex) == 16U);
 static_assert(sizeof(GpuUniforms) == 64U);
+static_assert(sizeof(GpuGameplayUniforms) == 160U);
+static_assert(alignof(GpuGameplayUniforms) == 16U);
 
 NSError* makeError(const RendererError code, NSString* description) {
     return [NSError errorWithDomain:AirfixMetalRendererErrorDomain
@@ -450,6 +465,70 @@ simd_float4x4 aspectCorrection(const CGSize size) {
     };
 }
 
+[[nodiscard]] std::optional<
+    airfix::render::LegacyGameplayCameraClipPacket>
+buildBootstrapGameplayCamera(
+    const airfix::content::LoadedMissionWorldRoom& room) noexcept {
+    const auto actorWorld = actorWorldFrom(room.playerSpawnPose);
+    const auto bootstrap =
+        airfix::render::buildLegacyGameplayCameraBootstrapClipPacket({
+            .vehicleWorldPosition = actorWorld.translation,
+            .vehicleWorldRotation = actorWorld.linear,
+            .worldRoomIndex =
+                room.playerSpawnPose.worldRoomIndex,
+        });
+    return bootstrap.packet;
+}
+
+[[nodiscard]] GpuGameplayUniforms gameplayUniforms(
+    const simd_float4x4 modelFromLocal,
+    const airfix::render::LegacyGameplayCameraClipPacket&
+        camera) noexcept {
+    const auto& transform = camera.pose().worldToView();
+    const auto linear = transform.linear();
+    const auto translation = transform.translation();
+    const auto& projection = camera.pose().projection();
+    return {
+        .modelFromLocal = modelFromLocal,
+        .cameraAxisX =
+            simd_make_float4(
+                linear.columns[0].x,
+                linear.columns[0].y,
+                linear.columns[0].z,
+                0.0F),
+        .cameraAxisY =
+            simd_make_float4(
+                linear.columns[1].x,
+                linear.columns[1].y,
+                linear.columns[1].z,
+                0.0F),
+        .cameraAxisZ =
+            simd_make_float4(
+                linear.columns[2].x,
+                linear.columns[2].y,
+                linear.columns[2].z,
+                0.0F),
+        .cameraTranslationAndInverseScaleSquared =
+            simd_make_float4(
+                translation.x,
+                translation.y,
+                translation.z,
+                transform.inverseScaleSquared()),
+        .projection =
+            simd_make_float4(
+                projection.nearDistance(),
+                projection.farDistance(),
+                projection.projectScale(),
+                0.0F),
+        .logicalCanvas =
+            simd_make_float4(
+                projection.centre().x,
+                projection.centre().y,
+                camera.logicalCanvasWidth(),
+                camera.logicalCanvasHeight()),
+    };
+}
+
 [[nodiscard]] bool sameFloatBits(
     const float left,
     const float right) noexcept {
@@ -698,6 +777,8 @@ struct ScenePoseRuntimePlan {
     std::vector<NSUInteger> _indexOffsets;
     std::shared_ptr<airfix::render::PlayerActorPoseRuntime>
         _scenePoseRuntime;
+    std::optional<airfix::render::LegacyGameplayCameraClipPacket>
+        _cameraClipPacket;
 }
 @property(nonatomic, strong) NSArray<AirfixMetalMeshBuffers*>* meshBuffers;
 @property(nonatomic, strong) NSArray<id<MTLTexture>>* textures;
@@ -711,6 +792,7 @@ struct ScenePoseRuntimePlan {
     // Suballocated resources must release before their backing heaps. The
     // snapshot token is consumed only after this complete owner is destroyed.
     _scenePoseRuntime.reset();
+    _cameraClipPacket.reset();
     _meshBuffers = nil;
     _textures = nil;
     _bufferHeap = nil;
@@ -1150,7 +1232,11 @@ bool preflightPrivateRoom(
 @interface AirfixMetalRenderer ()
 @property(nonatomic, strong) id<MTLCommandQueue> commandQueue;
 @property(nonatomic, strong) id<MTLRenderPipelineState> pipelineState;
+@property(nonatomic, strong)
+    id<MTLRenderPipelineState> gameplayPipelineState;
 @property(nonatomic, strong) id<MTLDepthStencilState> depthState;
+@property(nonatomic, strong)
+    id<MTLDepthStencilState> gameplayDepthState;
 @property(nonatomic, strong) id<MTLSamplerState> samplerState;
 @property(nonatomic, strong) AirfixBudgetedMetalTexture* fallbackResource;
 @property(atomic, strong) AirfixMetalRoomSnapshot* roomSnapshot;
@@ -1257,12 +1343,15 @@ bool preflightPrivateRoom(
     }
 
     id<MTLFunction> vertexFunction = [library newFunctionWithName:@"airfixVertexMain"];
+    id<MTLFunction> gameplayVertexFunction =
+        [library newFunctionWithName:@"airfixGameplayVertexMain"];
     id<MTLFunction> fragmentFunction = [library newFunctionWithName:@"airfixFragmentMain"];
-    if (vertexFunction == nil || fragmentFunction == nil) {
+    if (vertexFunction == nil || gameplayVertexFunction == nil ||
+        fragmentFunction == nil) {
         if (error != nullptr) {
             *error = makeError(
                 RendererError::missingShaderFunction,
-                @"default.metallib does not contain the Airfix smoke-test shaders.");
+                @"default.metallib does not contain every Airfix diagnostic and gameplay shader.");
         }
         return nil;
     }
@@ -1292,6 +1381,28 @@ bool preflightPrivateRoom(
         return nil;
     }
 
+    pipelineDescriptor.label = @"Airfix gameplay camera pipeline";
+    pipelineDescriptor.vertexFunction = gameplayVertexFunction;
+    NSError* gameplayPipelineError = nil;
+    id<MTLRenderPipelineState> gameplayPipelineState =
+        [device
+            newRenderPipelineStateWithDescriptor:pipelineDescriptor
+                                           error:&gameplayPipelineError];
+    if (gameplayPipelineState == nil) {
+        if (error != nullptr) {
+            NSString* reason =
+                gameplayPipelineError.localizedDescription;
+            if (reason == nil) {
+                reason = @"unknown gameplay pipeline error";
+            }
+            *error = makeError(
+                RendererError::pipelineCreation,
+                [@"Metal gameplay camera pipeline creation failed: "
+                    stringByAppendingString:reason]);
+        }
+        return nil;
+    }
+
     MTLDepthStencilDescriptor* depthDescriptor = [[MTLDepthStencilDescriptor alloc] init];
     depthDescriptor.depthCompareFunction = MTLCompareFunctionLess;
     depthDescriptor.depthWriteEnabled = YES;
@@ -1300,6 +1411,34 @@ bool preflightPrivateRoom(
     if (depthState == nil) {
         if (error != nullptr) {
             *error = makeError(RendererError::depthStateCreation, @"Metal depth state creation failed.");
+        }
+        return nil;
+    }
+
+    const auto gameplayDepthContract =
+        airfix::render::legacyDepthStateForMode(1U);
+    if (!gameplayDepthContract.has_value() ||
+        gameplayDepthContract->compare !=
+            airfix::render::LegacyDepthCompare::greaterEqual ||
+        !gameplayDepthContract->writeEnabled) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::depthStateCreation,
+                @"The recovered gameplay reverse-depth contract is unavailable.");
+        }
+        return nil;
+    }
+    depthDescriptor.depthCompareFunction =
+        MTLCompareFunctionGreaterEqual;
+    depthDescriptor.depthWriteEnabled =
+        gameplayDepthContract->writeEnabled;
+    id<MTLDepthStencilState> gameplayDepthState =
+        [device newDepthStencilStateWithDescriptor:depthDescriptor];
+    if (gameplayDepthState == nil) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::depthStateCreation,
+                @"Metal gameplay reverse-depth state creation failed.");
         }
         return nil;
     }
@@ -1841,7 +1980,9 @@ bool preflightPrivateRoom(
     // and every Metal object has been created successfully.
     self.commandQueue = commandQueue;
     self.pipelineState = pipelineState;
+    self.gameplayPipelineState = gameplayPipelineState;
     self.depthState = depthState;
+    self.gameplayDepthState = gameplayDepthState;
     self.samplerState = samplerState;
     self.fallbackResource = fallbackResource;
     self.roomSnapshot = roomSnapshot;
@@ -1898,6 +2039,17 @@ bool preflightPrivateRoom(
                 *error = makeError(
                     RendererError::missingDevice,
                     @"Metal is unavailable while preparing the private room.");
+            }
+            return nil;
+        }
+
+        const auto bootstrapCamera =
+            buildBootstrapGameplayCamera(room);
+        if (!bootstrapCamera.has_value()) {
+            if (error != nullptr) {
+                *error = makeError(
+                    RendererError::invalidPayload,
+                    @"The private room gameplay camera bootstrap is invalid.");
             }
             return nil;
         }
@@ -2396,6 +2548,8 @@ bool preflightPrivateRoom(
         candidateResources->_revision = room.revision;
         candidateResources->_scenePoseRuntime =
             std::move(scenePosePreparation.runtime);
+        candidateResources->_cameraClipPacket.emplace(
+            *bootstrapCamera);
         candidate->_resources = candidateResources;
         candidate->_releaseQueue = resourceReleaseQueue;
         candidate->_worldRoomInstalled = YES;
@@ -2437,7 +2591,8 @@ bool preflightPrivateRoom(
         preparedRoom->_snapshot == nil ||
         preparedRoom->_snapshot->_resources == nil ||
         !hasActiveGpuBudgetReservation(preparedRoom->_snapshot) ||
-        !preparedRoom->_snapshot->_worldRoomInstalled) {
+        !preparedRoom->_snapshot->_worldRoomInstalled ||
+        !preparedRoom->_snapshot->_resources->_cameraClipPacket.has_value()) {
         return AirfixPlayerActorPoseRuntimeEndpoint{
             std::in_place,
             std::weak_ptr<
@@ -2488,7 +2643,8 @@ bool preflightPrivateRoom(
         preparedRoom->_snapshot == nil ||
         preparedRoom->_snapshot->_resources == nil ||
         !hasActiveGpuBudgetReservation(preparedRoom->_snapshot) ||
-        !preparedRoom->_snapshot->_worldRoomInstalled) {
+        !preparedRoom->_snapshot->_worldRoomInstalled ||
+        !preparedRoom->_snapshot->_resources->_cameraClipPacket.has_value()) {
         if (error != nullptr) {
             *error = makeError(
                 RendererError::invalidPreparedRoom,
@@ -2525,12 +2681,22 @@ bool preflightPrivateRoom(
     if (resources == nil) {
         return;
     }
+    const bool gameplayCameraActive =
+        resources->_missionRoom.has_value();
+    const auto* gameplayCamera =
+        gameplayCameraActive &&
+            resources->_cameraClipPacket.has_value()
+        ? &*resources->_cameraClipPacket
+        : nullptr;
+    if (gameplayCameraActive && gameplayCamera == nullptr) {
+        return;
+    }
     const airfix::render::DrawModelPayload& payload =
-        resources->_missionRoom.has_value()
+        gameplayCameraActive
             ? resources->_missionRoom->model
             : resources->_payload;
     const airfix::render::DrawSubmissionPlan& submissionPlan =
-        resources->_missionRoom.has_value()
+        gameplayCameraActive
             ? resources->_missionRoom->submission
             : resources->_submissionPlan;
     AirfixBudgetedMetalTexture* fallbackResource =
@@ -2544,6 +2710,26 @@ bool preflightPrivateRoom(
     if (renderPass == nil || drawable == nil) {
         return;
     }
+    std::optional<airfix::render::LegacyCanvasRect>
+        gameplayViewport;
+    if (gameplayCameraActive) {
+        const auto layout =
+            airfix::render::buildLegacyCanvasAspectFitLayout({
+                .x = 0.0F,
+                .y = 0.0F,
+                .width =
+                    static_cast<float>(view.drawableSize.width),
+                .height =
+                    static_cast<float>(view.drawableSize.height),
+            });
+        if (!layout.complete() ||
+            renderPass.depthAttachment == nil) {
+            return;
+        }
+        gameplayViewport = layout.layout->fittedRect();
+        renderPass.depthAttachment.clearDepth =
+            airfix::render::legacyReverseDepthClearValue;
+    }
 
     id<MTLCommandBuffer> commandBuffer = [self.commandQueue commandBuffer];
     if (commandBuffer == nil) {
@@ -2555,8 +2741,28 @@ bool preflightPrivateRoom(
         return;
     }
 
-    [encoder setRenderPipelineState:self.pipelineState];
-    [encoder setDepthStencilState:self.depthState];
+    [encoder
+        setRenderPipelineState:
+            gameplayCameraActive
+                ? self.gameplayPipelineState
+                : self.pipelineState];
+    [encoder
+        setDepthStencilState:
+            gameplayCameraActive
+                ? self.gameplayDepthState
+                : self.depthState];
+    if (gameplayViewport.has_value()) {
+        const auto viewport = *gameplayViewport;
+        const MTLViewport metalViewport{
+            static_cast<double>(viewport.x),
+            static_cast<double>(viewport.y),
+            static_cast<double>(viewport.width),
+            static_cast<double>(viewport.height),
+            0.0,
+            1.0,
+        };
+        [encoder setViewport:metalViewport];
+    }
     [encoder setCullMode:MTLCullModeNone];
     [encoder setFragmentSamplerState:self.samplerState atIndex:0U];
 
@@ -2590,13 +2796,25 @@ bool preflightPrivateRoom(
             toSimdMatrix(
                 resolvedPose.modelLinear,
                 resolvedPose.modelTranslation);
-        const GpuUniforms uniforms{simd_mul(viewport, model)};
         AirfixMetalMeshBuffers* buffers =
             resources.meshBuffers[command.meshSlot];
         [encoder setVertexBuffer:buffers.vertexBuffer
                          offset:0U
                         atIndex:0U];
-        [encoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1U];
+        if (gameplayCamera != nullptr) {
+            const auto uniforms =
+                gameplayUniforms(model, *gameplayCamera);
+            [encoder setVertexBytes:&uniforms
+                             length:sizeof(uniforms)
+                            atIndex:1U];
+        }
+        else {
+            const GpuUniforms uniforms{
+                simd_mul(viewport, model)};
+            [encoder setVertexBytes:&uniforms
+                             length:sizeof(uniforms)
+                            atIndex:1U];
+        }
 
         id<MTLTexture> texture = fallbackResource->_texture;
         if (command.texcoordMode == airfix::render::TexcoordMode::uv0 &&
