@@ -5,7 +5,8 @@ implemented for parity
 
 **Evidence:** `EV-20260724-001`, `EV-20260724-002`,
 `EV-20260724-003`, `EV-20260724-004`, `EV-20260727-002`,
-`EV-20260728-011`, `EV-20260728-012`, `EV-20260728-013`
+`EV-20260728-011`, `EV-20260728-012`, `EV-20260728-013`,
+`EV-20260728-014`
 
 **Reference build:** SHA-256 values in
 `docs/evidence/source-manifest.sha256`
@@ -53,6 +54,10 @@ thrust-integrity lifecycle.
 [EXP-20260728-028](../../experiments/EXP-20260728-028-aircraft-engine-audio-state.md)
 records the complete five-call engine-audio cadence, phase commands, sound
 roles, and modulation equations.
+
+[EXP-20260728-029](../../experiments/EXP-20260728-029-aircraft-destroyed-dive-audio.md)
+records the health-gated `enginedive` sample state, vertical-speed volume
+equation, and original missing constructor initialization.
 
 ## Timing and lifecycle
 
@@ -434,6 +439,31 @@ engine-idle: 0.5*load + 1, max(1 - volume, 0)
 
 The running volume has no lower clamp. These parameter calls are followed by
 `UpdateSounds(dt)` and model parameter 1 set to `x`.
+
+Between the engine phase transitions and those common parameter calls, the
+same fifth-call pass maintains the destroyed-dive sample:
+
+```text
+diveActive = u8[A+0x566]
+
+if health <= 0:
+    if !diveActive:
+        PlaySound(0x20)
+        diveActive = true
+
+    diveVolume = clamp(-0.15*velocity.y - 0.2, 0, 1)
+    SetSoundParam(0x20, 1, 1)
+    SetSoundParam(0x20, 0, diveVolume)
+else if diveActive:
+    StopSound(0x20)
+    diveActive = false
+```
+
+The type loader registers ID `0x20` with the `enginedive` sample. The instance
+constructor initializes adjacent bytes `+0x564` and `+0x565` but never writes
+`+0x566`; ordinary operator `new` does not make its first read deterministic.
+The portable state intentionally initializes this flag to false rather than
+reproducing undefined behavior.
 
 `thrustIntegrity` starts at `1.0f` and scales only the live-health thrust path.
 The later static-collision and post-collision stages maintain it:
