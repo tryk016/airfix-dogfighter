@@ -2,9 +2,11 @@
 
 This note records only behavior confirmed in the original PE32/x86 modules.
 Working names are descriptive and do not claim recovered source identifiers.
-The current portable boundary covers the primary `WpMGun` timing and spawn
-request; projectile motion, collision, impact damage, effects, and secondary
-weapons remain separate work.
+The current portable boundary covers primary `WpMGun` timing, the complete
+semantic projectile payload, unobstructed projectile motion, and the isolated
+actor/surface contact reactions. Private type allocation, room collision
+queries, event dispatch, visual instances, and secondary weapons remain
+separate work.
 
 ## Evidence boundary
 
@@ -146,9 +148,122 @@ uses the tenfold period while still reaching the private-instance creation
 path; no stronger semantic label such as “empty” or “infinite” is assigned
 without runtime evidence.
 
+## Ammunition type and instance
+
+`Projectiles.type::typeCreate` allocates a `0x90`-byte `AfAmmoType` subclass
+for each `WpMGunAmmoTech0..4`. Its constructor at RVA `0x0000ADB0` installs
+the vtable at virtual address `0x1001396C`, initializes the shared visual-type
+helper, and writes:
+
+| Technology | Impact damage at type `+0x48` |
+|---:|---:|
+| 0 | `3` |
+| 1 | `4` |
+| 2 | `5` |
+| 3 | `6` |
+| 4 | `7` |
+
+The five aircraft types pass a zero broad-hit radius. The separate
+`WpGroundMGunAmmo` passes `0.07`, which the constructor squares. Consequently,
+the subclass event scan at RVA `0x0000B650` is disabled for every aircraft
+`WpMGunAmmoTechN`; aircraft hits use the shared projectile collision path.
+
+The type factory at RVA `0x0000AEC0` allocates a `0x198`-byte ammo instance and
+calls RVA `0x0000B090`. The constructor:
+
+- constructs `AfAmmo`/`NfProjectile`;
+- installs the primary, time-dependant, and visual-helper vtables;
+- stores the type pointer;
+- sets maximum lifetime to exact `4.0f`;
+- sets acceleration to exact `{0, 0xBF96D5CF, 0}`, whose middle component is
+  approximately `-1.1784f`; and
+- optionally creates the local `mguntracer` visual.
+
+The exact acceleration bits are retained in portable code rather than relying
+on decimal-literal rounding.
+
+## Complete event `0xE2`
+
+`NfEventProjectile` is a packed 53-byte event. `WpMGun` fills these semantic
+fields before processing it:
+
+| Event offset | Meaning |
+|---:|---|
+| `+0x11..+0x19` | world muzzle position |
+| `+0x1D..+0x25` | projectile velocity |
+| `+0x29` | room ID |
+| `+0x2D` | creator vehicle UID |
+| `+0x31` | target UID, written as zero by this producer |
+
+The position is:
+
+```text
+creatorPosition + rotateByCreatorSrt(localMuzzleOffset)
+```
+
+The initial direction is the weapon's creator-relative aim point minus the
+rotated muzzle offset. If the selected target UID resolves to an active actor,
+the weapon adds:
+
+```text
+targetVelocity *
+    (distance(targetPosition, muzzleWorldPosition) / projectileSpeed)
+```
+
+It then uses exact zero-length fallback `{0, 1, 0}`, normalizes when the
+length-squared value is not exactly one, and multiplies by projectile speed.
+The selected target affects lead only; the event target field remains zero.
+
+`AfAmmo::ProcessEvent` receives `0xE2`, copies all five payload groups into the
+shared `NfProjectile` state, resolves the room ID, aligns/places the optional
+visual node, and activates the projectile.
+
+## Flight and lifetime
+
+The shared `NfProjectile::ProcessEvent` handles time-step events. For seconds
+`dt`, while the projectile is active and its accumulated age is at most four:
+
+```text
+segmentEnd =
+    position + velocity * dt + acceleration * dt * dt * 0.5
+velocity += acceleration * dt
+```
+
+The shared collision routine traces the segment before committing the velocity.
+Age greater than four deactivates the projectile without advancing it. The
+subclass refresh at RVA `0x0000B5D0` synchronizes the optional tracer position
+and then invokes the shared projectile refresh.
+
+## Actor damage and surface reaction
+
+The actor-hit override at RVA `0x0000B2C0` emits damage event `0x7D` only when
+the creator UID is nonzero and differs from the hit actor UID. Its payload is
+the technology damage and creator UID. A valid hit then deactivates the
+projectile; a zero creator or self-hit does neither.
+
+The surface callback at RVA `0x0000B330` first ignores a collision whose owner
+resolves to the creator actor. Every other surface contact deactivates the
+projectile. Material code `15` recomputes the impact position by interpolating
+the collision fraction from the prior point to the current point.
+
+When the projectile has a room and `FxRicochet` can be created, the callback
+processes this exact ordered parameter set:
+
+| Event | Payload |
+|---:|---|
+| `0xA0` | scalar `1.0f` |
+| `0xA2` | scalar `0.2f` |
+| `0xB7` | collision normal |
+| `0xB6` | material code |
+| `0xA6` | room ID and impact position |
+
+The scalar event meanings are not named more strongly without the effect-type
+consumer. The portable result preserves event IDs, values, order-bearing
+fields, and the effect-creation request without owning an effect runtime.
+
 ## Portable boundary
 
-`LegacyMachineGunFireState` implements only:
+`LegacyMachineGunFireState` implements:
 
 - the five exact technology profiles;
 - initial/maximum ammunition constants;
@@ -159,18 +274,29 @@ without runtime evidence.
 - an allocation-free projectile request carrying event `0xE2`, barrel index,
   and projectile speed.
 
-The helper accepts seconds because the owning scheduler boundary already
-performs the recovered millisecond conversion. It rejects non-finite or unsafe
+`LegacyMachineGunProjectile` adds:
+
+- the five exact damage profiles, lifetime, acceleration bits, and disabled
+  aircraft broad-hit radius;
+- complete semantic `0xE2` position, velocity, room, creator, and target data;
+- target-velocity lead and the exact zero-direction fallback;
+- an unobstructed ballistic/lifetime step;
+- the creator/self actor-hit gate and damage command; and
+- surface interpolation, deactivation, and a bounded ricochet event request.
+
+The helpers accept seconds because the owning scheduler boundary already
+performs the recovered millisecond conversion. They reject non-finite or unsafe
 consumed inputs instead of reproducing x87 unordered behavior or invalid
-attachment memory. It remains unwired: an eventual runtime adapter must resolve
-the private ammunition type, build the complete room/pose/velocity event, and
-honor failure without inventing a projectile.
+attachment memory. They remain unwired: an eventual runtime adapter must
+resolve private types and authored muzzle transforms, trace the room/BSP and
+dynamic actor segment, dispatch events, and honor allocation failure without
+inventing a projectile or effect.
 
 ## Remaining work
 
-- Recover and implement the complete `NfEventProjectile` payload boundary.
-- Recover `WpMGunAmmoTechN` activation, flight, collision, impact, damage, and
-  ricochet behavior.
+- Join the portable spawn and contact contracts to private type allocation,
+  the mission room-spatial tracer, dynamic actor collision, and event dispatch.
+- Recreate the optional `mguntracer` and `FxRicochet` visual/effect adapters.
 - Trace sample/effect commands associated with a shot.
 - Recover secondary weapon selection and each secondary projectile family.
 - Confirm ammunition-zero semantics and scheduler/x87 tolerance with controlled

@@ -625,10 +625,14 @@
   refresh preserves a tenfold zero-ammunition cadence, selects/wraps the
   attachment-provided barrel, decrements only nonzero ammunition, creates a
   private `WpMGunAmmoTechN`, and processes projectile event `0xE2`.
-  An allocation-free C++20 helper now preserves the timing/state subset and
-  emits a bounded spawn request. Complete projectile event assembly, motion,
-  collision, impact damage/effects, secondary weapon families, and runtime
-  integration remain pending.
+  Allocation-free C++20 helpers preserve that timing/state transition and the
+  complete semantic payload: rotated muzzle input, exact target-velocity lead,
+  packed field meanings, zero target UID, five impact-damage profiles, exact
+  acceleration bits, four-second lifetime, unobstructed ballistic step, actor
+  damage command, material-15 impact interpolation, and bounded ricochet
+  request. Private allocation/event dispatch, live muzzle transforms,
+  room/BSP/dynamic-actor collision adapters, tracer/effect realization,
+  secondary weapon families, runtime traces, and integration remain pending.
 
 ## Confirmed
 
@@ -674,9 +678,10 @@
    controlled multi-room executable traces when the isolated runtime is ready.
 5. Keep BSP render culling disabled until its separate runtime semantics are
    proven against executable evidence.
-6. Continue the weapon slice through `WpMGunAmmoTechN` event `0xE2`
-   activation, motion, collision, impact damage, and ricochet behavior before
-   wiring primary-fire intent into the runtime.
+6. Join the implemented `WpMGun` timing, event `0xE2`, motion, damage, and
+   ricochet contracts to private type allocation/event dispatch, live muzzle
+   transforms, mission spatial collision, dynamic actors, and tracer/effect
+   adapters before wiring primary-fire intent into the runtime.
 
 ## Open questions
 

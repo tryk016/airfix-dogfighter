@@ -2459,3 +2459,32 @@ superseded evidence.
   query driver. The three RE wrapper suites, 12 Rizin tests, public-boundary
   tests and 363-file scan, 237-row catalogue, `actionlint`, local-path scan,
   and `git diff --check` pass. GitHub Actions remains the publication gate.
+
+## 2026-07-28 - WpMGun projectile payload and contact contract
+
+- `EV-20260728-016` / `EXP-20260728-031`: completed the static join from
+  `WpMGunAmmoTechN` type/instance creation through packed projectile event
+  `0xE2`, shared activation and flight, actor damage, surface contact, and the
+  private ricochet request.
+- Recovered exact damage `3..7`, zero aircraft broad-hit radius, four-second
+  lifetime, acceleration bits `0xBF96D5CF`, every semantic payload field, zero
+  target UID, target-velocity lead, normalization fallback, strict expiry
+  comparison, damage event `0x7D`, material-15 impact interpolation, and the
+  ordered five-event ricochet setup.
+- Ghidra 12.1.2 provides canonical MSVC types, exports, vtables, packed fields,
+  and high-level pseudocode. Rizin 0.9.1 independently confirms boundaries,
+  instructions, branches, immediates, and calls; functions created only after
+  direct vtable evidence are explicitly marked as guarded rather than
+  automatic.
+- Added pure allocation-free C++20 contracts for the five ammo profiles,
+  complete spawn payload and lead, active state, unobstructed ballistic/lifetime
+  transition, actor damage, surface deactivation, and bounded ricochet request.
+  Live mission objects, private allocation, room/BSP/dynamic-actor collision,
+  tracer/effect realization, event dispatch, and secondary weapons remain
+  explicit runtime boundaries.
+- Fresh Release and code-intelligence Ninja/GCC 15.2 builds each compile all
+  241 steps and pass 74/74 portable tests. Clangd 22.1.8 reports zero errors in
+  both new translation units. The three RE wrapper suites, 12 Rizin tests,
+  public-boundary tests and 367-file scan, 251-row catalogue, `actionlint`,
+  local-path scan, and `git diff --check` pass. GitHub Actions remains the
+  publication gate.
