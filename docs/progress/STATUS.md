@@ -1,6 +1,6 @@
 # Project status
 
-**Updated:** 2026-07-27
+**Updated:** 2026-07-28
 **Stage:** Phase 1 — static analysis and archive recovery in progress
 
 ## Now
@@ -530,11 +530,13 @@
   allocation-free runtime/source-world adapter now applies the mission basis
   and units in both directions, transforms plane normals by inverse transpose,
   preserves diagnostic legacy fractions, and rejects any out-of-segment hit
-  before a camera-facing portal trace can change rooms.
-  Sphere/contact resolution, stateful camera/room publication,
+  before a camera-facing portal trace can change rooms. An allocation-free
+  camera room-state boundary now returns a complete candidate position and
+  final room only after the full portal chain succeeds; later-hop failures
+  retain diagnostic evidence without publishing an intermediate room.
+  Sphere/contact resolution, synchronized camera/simulation ownership,
   dynamic-object collision, and the Metal join remain unimplemented. Metal
-  remains explicitly diagnostic and no full parity matrix has been
-  introduced.
+  remains explicitly diagnostic and no full parity matrix has been introduced.
 - The authenticated setup-to-room provenance chain now crosses the native iOS
   publication boundary together with an immutable `PlayerSpawnPose`. Ghidra
   Headless and Rizin independently confirm x/y/z radians, mode zero, exact
@@ -583,15 +585,16 @@
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Implement sphere/contact resolution plus the stateful camera/room
-   publication join before introducing a Metal camera matrix or performing
+3. Implement sphere/contact resolution plus synchronized ownership/publication
+   of the completed camera room-state proposal before introducing a Metal
+   camera matrix or performing
    physical-device visual acceptance. World-to-camera, scalar projection with
    reciprocal depth, exact zero clear, depth modes, camera presets, quaternion
    matrix, stateless chase target/smoothing, collision/factor/line primitives,
    look-at pose math, and parity-first 4:3 presentation are recovered and
    implemented. Auxiliary weapons and effects remain separate.
-4. Join the runtime-adapted portal traversal to camera/simulation room state,
-   then validate multi-room movement against controlled executable traces.
+4. Validate the implemented runtime portal-to-room-state proposal against
+   controlled multi-room executable traces when the isolated runtime is ready.
 5. Keep BSP render culling disabled until its separate runtime semantics are
    proven against executable evidence.
 

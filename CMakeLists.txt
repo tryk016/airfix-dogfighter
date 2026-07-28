@@ -149,6 +149,7 @@ add_library(airfix_render
     src/airfix/render/LegacyGameplayCameraChase.cpp
     src/airfix/render/LegacyGameplayCameraCollision.cpp
     src/airfix/render/LegacyGameplayCameraPreset.cpp
+    src/airfix/render/LegacyGameplayCameraRoomState.cpp
     src/airfix/render/LegacyGeometry.cpp
     src/airfix/render/LegacyQuaternionRotation.cpp
     src/airfix/render/LegacyScreenProjection.cpp
@@ -495,6 +496,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_mission_world_runtime_spatial_trace_tests
         COMMAND airfix_mission_world_runtime_spatial_trace_tests)
+
+    add_executable(airfix_legacy_gameplay_camera_room_state_tests
+        tests/LegacyGameplayCameraRoomStateTests.cpp)
+    target_link_libraries(airfix_legacy_gameplay_camera_room_state_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_legacy_gameplay_camera_room_state_tests
+        COMMAND airfix_legacy_gameplay_camera_room_state_tests)
 
     add_executable(airfix_legacy_quaternion_rotation_tests
         tests/LegacyQuaternionRotationTests.cpp)

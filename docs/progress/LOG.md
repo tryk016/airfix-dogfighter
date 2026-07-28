@@ -2003,3 +2003,26 @@ superseded evidence.
   generated database contains the new translation units. Focused clangd checks
   with the selected trusted GCC query driver, the public-boundary suite,
   12 Rizin normalization tests, `actionlint`, and `git diff --check` are clean.
+
+## 2026-07-28 - camera position and room-state proposal
+
+- Added an allocation-free `noexcept` boundary that joins a candidate runtime
+  camera position with the final room selected by strict portal traversal.
+  Valid results expose one complete `{position, room}` proposal; every failure
+  exposes no state, even after one or more diagnostic portal transitions.
+- Preserved recovered semantics for blocked portals and net room cycles while
+  keeping the portable hard transition ceiling and exact per-hop `[0,1]`
+  fraction policy explicit. A zero limit fails before the first room change.
+- Kept sphere/contact resolution, dynamic-object collision, synchronization,
+  mutable simulation ownership, and Metal publication out of this narrow
+  stage. The proposal is semantic all-or-nothing output, not a claim of
+  lock-free or thread-safe mutation.
+- Synthetic tests cover identity and transformed mission bases, valid,
+  blocked, cyclic, invalid, out-of-segment, and transition-limit paths plus
+  4,096 allocation-counted hot-path calls. No original assets are required.
+- A fresh Release Ninja build completes all 202 steps and all 61 CTest targets
+  pass. The code-intelligence build and its 61-test suite also pass; its
+  generated database contains both new translation units. Focused clangd
+  checks report zero errors, and the public-boundary suite checks 309 files.
+  Ghidra/Rizin wrapper tests, 12 Rizin normalization tests, `actionlint`, and
+  `git diff --check` are clean.
