@@ -44,6 +44,9 @@ struct ResolvedBspPolygonBinding {
     std::size_t placedNodeIndex{};
     std::size_t meshIndex{};
     std::size_t triangleIndex{};
+    // Present only when the triangle's material reference resolves uniquely
+    // inside this CCF. Native null-material behavior is preserved by absence.
+    std::optional<std::size_t> materialIndex;
     // Present only for portal-tree bindings.
     std::optional<std::size_t> portalRoomIndex;
 

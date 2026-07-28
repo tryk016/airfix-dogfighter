@@ -534,9 +534,14 @@
   camera room-state boundary now returns a complete candidate position and
   final room only after the full portal chain succeeds; later-hop failures
   retain diagnostic evidence without publishing an intermediate room.
-  Sphere/contact resolution, synchronized camera/simulation ownership,
-  dynamic-object collision, and the Metal join remain unimplemented. Metal
-  remains explicitly diagnostic and no full parity matrix has been introduced.
+  Sphere-contact recovery now also carries the first CCF `0x2152` u32 from a
+  uniquely resolved triangle material into every retained spatial polygon.
+  Native evidence confirms that the gameplay camera deletes collected
+  contacts for non-null material modes `0` and `8`; numeric labels remain raw.
+  Sphere/contact collection and resolution, synchronized camera/simulation
+  ownership, dynamic-object collision, and the Metal join remain
+  unimplemented. Metal remains explicitly diagnostic and no full parity matrix
+  has been introduced.
 - The authenticated setup-to-room provenance chain now crosses the native iOS
   publication boundary together with an immutable `PlayerSpawnPose`. Ghidra
   Headless and Rizin independently confirm x/y/z radians, mode zero, exact
@@ -585,11 +590,12 @@
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Implement sphere/contact resolution plus synchronized ownership/publication
-   of the completed camera room-state proposal before introducing a Metal
-   camera matrix or performing
-   physical-device visual acceptance. World-to-camera, scalar projection with
-   reciprocal depth, exact zero clear, depth modes, camera presets, quaternion
+3. Implement the addressed static sphere-versus-triangle collector and
+   closest-feature/constraint resolution, then add synchronized
+   ownership/publication of the completed camera room-state proposal before
+   introducing a Metal camera matrix or performing physical-device visual
+   acceptance. World-to-camera, scalar projection with reciprocal depth, exact
+   zero clear, depth modes, camera presets, quaternion
    matrix, stateless chase target/smoothing, collision/factor/line primitives,
    look-at pose math, and parity-first 4:3 presentation are recovered and
    implemented. Auxiliary weapons and effects remain separate.

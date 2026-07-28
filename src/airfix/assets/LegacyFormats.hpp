@@ -152,6 +152,9 @@ struct CcfMaterialMetadata {
     std::optional<std::string> primaryTexture;
     std::optional<std::string> secondaryTexture;
     std::optional<std::string> environmentTexture;
+    // First u32 carried by child 0x2152. Native collision paths read this
+    // value at CcMaterial + 0x5c; individual numeric meanings remain raw.
+    std::optional<std::uint32_t> collisionMode2152;
     std::uint64_t offset{};
 };
 

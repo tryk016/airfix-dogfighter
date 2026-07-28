@@ -95,6 +95,12 @@ void testStableStaticAndPortalBindings() {
     CcfMetadata ccf;
     ccf.rooms = {room(10U), room(20U)};
     ccf.meshes = {mesh(300U, 3U), mesh(400U, 2U)};
+    ccf.materials = {
+        CcfMaterialMetadata{.reference = 500U},
+        CcfMaterialMetadata{.reference = 600U},
+    };
+    ccf.meshes[0].triangles[2].materialReference = 600U;
+    ccf.meshes[1].triangles[1].materialReference = 500U;
     // References deliberately do not correspond to physical indices and the
     // first polygon points forward to the second placed record.
     ccf.placedNodes = {
@@ -119,6 +125,7 @@ void testStableStaticAndPortalBindings() {
                 .placedNodeIndex = 1U,
                 .meshIndex = 0U,
                 .triangleIndex = 2U,
+                .materialIndex = 1U,
             },
             {
                 .roomIndex = 0U,
@@ -129,6 +136,7 @@ void testStableStaticAndPortalBindings() {
                 .placedNodeIndex = 0U,
                 .meshIndex = 1U,
                 .triangleIndex = 1U,
+                .materialIndex = 0U,
             },
             {
                 .roomIndex = 0U,
@@ -142,6 +150,40 @@ void testStableStaticAndPortalBindings() {
                 .portalRoomIndex = 1U,
             }},
         "bindings did not preserve physical order or exact targets");
+}
+
+void testMaterialBindingRequiresOneSourceLocalMatch() {
+    CcfMetadata ccf;
+    ccf.rooms = {room(10U)};
+    ccf.meshes = {mesh(30U)};
+    ccf.meshes[0].triangles[0].materialReference = 50U;
+    ccf.materials = {
+        CcfMaterialMetadata{.reference = 50U},
+    };
+    ccf.placedNodes = {object(40U, 10U, 30U)};
+    ccf.rooms[0].staticBspTrees.push_back(
+        tree(CcfBspTreeKind::staticTree, {polygon(40U)}));
+
+    auto scene = resolveCcfRoomScene(ccf);
+    require(
+        scene.issues.empty() && scene.bindings.size() == 1U &&
+            scene.bindings[0].materialIndex ==
+                std::optional<std::size_t>{0U},
+        "unique triangle material did not resolve source-locally");
+
+    ccf.materials.push_back(CcfMaterialMetadata{.reference = 50U});
+    scene = resolveCcfRoomScene(ccf);
+    require(
+        scene.issues.empty() && scene.bindings.size() == 1U &&
+            !scene.bindings[0].materialIndex.has_value(),
+        "ambiguous material reference was presented as a unique binding");
+
+    ccf.materials.clear();
+    scene = resolveCcfRoomScene(ccf);
+    require(
+        scene.issues.empty() && scene.bindings.size() == 1U &&
+            !scene.bindings[0].materialIndex.has_value(),
+        "missing material pointer semantics did not remain nullable");
 }
 
 void testReferenceFailuresFailClosed() {
@@ -331,6 +373,7 @@ void testDependencyStructureAndLimits() {
 int main() {
     try {
         testStableStaticAndPortalBindings();
+        testMaterialBindingRequiresOneSourceLocalMatch();
         testReferenceFailuresFailClosed();
         testResourceAndRoomFailuresFailClosed();
         testDependencyStructureAndLimits();

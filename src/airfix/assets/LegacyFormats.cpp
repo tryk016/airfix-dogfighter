@@ -341,6 +341,7 @@ void validateCcfMaterialVectors(
         .primaryTexture = std::nullopt,
         .secondaryTexture = std::nullopt,
         .environmentTexture = std::nullopt,
+        .collisionMode2152 = std::nullopt,
         .offset = material.offset,
     };
     bool hasVectors = false;
@@ -393,6 +394,13 @@ void validateCcfMaterialVectors(
             if (hasScalars || property.totalSize != 18U) {
                 throw ParseError("CCF material has invalid scalar properties");
             }
+            metadata.collisionMode2152 = readU32(
+                bytes,
+                static_cast<std::size_t>(checkedAdd(
+                    property.offset,
+                    6U,
+                    "CCF material 0x2152 collision mode")),
+                "CCF material 0x2152 collision mode");
             hasScalars = true;
             break;
         default:

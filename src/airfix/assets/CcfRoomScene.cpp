@@ -163,14 +163,17 @@ bool validateTreeStructure(
     return valid;
 }
 
-using PlacedReferences =
+using References =
     std::unordered_map<std::uint32_t, ReferenceMatch>;
 
-PlacedReferences buildPlacedReferences(const CcfMetadata& ccf) {
-    PlacedReferences references;
-    references.reserve(ccf.placedNodes.size());
-    for (std::size_t index = 0U; index < ccf.placedNodes.size(); ++index) {
-        const auto reference = ccf.placedNodes[index].currentReference;
+template <typename Range, typename Reference>
+[[nodiscard]] References buildReferences(
+    const Range& values,
+    Reference referenceOf) {
+    References references;
+    references.reserve(values.size());
+    for (std::size_t index = 0U; index < values.size(); ++index) {
+        const auto reference = referenceOf(values[index]);
         const auto [iterator, inserted] =
             references.emplace(reference, ReferenceMatch{index, 1U});
         if (!inserted) {
@@ -183,7 +186,8 @@ PlacedReferences buildPlacedReferences(const CcfMetadata& ccf) {
 void resolveTreeBindings(
     const CcfMetadata& ccf,
     const ResolvedPlacedScene& placedScene,
-    const PlacedReferences& placedReferences,
+    const References& placedReferences,
+    const References& materialReferences,
     const std::size_t roomIndex,
     const std::size_t treeIndex,
     const CcfBspTreeMetadata& tree,
@@ -311,6 +315,18 @@ void resolveTreeBindings(
                     polygon.placedObjectReference);
                 continue;
             }
+            const auto triangleIndex =
+                static_cast<std::size_t>(polygon.polygonIndex);
+            const auto materialReference =
+                ccf.meshes[meshIndex].triangles[triangleIndex]
+                    .materialReference;
+            std::optional<std::size_t> materialIndex;
+            const auto materialMatch =
+                materialReferences.find(materialReference);
+            if (materialMatch != materialReferences.end() &&
+                materialMatch->second.count == 1U) {
+                materialIndex = materialMatch->second.first;
+            }
 
             std::optional<std::size_t> portalRoomIndex;
             if (tree.kind == CcfBspTreeKind::portalTree) {
@@ -342,8 +358,8 @@ void resolveTreeBindings(
                 .polygonMetadataIndex = polygonMetadataIndex,
                 .placedNodeIndex = placedNodeIndex,
                 .meshIndex = meshIndex,
-                .triangleIndex =
-                    static_cast<std::size_t>(polygon.polygonIndex),
+                .triangleIndex = triangleIndex,
+                .materialIndex = materialIndex,
                 .portalRoomIndex = portalRoomIndex,
             });
         }
@@ -425,7 +441,12 @@ ResolvedCcfRoomScene resolveCcfRoomScene(
     }
 
     result.bindings.reserve(bindingCount);
-    const auto placedReferences = buildPlacedReferences(ccf);
+    const auto placedReferences = buildReferences(
+        ccf.placedNodes,
+        [](const auto& node) { return node.currentReference; });
+    const auto materialReferences = buildReferences(
+        ccf.materials,
+        [](const auto& material) { return material.reference; });
     for (std::size_t roomIndex = 0U; roomIndex < ccf.rooms.size();
          ++roomIndex) {
         const auto& room = ccf.rooms[roomIndex];
@@ -448,6 +469,7 @@ ResolvedCcfRoomScene resolveCcfRoomScene(
                     ccf,
                     placedScene,
                     placedReferences,
+                    materialReferences,
                     roomIndex,
                     treeIndex,
                     tree,
@@ -473,6 +495,7 @@ ResolvedCcfRoomScene resolveCcfRoomScene(
                     ccf,
                     placedScene,
                     placedReferences,
+                    materialReferences,
                     roomIndex,
                     treeIndex,
                     tree,
