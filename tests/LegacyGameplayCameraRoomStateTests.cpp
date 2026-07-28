@@ -78,12 +78,21 @@ static_assert(noexcept(
         std::declval<
             std::span<MissionWorldRuntimeSphereCandidate>>(),
         std::declval<std::span<Vec3>>())));
+static_assert(noexcept(
+    completeLegacyGameplayCameraRetainedStaticFrameState(
+        std::declval<const MissionWorldSpatialArena&>(),
+        std::declval<const BasisTransform&>(),
+        std::declval<
+            const LegacyGameplayCameraStaticCollisionResult&>(),
+        std::declval<const Vec3&>())));
 static_assert(std::is_nothrow_copy_constructible_v<
               LegacyGameplayCameraRoomState>);
 static_assert(std::is_nothrow_copy_assignable_v<
               LegacyGameplayCameraRoomUpdateResult>);
 static_assert(std::is_nothrow_copy_assignable_v<
               LegacyGameplayCameraStaticCollisionResult>);
+static_assert(std::is_nothrow_copy_assignable_v<
+              LegacyGameplayCameraRetainedStaticFrameResult>);
 
 void require(const bool condition, const std::string& message) {
     if (!condition) {
@@ -210,6 +219,30 @@ void addStaticTree(
         .edge12 = {-2.0F, 4.0F, 0.0F},
         .materialCollisionMode2152 = 7U,
     });
+}
+
+[[nodiscard]] LegacyGameplayCameraStaticCollisionResult
+intermediateProposal(
+    const LegacyGameplayCameraStaticCollisionState& state,
+    const LegacyGameplayCameraStaticCollisionStatus status =
+        LegacyGameplayCameraStaticCollisionStatus::noTransition) {
+    return {
+        .status = status,
+        .proposedState = state,
+        .sphereCollision = std::nullopt,
+        .roomUpdate = std::nullopt,
+    };
+}
+
+void reverseLastPortalTriangle(
+    MissionWorldSpatialArena& arena,
+    const float z) {
+    auto& polygon = arena.polygons.back();
+    polygon.faceCross = {0.0F, 0.0F, -1.0F};
+    polygon.faceNormal = {0.0F, 0.0F, -1.0F};
+    polygon.point0 = {2.0F, -2.0F, z};
+    polygon.edge01 = {-4.0F, 0.0F, 0.0F};
+    polygon.edge12 = {2.0F, 4.0F, 0.0F};
 }
 
 void testNoTransitionProposesCandidateInCurrentRoom() {
@@ -821,6 +854,178 @@ void testStaticCollisionProposalDoesNotAllocate() {
         "integrated static collision proposal allocated");
 }
 
+void testRetainedStaticFrameClearPreservesIntermediateState() {
+    const auto arena = emptyArena(1U);
+    const LegacyGameplayCameraStaticCollisionState intermediate{
+        .roomState = {
+            .runtimeWorldPosition = {0.0F, 0.0F, 2.0F},
+            .worldRoomIndex = 0U,
+        },
+        .axisFactors = {0.25F, 0.5F, 0.75F},
+    };
+
+    const auto result =
+        completeLegacyGameplayCameraRetainedStaticFrameState(
+            arena,
+            {},
+            intermediateProposal(intermediate),
+            {0.0F, 0.0F, -2.0F});
+    require(
+        result.status ==
+                LegacyGameplayCameraRetainedStaticFrameStatus::clear &&
+            result.valid() &&
+            result.proposedState ==
+                std::optional<
+                    LegacyGameplayCameraStaticCollisionState>{
+                    intermediate} &&
+            result.lineTrace.has_value() &&
+            result.lineTrace->status ==
+                MissionWorldRuntimeSpatialLineTraceStatus::noHit &&
+            !result.lineTrace->hit.has_value() &&
+            !result.lineRoomUpdate.has_value(),
+        "clear retained-static line changed the intermediate state");
+}
+
+void testRetainedStaticFrameHitUpdatesPositionAndRoom() {
+    auto arena = emptyArena();
+    addStaticTree(arena, 0U, 0.0F);
+    addPortalTree(arena, 0U, 1.0F, 1U);
+    reverseLastPortalTriangle(arena, 1.0F);
+    const LegacyGameplayCameraStaticCollisionState intermediate{
+        .roomState = {
+            .runtimeWorldPosition = {0.0F, 0.0F, 2.0F},
+            .worldRoomIndex = 0U,
+        },
+        .axisFactors = {0.25F, 0.5F, 0.75F},
+    };
+
+    const auto result =
+        completeLegacyGameplayCameraRetainedStaticFrameState(
+            arena,
+            {},
+            intermediateProposal(
+                intermediate,
+                LegacyGameplayCameraStaticCollisionStatus::transition),
+            {0.0F, 0.0F, -2.0F});
+    require(
+        result.status ==
+                LegacyGameplayCameraRetainedStaticFrameStatus::occluded &&
+            result.valid() &&
+            result.proposedState.has_value() &&
+            result.lineTrace.has_value() &&
+            result.lineTrace->status ==
+                MissionWorldRuntimeSpatialLineTraceStatus::hit &&
+            result.lineTrace->hit.has_value() &&
+            close(
+                result.lineTrace->hit->runtimePoint.z,
+                0.0F) &&
+            result.lineRoomUpdate.has_value() &&
+            result.lineRoomUpdate->status ==
+                LegacyGameplayCameraRoomUpdateStatus::transition &&
+            result.lineRoomUpdate->transitionCount == 1U &&
+            result.proposedState->roomState.worldRoomIndex == 1U &&
+            close(
+                result.proposedState->roomState.runtimeWorldPosition.z,
+                0.0F) &&
+            result.proposedState->axisFactors ==
+                intermediate.axisFactors,
+        "retained-static line hit did not atomically update position and room");
+}
+
+void testRetainedStaticFrameFailuresNeverProposeState() {
+    const auto intermediate =
+        LegacyGameplayCameraStaticCollisionState{
+            .roomState = {
+                .runtimeWorldPosition = {0.0F, 0.0F, 2.0F},
+                .worldRoomIndex = 0U,
+            },
+            .axisFactors = {1.0F, 1.0F, 1.0F},
+        };
+    const auto invalidIntermediate =
+        completeLegacyGameplayCameraRetainedStaticFrameState(
+            emptyArena(1U),
+            {},
+            {
+                .status =
+                    LegacyGameplayCameraStaticCollisionStatus::
+                        invalidArena,
+                .proposedState = intermediate,
+            },
+            {});
+    const auto invalidLine =
+        completeLegacyGameplayCameraRetainedStaticFrameState(
+            emptyArena(1U),
+            {},
+            intermediateProposal(intermediate),
+            {
+                std::numeric_limits<float>::infinity(),
+                0.0F,
+                0.0F,
+            });
+
+    auto portalFailureArena = emptyArena();
+    addStaticTree(portalFailureArena, 0U, 0.0F);
+    addPortalTree(portalFailureArena, 0U, 1.0F, 1U);
+    reverseLastPortalTriangle(portalFailureArena, 1.0F);
+    const auto portalFailure =
+        completeLegacyGameplayCameraRetainedStaticFrameState(
+            portalFailureArena,
+            {},
+            intermediateProposal(intermediate),
+            {0.0F, 0.0F, -2.0F},
+            {.maximumPortalTransitions = 0U});
+
+    require(
+        invalidIntermediate.status ==
+                LegacyGameplayCameraRetainedStaticFrameStatus::
+                    invalidIntermediateProposal &&
+            !invalidIntermediate.proposedState.has_value() &&
+            !invalidIntermediate.lineTrace.has_value() &&
+            invalidLine.status ==
+                LegacyGameplayCameraRetainedStaticFrameStatus::
+                    invalidInput &&
+            !invalidLine.proposedState.has_value() &&
+            invalidLine.lineTrace.has_value() &&
+            !invalidLine.lineRoomUpdate.has_value() &&
+            portalFailure.status ==
+                LegacyGameplayCameraRetainedStaticFrameStatus::
+                    transitionLimitExceeded &&
+            !portalFailure.proposedState.has_value() &&
+            portalFailure.lineTrace.has_value() &&
+            portalFailure.lineRoomUpdate.has_value(),
+        "failed retained-static frame exposed a partial proposal");
+}
+
+void testRetainedStaticFrameDoesNotAllocate() {
+    const auto arena = emptyArena(1U);
+    const auto intermediate = intermediateProposal({
+        .roomState = {
+            .runtimeWorldPosition = {0.0F, 0.0F, 2.0F},
+            .worldRoomIndex = 0U,
+        },
+        .axisFactors = {1.0F, 1.0F, 1.0F},
+    });
+
+    LegacyGameplayCameraRetainedStaticFrameResult result;
+    allocationCount.store(0U, std::memory_order_relaxed);
+    countAllocations.store(true, std::memory_order_relaxed);
+    for (std::size_t iteration = 0U; iteration < 4'096U;
+         ++iteration) {
+        result =
+            completeLegacyGameplayCameraRetainedStaticFrameState(
+                arena,
+                {},
+                intermediate,
+                {0.0F, 0.0F, -2.0F});
+    }
+    countAllocations.store(false, std::memory_order_relaxed);
+
+    require(result.valid(), "retained-static allocation probe failed");
+    require(
+        allocationCount.load(std::memory_order_relaxed) == 0U,
+        "retained-static frame proposal allocated");
+}
+
 void testHotPathDoesNotAllocate() {
     const auto arena = onePortalArena();
     const LegacyGameplayCameraRoomState current{
@@ -864,6 +1069,10 @@ int main() {
         testFactorReductionRemovesRuntimeUnitScale();
         testStaticCollisionFailuresNeverProposeState();
         testStaticCollisionProposalDoesNotAllocate();
+        testRetainedStaticFrameClearPreservesIntermediateState();
+        testRetainedStaticFrameHitUpdatesPositionAndRoom();
+        testRetainedStaticFrameFailuresNeverProposeState();
+        testRetainedStaticFrameDoesNotAllocate();
         testHotPathDoesNotAllocate();
         std::cout << "LegacyGameplayCameraRoomState tests passed\n";
         return 0;

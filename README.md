@@ -60,17 +60,18 @@ Implemented foundations include:
   exact quaternion-to-matrix and chase-target/nonlinear smoothing steps,
   backend-neutral collision/factor/line primitives and look-at pose math, and
   a parity-first 640x480 aspect-fit layout kept separate from Metal;
-- bounded static sphere resolution and corrected position/room/factor
-  integration, plus a preallocated single-writer owner that publishes complete
-  immutable camera snapshots to a render consumer.
+- bounded static sphere and vehicle-to-camera line resolution with atomic
+  position/room/factor completion, plus a preallocated single-writer owner and
+  immutable backend-neutral pose snapshot joining look-at, unit-scale
+  world-to-view, and the recovered gameplay projection.
 
 The portable authenticated load now produces one validated room-and-player
 draw model plus a mission-lifetime BSP arena for every runtime room. The actor
 still remains at its authenticated spawn transform until the recovered
 movement law supplies a changing world pose. Dynamic-object camera collision,
-complete camera-pose/Metal integration, full gameplay simulation, campaign
-flow, audio, finished menus, physical-device rendering, and visual acceptance
-remain future milestones.
+Metal camera consumption, full gameplay simulation, campaign flow, audio,
+finished menus, physical-device rendering, and visual acceptance remain
+future milestones.
 
 For frequently updated details, use
 [project status](docs/progress/STATUS.md) and the

@@ -65,7 +65,7 @@ LegacyGameplayCameraStateOwner::tryInitialize(
 
 LegacyGameplayCameraStateCommitResult
 LegacyGameplayCameraStateOwner::tryCommit(
-    const LegacyGameplayCameraStaticCollisionResult& proposal,
+    const LegacyGameplayCameraRetainedStaticFrameResult& proposal,
     const std::uint64_t simulationStep) noexcept {
     if (!currentSnapshot_.has_value()) {
         return LegacyGameplayCameraStateCommitResult::notInitialized;

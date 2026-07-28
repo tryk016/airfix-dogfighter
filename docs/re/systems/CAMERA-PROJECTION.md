@@ -400,12 +400,25 @@ sphere resolver, per-axis collision reduction, and corrected-position portal
 trace into one proposed `{position, room, axisFactors}` value. A correction may
 therefore prevent or preserve a portal transition before any state is exposed.
 `src/airfix/render/LegacyGameplayCameraStateOwner.cpp` now applies that
-complete proposal behind a dedicated single-writer owner and exposes one
+proposal only after
+`completeLegacyGameplayCameraRetainedStaticFrameState` has also run the
+retained current-room vehicle-to-camera static line query and the conditional
+second portal update. The dedicated single-writer owner then exposes one
 owning immutable snapshot to the render consumer. Its two fixed slots use
 writer/reader claims and a generation tag, so a rejected or contended commit
 cannot change the producer state and a consumer cannot copy mixed fields. This
 is an SPSC reconstruction architecture decision, not a recovered claim about
 the legacy engine's threading.
+
+`src/airfix/render/LegacyGameplayCameraPoseSnapshot.cpp` consumes one acquired
+generation and its matching vehicle anchor. It constructs the recovered
+look-at, unit-scale world-to-view relation, and explicit scalar projection as
+one immutable backend-neutral value. `CcSrtNode::SetMatrixRotation` and the
+final `CcMatrixRot::Reset` both write identity basis, scale `1.0`, and cached
+inverse-square `1.0`; canonical Ghidra and an independent Rizin export agree,
+so the builder does not accept a guessed scale. Its `project` operation keeps
+world-to-view and screen projection separate and does not invent clipping,
+NDC, Metal layout, or presentation policy.
 
 The exact next solver boundary is recorded in
 [EXP-20260728-014](../../experiments/EXP-20260728-014-camera-sphere-contact-recovery.md).
@@ -429,7 +442,9 @@ ellipsoid. The all-or-nothing state join is documented in
 [EXP-20260728-017](../../experiments/EXP-20260728-017-camera-static-state-integration.md).
 [EXP-20260728-018](../../experiments/EXP-20260728-018-camera-state-owner-snapshot.md)
 documents the ownership, generation, contention, and immutable-copy contract.
-Dynamic-object BSP remains separate.
+[EXP-20260728-019](../../experiments/EXP-20260728-019-camera-retained-static-pose-snapshot.md)
+documents line completion, unit SRT evidence, and pose composition.
+Dynamic-object BSP and transparent collision-portal traversal remain separate.
 
 ## Still unknown
 
@@ -470,3 +485,5 @@ evidence is recovered.
 - [Camera constraint solver](../../experiments/EXP-20260728-015-camera-constraint-solver.md)
 - [Camera static sphere resolver](../../experiments/EXP-20260728-016-camera-static-sphere-resolver.md)
 - [Camera static state integration](../../experiments/EXP-20260728-017-camera-static-state-integration.md)
+- [Camera state owner and snapshot](../../experiments/EXP-20260728-018-camera-state-owner-snapshot.md)
+- [Retained-static line and pose snapshot](../../experiments/EXP-20260728-019-camera-retained-static-pose-snapshot.md)
