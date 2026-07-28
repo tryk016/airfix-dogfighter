@@ -2174,3 +2174,27 @@ superseded evidence.
   committed. The public-boundary scan checks 324 files, the
   Ghidra/working-copy/Rizin wrapper tests and 12 Rizin normalization tests
   pass, and `actionlint` plus `git diff --check` are clean.
+
+## 2026-07-28 - Metal gameplay-camera clip packet
+
+- `EV-20260728-006` / `EXP-20260728-020`: derived a backend clip packet whose
+  homogeneous divide exactly reproduces the recovered screen X/Y and
+  `near / cameraZ` reverse depth. Standard homogeneous clipping supplies the
+  near plane; an explicit `far - cameraZ` Metal clip distance supplies the
+  separately recovered inclusive far plane.
+- Added an immutable allocation-free C++20 packet and an explicit camera0
+  bootstrap factory. The bootstrap binds generation one/step zero to the
+  authenticated spawn transform and room, begins directly at the recovered
+  target, and invents no predecessor or smoothing history.
+- Private mission-room Metal preparation now owns that packet. Its separate
+  gameplay shader preserves local-to-world, subtraction, three basis dot
+  products, cached inverse-square, and scalar projection order. The pipeline
+  uses recovered `greaterEqual` depth writes, zero depth clear, and a
+  parity-first aspect-fitted 640x480 viewport. The public synthetic path keeps
+  its diagnostic pipeline.
+- Synthetic tests prove homogeneous/scalar agreement, reverse-depth and
+  near/far boundaries, offset centres, invalid/overflow failures, bootstrap
+  provenance, and 4,096 allocation-counted packet operations. A fresh
+  Ninja/GCC 15.2 Release build and code-intelligence validation each pass all
+  65 portable tests. Unsigned Apple compilation remains required before
+  merge.

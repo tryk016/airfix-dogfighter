@@ -63,15 +63,18 @@ Implemented foundations include:
 - bounded static sphere and vehicle-to-camera line resolution with atomic
   position/room/factor completion, plus a preallocated single-writer owner and
   immutable backend-neutral pose snapshot joining look-at, unit-scale
-  world-to-view, and the recovered gameplay projection.
+  world-to-view, and the recovered gameplay projection;
+- a private-room Metal camera adapter that preserves the scalar projection as
+  homogeneous clip values, uses recovered reverse depth and an aspect-fitted
+  640x480 viewport, and starts from an explicit tested camera0 bootstrap.
 
 The portable authenticated load now produces one validated room-and-player
 draw model plus a mission-lifetime BSP arena for every runtime room. The actor
 still remains at its authenticated spawn transform until the recovered
 movement law supplies a changing world pose. Dynamic-object camera collision,
-Metal camera consumption, full gameplay simulation, campaign flow, audio,
-finished menus, physical-device rendering, and visual acceptance remain
-future milestones.
+changing event-5 camera publication, full gameplay simulation, campaign flow,
+audio, finished menus, physical-device rendering, and visual acceptance
+remain future milestones.
 
 For frequently updated details, use
 [project status](docs/progress/STATUS.md) and the

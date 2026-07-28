@@ -342,15 +342,36 @@ cache, construct gameplay camera poses, or expose Metal types.
 
 ## Reconstructed renderer boundary
 
-The current Metal renderer still applies only a diagnostic aspect correction
-to each model transform:
+The public synthetic Metal path retains its diagnostic aspect correction:
 
 ```text
 clip = diagnosticAspect * modelFromLocal * position
 ```
 
-It is not a recovered camera. World coordinates may fall outside clip space.
-The diagnostic rasterizer's auto-fit view is also not legacy evidence.
+Private mission rooms now use a separate gameplay pipeline. An immutable
+`LegacyGameplayCameraClipPacket` preserves the recovered scalar transform and
+projection while adapting them to homogeneous Metal clip coordinates:
+
+```text
+wClip = cameraZ / near
+zClip = 1
+xClip = (2 * projectScale / width) * cameraX
+      + (2 * centreX / width - 1) * wClip
+yClip = (2 * projectScale / height) * cameraY
+      + (1 - 2 * centreY / height) * wClip
+farClipDistance = far - cameraZ
+```
+
+The divide therefore yields the exact screen-space NDC conversion and
+`zNdc = near / cameraZ`. Metal uses recovered depth mode one
+(`greaterEqual`, writes enabled), zero depth clear, and the aspect-fitted
+640x480 viewport. `[[clip_distance]]` supplies the separate far plane.
+
+Until the simulation owns changing event-5 publications, private rooms use an
+explicit tested port bootstrap at the recovered camera0 target relative to the
+authenticated player spawn. It is generation one/step zero, retains the spawn
+room, and does not fabricate a prior smoothing position. This is coherent
+initial camera consumption, not a complete camera-parity claim.
 
 The portable implementation in
 `src/airfix/render/LegacyScreenProjection.cpp` is deliberately narrow:
@@ -420,6 +441,14 @@ so the builder does not accept a guessed scale. Its `project` operation keeps
 world-to-view and screen projection separate and does not invent clipping,
 NDC, Metal layout, or presentation policy.
 
+`src/airfix/render/LegacyGameplayCameraClipPacket.cpp` owns one copied pose and
+derives the homogeneous mapping above without publishing a generic projection
+matrix. Its CPU tests compare the divide directly to the ordered scalar
+projection, cover exact near/far behavior, and verify the explicit camera0
+bootstrap. Objective-C++ repacks the camera basis, translation, cached
+inverse-square, projection scalars, and logical canvas into a fixed Metal ABI.
+The shader repeats the recovered operations instead of precomposing them.
+
 The exact next solver boundary is recorded in
 [EXP-20260728-014](../../experiments/EXP-20260728-014-camera-sphere-contact-recovery.md).
 It fixes static sphere traversal order, the sphere-versus-triangle entry, the
@@ -444,6 +473,9 @@ ellipsoid. The all-or-nothing state join is documented in
 documents the ownership, generation, contention, and immutable-copy contract.
 [EXP-20260728-019](../../experiments/EXP-20260728-019-camera-retained-static-pose-snapshot.md)
 documents line completion, unit SRT evidence, and pose composition.
+[EXP-20260728-020](../../experiments/EXP-20260728-020-metal-gameplay-camera-packet.md)
+documents homogeneous Metal packaging, reverse depth, presentation, and the
+explicit bootstrap policy.
 Dynamic-object BSP and transparent collision-portal traversal remain separate.
 
 ## Still unknown
@@ -453,7 +485,8 @@ Dynamic-object BSP and transparent collision-portal traversal remain separate.
   argument used for factor recovery;
 - first/third-person pose differences in actor plugins other than the examined
   aircraft path;
-- final Metal clip-matrix packaging and raster-space Y convention;
+- physical-device validation of the implemented Metal clip mapping,
+  raster-space Y convention, precision, and aspect-fit presentation;
 - optional widescreen/Hor+ behavior beyond the confirmed parity-first 4:3
   policy;
 - durable semantic names for every room list, clip virtual method, and portal
@@ -487,3 +520,4 @@ evidence is recovered.
 - [Camera static state integration](../../experiments/EXP-20260728-017-camera-static-state-integration.md)
 - [Camera state owner and snapshot](../../experiments/EXP-20260728-018-camera-state-owner-snapshot.md)
 - [Retained-static line and pose snapshot](../../experiments/EXP-20260728-019-camera-retained-static-pose-snapshot.md)
+- [Metal gameplay-camera clip packet](../../experiments/EXP-20260728-020-metal-gameplay-camera-packet.md)

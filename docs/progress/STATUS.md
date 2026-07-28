@@ -561,8 +561,13 @@
   acquired generation and vehicle anchor to build an immutable look-at,
   world-to-view, and scalar gameplay projection snapshot without guessed SRT
   state. Dynamic-object and transparent collision-portal paths plus the Metal
-  join remain unimplemented. Metal remains explicitly diagnostic and no full
-  parity claim has been introduced.
+  state remain unimplemented. The private mission-room Metal path now consumes
+  the immutable pose through a tested homogeneous clip packet, recovered
+  reverse depth, explicit far clip, and parity-first 640x480 viewport. Until
+  the simulation publishes changing event-5 generations, it starts at an
+  explicit camera0 target anchored to the authenticated spawn. The synthetic
+  public-data path remains diagnostic and no full parity claim has been
+  introduced.
 - The authenticated setup-to-room provenance chain now crosses the native iOS
   publication boundary together with an immutable `PlayerSpawnPose`. Ghidra
   Headless and Rizin independently confirm x/y/z radians, mode zero, exact
@@ -611,12 +616,12 @@
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Integrate the immutable gameplay-camera pose snapshot with Metal without
-   collapsing the recovered transform/projection arithmetic into an unverified
-   generic clip matrix; preserve reciprocal depth and parity-first 4:3
-   presentation before physical-device visual acceptance. Dynamic-object and
-   transparent collision-portal paths, auxiliary weapons, and effects remain
-   separate.
+3. Publish changing gameplay-camera generations from a stateful simulation
+   coordinator and replace the tested camera0 Metal bootstrap without
+   fabricating smoothing history. Preserve the implemented scalar clip,
+   reciprocal-depth, and parity-first 4:3 contracts through physical-device
+   visual acceptance. Dynamic-object and transparent collision-portal paths,
+   auxiliary weapons, and effects remain separate.
 4. Validate the implemented runtime portal-to-room-state proposal against
    controlled multi-room executable traces when the isolated runtime is ready.
 5. Keep BSP render culling disabled until its separate runtime semantics are
