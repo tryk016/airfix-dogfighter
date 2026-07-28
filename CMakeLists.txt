@@ -164,6 +164,7 @@ add_library(airfix_render
     src/airfix/render/LegacyGameplayCameraRoomState.cpp
     src/airfix/render/LegacyGameplayCameraStateOwner.cpp
     src/airfix/render/LegacyGameplayCameraStepCoordinator.cpp
+    src/airfix/render/LegacyDynamicBsp.cpp
     src/airfix/render/LegacyGeometry.cpp
     src/airfix/render/LegacyQuaternionRotation.cpp
     src/airfix/render/LegacyScreenProjection.cpp
@@ -562,6 +563,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_mission_world_runtime_spatial_trace_tests
         COMMAND airfix_mission_world_runtime_spatial_trace_tests)
+
+    add_executable(airfix_legacy_dynamic_bsp_tests
+        tests/LegacyDynamicBspTests.cpp)
+    target_link_libraries(airfix_legacy_dynamic_bsp_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_legacy_dynamic_bsp_tests
+        COMMAND airfix_legacy_dynamic_bsp_tests)
 
     add_executable(airfix_mission_world_runtime_sphere_collision_tests
         tests/MissionWorldRuntimeSphereCollisionTests.cpp)

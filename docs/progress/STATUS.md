@@ -640,11 +640,15 @@
   through one strict-nearest fraction plus recursive visible type-zero portal
   continuation. An allocation-free single-hit decision seam implements the
   exact shared material-8, portal, client/server actor-gate, actor-contact,
-  surface, normal, position-swap, and material-15 water behavior. Private
-  allocation/event dispatch, live muzzle transforms, combined retained-static
-  and live-dynamic geometry, bounded portal iteration, tracer/effect
-  realization, secondary weapon families, runtime traces, and integration
-  remain pending.
+  surface, normal, position-swap, and material-15 water behavior. Bounded
+  per-mesh dynamic BSP construction now preserves the native splitter,
+  prepend, clipping, material/provenance, and radius contracts. A non-portal
+  allocation-free adapter lets retained static geometry and caller-ordered
+  unit-scale dynamic instances compete through that same strict-nearest
+  fraction. Private allocation/event dispatch, live muzzle transforms,
+  authenticated actor/room publication, bounded portal iteration,
+  tracer/effect realization, secondary weapon families, dynamic camera-sphere
+  contacts, runtime traces, and integration remain pending.
 
 ## Confirmed
 
@@ -690,10 +694,11 @@
    controlled multi-room executable traces when the isolated runtime is ready.
 5. Keep BSP render culling disabled until its separate runtime semantics are
    proven against executable evidence.
-6. Join the implemented `WpMGun` timing, event `0xE2`, motion, damage, and
-   ricochet contracts to private type allocation/event dispatch, live muzzle
-   transforms, mission spatial collision, dynamic actors, and tracer/effect
-   adapters before wiring primary-fire intent into the runtime.
+6. Publish authenticated mesh colliders and ordered actor instances into the
+   implemented non-portal combined line query, then join `WpMGun` timing,
+   event `0xE2`, motion, damage, and ricochet contracts to bounded portal
+   iteration, private type allocation/event dispatch, live muzzle transforms,
+   and tracer/effect adapters before wiring primary-fire intent into runtime.
 
 ## Open questions
 

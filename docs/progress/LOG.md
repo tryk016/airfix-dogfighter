@@ -2562,3 +2562,37 @@ superseded evidence.
   tests, public-boundary tests and 373-file scan, 254-row catalogue validation,
   `actionlint`, nine-file local-path scan, and `git diff --check` pass. GitHub
   Actions remains the publication gate.
+
+## 2026-07-28 - dynamic-object BSP and combined line adapter
+
+- `EV-20260728-019` / `EXP-20260728-035`: recovered the complete
+  `CcObject::CreateDynamicBsp` per-mesh construction path, mesh-cache
+  ownership, `CcMesh::CalcSphere`, deterministic splitter score, native
+  prepend order, negative-A/nonnegative-B side mapping, `+/-0.000001`
+  classification, zero-plane clipping, and `0.0001` small-fragment rejection.
+- Ghidra 12.1.2 supplies canonical MSVC types and readable construction/split
+  pseudocode. Independently regenerated automatic Rizin 0.9.1 reports match
+  `CalcSphere`, `CreateDynamicBsp`, `CreateBspTree`, and the 4,340-byte
+  `CcBspPoly::Split` boundaries, instructions, calls, branches, and constants.
+- Added a bounded mission-load C++20 builder over already converted public mesh
+  geometry. It publishes an immutable pointer-free local BSP, source
+  triangle/material provenance, material collision values, radius, typed
+  failures, and retained-byte accounting. Vertex, triangle, material, node,
+  retained/working polygon, working-vertex, depth, and byte ceilings fail
+  closed.
+- Added an allocation-free `noexcept` non-portal `PhLine` adapter. Retained
+  room-static geometry and caller-ordered active object instances compete
+  through one strict-nearest fraction; exact ties retain static or the earlier
+  dynamic object. Object endpoints transform into local space, and a winning
+  normal returns through the confirmed orthonormal unit-scale F050 relation.
+- Tests cover native list/tie order, balanced and true crossing splits,
+  small-fragment rejection, material/provenance retention, all nearest/tie
+  combinations, object transforms/activity/broad phase, typed build/runtime
+  failures, epsilon out-of-segment rejection, and 4,096 zero-allocation
+  traces. Fresh Release and code-intelligence Ninja/GCC 15.2 builds each
+  compile 247 steps and pass 76/76 tests. The generated database has 157
+  portable entries; clangd 22.1.8 parses both new translation units with zero
+  code diagnostics. The three RE wrapper suites, 12 Rizin normalization tests,
+  public-boundary tests and 377-file scan, 259-row catalogue with only the two
+  pre-existing missing references, `actionlint`, local-path scan, and
+  `git diff --check` pass. GitHub Actions remains the publication gate.

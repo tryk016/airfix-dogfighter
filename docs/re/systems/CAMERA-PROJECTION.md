@@ -521,7 +521,12 @@ the deliberate live-producer gate.
 [EXP-20260728-025](../../experiments/EXP-20260728-025-camera-aircraft-input-contract.md)
 names the complete live input set, including actor health and the vehicle
 inactive latch, through a Ghidra/Rizin cross-check.
-Dynamic-object BSP and transparent collision-portal traversal remain separate.
+[EXP-20260728-035](../../experiments/EXP-20260728-035-dynamic-bsp-line-adapter.md)
+implements bounded per-mesh dynamic BSP construction and the non-portal
+static/dynamic `PhLine` competition. The camera still needs the distinct
+dynamic-object `PhSphere` contact path, live room-object publication, and
+transparent collision-portal composition before that geometry can join its
+state transaction.
 
 ## Still unknown
 
