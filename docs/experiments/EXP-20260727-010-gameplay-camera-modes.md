@@ -452,8 +452,10 @@ else:
 ```
 
 This applies independently to X, Y, and Z. The constants and ordering are
-confidence **3/3** for `AirCraft`; the physical unit of `refreshArgument` and
-the equivalent behavior of other vehicle types remain unverified.
+confidence **3/3** for `AirCraft`. A later scheduler join confirmed that
+`refreshArgument` is the event delta converted from milliseconds to seconds;
+see [EXP-20260728-023](EXP-20260728-023-camera-refresh-time-contract.md).
+Equivalent behavior of other vehicle types remains unverified.
 
 `LegacyGameplayCameraCollision.cpp` implements these backend-neutral
 primitives as pure, allocation-free `noexcept` operations. It rejects

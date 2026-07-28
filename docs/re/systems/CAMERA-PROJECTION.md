@@ -5,9 +5,9 @@ camera presets, quaternion adapter, chase smoothing, collision
 scalars/factors/line interpolation, look-at pose math, 4:3 layout, strict
 BSP/portal adaptation, static sphere/contact resolution, atomic
 position/room/factor publication, producer-side step composition, and Metal
-clip/depth consumption plus a bounded packet exchange implemented; raw refresh
-units, the simulation producer endpoint, dynamic-object collision, and device
-acceptance remain
+clip/depth consumption plus a bounded packet exchange implemented; factor
+refresh delta confirmed in seconds; the simulation producer endpoint,
+dynamic-object collision, and device acceptance remain
 
 This document separates confirmed legacy behavior from reconstruction
 decisions. The complete evidence record is
@@ -503,13 +503,16 @@ step behavior.
 [EXP-20260728-022](../../experiments/EXP-20260728-022-camera-packet-exchange.md)
 documents complete-packet SPSC publication, lease lifetime, generation policy,
 and Metal consumption.
+[EXP-20260728-023](../../experiments/EXP-20260728-023-camera-refresh-time-contract.md)
+confirms the scheduler-to-factor-recovery delta in seconds and its nominal
+12 ms AirCraft value.
 Dynamic-object BSP and transparent collision-portal traversal remain separate.
 
 ## Still unknown
 
 - runtime parity of the recovered chase recurrence and collision-axis factors,
-  including the still-unverified physical unit of the aircraft refresh
-  argument used for factor recovery;
+  including controlled traces of the now-confirmed seconds-based refresh
+  delta;
 - first/third-person pose differences in actor plugins other than the examined
   aircraft path;
 - physical-device validation of the implemented Metal clip mapping,

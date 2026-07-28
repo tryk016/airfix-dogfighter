@@ -2240,3 +2240,28 @@ superseded evidence.
   after `busy`, move/lifetime behavior, 4,096 zero-allocation cycles, and
   20,000 concurrent coherent publications. Release and code-intelligence
   builds pass 67/67 tests; focused clangd 22 checks report zero errors.
+
+## 2026-07-28 - gameplay-camera refresh time contract
+
+- `EV-20260728-009` / `EXP-20260728-023`: closed the remaining AirCraft camera
+  factor time join. `AfVehicle::ProcessEvent` converts the signed 64-bit event
+  delta from milliseconds with exact `0.001f`, and both full and skipped
+  physics paths pass that same binary32 seconds value to primary vtable slot
+  `+0xB0`.
+- Ghidra and an independently regenerated Rizin report agree on both caller
+  sequences, the AirCraft target boundary `[0x10002F60,0x10003F1D)`, and the
+  same stack argument at all three factor-recovery sites. Rizin's inferred
+  calling convention and argument count remain rejected in favor of Ghidra's
+  MSVC context and the native `ret 4`.
+- AirCraft's recovered 12 ms dependant interval supplies nominal `0.012f`
+  seconds (`0x3C449BA6`), so an unobstructed factor recovers by `0.003f` per
+  nominal aircraft step. This is not the separate 60 Hz input-pump interval.
+- Renamed the portable input to `refreshDeltaSeconds`, exposed the exact
+  nominal AirCraft value, and added a nominal recovery test. The coordinator
+  still requires the live aircraft gates and dynamic pose inputs before a
+  native producer endpoint may replace the camera0 bootstrap.
+- Fresh Release and code-intelligence builds compile all 220 steps and pass
+  67/67 portable tests; focused clangd 22 checks are clean. The three RE
+  wrapper suites, 12 Rizin normalization tests, public-boundary tests and
+  337-file scan pass; the 224-entry function catalogue, `actionlint`, and
+  `git diff --check` are clean.

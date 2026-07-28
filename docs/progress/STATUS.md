@@ -570,11 +570,13 @@
   introduced. A producer-side coordinator now composes recovered AirCraft
   factor recovery, cumulative mode/rear input, chase, the complete
   retained-static collision path, pose, clip packet, and atomic state commit
-  as one allocation-free transaction. Its raw refresh argument and vehicle
-  gates remain explicit; no guessed `dt` has been connected to iOS. A
-  fixed mission-lifetime SPSC exchange now transports only complete owning
-  clip packets, and Metal retains one lease through encoding. The current
-  exchange contains only the explicit bootstrap; a producer endpoint,
+  as one allocation-free transaction. Ghidra and Rizin independently confirm
+  that its factor-recovery argument is the same scheduler delta converted from
+  milliseconds to seconds; the nominal 12 ms AirCraft interval supplies
+  `0.012f`, not the 60 Hz input-pump interval. The two vehicle gates remain
+  explicit. A fixed mission-lifetime SPSC exchange transports only complete
+  owning clip packets, and Metal retains one lease through encoding. The
+  current exchange contains only the explicit bootstrap; a producer endpoint,
   mission-lifetime collision workspaces, and complete recovered aircraft
   inputs remain.
 - The authenticated setup-to-room provenance chain now crosses the native iOS
@@ -625,10 +627,10 @@
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Establish the raw AirCraft camera-factor refresh argument from controlled
-   traces or another confirmed scheduler join, then place the implemented
-   step coordinator behind preallocated mission-lifetime workspaces and a
-   weak producer endpoint to the implemented SPSC clip-packet exchange.
+3. Place the implemented camera-step coordinator behind preallocated
+   mission-lifetime workspaces and a weak producer endpoint to the implemented
+   SPSC clip-packet exchange. Feed its confirmed scheduler delta in seconds
+   without resampling the separate 60 Hz input pump.
    Replace the camera0-only publication only when the complete producer input
    exists. Preserve scalar clip,
    reciprocal-depth, and parity-first 4:3 behavior through device acceptance;

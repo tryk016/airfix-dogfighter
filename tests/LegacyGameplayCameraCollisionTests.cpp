@@ -290,11 +290,25 @@ void testAircraftFactorRecovery() {
             false);
     require(
         negativeRefresh.has_value(),
-        "finite raw refresh argument was guessed invalid");
+        "native finite negative refresh delta behavior changed");
     requireVec(
         *negativeRefresh,
         Vec3{0.0F, 0.25F, 1.0F},
-        "raw refresh algebra or clamps changed");
+        "refresh-delta algebra or clamps changed");
+
+    const auto nominalRefresh =
+        legacyAircraftRecoverGameplayCameraAxisFactors(
+            Vec3{},
+            legacyAircraftNominalRefreshDeltaSeconds,
+            1.0F,
+            false);
+    require(
+        nominalRefresh.has_value(),
+        "nominal 12 ms aircraft refresh failed");
+    requireVec(
+        *nominalRefresh,
+        Vec3{0.003F, 0.003F, 0.003F},
+        "nominal seconds-to-factor recovery changed");
 
     require(
         !legacyAircraftRecoverGameplayCameraAxisFactors(
@@ -992,13 +1006,13 @@ void testPrimitivesDoNotAllocateOrMutateInputs() {
             !sphereContact.contact.has_value() ||
             !hit.has_value() || !lookAt.has_value()) {
             complete = false;
-            break;
+        } else {
+            checksum += *radius + reduced->x + recovered->y +
+                static_cast<float>(*accepts) +
+                static_cast<float>(*overrides) + constrained->z +
+                sphereContact.contact->penetrationDepth +
+                hit->z + lookAt->cameraWorldLinear.columns[0].x;
         }
-        checksum += *radius + reduced->x + recovered->y +
-            static_cast<float>(*accepts) +
-            static_cast<float>(*overrides) + constrained->z +
-            sphereContact.contact->penetrationDepth +
-            hit->z + lookAt->cameraWorldLinear.columns[0].x;
     }
     trackAllocations.store(false, std::memory_order_release);
 

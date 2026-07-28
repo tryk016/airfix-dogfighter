@@ -47,9 +47,10 @@ struct LegacyGameplayCameraStepCoordinatorInput final {
     Vec3 vehicleWorldAnchor{};
     Mat3 vehicleWorldRotation{};
 
-    // Recovered AirCraft.type factor-recovery inputs. The first value remains
-    // deliberately raw until its physical unit is proven.
-    float rawRefreshArgument{};
+    // Recovered AirCraft.type factor-recovery inputs. The delta is the same
+    // scheduler payload that AfVehicle converts from milliseconds to seconds
+    // before invoking AirCraft vtable slot +0xB0.
+    float refreshDeltaSeconds{};
     float vehicleField98{1.0F};
     bool vehicleFlag460{};
 
@@ -112,8 +113,9 @@ struct LegacyGameplayCameraStepCoordinatorResult final {
 //
 // The caller owns the immutable mission arena and bounded workspaces. Dynamic
 // objects and transparent collision portals remain outside the retained
-// backend. This coordinator does not guess the raw refresh argument or publish
-// across threads; a later runtime exchange consumes only complete packets.
+// backend. The caller supplies the scheduler-derived refresh delta and this
+// coordinator does not resample the 60 Hz input pump. A runtime exchange
+// consumes only complete packets.
 class LegacyGameplayCameraStepCoordinator final {
   public:
     LegacyGameplayCameraStepCoordinator() noexcept = default;

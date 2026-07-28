@@ -319,10 +319,10 @@ constexpr float aircraftAxisRecoveryRate = 0.25F;
 
 [[nodiscard]] std::optional<float> recoverFactor(
     float factor,
-    const float rawRefreshArgument) noexcept {
+    const float refreshDeltaSeconds) noexcept {
     if (factor < 1.0F) {
         const float increment =
-            rawRefreshArgument *
+            refreshDeltaSeconds *
             aircraftAxisRecoveryRate;
         if (!std::isfinite(increment)) {
             return std::nullopt;
@@ -393,11 +393,11 @@ std::optional<Vec3> legacyGameplayCameraReduceCollisionAxisFactors(
 
 std::optional<Vec3> legacyAircraftRecoverGameplayCameraAxisFactors(
     const Vec3& currentFactors,
-    const float rawRefreshArgument,
+    const float refreshDeltaSeconds,
     const float vehicleField98,
     const bool vehicleFlag460) noexcept {
     if (!finite(currentFactors) ||
-        !std::isfinite(rawRefreshArgument) ||
+        !std::isfinite(refreshDeltaSeconds) ||
         !std::isfinite(vehicleField98)) {
         return std::nullopt;
     }
@@ -407,11 +407,11 @@ std::optional<Vec3> legacyAircraftRecoverGameplayCameraAxisFactors(
     }
 
     const auto recoveredX =
-        recoverFactor(currentFactors.x, rawRefreshArgument);
+        recoverFactor(currentFactors.x, refreshDeltaSeconds);
     const auto recoveredY =
-        recoverFactor(currentFactors.y, rawRefreshArgument);
+        recoverFactor(currentFactors.y, refreshDeltaSeconds);
     const auto recoveredZ =
-        recoverFactor(currentFactors.z, rawRefreshArgument);
+        recoverFactor(currentFactors.z, refreshDeltaSeconds);
     if (!recoveredX.has_value() || !recoveredY.has_value() ||
         !recoveredZ.has_value()) {
         return std::nullopt;
@@ -463,68 +463,66 @@ std::optional<Vec3> legacyGameplayCameraAttemptConstrainedMove(
     for (std::size_t index = planesHeadFirst.size(); index > 0U; --index) {
         const std::size_t candidateIndex = index - 1U;
         const auto& candidate = planesHeadFirst[candidateIndex];
-        if (!(dotZyx(requestedMove, candidate) < 0.0)) {
-            continue;
-        }
-        if (!primary.has_value()) {
-            primary = candidateIndex;
-            continue;
-        }
-
-        const bool candidateOverridesPrimary =
-            constraintPlaneOverridesUnchecked(
-                candidate,
-                planesHeadFirst[*primary],
-                requestedMove);
-        const bool primaryOverridesCandidate =
-            constraintPlaneOverridesUnchecked(
-                planesHeadFirst[*primary],
-                candidate,
-                requestedMove);
-        auto nextSecondary = secondary;
-        if (candidateOverridesPrimary) {
-            if (primaryOverridesCandidate) {
-                nextSecondary = candidateIndex;
-                if (secondary.has_value()) {
-                    const bool candidateOverridesSecondary =
-                        constraintPlaneOverridesUnchecked(
-                            candidate,
-                            planesHeadFirst[*secondary],
-                            requestedMove);
-                    const bool secondaryOverridesCandidate =
-                        constraintPlaneOverridesUnchecked(
-                            planesHeadFirst[*secondary],
-                            candidate,
-                            requestedMove);
-                    nextSecondary = secondary;
-                    if (candidateOverridesSecondary) {
+        if (dotZyx(requestedMove, candidate) < 0.0) {
+            if (!primary.has_value()) {
+                primary = candidateIndex;
+            } else {
+                const bool candidateOverridesPrimary =
+                    constraintPlaneOverridesUnchecked(
+                        candidate,
+                        planesHeadFirst[*primary],
+                        requestedMove);
+                const bool primaryOverridesCandidate =
+                    constraintPlaneOverridesUnchecked(
+                        planesHeadFirst[*primary],
+                        candidate,
+                        requestedMove);
+                auto nextSecondary = secondary;
+                if (candidateOverridesPrimary) {
+                    if (primaryOverridesCandidate) {
                         nextSecondary = candidateIndex;
-                        if (secondaryOverridesCandidate) {
-                            return Vec3{};
+                        if (secondary.has_value()) {
+                            const bool candidateOverridesSecondary =
+                                constraintPlaneOverridesUnchecked(
+                                    candidate,
+                                    planesHeadFirst[*secondary],
+                                    requestedMove);
+                            const bool secondaryOverridesCandidate =
+                                constraintPlaneOverridesUnchecked(
+                                    planesHeadFirst[*secondary],
+                                    candidate,
+                                    requestedMove);
+                            nextSecondary = secondary;
+                            if (candidateOverridesSecondary) {
+                                nextSecondary = candidateIndex;
+                                if (secondaryOverridesCandidate) {
+                                    return Vec3{};
+                                }
+                            }
+                        }
+                    } else {
+                        primary = candidateIndex;
+                        if (secondary.has_value()) {
+                            const bool candidateOverridesSecondary =
+                                constraintPlaneOverridesUnchecked(
+                                    candidate,
+                                    planesHeadFirst[*secondary],
+                                    requestedMove);
+                            const bool secondaryOverridesCandidate =
+                                constraintPlaneOverridesUnchecked(
+                                    planesHeadFirst[*secondary],
+                                    candidate,
+                                    requestedMove);
+                            if (candidateOverridesSecondary &&
+                                !secondaryOverridesCandidate) {
+                                nextSecondary.reset();
+                            }
                         }
                     }
                 }
-            } else {
-                primary = candidateIndex;
-                if (secondary.has_value()) {
-                    const bool candidateOverridesSecondary =
-                        constraintPlaneOverridesUnchecked(
-                            candidate,
-                            planesHeadFirst[*secondary],
-                            requestedMove);
-                    const bool secondaryOverridesCandidate =
-                        constraintPlaneOverridesUnchecked(
-                            planesHeadFirst[*secondary],
-                            candidate,
-                            requestedMove);
-                    if (candidateOverridesSecondary &&
-                        !secondaryOverridesCandidate) {
-                        nextSecondary.reset();
-                    }
-                }
+                secondary = nextSecondary;
             }
         }
-        secondary = nextSecondary;
     }
 
     if (!primary.has_value()) {

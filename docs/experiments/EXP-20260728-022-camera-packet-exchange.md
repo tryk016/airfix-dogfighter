@@ -113,7 +113,8 @@ producer boundary still needs:
   render snapshot;
 - the distinct live AirCraft chase position and vehicle anchor;
 - the two recovered AirCraft factor gates; and
-- an evidence-backed physical meaning for the raw factor-refresh argument.
+- the scheduler-derived factor-refresh delta in seconds, now confirmed in
+  [EXP-20260728-023](EXP-20260728-023-camera-refresh-time-contract.md).
 
 Only after those values exist may the simulation advance the coordinator and
 offer its successful packet to this exchange.

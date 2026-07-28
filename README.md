@@ -70,7 +70,7 @@ Implemented foundations include:
 - a producer-side camera-step coordinator that transactionally composes
   recovered AirCraft factor recovery, input mode/rear selection, chase,
   retained-static collision, pose, clip packaging, and state commit while
-  keeping the still-unproven raw refresh argument explicit;
+  preserving the confirmed scheduler-derived refresh delta in seconds;
 - a bounded, allocation-free SPSC exchange that publishes only complete
   gameplay-camera packets and lets Metal retain one coherent camera generation
   through command encoding.
