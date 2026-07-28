@@ -567,7 +567,12 @@
   the simulation publishes changing event-5 generations, it starts at an
   explicit camera0 target anchored to the authenticated spawn. The synthetic
   public-data path remains diagnostic and no full parity claim has been
-  introduced.
+  introduced. A producer-side coordinator now composes recovered AirCraft
+  factor recovery, cumulative mode/rear input, chase, the complete
+  retained-static collision path, pose, clip packet, and atomic state commit
+  as one allocation-free transaction. Its raw refresh argument and vehicle
+  gates remain explicit; no guessed `dt` has been connected to iOS. A
+  mission-lifetime workspace owner and cross-thread packet exchange remain.
 - The authenticated setup-to-room provenance chain now crosses the native iOS
   publication boundary together with an immutable `PlayerSpawnPose`. Ghidra
   Headless and Rizin independently confirm x/y/z radians, mode zero, exact
@@ -616,12 +621,13 @@
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Publish changing gameplay-camera generations from a stateful simulation
-   coordinator and replace the tested camera0 Metal bootstrap without
-   fabricating smoothing history. Preserve the implemented scalar clip,
-   reciprocal-depth, and parity-first 4:3 contracts through physical-device
-   visual acceptance. Dynamic-object and transparent collision-portal paths,
-   auxiliary weapons, and effects remain separate.
+3. Establish the raw AirCraft camera-factor refresh argument from controlled
+   traces or another confirmed scheduler join, then place the implemented
+   step coordinator behind preallocated mission-lifetime workspaces and a
+   bounded SPSC clip-packet exchange. Replace the camera0 Metal bootstrap only
+   when the complete producer input exists. Preserve scalar clip,
+   reciprocal-depth, and parity-first 4:3 behavior through device acceptance;
+   dynamic-object and transparent collision-portal paths remain separate.
 4. Validate the implemented runtime portal-to-room-state proposal against
    controlled multi-room executable traces when the isolated runtime is ready.
 5. Keep BSP render culling disabled until its separate runtime semantics are

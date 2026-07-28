@@ -66,7 +66,11 @@ Implemented foundations include:
   world-to-view, and the recovered gameplay projection;
 - a private-room Metal camera adapter that preserves the scalar projection as
   homogeneous clip values, uses recovered reverse depth and an aspect-fitted
-  640x480 viewport, and starts from an explicit tested camera0 bootstrap.
+  640x480 viewport, and starts from an explicit tested camera0 bootstrap;
+- a producer-side camera-step coordinator that transactionally composes
+  recovered AirCraft factor recovery, input mode/rear selection, chase,
+  retained-static collision, pose, clip packaging, and state commit while
+  keeping the still-unproven raw refresh argument explicit.
 
 The portable authenticated load now produces one validated room-and-player
 draw model plus a mission-lifetime BSP arena for every runtime room. The actor

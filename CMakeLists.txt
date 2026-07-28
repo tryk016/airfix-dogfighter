@@ -154,6 +154,7 @@ add_library(airfix_render
     src/airfix/render/LegacyGameplayCameraPoseSnapshot.cpp
     src/airfix/render/LegacyGameplayCameraRoomState.cpp
     src/airfix/render/LegacyGameplayCameraStateOwner.cpp
+    src/airfix/render/LegacyGameplayCameraStepCoordinator.cpp
     src/airfix/render/LegacyGeometry.cpp
     src/airfix/render/LegacyQuaternionRotation.cpp
     src/airfix/render/LegacyScreenProjection.cpp
@@ -541,6 +542,14 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_legacy_gameplay_camera_clip_packet_tests
         COMMAND airfix_legacy_gameplay_camera_clip_packet_tests)
+
+    add_executable(airfix_legacy_gameplay_camera_step_coordinator_tests
+        tests/LegacyGameplayCameraStepCoordinatorTests.cpp)
+    target_link_libraries(
+        airfix_legacy_gameplay_camera_step_coordinator_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_legacy_gameplay_camera_step_coordinator_tests
+        COMMAND airfix_legacy_gameplay_camera_step_coordinator_tests)
 
     add_executable(airfix_legacy_quaternion_rotation_tests
         tests/LegacyQuaternionRotationTests.cpp)
