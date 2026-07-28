@@ -7,8 +7,9 @@
 **Scenario:** `SCN-CAMERA-001`
 
 **Status:** recovered retained-static AirCraft step composition implemented;
-the raw refresh unit, dynamic-object collision, cross-thread runtime exchange,
-and native iOS producer remain separate
+refresh delta later confirmed in seconds and cross-thread packet exchange
+implemented; dynamic-object collision and the native iOS producer remain
+separate
 
 ## Question
 
@@ -38,7 +39,7 @@ The order matters. Factor recovery is reached through the aircraft virtual
 slot before the chase update. Collision can reduce those recovered factors
 again before they become the next authoritative state.
 
-## Raw refresh argument
+## Refresh delta in seconds
 
 The recovered aircraft factor rule is:
 
@@ -47,19 +48,21 @@ if vehicleField98 <= 0 or vehicleFlag460:
     factor = 0
 else:
     if factor < 1:
-        factor += rawRefreshArgument * 0.25
+        factor += refreshDeltaSeconds * 0.25
     factor = clamp(factor, 0, 1)
 ```
 
-The physical unit of `rawRefreshArgument` is still unproven. The coordinator
-therefore requires the caller to provide this raw value together with the two
-recovered vehicle gates. It does not substitute the input pump's nominal
-`1/60`, the aircraft's recovered 12 ms dependent interval, or any other
-guessed time value.
+A follow-up scheduler join confirmed that this value is the same refresh-event
+delta that `AfVehicle::ProcessEvent` converts from milliseconds to seconds
+before invoking AirCraft slot `+0xB0`. AirCraft's nominal 12 ms interval
+therefore supplies `0.012f`; see
+[EXP-20260728-023](EXP-20260728-023-camera-refresh-time-contract.md).
 
-This is why the coordinator is not yet connected to the native iOS input
-consumer. That consumer currently has no evidence-backed source for all three
-recovery inputs.
+The coordinator still requires the caller to provide this value together with
+the two recovered vehicle gates. It must not substitute the input pump's
+nominal `1/60`, because input sampling and the recovered aircraft scheduler are
+separate clocks. Native iOS integration remains separate until the simulation
+can provide all live AirCraft inputs.
 
 ## Transaction boundary
 
@@ -105,7 +108,7 @@ Metal across threads. The eventual runtime owner must:
 - retain the authenticated mission arena and basis for the coordinator's
   lifetime;
 - preallocate both workspaces under an explicit iOS memory ceiling;
-- source the raw aircraft recovery arguments without guessing;
+- source the aircraft scheduler delta in seconds and both recovery gates;
 - publish only complete packets through a bounded SPSC exchange; and
 - make mission replacement invalidate the prior weak endpoint atomically.
 
@@ -124,8 +127,8 @@ Synthetic tests cover:
   packet;
 - distinct chase-position and vehicle-anchor inputs remaining distinct through
   the composed step;
-- factor clearing before chase and later `raw * 0.25` recovery before the next
-  chase;
+- factor clearing before chase and later `seconds * 0.25` recovery before the
+  next chase;
 - one-press mode selection, held rear view, and batched modulo-three cycling;
 - uninitialized, regressed-counter, invalid-recovery, and invalid-arena
   failures;
@@ -145,14 +148,15 @@ The 332-file public-source boundary, three reverse-engineering wrapper suites,
 ## Result and next boundary
 
 All recovered retained-static AirCraft camera stages now have one explicit
-producer-side transaction. This closes the ordering and rollback problem
-without pretending that the missing refresh unit or dynamic-object data is
-known.
+producer-side transaction. This closes the ordering and rollback problem;
+the later scheduler join also closes the refresh unit without inventing
+dynamic-object data.
 
-The next implementation boundary is a preallocated mission-lifetime runtime
-and SPSC clip-packet exchange. It can be connected to iOS only after the
-simulation publishes the required aircraft inputs. Controlled native traces
-remain the preferred way to establish the refresh argument's physical unit.
+The SPSC clip-packet exchange is now implemented. The next implementation
+boundary is a preallocated mission-lifetime runtime and weak producer endpoint.
+It can be connected to iOS only after the simulation publishes the required
+aircraft inputs. Controlled native traces remain necessary for end-to-end
+parity, not for the refresh argument's unit.
 
 ## Confidence
 
@@ -160,9 +164,9 @@ Confidence is **3/3** for the composition order, persistent mode and rear-view
 semantics, precommit pose/packet validation, transactional state/input
 behavior, and allocation-free portable implementation.
 
-Confidence remains **2/3** for complete gameplay-camera parity because the raw
-refresh unit, moving-object BSP, transparent collision portals, and controlled
-runtime traces are still missing.
+Confidence remains **2/3** for complete gameplay-camera parity because the
+moving-object BSP, transparent collision portals, live producer inputs, and
+controlled runtime traces are still missing.
 
 ## Related material
 
@@ -171,4 +175,5 @@ runtime traces are still missing.
 - [State owner](EXP-20260728-018-camera-state-owner-snapshot.md)
 - [Retained-static pose snapshot](EXP-20260728-019-camera-retained-static-pose-snapshot.md)
 - [Metal gameplay-camera packet](EXP-20260728-020-metal-gameplay-camera-packet.md)
+- [Camera refresh time contract](EXP-20260728-023-camera-refresh-time-contract.md)
 - [Camera and projection contract](../re/systems/CAMERA-PROJECTION.md)

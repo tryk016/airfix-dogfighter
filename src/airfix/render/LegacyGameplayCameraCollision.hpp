@@ -22,6 +22,11 @@ inline constexpr double
 inline constexpr double
     legacyGameplayCameraConstraintCrossLengthSquaredThreshold =
         std::bit_cast<double>(std::uint64_t{0x3F1A36E2EB1C432DULL});
+// AirCraft selects a 12 ms NfTimeDependant interval. AfVehicle converts the
+// signed 64-bit millisecond event payload with the recovered 0.001f constant
+// before passing the same binary32 value to AirCraft vtable slot +0xB0.
+inline constexpr float legacyAircraftNominalRefreshDeltaSeconds =
+    std::bit_cast<float>(std::uint32_t{0x3C449BA6U});
 
 // Returns nearClipping * 1.1 using the recovered binary32 multiplier.
 // A non-positive/non-finite near plane or non-finite result fails closed.
@@ -38,13 +43,16 @@ legacyGameplayCameraReduceCollisionAxisFactors(
     const Vec3& originalCameraPosition,
     const Vec3& resolvedCameraPosition) noexcept;
 
-// Reconstructs the AirCraft.type vtable-slot +0xB0 recovery. rawRefreshArgument
-// is intentionally not labelled as dt until its physical unit is proven.
+// Reconstructs the AirCraft.type vtable-slot +0xB0 recovery.
+// refreshDeltaSeconds is the scheduler event delta converted from milliseconds
+// by AfVehicle::ProcessEvent. The native arithmetic accepts finite negative
+// values and clamps the result; this narrow algebraic contract preserves that
+// behavior instead of imposing a separate scheduler policy.
 // This contract is aircraft-specific; other vehicle types remain unaudited.
 [[nodiscard]] std::optional<Vec3>
 legacyAircraftRecoverGameplayCameraAxisFactors(
     const Vec3& currentFactors,
-    float rawRefreshArgument,
+    float refreshDeltaSeconds,
     float vehicleField98,
     bool vehicleFlag460) noexcept;
 

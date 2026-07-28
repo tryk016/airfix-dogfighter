@@ -93,7 +93,8 @@ input(const std::uint64_t simulationStep,
         .vehicleChaseWorldPosition = {0.0F, 0.0F, 0.0F},
         .vehicleWorldAnchor = {0.0F, 0.0F, 0.0F},
         .vehicleWorldRotation = {},
-        .rawRefreshArgument = 0.012F,
+        .refreshDeltaSeconds =
+            legacyAircraftNominalRefreshDeltaSeconds,
         .vehicleField98 = 1.0F,
         .vehicleFlag460 = false,
         .cameraCyclePressCount = cameraCyclePressCount,
@@ -174,7 +175,7 @@ void testChasePositionAndWorldAnchorRemainDistinct() {
     auto separated = input(1U);
     separated.vehicleChaseWorldPosition = {0.0F, 0.0F, 1.0F};
     separated.vehicleWorldAnchor = {0.0F, 0.0F, 0.25F};
-    separated.rawRefreshArgument = 1.0F;
+    separated.refreshDeltaSeconds = 1.0F;
     const auto advanced =
         coordinator.tryAdvance(arena, {}, separated, candidates, constraints);
     require(advanced.complete() &&
@@ -209,7 +210,7 @@ void testAircraftFactorRecoveryPrecedesChaseAndCollision() {
     auto recovering = input(2U);
     recovering.vehicleChaseWorldPosition = {0.0F, 0.0F, 1.0F};
     recovering.vehicleWorldAnchor = {0.0F, 0.0F, 1.0F};
-    recovering.rawRefreshArgument = 1.0F;
+    recovering.refreshDeltaSeconds = 1.0F;
     const auto recovered =
         coordinator.tryAdvance(arena, {}, recovering, candidates, constraints);
     require(recovered.complete() &&
@@ -274,7 +275,7 @@ void testFailuresLeaveModeCounterAndStateUnchanged() {
     const auto regressed = coordinator.tryAdvance(
         arena, {}, input(1U, 3U), candidates, constraints);
     auto invalidRecovery = input(1U, 5U);
-    invalidRecovery.rawRefreshArgument =
+    invalidRecovery.refreshDeltaSeconds =
         std::numeric_limits<float>::quiet_NaN();
     const auto recovery = coordinator.tryAdvance(
         arena, {}, invalidRecovery, candidates, constraints);
