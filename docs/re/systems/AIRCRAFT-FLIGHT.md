@@ -305,6 +305,16 @@ NfTypeInstance` dispatch chain without modifying the control fields. This is
 a confirmed no-op for this inheritance path, not a claim that no other actor
 type can consume those enum values.
 
+The two attack events are now joined beyond this dispatcher. AirCraft vtable
+offsets `+0xC0/+0xC4` set the persistent `AfWeapon::Fire(bool)` state for the
+primary pointer at `+0x490` and selected secondary pointer at `+0x494`.
+`WpMGun` then consumes the primary firing state in its separate
+time-dependant refresh, where it applies technology cadence, selects a barrel,
+updates ammunition, creates a private `WpMGunAmmoTechN` instance, and
+processes projectile event `0xE2`. See
+[Weapon reconstruction](WEAPONS.md) and
+[EXP-20260728-030](../../experiments/EXP-20260728-030-primary-machine-gun-spawn.md).
+
 ### Player command and analog mapping
 
 The user-command dispatcher at `Dogfighter.exe` virtual address `0x00412EA0`
@@ -390,7 +400,8 @@ constants without another confirming source.
 - the collision scalar's exact range and meaning;
 - deterministic replacement and exact sequence ownership for the native global
   random source used by thrust-integrity recovery;
-- the point at which fire intent spawns a projectile.
+- the complete projectile event payload ownership after the now-recovered
+  `WpMGun` spawn request, plus projectile motion, impact, and damage;
 
 ## Portable implementation boundary
 
@@ -407,15 +418,18 @@ Until those unknowns are resolved, the portable simulation may:
 Separate pure helpers may also preserve already confirmed local contracts for
 the vehicle sleep gate, smoothed thrust, collision-driven thrust-integrity
 degradation, later recovery/clamping, and the bounded engine-only audio command
-stream plus the destroyed-dive sample state. They remain unwired until a
+stream plus the destroyed-dive sample state. The primary `WpMGun` helper may
+also preserve its recovered technology profiles, shot accumulator, trigger,
+barrel, ammunition, and one-projectile-request-per-refresh transition. These
+helpers remain unwired until a
 runtime owns the native 12 ms scheduler, rigid-body/collision state, engine
 phase, deterministic random sequence, and audio backend. The eventual audio
 coordinator must place destroyed-dive commands after phase transitions and
 before common engine modulation on the shared fifth-call pass.
 
-It must not yet move or rotate the aircraft, apply throttle, spawn a weapon,
-or label provisional constants as original behavior. That narrow state bridge
-provides a deterministic integration seam for the recovered flight law without
-creating false parity. The current 60 Hz input publication and recovered
-nominal 12 ms physics cadence are separate clocks and must remain separate in
-the eventual implementation.
+It must not yet move or rotate the aircraft, apply throttle, instantiate a
+projectile, or label provisional constants as original behavior. That narrow
+state bridge provides a deterministic integration seam for the recovered
+flight law without creating false parity. The current 60 Hz input publication
+and recovered nominal 12 ms physics cadence are separate clocks and must remain
+separate in the eventual implementation.

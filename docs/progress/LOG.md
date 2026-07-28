@@ -2431,3 +2431,31 @@ superseded evidence.
   public-boundary tests and 358-file scan, 229-row catalogue, `actionlint`,
   local-path scan, and `git diff --check` pass. GitHub Actions publication
   gates remain pending.
+
+## 2026-07-28 - primary WpMGun timing and spawn request
+
+- `EV-20260728-015` / `EXP-20260728-030`: joined
+  `0xB9 EVENT_PRIMARY_ATTACK` to the AirCraft primary pointer and persistent
+  `AfWeapon::Fire(bool)` state, then through the separate `WpMGun`
+  time-dependant refresh to private `WpMGunAmmoTechN` creation and projectile
+  event `0xE2`.
+- Recovered the `0x210`-byte weapon factory/constructor, adjusted
+  time-dependant subobject, exact five-level `0.12..0.08` second cadence,
+  `40..100` projectile speeds, initial/maximum ammunition `250/500`, barrel
+  cycling, nonzero-ammunition decrement, tenfold zero-count cadence, and the
+  one-projectile-per-refresh ceiling.
+- Ghidra supplies the canonical MSVC/vtable/type/event context. Independent
+  Rizin reports match both AirCraft handlers and the selected `Projectiles`
+  functions, including exact x87 comparisons and field accesses; guarded
+  function creation is recorded where automatic analysis missed a
+  vtable-proven entry.
+- Added a pure allocation-free C++20 state transition that emits at most one
+  `{event 0xE2, barrel, speed}` request. It deliberately leaves private type
+  creation, room/muzzle/velocity payload assembly, motion, collision, damage,
+  effects, and secondary weapons outside this slice.
+- Fresh Release and code-intelligence Ninja/GCC 15.2 builds pass all 73
+  portable tests; the code-intelligence tree compiles 238 steps. Clangd 22.1.8
+  reports zero errors in both new translation units with the trusted MinGW
+  query driver. The three RE wrapper suites, 12 Rizin tests, public-boundary
+  tests and 363-file scan, 237-row catalogue, `actionlint`, local-path scan,
+  and `git diff --check` pass. GitHub Actions remains the publication gate.
