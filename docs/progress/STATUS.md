@@ -549,9 +549,13 @@
   order, producing one allocation-free all-or-nothing proposal containing
   position, final room, and all three axis factors. Workspace, geometry,
   basis, factor, and later portal failures expose no partial state.
-  Synchronized camera/simulation ownership, dynamic-object collision, and the
-  Metal join remain unimplemented. Metal remains explicitly diagnostic and no
-  full parity matrix has been introduced.
+  A preallocated single-writer camera owner now commits only those complete
+  proposals and publishes immutable `{step, generation, position, room,
+  factors}` copies through a bounded two-slot SPSC exchange. Invalid, stale,
+  exhausted, or contended commits retain the exact prior state; concurrent
+  synthetic tests reject torn fields. Dynamic-object collision, complete pose
+  assembly, and the Metal join remain unimplemented. Metal remains explicitly
+  diagnostic and no full parity matrix has been introduced.
 - The authenticated setup-to-room provenance chain now crosses the native iOS
   publication boundary together with an immutable `PlayerSpawnPose`. Ghidra
   Headless and Rizin independently confirm x/y/z radians, mode zero, exact
@@ -600,15 +604,15 @@
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Place the implemented all-or-nothing static camera collision proposal
-   behind synchronized single-writer ownership/publication before introducing
-   a Metal camera matrix or performing physical-device visual acceptance.
+3. Assemble one complete gameplay-camera pose from an acquired immutable
+   single-writer snapshot before introducing a Metal camera matrix or
+   performing physical-device visual acceptance.
    World-to-camera, scalar projection with reciprocal depth, exact zero clear,
    depth modes, camera presets, quaternion matrix, stateless chase
    target/smoothing, collision/factor/line primitives, static sphere-to-room
-   state integration, look-at pose math, and parity-first 4:3 presentation are
-   recovered and implemented. Dynamic-object collision, auxiliary weapons, and
-   effects remain separate.
+   state integration, synchronized frame publication, look-at pose math, and
+   parity-first 4:3 presentation are recovered and implemented. Dynamic-object
+   collision, auxiliary weapons, and effects remain separate.
 4. Validate the implemented runtime portal-to-room-state proposal against
    controlled multi-room executable traces when the isolated runtime is ready.
 5. Keep BSP render culling disabled until its separate runtime semantics are

@@ -410,8 +410,9 @@ from runtime points back into this source-world arena. Points use
 positions. Plane normals use `transpose(B^-1)` without an extra reflection
 flip or normalization. The runtime portal boundary always enables strict
 per-hop fraction validation and publishes no target room after an invalid hop.
-BSP render culling, sphere/contact resolution, dynamic-object collision, and
-stateful camera publication remain separate work.
+Static sphere/contact resolution and all-or-nothing camera state publication
+now consume this arena through separate render-layer adapters. BSP render
+culling and dynamic-object collision remain separate work.
 
 ## Material records (`0x2100`)
 
