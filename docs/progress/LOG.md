@@ -2051,3 +2051,23 @@ superseded evidence.
   tests pass. The public-boundary scan checks 310 files; Ghidra, working-copy,
   and Rizin wrapper tests, 12 Rizin normalization tests, the 221-entry function
   catalogue, `actionlint`, and `git diff --check` are clean.
+
+## 2026-07-28 - camera constraint projection
+
+- `EV-20260728-002` / `EXP-20260728-015`: fresh Ghidra instructions and
+  decompilation recovered `CcConstraintPlane::Overrides` at RVA `0x26230`.
+  Rizin independently matched its automatic 127-byte boundary and raw
+  instruction sequence.
+- Exported the exact native double constants: duplicate normals are suppressed
+  only for dot products strictly above `0.999`, while a two-plane cross product
+  stops movement only when its squared length is strictly below `0.0001`.
+- Added allocation-free `noexcept` C++20 primitives for plane admission,
+  directional override comparison, native oldest-active selection,
+  single-plane projection, two-plane edge projection, and conflicting-plane
+  stop behavior. Explicit binary32 spills preserve the relevant x87 data-flow
+  boundary while non-finite inputs fail atomically.
+- A fresh Release/Ninja build completed all 202 steps and all 61 portable tests
+  pass; the code-intelligence build and its 61 tests also pass. The
+  public-boundary scan checks 311 files, the function catalogue contains 222
+  unique entries, and the Ghidra/Rizin/working-copy wrapper tests, 12 Rizin
+  normalization tests, `actionlint`, and `git diff --check` are clean.

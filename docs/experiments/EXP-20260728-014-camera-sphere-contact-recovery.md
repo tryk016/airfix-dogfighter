@@ -6,8 +6,8 @@
 
 **Scenario:** `SCN-CAMERA-001`
 
-**Status:** material contract implemented; static sphere collection and
-constraint resolution specified but not yet implemented
+**Status:** material contract implemented; constraint projection implemented
+in follow-up; static sphere collection remains specified but not implemented
 
 ## Question
 
@@ -153,11 +153,12 @@ product above the native duplicate threshold. `AttemptMove`:
 - returns zero when the selected constraints conflict or their cross product
   is below the native threshold.
 
-The `Overrides` predicate and both native threshold constants still require
-their own addressed recovery before this stage is coded. The large
-`GetCollisionAndBestFree` function also requires golden closest-face,
+The `Overrides` predicate, both native thresholds, active-plane ordering, and
+projection outcomes were closed and implemented in
+[EXP-20260728-015](EXP-20260728-015-camera-constraint-solver.md). The large
+`GetCollisionAndBestFree` function still requires golden closest-face,
 closest-edge, and closest-vertex fixtures. Transliteration without those
-contracts would create plausible but unverified camera movement.
+contracts would create plausible but unverified sphere-contact selection.
 
 ## Dynamic objects
 
@@ -192,14 +193,15 @@ provenance and the gameplay-camera deletion rule for values `0` and `8`.
 Confidence is **3/3** for the native stage order and static BSP recursion
 conditions.
 
-Confidence is **2/3** for the complete closest-feature/constraint semantics
-until `CcConstraintPlane::Overrides`, constants, and boundary fixtures are
-recovered. Dynamic-object parity remains outside this stage.
+Confidence is **2/3** for the complete closest-feature semantics until its
+boundary fixtures are recovered. Constraint projection is now independently
+closed at confidence **3/3**. Dynamic-object parity remains outside this stage.
 
 ## Related evidence
 
 - [Gameplay camera modes](EXP-20260727-010-gameplay-camera-modes.md)
 - [Portal BSP line trace](EXP-20260727-011-portal-bsp-line-trace.md)
 - [Camera room-state proposal](EXP-20260728-013-camera-room-state-proposal.md)
+- [Camera constraint solver](EXP-20260728-015-camera-constraint-solver.md)
 - [CCF format](../formats/CCF.md)
 - [Camera and projection contract](../re/systems/CAMERA-PROJECTION.md)

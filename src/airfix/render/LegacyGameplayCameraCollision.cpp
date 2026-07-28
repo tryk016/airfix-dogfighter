@@ -21,6 +21,82 @@ constexpr float aircraftAxisRecoveryRate = 0.25F;
         finite(value.columns[2]);
 }
 
+[[nodiscard]] bool finite(
+    const std::span<const Vec3> values) noexcept {
+    return std::ranges::all_of(values, [](const Vec3& value) {
+        return finite(value);
+    });
+}
+
+[[nodiscard]] double dotZyx(
+    const Vec3& left,
+    const Vec3& right) noexcept {
+    double result =
+        static_cast<double>(left.z) *
+        static_cast<double>(right.z);
+    result +=
+        static_cast<double>(left.y) *
+        static_cast<double>(right.y);
+    result +=
+        static_cast<double>(left.x) *
+        static_cast<double>(right.x);
+    return result;
+}
+
+[[nodiscard]] double dotXyz(
+    const Vec3& left,
+    const Vec3& right) noexcept {
+    double result =
+        static_cast<double>(left.x) *
+        static_cast<double>(right.x);
+    result +=
+        static_cast<double>(left.y) *
+        static_cast<double>(right.y);
+    result +=
+        static_cast<double>(left.z) *
+        static_cast<double>(right.z);
+    return result;
+}
+
+[[nodiscard]] bool constraintPlaneOverridesUnchecked(
+    const Vec3& plane,
+    const Vec3& otherPlane,
+    const Vec3& requestedMove) noexcept {
+    // The native x87 sequence spills the X/Y projected components and
+    // residuals to binary32 while retaining the Z path in-register.
+    double projection =
+        static_cast<double>(otherPlane.x) *
+        static_cast<double>(requestedMove.x);
+    projection +=
+        static_cast<double>(otherPlane.y) *
+        static_cast<double>(requestedMove.y);
+    projection +=
+        static_cast<double>(otherPlane.z) *
+        static_cast<double>(requestedMove.z);
+
+    const float projectedX =
+        static_cast<float>(projection * otherPlane.x);
+    const float projectedY =
+        static_cast<float>(projection * otherPlane.y);
+    const float residualX = static_cast<float>(
+        static_cast<double>(requestedMove.x) - projectedX);
+    const float residualY = static_cast<float>(
+        static_cast<double>(requestedMove.y) - projectedY);
+    const double residualZ =
+        static_cast<double>(requestedMove.z) -
+        projection * static_cast<double>(otherPlane.z);
+
+    double response =
+        residualZ * static_cast<double>(plane.z);
+    response +=
+        static_cast<double>(residualY) *
+        static_cast<double>(plane.y);
+    response +=
+        static_cast<double>(residualX) *
+        static_cast<double>(plane.x);
+    return response < 0.0;
+}
+
 [[nodiscard]] std::optional<float> reduceFactor(
     const float factor,
     const float correction) noexcept {
@@ -135,6 +211,192 @@ std::optional<Vec3> legacyAircraftRecoverGameplayCameraAxisFactors(
         return std::nullopt;
     }
     return recovered;
+}
+
+std::optional<bool> legacyGameplayCameraConstraintAcceptsPlane(
+    const std::span<const Vec3> existingPlanesHeadFirst,
+    const Vec3& candidate) noexcept {
+    if (!finite(candidate) || !finite(existingPlanesHeadFirst)) {
+        return std::nullopt;
+    }
+
+    for (const auto& existing : existingPlanesHeadFirst) {
+        if (dotZyx(existing, candidate) >
+            legacyGameplayCameraConstraintDuplicateDotThreshold) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::optional<bool> legacyGameplayCameraConstraintPlaneOverrides(
+    const Vec3& plane,
+    const Vec3& otherPlane,
+    const Vec3& requestedMove) noexcept {
+    if (!finite(plane) || !finite(otherPlane) ||
+        !finite(requestedMove)) {
+        return std::nullopt;
+    }
+    return constraintPlaneOverridesUnchecked(
+        plane, otherPlane, requestedMove);
+}
+
+std::optional<Vec3> legacyGameplayCameraAttemptConstrainedMove(
+    const Vec3& requestedMove,
+    const std::span<const Vec3> planesHeadFirst) noexcept {
+    if (!finite(requestedMove) || !finite(planesHeadFirst)) {
+        return std::nullopt;
+    }
+
+    std::optional<std::size_t> primary;
+    std::optional<std::size_t> secondary;
+    for (std::size_t index = planesHeadFirst.size(); index > 0U; --index) {
+        const std::size_t candidateIndex = index - 1U;
+        const auto& candidate = planesHeadFirst[candidateIndex];
+        if (!(dotZyx(requestedMove, candidate) < 0.0)) {
+            continue;
+        }
+        if (!primary.has_value()) {
+            primary = candidateIndex;
+            continue;
+        }
+
+        const bool candidateOverridesPrimary =
+            constraintPlaneOverridesUnchecked(
+                candidate,
+                planesHeadFirst[*primary],
+                requestedMove);
+        const bool primaryOverridesCandidate =
+            constraintPlaneOverridesUnchecked(
+                planesHeadFirst[*primary],
+                candidate,
+                requestedMove);
+        auto nextSecondary = secondary;
+        if (candidateOverridesPrimary) {
+            if (primaryOverridesCandidate) {
+                nextSecondary = candidateIndex;
+                if (secondary.has_value()) {
+                    const bool candidateOverridesSecondary =
+                        constraintPlaneOverridesUnchecked(
+                            candidate,
+                            planesHeadFirst[*secondary],
+                            requestedMove);
+                    const bool secondaryOverridesCandidate =
+                        constraintPlaneOverridesUnchecked(
+                            planesHeadFirst[*secondary],
+                            candidate,
+                            requestedMove);
+                    nextSecondary = secondary;
+                    if (candidateOverridesSecondary) {
+                        nextSecondary = candidateIndex;
+                        if (secondaryOverridesCandidate) {
+                            return Vec3{};
+                        }
+                    }
+                }
+            } else {
+                primary = candidateIndex;
+                if (secondary.has_value()) {
+                    const bool candidateOverridesSecondary =
+                        constraintPlaneOverridesUnchecked(
+                            candidate,
+                            planesHeadFirst[*secondary],
+                            requestedMove);
+                    const bool secondaryOverridesCandidate =
+                        constraintPlaneOverridesUnchecked(
+                            planesHeadFirst[*secondary],
+                            candidate,
+                            requestedMove);
+                    if (candidateOverridesSecondary &&
+                        !secondaryOverridesCandidate) {
+                        nextSecondary.reset();
+                    }
+                }
+            }
+        }
+        secondary = nextSecondary;
+    }
+
+    if (!primary.has_value()) {
+        return requestedMove;
+    }
+    if (!secondary.has_value()) {
+        const auto& plane = planesHeadFirst[*primary];
+        const double projection = dotXyz(requestedMove, plane);
+        const float projectedX =
+            static_cast<float>(projection * plane.x);
+        const float projectedY =
+            static_cast<float>(projection * plane.y);
+        const double projectedZ =
+            projection * static_cast<double>(plane.z);
+        const Vec3 result{
+            static_cast<float>(
+                static_cast<double>(requestedMove.x) - projectedX),
+            static_cast<float>(
+                static_cast<double>(requestedMove.y) - projectedY),
+            static_cast<float>(
+                static_cast<double>(requestedMove.z) - projectedZ),
+        };
+        return finite(result)
+            ? std::optional<Vec3>{result}
+            : std::nullopt;
+    }
+
+    const auto& first = planesHeadFirst[*primary];
+    const auto& second = planesHeadFirst[*secondary];
+    const float crossX = static_cast<float>(
+        static_cast<double>(first.y) * second.z -
+        static_cast<double>(first.z) * second.y);
+    const float crossY = static_cast<float>(
+        static_cast<double>(first.z) * second.x -
+        static_cast<double>(first.x) * second.z);
+    const float crossZ = static_cast<float>(
+        static_cast<double>(first.x) * second.y -
+        static_cast<double>(first.y) * second.x);
+    const Vec3 cross{crossX, crossY, crossZ};
+    if (!finite(cross)) {
+        return std::nullopt;
+    }
+
+    const double lengthSquared = dotZyx(cross, cross);
+    if (!std::isfinite(lengthSquared)) {
+        return std::nullopt;
+    }
+    if (lengthSquared <
+        legacyGameplayCameraConstraintCrossLengthSquaredThreshold) {
+        return Vec3{};
+    }
+
+    double normalizedZ = cross.z;
+    float normalizedX = cross.x;
+    float normalizedY = cross.y;
+    if (lengthSquared != 1.0) {
+        const double inverseLength =
+            1.0 / std::sqrt(lengthSquared);
+        if (!std::isfinite(inverseLength)) {
+            return std::nullopt;
+        }
+        normalizedX =
+            static_cast<float>(inverseLength * cross.x);
+        normalizedY =
+            static_cast<float>(inverseLength * cross.y);
+        normalizedZ = inverseLength * cross.z;
+    }
+
+    double projectedLength =
+        normalizedZ * requestedMove.z;
+    projectedLength +=
+        static_cast<double>(normalizedY) * requestedMove.y;
+    projectedLength +=
+        static_cast<double>(normalizedX) * requestedMove.x;
+    const Vec3 result{
+        static_cast<float>(projectedLength * normalizedX),
+        static_cast<float>(projectedLength * normalizedY),
+        static_cast<float>(projectedLength * normalizedZ),
+    };
+    return finite(result)
+        ? std::optional<Vec3>{result}
+        : std::nullopt;
 }
 
 std::optional<Vec3> legacyGameplayCameraLineHitPoint(
