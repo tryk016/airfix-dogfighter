@@ -19,7 +19,7 @@ Statuses: `not-investigated`, `observed`, `specified`, `implemented`, `verified`
 | AI | P1 | observed | SCN-AI-001 | Eight-channel control mapping and event dispatch recovered; behavior logic incomplete |
 | Mission triggers and progression | P0 | not-investigated | SCN-MISSION-001 | |
 | HUD and mission status | P1 | not-investigated | SCN-HUD-001 | |
-| Sound effects and voices | P1 | observed | SCN-AUDIO-001 | AirCraft engine start/running/stop transition and its flight-smoothing flag are recovered; mixer, spatial parameters, broader effects, and portable playback remain unknown |
+| Sound effects and voices | P1 | observed | SCN-AUDIO-001 | AirCraft five-call engine cadence, strict start/running/stop phases, five sound roles, load/orientation pitch-volume parameters, and ordered engine-only command stream are recovered and implemented as a pure bounded transition; mixer, spatial parameters, sound `0x20`, broader effects, iOS playback, and device acceptance remain unknown |
 | Music subsystem with content absent | P1 | specified | SCN-AUDIO-002 | Original CD/audio unavailable |
 | Save/load and rosters | P1 | not-investigated | SCN-SAVE-001 | |
 | Localization | P1 | observed | SCN-LOC-001 | EN/DA/NO/SV packages found |

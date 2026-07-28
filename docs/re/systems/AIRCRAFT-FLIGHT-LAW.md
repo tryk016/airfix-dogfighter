@@ -5,7 +5,7 @@ implemented for parity
 
 **Evidence:** `EV-20260724-001`, `EV-20260724-002`,
 `EV-20260724-003`, `EV-20260724-004`, `EV-20260727-002`,
-`EV-20260728-011`, `EV-20260728-012`
+`EV-20260728-011`, `EV-20260728-012`, `EV-20260728-013`
 
 **Reference build:** SHA-256 values in
 `docs/evidence/source-manifest.sha256`
@@ -49,6 +49,10 @@ gate and the exported `AfVehicle::IsOnGround` predicate.
 [EXP-20260728-027](../../experiments/EXP-20260728-027-aircraft-thrust-integrity.md)
 records the independent recovery of the engine-start flag and collision-driven
 thrust-integrity lifecycle.
+
+[EXP-20260728-028](../../experiments/EXP-20260728-028-aircraft-engine-audio-state.md)
+records the complete five-call engine-audio cadence, phase commands, sound
+roles, and modulation equations.
 
 ## Timing and lifecycle
 
@@ -409,6 +413,28 @@ its seconds timer at `+0x55C`, and clears the flag after the timer becomes
 strictly greater than `4.0f`. It also clears `x` and both start/running flags
 when `x < 0.001f` while either engine phase is active.
 
+The complete engine-audio state runs only when its counter at `+0x5E8` reaches
+four. Starting from zero, four calls increment the counter and the fifth resets
+it and evaluates the strict transitions above. The start timer still advances
+on every slot-44 call while `starting` is true.
+
+The confirmed engine sound IDs are `0x1A` engine-on, `0x1B` engine-idle,
+`0x1C` engine-turn, `0x1D` engine-start, and `0x1E` engine-stop. Let `S` be
+current speed magnitude and `R = A[0x558]`:
+
+```text
+load = (0.2*x + 0.3)*S + x
+volume = min(load, 1)
+pitch = 0.2*load + 1
+
+engine-on:   pitch, volume
+engine-turn: pitch, abs(R)*volume
+engine-idle: 0.5*load + 1, max(1 - volume, 0)
+```
+
+The running volume has no lower clamp. These parameter calls are followed by
+`UpdateSounds(dt)` and model parameter 1 set to `x`.
+
 `thrustIntegrity` starts at `1.0f` and scales only the live-health thrust path.
 The later static-collision and post-collision stages maintain it:
 
@@ -473,7 +499,9 @@ When `onGround == 0`, one additional low-pass field is updated:
 A[0x558] += 0.05 * (m01 - A[0x558])
 ```
 
-Its consumer and semantic name remain unknown.
+Slot 44 consumes its absolute value as the engine-turn volume modulator. The
+behavior-backed working name is `smoothedOrientationM01`; the original member
+name remains unavailable.
 
 ## Final state damping
 
