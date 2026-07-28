@@ -148,4 +148,68 @@ proposeLegacyGameplayCameraStaticCollisionState(
     std::span<Vec3> constraintPlanesHeadFirst,
     const LegacyGameplayCameraStaticCollisionOptions& options = {}) noexcept;
 
+struct LegacyGameplayCameraRetainedStaticFrameOptions final {
+    // Remains bounded by
+    // assets::kMissionWorldSpatialMaximumPortalTransitions.
+    std::size_t maximumPortalTransitions{64U};
+};
+
+enum class LegacyGameplayCameraRetainedStaticFrameStatus :
+    std::uint8_t {
+    clear,
+    occluded,
+    invalidIntermediateProposal,
+    invalidArena,
+    invalidWorldRoom,
+    invalidInput,
+    invalidBasis,
+    traversalDepthExceeded,
+    transitionLimitExceeded,
+    outOfSegmentHit,
+};
+
+struct LegacyGameplayCameraRetainedStaticFrameResult final {
+    LegacyGameplayCameraRetainedStaticFrameStatus status{
+        LegacyGameplayCameraRetainedStaticFrameStatus::
+            invalidIntermediateProposal};
+    // Present only after the preceding sphere/factor/portal proposal and this
+    // complete retained-static line stage succeed.
+    std::optional<LegacyGameplayCameraStaticCollisionState> proposedState;
+    // Present after the line stage is reached, including a valid miss.
+    std::optional<MissionWorldRuntimeSpatialLineTraceResult> lineTrace;
+    // Present only when a static line hit required the native second portal
+    // update from the intermediate camera position to the hit point.
+    std::optional<LegacyGameplayCameraRoomUpdateResult> lineRoomUpdate;
+
+    [[nodiscard]] bool valid() const noexcept {
+        return status ==
+                LegacyGameplayCameraRetainedStaticFrameStatus::clear ||
+            status ==
+                LegacyGameplayCameraRetainedStaticFrameStatus::occluded;
+    }
+};
+
+// Completes the retained-static portion of native event 5. A complete valid
+// sphere/factor/portal proposal is mandatory. The vehicle-to-camera segment is
+// then queried against the static BSP of that proposal's camera room. A miss
+// preserves the intermediate state. A hit uses the tracer-authored runtime
+// point and performs the native second portal update before proposing the
+// final position/room; axis factors remain those from the sphere stage.
+//
+// The native PhLine path can additionally inspect moving-object BSP and follow
+// transparent portal polygons inside that collision query. Those inputs are
+// not retained yet, so this boundary deliberately claims only the current-room
+// static query plus the separately recovered room transition. It is read-only,
+// allocation-free, bounded, and noexcept. Every failure exposes diagnostics
+// but no proposed state.
+[[nodiscard]] LegacyGameplayCameraRetainedStaticFrameResult
+completeLegacyGameplayCameraRetainedStaticFrameState(
+    const assets::MissionWorldSpatialArena& arena,
+    const BasisTransform& runtimeBasis,
+    const LegacyGameplayCameraStaticCollisionResult&
+        intermediateProposal,
+    const Vec3& vehicleWorldAnchor,
+    const LegacyGameplayCameraRetainedStaticFrameOptions& options =
+        {}) noexcept;
+
 } // namespace airfix::render

@@ -146,10 +146,11 @@ this stage is merged.
 ## Result and next boundary
 
 The project now has one portable all-or-nothing proposal for the recovered
-static portion of event-5 camera collision. A single-writer simulation/camera
-owner now applies this complete state and publishes an immutable frame
-snapshot. The next boundary is to assemble a complete gameplay-camera pose for
-one acquired snapshot before Metal consumes it.
+sphere portion of event-5 camera collision. The retained-static line stage,
+conditional second room update, stricter owner commit, and immutable pose
+assembly are completed in
+[EXP-20260728-019](EXP-20260728-019-camera-retained-static-pose-snapshot.md).
+Metal consumption remains separate.
 
 Dynamic-object BSP collision and controlled executable traces remain required
 before full gameplay parity can be claimed.

@@ -42,9 +42,11 @@ requires a strictly increasing simulation step and advances the generation by
 one. Generations never wrap.
 
 The producer's current snapshot is the sole authoritative camera state. A
-commit accepts `LegacyGameplayCameraStaticCollisionResult`, so a failed result
-or a nominally valid result without its complete proposed state cannot be
-published. Position, room, and all three factors are copied as one value.
+commit accepts `LegacyGameplayCameraRetainedStaticFrameResult`, so the
+preceding sphere/factor/portal result must also complete the retained-static
+vehicle-to-camera line stage and its conditional second room update. A failed
+result or a nominally valid result without its complete proposed state cannot
+be published. Position, room, and all three factors are copied as one value.
 
 ## Ownership and thread contract
 
@@ -142,9 +144,10 @@ The static gameplay-camera state now has one portable owner and one immutable
 simulation-to-render snapshot. Metal can later consume a single acquired value
 without observing a corrected position paired with an old room or factor set.
 
-The next camera boundary is a complete gameplay-camera pose snapshot: combine
-the already recovered look-at/world-to-view and projection contracts with this
-state without guessing the still-missing dynamic-object collision behavior.
+The next boundary was completed in
+[EXP-20260728-019](EXP-20260728-019-camera-retained-static-pose-snapshot.md):
+the acquired frame now joins the recovered look-at, unit-scale world-to-view,
+and scalar projection contracts in one immutable backend-neutral pose.
 Actual Metal matrix/depth packaging and physical-device visual acceptance
 remain separate work.
 
@@ -160,5 +163,6 @@ multi-room traces are still pending.
 ## Related material
 
 - [Camera static state integration](EXP-20260728-017-camera-static-state-integration.md)
+- [Retained-static line and pose snapshot](EXP-20260728-019-camera-retained-static-pose-snapshot.md)
 - [Dynamic actor-pose transport](../progress/STATUS.md)
 - [Camera and projection contract](../re/systems/CAMERA-PROJECTION.md)

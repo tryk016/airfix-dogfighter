@@ -90,15 +90,15 @@ void require(const bool condition, const std::string& message) {
     };
 }
 
-[[nodiscard]] LegacyGameplayCameraStaticCollisionResult proposal(
+[[nodiscard]] LegacyGameplayCameraRetainedStaticFrameResult proposal(
     const LegacyGameplayCameraStaticCollisionState& value,
-    const LegacyGameplayCameraStaticCollisionStatus status =
-        LegacyGameplayCameraStaticCollisionStatus::noTransition) {
+    const LegacyGameplayCameraRetainedStaticFrameStatus status =
+        LegacyGameplayCameraRetainedStaticFrameStatus::clear) {
     return {
         .status = status,
         .proposedState = value,
-        .sphereCollision = std::nullopt,
-        .roomUpdate = std::nullopt,
+        .lineTrace = std::nullopt,
+        .lineRoomUpdate = std::nullopt,
     };
 }
 
@@ -227,7 +227,7 @@ void testCommitIsAtomicAndMonotonic() {
 
     const auto expectUnchanged =
         [&](const LegacyGameplayCameraStateCommitResult expectedResult,
-            const LegacyGameplayCameraStaticCollisionResult& rejected,
+            const LegacyGameplayCameraRetainedStaticFrameResult& rejected,
             const std::uint64_t simulationStep,
             const std::string& message) {
             require(
@@ -244,7 +244,7 @@ void testCommitIsAtomicAndMonotonic() {
         LegacyGameplayCameraStateCommitResult::invalidProposal,
         {
             .status =
-                LegacyGameplayCameraStaticCollisionStatus::
+                LegacyGameplayCameraRetainedStaticFrameStatus::
                     invalidArena,
             .proposedState = std::nullopt,
         },
@@ -254,8 +254,7 @@ void testCommitIsAtomicAndMonotonic() {
         LegacyGameplayCameraStateCommitResult::invalidProposal,
         {
             .status =
-                LegacyGameplayCameraStaticCollisionStatus::
-                    noTransition,
+                LegacyGameplayCameraRetainedStaticFrameStatus::clear,
             .proposedState = std::nullopt,
         },
         12U,
@@ -286,7 +285,7 @@ void testCommitIsAtomicAndMonotonic() {
         owner.tryCommit(
             proposal(
                 state(60.0F, 7U),
-                LegacyGameplayCameraStaticCollisionStatus::transition),
+                LegacyGameplayCameraRetainedStaticFrameStatus::occluded),
             20U) ==
             LegacyGameplayCameraStateCommitResult::committed,
         "forward step gap or transition result was rejected");

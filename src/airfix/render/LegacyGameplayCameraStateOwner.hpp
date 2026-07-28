@@ -37,7 +37,7 @@ enum class LegacyGameplayCameraStateCommitResult : std::uint8_t {
     busy,
 };
 
-// Owns the authoritative static-collision camera state for one runtime.
+// Owns the authoritative retained-static event-5 camera state for one runtime.
 // Initialization is a lifecycle operation and must finish before the producer
 // and consumer start. Afterwards exactly one simulation/camera producer may
 // call currentSnapshot/tryCommit while one render consumer calls tryAcquire.
@@ -66,11 +66,11 @@ public:
         const LegacyGameplayCameraStaticCollisionState& initialState,
         std::uint64_t initialSimulationStep) noexcept;
 
-    // Accepts only a complete valid all-stage proposal. A rejected proposal,
-    // stale step, exhausted generation, or busy target slot leaves both the
-    // producer's authoritative state and the published frame unchanged.
+    // Accepts only a complete valid sphere plus retained-static line proposal.
+    // A rejected proposal, stale step, exhausted generation, or busy target
+    // slot leaves both authoritative state and published frame unchanged.
     [[nodiscard]] LegacyGameplayCameraStateCommitResult tryCommit(
-        const LegacyGameplayCameraStaticCollisionResult& proposal,
+        const LegacyGameplayCameraRetainedStaticFrameResult& proposal,
         std::uint64_t simulationStep) noexcept;
 
     // Producer-only access to the exact last committed snapshot.

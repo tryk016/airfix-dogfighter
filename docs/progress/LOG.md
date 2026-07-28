@@ -2142,3 +2142,35 @@ superseded evidence.
   ThreadSanitizer build also passes the concurrent test with per-process ASLR
   disabled only to satisfy WSL2's TSan shadow-memory mapping constraint.
   Cross-platform and unsigned iOS validation remain required before merge.
+
+## 2026-07-28 - retained-static line and gameplay-camera pose snapshot
+
+- `EV-20260728-005` / `EXP-20260728-019`: completed the retained current-room
+  static portion of the native vehicle-to-camera line stage. It consumes only
+  a complete sphere/factor/portal result, preserves a miss, and on a hit
+  applies the tracer-authored runtime point plus the conditional second portal
+  update before exposing position, room, and unchanged factors.
+- Tightened the single-writer camera owner so it accepts only the completed
+  retained-static frame result. Invalid intermediate, line, room, limit, and
+  out-of-segment outcomes retain diagnostics but cannot replace the prior
+  producer or render snapshot.
+- Canonical Ghidra evidence and independent read-only Rizin 0.9.1 exports
+  agree that `CcMatrixRot::Reset` and
+  `CcSrtNode::SetMatrixRotation` establish identity basis, unit scale, and unit
+  cached inverse-square. The gameplay pose therefore needs no guessed scale.
+- Added an immutable backend-neutral pose snapshot binding one acquired step
+  and generation to the matching vehicle anchor, recovered look-at,
+  unit-scale world-to-view relation, and explicit `0.25/200/90`, 640x480
+  scalar projection. Ordered world projection preserves camera Z, legacy
+  reciprocal depth, and near fallback without introducing clipping, NDC,
+  Metal layout, or presentation policy.
+- Synthetic tests cover line miss/hit/second-room transition, atomic
+  failures, frame ownership, arbitrary look-at directions, positive-Z anchor
+  coherence, ordered world projection, and 4,096 allocation-counted calls.
+  Dynamic-object and transparent collision-portal paths remain separate.
+- A fresh Ninja/GCC 15.2 Release build and the regenerated
+  `code-intelligence` build each pass all 64 portable tests. Focused clangd 22
+  checks pass with the trusted user-local MinGW query driver; no local path is
+  committed. The public-boundary scan checks 324 files, the
+  Ghidra/working-copy/Rizin wrapper tests and 12 Rizin normalization tests
+  pass, and `actionlint` plus `git diff --check` are clean.

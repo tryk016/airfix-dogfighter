@@ -1,7 +1,24 @@
 #include "airfix/render/LegacyGameplayCameraRoomState.hpp"
 
+#include <cmath>
+
 namespace airfix::render {
 namespace {
+
+[[nodiscard]] bool finite(const Vec3& value) noexcept {
+    return std::isfinite(value.x) &&
+        std::isfinite(value.y) &&
+        std::isfinite(value.z);
+}
+
+[[nodiscard]] bool validStaticState(
+    const LegacyGameplayCameraStaticCollisionState& state) noexcept {
+    return finite(state.roomState.runtimeWorldPosition) &&
+        finite(state.axisFactors) &&
+        state.axisFactors.x >= 0.0F &&
+        state.axisFactors.y >= 0.0F &&
+        state.axisFactors.z >= 0.0F;
+}
 
 [[nodiscard]] LegacyGameplayCameraRoomUpdateStatus updateStatus(
     const MissionWorldRuntimePortalTraceStatus status) noexcept {
@@ -99,6 +116,63 @@ namespace {
         return LegacyGameplayCameraStaticCollisionStatus::outOfSegmentHit;
     }
     return LegacyGameplayCameraStaticCollisionStatus::invalidArena;
+}
+
+[[nodiscard]] LegacyGameplayCameraRetainedStaticFrameStatus
+frameStatus(
+    const MissionWorldRuntimeSpatialLineTraceStatus status) noexcept {
+    switch (status) {
+    case MissionWorldRuntimeSpatialLineTraceStatus::noHit:
+        return LegacyGameplayCameraRetainedStaticFrameStatus::clear;
+    case MissionWorldRuntimeSpatialLineTraceStatus::hit:
+        return LegacyGameplayCameraRetainedStaticFrameStatus::occluded;
+    case MissionWorldRuntimeSpatialLineTraceStatus::invalidArena:
+        return LegacyGameplayCameraRetainedStaticFrameStatus::invalidArena;
+    case MissionWorldRuntimeSpatialLineTraceStatus::invalidWorldRoom:
+        return LegacyGameplayCameraRetainedStaticFrameStatus::
+            invalidWorldRoom;
+    case MissionWorldRuntimeSpatialLineTraceStatus::invalidInput:
+        return LegacyGameplayCameraRetainedStaticFrameStatus::invalidInput;
+    case MissionWorldRuntimeSpatialLineTraceStatus::invalidBasis:
+        return LegacyGameplayCameraRetainedStaticFrameStatus::invalidBasis;
+    case MissionWorldRuntimeSpatialLineTraceStatus::
+        traversalDepthExceeded:
+        return LegacyGameplayCameraRetainedStaticFrameStatus::
+            traversalDepthExceeded;
+    case MissionWorldRuntimeSpatialLineTraceStatus::outOfSegmentHit:
+        return LegacyGameplayCameraRetainedStaticFrameStatus::
+            outOfSegmentHit;
+    }
+    return LegacyGameplayCameraRetainedStaticFrameStatus::invalidArena;
+}
+
+[[nodiscard]] LegacyGameplayCameraRetainedStaticFrameStatus
+frameStatus(
+    const LegacyGameplayCameraRoomUpdateStatus status) noexcept {
+    switch (status) {
+    case LegacyGameplayCameraRoomUpdateStatus::noTransition:
+    case LegacyGameplayCameraRoomUpdateStatus::transition:
+        return LegacyGameplayCameraRetainedStaticFrameStatus::occluded;
+    case LegacyGameplayCameraRoomUpdateStatus::invalidArena:
+        return LegacyGameplayCameraRetainedStaticFrameStatus::invalidArena;
+    case LegacyGameplayCameraRoomUpdateStatus::invalidWorldRoom:
+        return LegacyGameplayCameraRetainedStaticFrameStatus::
+            invalidWorldRoom;
+    case LegacyGameplayCameraRoomUpdateStatus::invalidInput:
+        return LegacyGameplayCameraRetainedStaticFrameStatus::invalidInput;
+    case LegacyGameplayCameraRoomUpdateStatus::invalidBasis:
+        return LegacyGameplayCameraRetainedStaticFrameStatus::invalidBasis;
+    case LegacyGameplayCameraRoomUpdateStatus::traversalDepthExceeded:
+        return LegacyGameplayCameraRetainedStaticFrameStatus::
+            traversalDepthExceeded;
+    case LegacyGameplayCameraRoomUpdateStatus::transitionLimitExceeded:
+        return LegacyGameplayCameraRetainedStaticFrameStatus::
+            transitionLimitExceeded;
+    case LegacyGameplayCameraRoomUpdateStatus::outOfSegmentHit:
+        return LegacyGameplayCameraRetainedStaticFrameStatus::
+            outOfSegmentHit;
+    }
+    return LegacyGameplayCameraRetainedStaticFrameStatus::invalidArena;
 }
 
 } // namespace
@@ -267,6 +341,106 @@ proposeLegacyGameplayCameraStaticCollisionState(
             },
         .sphereCollision = collision,
         .roomUpdate = roomUpdate,
+    };
+}
+
+LegacyGameplayCameraRetainedStaticFrameResult
+completeLegacyGameplayCameraRetainedStaticFrameState(
+    const assets::MissionWorldSpatialArena& arena,
+    const BasisTransform& runtimeBasis,
+    const LegacyGameplayCameraStaticCollisionResult&
+        intermediateProposal,
+    const Vec3& vehicleWorldAnchor,
+    const LegacyGameplayCameraRetainedStaticFrameOptions&
+        options) noexcept {
+    if (!intermediateProposal.valid() ||
+        !intermediateProposal.proposedState.has_value() ||
+        !validStaticState(*intermediateProposal.proposedState)) {
+        return {
+            .status = LegacyGameplayCameraRetainedStaticFrameStatus::
+                invalidIntermediateProposal,
+            .proposedState = std::nullopt,
+            .lineTrace = std::nullopt,
+            .lineRoomUpdate = std::nullopt,
+        };
+    }
+
+    const auto& intermediateState =
+        *intermediateProposal.proposedState;
+    const auto line = traceMissionWorldRuntimeSpatialLine(
+        arena,
+        runtimeBasis,
+        intermediateState.roomState.worldRoomIndex,
+        assets::CcfBspTreeKind::staticTree,
+        vehicleWorldAnchor,
+        intermediateState.roomState.runtimeWorldPosition);
+    if (line.status ==
+        MissionWorldRuntimeSpatialLineTraceStatus::noHit) {
+        if (line.hit.has_value()) {
+            return {
+                .status =
+                    LegacyGameplayCameraRetainedStaticFrameStatus::
+                        invalidArena,
+                .proposedState = std::nullopt,
+                .lineTrace = line,
+                .lineRoomUpdate = std::nullopt,
+            };
+        }
+        return {
+            .status =
+                LegacyGameplayCameraRetainedStaticFrameStatus::clear,
+            .proposedState = intermediateState,
+            .lineTrace = line,
+            .lineRoomUpdate = std::nullopt,
+        };
+    }
+    if (line.status !=
+            MissionWorldRuntimeSpatialLineTraceStatus::hit ||
+        !line.hit.has_value()) {
+        return {
+            .status = line.status ==
+                    MissionWorldRuntimeSpatialLineTraceStatus::hit
+                ? LegacyGameplayCameraRetainedStaticFrameStatus::
+                      invalidArena
+                : frameStatus(line.status),
+            .proposedState = std::nullopt,
+            .lineTrace = line,
+            .lineRoomUpdate = std::nullopt,
+        };
+    }
+
+    const auto roomUpdate = proposeLegacyGameplayCameraRoomState(
+        arena,
+        runtimeBasis,
+        intermediateState.roomState,
+        line.hit->runtimePoint,
+        {
+            .maximumPortalTransitions =
+                options.maximumPortalTransitions,
+        });
+    if (!roomUpdate.valid() ||
+        !roomUpdate.proposedState.has_value()) {
+        return {
+            .status = roomUpdate.valid()
+                ? LegacyGameplayCameraRetainedStaticFrameStatus::
+                      invalidArena
+                : frameStatus(roomUpdate.status),
+            .proposedState = std::nullopt,
+            .lineTrace = line,
+            .lineRoomUpdate = roomUpdate,
+        };
+    }
+
+    return {
+        .status =
+            LegacyGameplayCameraRetainedStaticFrameStatus::occluded,
+        .proposedState =
+            LegacyGameplayCameraStaticCollisionState{
+                .roomState = *roomUpdate.proposedState,
+                .axisFactors = intermediateState.axisFactors,
+            },
+        .lineTrace = line,
+        .lineRoomUpdate = roomUpdate,
     };
 }
 
