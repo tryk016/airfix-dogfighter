@@ -234,11 +234,19 @@ look-at matrix. The returned raw camera-world matrix is directly compatible
 with `LegacyCameraTransformConfig::linear` and maps the anchor onto positive
 camera-space Z.
 
+Fresh sphere-contact recovery establishes that CCF material child `0x2152`'s
+first u32 becomes native `CcMaterial + 0x5C`. The gameplay camera deletes
+collected contacts whose non-null material carries raw value `0` or `8`.
+The parser and retained mission polygon arena now preserve this value through
+the triangle's source-local material reference. Missing or ambiguous material
+bindings remain absent rather than receiving guessed semantics.
+
 All helpers are allocation-free, `noexcept`, and fail atomically on
 non-finite input or intermediate overflow. The look-at uses widened
 intermediates as a portable approximation and rejects the still-unverified
-zero-direction case. No actual sphere resolver, BSP line trace, portal/room
-mutation, dynamic-object query, or final camera publication is present yet.
+zero-direction case. Static and portal BSP line tracing plus the portal/room
+state proposal are now present. No actual sphere contact collector/resolver,
+dynamic-object query, or final camera publication is present yet.
 
 See
 [EXP-20260727-010](../../experiments/EXP-20260727-010-gameplay-camera-modes.md)
@@ -388,6 +396,12 @@ finishes. Failures may retain a diagnostic hit and completed-hop count but
 never expose a partial state. This is a portable semantic proposal, not yet a
 thread-safe mutable simulation owner or the missing sphere/contact solver.
 
+The exact next solver boundary is recorded in
+[EXP-20260728-014](../../experiments/EXP-20260728-014-camera-sphere-contact-recovery.md).
+It fixes static sphere traversal order, the sphere-versus-triangle entry, the
+material deletion rule, best-penetration fields, and the constraint loop while
+keeping dynamic-object BSP separate.
+
 ## Still unknown
 
 - runtime parity of the recovered chase recurrence and collision-axis factors,
@@ -423,3 +437,4 @@ evidence is recovered.
 - [Portal BSP line trace](../../experiments/EXP-20260727-011-portal-bsp-line-trace.md)
 - [Runtime spatial adapter](../../experiments/EXP-20260727-012-runtime-spatial-adapter.md)
 - [Camera room-state proposal](../../experiments/EXP-20260728-013-camera-room-state-proposal.md)
+- [Camera sphere-contact recovery](../../experiments/EXP-20260728-014-camera-sphere-contact-recovery.md)

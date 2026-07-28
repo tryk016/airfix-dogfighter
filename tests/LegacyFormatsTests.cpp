@@ -100,6 +100,7 @@ void appendBytes(Bytes& destination, const Bytes& source) {
 
 struct MaterialCcfOptions {
     bool includeScalars{true};
+    std::uint32_t collisionMode2152{8U};
     bool duplicatePrimaryTexture{};
     bool validNameTerminator{true};
     bool zeroLengthPrefix{};
@@ -138,7 +139,11 @@ struct MaterialCcfOptions {
     appendBytes(materialPayload, ccfChunk(0x2150U, Bytes(6U, 0U)));
     appendBytes(materialPayload, ccfChunk(0x2151U, Bytes(1U, 0U)));
     if (options.includeScalars) {
-        appendBytes(materialPayload, ccfChunk(0x2152U, Bytes(12U, 0U)));
+        Bytes scalars;
+        appendU32(scalars, options.collisionMode2152);
+        appendFloat(scalars, 0.0F);
+        appendFloat(scalars, 0.0F);
+        appendBytes(materialPayload, ccfChunk(0x2152U, scalars));
     }
 
     const auto material = ccfChunk(0x2100U, materialPayload);
@@ -639,12 +644,18 @@ void testCcf() {
     require(material.primaryTexture == "Wall.gti", "CCF primary texture mismatch");
     require(!material.secondaryTexture.has_value(), "unexpected CCF secondary texture");
     require(!material.environmentTexture.has_value(), "unexpected CCF environment texture");
+    require(material.collisionMode2152 == 8U,
+        "CCF 0x2152 collision mode mismatch");
     require(materialMetadata.topLevelChunks[0].directChildren[0].directChildren.size() == 5U,
         "CCF material property count mismatch");
 
     const auto missingProperty = makeMaterialCcf({.includeScalars = false});
-    require(airfix::assets::parseCcf(missingProperty).materials.size() == 1U,
+    const auto missingPropertyMetadata =
+        airfix::assets::parseCcf(missingProperty);
+    require(missingPropertyMetadata.materials.size() == 1U,
         "CCF loader-compatible missing property was rejected");
+    require(!missingPropertyMetadata.materials[0].collisionMode2152.has_value(),
+        "absent CCF 0x2152 unexpectedly produced a collision mode");
     const auto duplicateTexture = makeMaterialCcf({.duplicatePrimaryTexture = true});
     requireParseError([&] { (void)airfix::assets::parseCcf(duplicateTexture); });
     const auto unterminatedName = makeMaterialCcf({.validNameTerminator = false});

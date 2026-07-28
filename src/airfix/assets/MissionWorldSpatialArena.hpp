@@ -26,6 +26,9 @@ struct MissionWorldSpatialPolygon {
     CcfVector3 edge12{};
     std::uint32_t polygonIndex{};
     std::uint32_t placedObjectReference{};
+    // Raw first u32 from the uniquely resolved material's CCF 0x2152 child.
+    // Absence preserves the native null/unresolved-material branch.
+    std::optional<std::uint32_t> materialCollisionMode2152;
     // Present only for a portal polygon and already translated from the
     // source-local physical room to MissionWorldRoomCatalog::rooms.
     std::optional<std::size_t> portalWorldRoomIndex;

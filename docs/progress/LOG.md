@@ -2026,3 +2026,28 @@ superseded evidence.
   checks report zero errors, and the public-boundary suite checks 309 files.
   Ghidra/Rizin wrapper tests, 12 Rizin normalization tests, `actionlint`, and
   `git diff --check` are clean.
+
+## 2026-07-28 - camera sphere-contact material boundary
+
+- Generated fresh addressed Ghidra decompilation and instruction reports for
+  the sphere/triangle test, closest-feature selector, constraint plane
+  insertion and movement projection, then independently confirmed the
+  sphere-test boundary with Rizin/rzpipe.
+- Proved that the first u32 in CCF material child `0x2152` is native
+  `CcMaterial + 0x5C`. The gameplay camera deletes collected sphere contacts
+  whose non-null material carries raw value `0` or `8`; the values are not
+  assigned guessed enum names.
+- Promoted that optional raw u32 into material metadata, resolved each BSP
+  triangle's material source-locally only when unique, and retained it in the
+  pointer-free mission spatial polygon. Missing or ambiguous material
+  references remain nullable and conservative.
+- Recorded the exact static BSP radius pruning, polygon construction, native
+  sphere-test requirement, closest-penetration fields, constraint loop, and
+  separate dynamic-object boundary. The complex closest-feature mathematics
+  remains unimplemented until its helper predicate, thresholds, and golden
+  face/edge/vertex fixtures are recovered.
+- A fresh Release/Ninja build completed all 202 steps and all 61 portable tests
+  pass. The code-intelligence preset completed all 135 rebuilt steps and its 61
+  tests pass. The public-boundary scan checks 310 files; Ghidra, working-copy,
+  and Rizin wrapper tests, 12 Rizin normalization tests, the 221-entry function
+  catalogue, `actionlint`, and `git diff --check` are clean.

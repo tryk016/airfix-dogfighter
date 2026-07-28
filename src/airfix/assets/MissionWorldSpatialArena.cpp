@@ -606,9 +606,28 @@ MissionWorldSpatialArena buildMissionWorldSpatialArena(
                                     *bindingByPolygon[polygonIndex];
                                 std::optional<std::size_t>
                                     portalWorldRoomIndex;
+                                std::optional<std::uint32_t>
+                                    materialCollisionMode2152;
                                 bool portalMeshSelectionFlagB = false;
                                 std::uint32_t portalType = 0U;
                                 bool portalObjectVisible = false;
+                                if (binding.materialIndex.has_value()) {
+                                    if (*binding.materialIndex >=
+                                        source.ccf->materials.size()) {
+                                        fail(
+                                            arena,
+                                            MissionWorldSpatialArenaIssueKind::
+                                                invalidRoomSceneBinding,
+                                            sourceIndex,
+                                            physicalRoomIndex,
+                                            *worldRoom);
+                                        return arena;
+                                    }
+                                    materialCollisionMode2152 =
+                                        source.ccf
+                                            ->materials[*binding.materialIndex]
+                                            .collisionMode2152;
+                                }
                                 if (kind ==
                                     CcfBspTreeKind::portalTree) {
                                     if (!binding.portalRoomIndex
@@ -682,6 +701,8 @@ MissionWorldSpatialArena buildMissionWorldSpatialArena(
                                         polygon.polygonIndex,
                                     .placedObjectReference =
                                         polygon.placedObjectReference,
+                                    .materialCollisionMode2152 =
+                                        materialCollisionMode2152,
                                     .portalWorldRoomIndex =
                                         portalWorldRoomIndex,
                                     .portalMeshSelectionFlagB =

@@ -430,7 +430,7 @@ The corpus has the following strictly ordered property sequence:
   0x2140 vector properties
   0x2150 flag properties
   0x2151 mode property
-  0x2152 scalar properties
+  0x2152 collision-used u32 plus two unresolved float32 values
 ```
 
 Each texture property wraps one `0xF020` string. Its `u32` byte count includes
@@ -450,7 +450,7 @@ The meanings of the remaining numeric fields are intentionally not guessed:
 | `0x2140` | two 18-byte `0xF030` vec3 chunks, then one float32 | 10,385 |
 | `0x2150` | two bytes, then one u32 | 10,385 |
 | `0x2151` | one byte | 10,385 |
-| `0x2152` | one u32, then two float32 values | 10,385 |
+| `0x2152` | one collision-used u32, then two unresolved float32 values | 10,385 |
 
 All 10,385 records match one of four exact sequences: 10,069 have primary
 texture only, 187 have primary plus environment, 76 have environment only,
@@ -458,14 +458,21 @@ and 53 have neither optional texture. No selected asset contains a secondary
 texture, but the original loader recognizes the field, so the portable model
 retains it.
 
+The first `0x2152` u32 is stored at native `CcMaterial + 0x5C`. The gameplay
+camera removes sphere contacts when that value is exactly `0` or `8`; no
+durable enumerant labels are assigned. The portable model exposes it as the
+optional raw `collisionMode2152`. Meanings for the two following floats remain
+unknown.
+
 Malformed bounds, duplicate known properties, invalid fixed sizes, and an
 invalid nested vec3 shape are rejected. Loader-compatible unknown, reordered,
 or absent properties are retained in the chunk index without invalidating the
 material; this separates format compatibility from the stricter corpus profile.
-Names, prefixes, references, and the three optional texture dependencies are
-exposed as metadata; uninterpreted numeric material values are not yet promoted
-to runtime semantics. `cc-tools` also maps an unobserved `0x2153` shape, which
-remains preserved as unknown until an Airfix sample or loader path confirms it.
+Names, prefixes, references, the three optional texture dependencies, and the
+collision-used first `0x2152` u32 are exposed as metadata. Other numeric
+material values remain uninterpreted. `cc-tools` also maps an unobserved
+`0x2153` shape, which remains preserved as unknown until an Airfix sample or
+loader path confirms it.
 
 ## Mesh records (`0x3100`)
 

@@ -91,11 +91,15 @@ void require(const bool condition, const std::string& message) {
             .reference = 20U,
         },
     };
+    ccf.materials.push_back({
+        .reference = 50U,
+        .collisionMode2152 = 8U,
+    });
     ccf.meshes.push_back({
         .name = "mesh",
         .reference = 30U,
         .selectionFlagB = 1U,
-        .triangles = {CcfMeshTriangleMetadata{}},
+        .triangles = {CcfMeshTriangleMetadata{.materialReference = 50U}},
     });
     ccf.placedNodes = {
         object(40U, 10U, 30U, 20U),
@@ -149,6 +153,10 @@ void testArenaPreservesBindingsAndLegacyPrependOrder() {
             arena.polygons[2].point0[0] == 4.0F &&
             arena.polygons[3].point0[0] == 3.0F,
         "node polygons did not reproduce legacy prepend order");
+    require(
+        arena.polygons[0].materialCollisionMode2152 == 8U &&
+            arena.polygons[5].materialCollisionMode2152 == 8U,
+        "spatial polygons did not retain the resolved material collision mode");
 
     const auto portalTreeReference =
         arena.treeReferences[root.firstPortalTreeReference];
