@@ -4,7 +4,7 @@
 **Evidence:** `EV-20260724-001`, `EV-20260724-002`,
 `EV-20260724-003`, `EV-20260724-004`, `EV-20260724-005`,
 `EV-20260728-010`, `EV-20260728-011`, `EV-20260728-012`,
-`EV-20260728-013`
+`EV-20260728-013`, `EV-20260728-014`
 **Reference build:** SHA-256 values in `docs/evidence/source-manifest.sha256`
 
 This note records the current clean-room boundary around
@@ -24,6 +24,9 @@ exported `IsOnGround` field are recorded in
 The complete engine phase, five-call audio cadence, sound roles, and modulation
 contract are recorded in
 [EXP-20260728-028](../../experiments/EXP-20260728-028-aircraft-engine-audio-state.md).
+The separate health-gated `enginedive` state and vertical-speed volume
+contract are recorded in
+[EXP-20260728-029](../../experiments/EXP-20260728-029-aircraft-destroyed-dive-audio.md).
 
 The player spawn, primary-actor, mission start-room, and selected-skin
 hierarchy contract is maintained in `PLAYER-SPAWN.md`. That static identity
@@ -151,6 +154,13 @@ running volume, and turn volume is additionally modulated by the absolute
 low-pass orientation `m01` value at `+0x558`. A pure bounded C++20 helper now
 preserves this engine-only command contract without owning sound files or a
 playback backend.
+
+On the same fifth-call pass, health `<= 0` starts or retains sound ID `0x20`,
+registered by the type loader as `enginedive`. Its parameter 1 remains one and
+parameter 0 is `clamp(-0.15 * velocity.y - 0.2, 0, 1)`. Positive health stops
+an active sample. The original state byte at `+0x566` is not initialized by
+the constructor; the separate portable helper deliberately defaults its
+caller-owned state to false.
 
 ### Collision/auxiliary method
 
@@ -397,9 +407,11 @@ Until those unknowns are resolved, the portable simulation may:
 Separate pure helpers may also preserve already confirmed local contracts for
 the vehicle sleep gate, smoothed thrust, collision-driven thrust-integrity
 degradation, later recovery/clamping, and the bounded engine-only audio command
-stream. They remain unwired until a runtime owns the native 12 ms scheduler,
-rigid-body/collision state, engine phase, deterministic random sequence, and
-audio backend.
+stream plus the destroyed-dive sample state. They remain unwired until a
+runtime owns the native 12 ms scheduler, rigid-body/collision state, engine
+phase, deterministic random sequence, and audio backend. The eventual audio
+coordinator must place destroyed-dive commands after phase transitions and
+before common engine modulation on the shared fifth-call pass.
 
 It must not yet move or rotate the aircraft, apply throttle, spawn a weapon,
 or label provisional constants as original behavior. That narrow state bridge

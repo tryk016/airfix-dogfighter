@@ -24,6 +24,7 @@ enum class LegacyAircraftEngineSound : std::uint8_t {
     engineTurn = 0x1C,
     engineStart = 0x1D,
     engineStop = 0x1E,
+    engineDive = 0x20,
 };
 
 enum class LegacyAircraftEngineAudioCommandKind : std::uint8_t {

@@ -2403,3 +2403,31 @@ superseded evidence.
   public-boundary tests and 354-file scan, 228-row catalogue, `actionlint`,
   local-path scan, and `git diff --check` pass. GitHub Actions publication
   gates remain pending.
+
+## 2026-07-28 - AirCraft destroyed-dive audio
+
+- `EV-20260728-014` / `EXP-20260728-029`: resolved sound ID `0x20` as
+  `enginedive`. The AirCraft type-load entry registers that name and ID, and a
+  read-only `Resource.up` metadata listing contains the matching logical WAV
+  entry; no proprietary payload or generated report enters Git.
+- Slot 44 reaches the state only on its shared fifth-call audio cadence.
+  Health `<= 0` starts or retains the sample, fixes parameter 1 at one, and
+  drives parameter 0 with the ordered
+  `clamp(-0.15 * velocity.y - 0.2, 0, 1)` equation. Positive health stops an
+  active sample without querying velocity.
+- Ghidra supplies canonical MSVC/vtable and sound-method meaning; an
+  independently regenerated Rizin function closes the missed type-load
+  boundary and confirms exact slot-44 branches, fields, calls, scalar bits,
+  and x87 order. The AirCraft constructor never initializes byte `+0x566`;
+  portable state deliberately defaults false instead of reproducing undefined
+  behavior.
+- Added a pure allocation-free C++20 transition with caller-owned state and at
+  most three existing audio-command records. It validates only consumed branch
+  inputs, owns no sample/backend/path, and remains unwired until a coordinator
+  composes it between phase transitions and common modulation.
+- Fresh Release and code-intelligence Ninja/GCC 15.2 builds each compile all
+  235 steps and pass 72/72 portable tests. Clangd 22.1.8 reports zero errors in
+  both new translation units. The three RE wrapper suites, 12 Rizin tests,
+  public-boundary tests and 358-file scan, 229-row catalogue, `actionlint`,
+  local-path scan, and `git diff --check` pass. GitHub Actions publication
+  gates remain pending.

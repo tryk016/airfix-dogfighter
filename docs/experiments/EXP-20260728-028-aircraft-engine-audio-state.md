@@ -182,9 +182,11 @@ upper clamp at `0x1000385B..0x100038C9`, engine-on calls at
 final updates at `0x10003997..0x100039B8`.
 
 Slot 44 has a separate sound-`0x20` state between phase transitions and common
-engine modulation. Its meaning and byte `+0x566` are outside this engine-only
-contract; omitting that unrelated command stream does not change the relative
-order of the five confirmed engine roles.
+engine modulation. The follow-up
+[EXP-20260728-029](EXP-20260728-029-aircraft-destroyed-dive-audio.md) resolves
+it as the health-gated `enginedive` sample and documents byte `+0x566`.
+Keeping that state in a separate helper does not change the relative order of
+the five confirmed engine roles.
 
 ## Tool comparison
 

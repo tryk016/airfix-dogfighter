@@ -612,6 +612,12 @@
   without committing private paths. Public pull-request workflows never read
   these inputs or signing secrets. AFPACK v1 contains no launch metadata; an
   authenticated bounded mission catalogue remains a target for AFPACK v2.
+- Recovered AirCraft sound ID `0x20` as the `enginedive` sample. On the shared
+  fifth-call audio pass, health `<= 0` starts or retains it and applies
+  `clamp(-0.15 * velocity.y - 0.2, 0, 1)` volume; positive health stops it.
+  A separate allocation-free C++20 transition preserves the exact command
+  order and deliberately initializes the original constructor's unwritten
+  `+0x566` state byte to false. It remains unwired from an audio backend.
 
 ## Confirmed
 
