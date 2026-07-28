@@ -541,10 +541,13 @@
   The constraint projection stage now also reproduces strict plane admission,
   directional override selection, oldest-active ordering, one-/two-plane
   projection, and conflicting-plane stop behavior without allocation.
-  Sphere contact collection and closest-feature selection, synchronized
-  camera/simulation ownership, dynamic-object collision, and the Metal join
-  remain unimplemented. Metal remains explicitly diagnostic and no full parity
-  matrix has been introduced.
+  Static sphere collision now reproduces the seven-axis triangle candidate
+  test, B-then-A BSP traversal, visible type-zero portal-room discovery,
+  material filtering, face/edge/vertex selection, native tie order, and
+  iterative constrained correction through caller-owned bounded workspaces.
+  Synchronized camera/simulation ownership, dynamic-object collision, and the
+  Metal join remain unimplemented. Metal remains explicitly diagnostic and no
+  full parity matrix has been introduced.
 - The authenticated setup-to-room provenance chain now crosses the native iOS
   publication boundary together with an immutable `PlayerSpawnPose`. Ghidra
   Headless and Rizin independently confirm x/y/z radians, mode zero, exact
@@ -593,10 +596,8 @@
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Implement the addressed static sphere-versus-triangle collector and
-   closest-feature selection using the completed constraint projection, then
-   add synchronized
-   ownership/publication of the completed camera room-state proposal before
+3. Join the implemented static sphere resolver to the camera room-state
+   proposal, then add synchronized ownership/publication before
    introducing a Metal camera matrix or performing physical-device visual
    acceptance. World-to-camera, scalar projection with reciprocal depth, exact
    zero clear, depth modes, camera presets, quaternion

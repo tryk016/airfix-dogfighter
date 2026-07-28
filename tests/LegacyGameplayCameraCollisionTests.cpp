@@ -86,6 +86,22 @@ static_assert(noexcept(
     legacyGameplayCameraAttemptConstrainedMove(
         std::declval<const Vec3&>(),
         std::declval<std::span<const Vec3>>())));
+static_assert(noexcept(
+    legacyGameplayCameraSphereTriangleCandidate(
+        std::declval<const Vec3&>(),
+        std::declval<float>(),
+        std::declval<const Vec3&>(),
+        std::declval<const Vec3&>(),
+        std::declval<const Vec3&>(),
+        std::declval<const Vec3&>())));
+static_assert(noexcept(
+    legacyGameplayCameraSphereTriangleContact(
+        std::declval<const Vec3&>(),
+        std::declval<float>(),
+        std::declval<const Vec3&>(),
+        std::declval<const Vec3&>(),
+        std::declval<const Vec3&>(),
+        std::declval<const Vec3&>())));
 static_assert(noexcept(legacyGameplayCameraLineHitPoint(
     std::declval<const Vec3&>(),
     std::declval<const Vec3&>(),
@@ -464,6 +480,285 @@ void testConstrainedMovement() {
         "non-finite constraint plane was accepted");
 }
 
+void testSphereTriangleCandidateAxes() {
+    const Vec3 point0{-1.0F, -1.0F, 0.0F};
+    const Vec3 point1{1.0F, -1.0F, 0.0F};
+    const Vec3 point2{0.0F, 1.0F, 0.0F};
+    const Vec3 splitNormal{0.0F, 0.0F, 1.0F};
+
+    require(
+        legacyGameplayCameraSphereTriangleCandidate(
+            Vec3{0.0F, 0.0F, -0.25F},
+            0.5F,
+            point0,
+            point1,
+            point2,
+            splitNormal) == std::optional<bool>{true},
+        "intersecting sphere failed the seven-axis candidate test");
+    require(
+        legacyGameplayCameraSphereTriangleCandidate(
+            Vec3{3.0F, 0.0F, -0.25F},
+            0.5F,
+            point0,
+            point1,
+            point2,
+            splitNormal) == std::optional<bool>{false},
+        "separated sphere passed the seven-axis candidate test");
+    require(
+        legacyGameplayCameraSphereTriangleCandidate(
+            Vec3{0.0F, 0.0F, -0.5F},
+            0.5F,
+            point0,
+            point1,
+            point2,
+            splitNormal) == std::optional<bool>{true},
+        "exact plane tangency was not retained as a candidate");
+    require(
+        !legacyGameplayCameraSphereTriangleCandidate(
+             Vec3{},
+             0.0F,
+             point0,
+             point1,
+             point2,
+             splitNormal)
+             .has_value() &&
+            !legacyGameplayCameraSphereTriangleCandidate(
+                 Vec3{},
+                 1.0F,
+                 point0,
+                 point1,
+                 point2,
+                 Vec3{
+                     std::numeric_limits<float>::quiet_NaN(),
+                     0.0F,
+                     1.0F})
+                 .has_value(),
+        "invalid sphere candidate input was accepted");
+}
+
+void testSphereTriangleClosestFeatures() {
+    const Vec3 point0{-1.0F, -1.0F, 0.0F};
+    const Vec3 point1{1.0F, -1.0F, 0.0F};
+    const Vec3 edge01{2.0F, 0.0F, 0.0F};
+    const Vec3 edge02{1.0F, 2.0F, 0.0F};
+    const Vec3 faceNormal{0.0F, 0.0F, 1.0F};
+
+    const auto face =
+        legacyGameplayCameraSphereTriangleContact(
+            Vec3{0.0F, 0.0F, -0.25F},
+            0.5F,
+            point0,
+            edge01,
+            edge02,
+            faceNormal);
+    require(
+        face.status ==
+                LegacyGameplayCameraSphereContactStatus::contact &&
+            face.contact.has_value() &&
+            face.contact->feature ==
+                LegacyGameplayCameraSphereContactFeature::face &&
+            close(face.contact->penetrationDepth, 0.25F),
+        "closest-face contact classification changed");
+    requireVec(
+        face.contact->contactPoint,
+        Vec3{},
+        "closest-face point changed");
+    requireVec(
+        face.contact->direction,
+        faceNormal,
+        "closest-face direction was not the native unit normal");
+
+    const Vec3 edgeCenter{0.0F, -1.2F, -0.2F};
+    const auto edge =
+        legacyGameplayCameraSphereTriangleContact(
+            edgeCenter,
+            0.5F,
+            point0,
+            edge01,
+            edge02,
+            faceNormal);
+    require(
+        edge.status ==
+                LegacyGameplayCameraSphereContactStatus::contact &&
+            edge.contact.has_value() &&
+            edge.contact->feature ==
+                LegacyGameplayCameraSphereContactFeature::edge01 &&
+            close(
+                edge.contact->penetrationDepth,
+                0.5F - std::sqrt(0.08F)),
+        "closest-edge contact classification changed");
+    requireVec(
+        edge.contact->contactPoint,
+        Vec3{0.0F, -1.0F, 0.0F},
+        "closest-edge point changed");
+    requireVec(
+        edge.contact->direction,
+        Vec3{0.0F, 0.2F, 0.2F},
+        "closest-edge direction was incorrectly normalized");
+
+    constexpr float inverseSqrt5 =
+        0.44721359549995793928F;
+    const Vec3 edge12Axis{
+        2.0F * inverseSqrt5,
+        inverseSqrt5,
+        0.0F,
+    };
+    const Vec3 edge12Center{
+        0.5F + 0.2F * edge12Axis.x,
+        0.2F * edge12Axis.y,
+        -0.2F,
+    };
+    const auto edge12Contact =
+        legacyGameplayCameraSphereTriangleContact(
+            edge12Center,
+            0.5F,
+            point0,
+            edge01,
+            edge02,
+            faceNormal);
+    require(
+        edge12Contact.contact.has_value() &&
+            edge12Contact.contact->feature ==
+                LegacyGameplayCameraSphereContactFeature::edge12,
+        "second edge branch changed");
+    requireVec(
+        edge12Contact.contact->contactPoint,
+        Vec3{0.5F, 0.0F, 0.0F},
+        "second edge point changed");
+
+    const Vec3 edge20Axis{
+        -2.0F * inverseSqrt5,
+        inverseSqrt5,
+        0.0F,
+    };
+    const Vec3 edge20Center{
+        -0.5F + 0.2F * edge20Axis.x,
+        0.2F * edge20Axis.y,
+        -0.2F,
+    };
+    const auto edge20Contact =
+        legacyGameplayCameraSphereTriangleContact(
+            edge20Center,
+            0.5F,
+            point0,
+            edge01,
+            edge02,
+            faceNormal);
+    require(
+        edge20Contact.contact.has_value() &&
+            edge20Contact.contact->feature ==
+                LegacyGameplayCameraSphereContactFeature::edge20,
+        "third edge branch changed");
+    requireVec(
+        edge20Contact.contact->contactPoint,
+        Vec3{-0.5F, 0.0F, 0.0F},
+        "third edge point changed");
+
+    const auto vertex0 =
+        legacyGameplayCameraSphereTriangleContact(
+            Vec3{-1.2F, -1.2F, -0.2F},
+            0.5F,
+            point0,
+            edge01,
+            edge02,
+            faceNormal);
+    require(
+        vertex0.contact.has_value() &&
+            vertex0.contact->feature ==
+                LegacyGameplayCameraSphereContactFeature::vertex0,
+        "first vertex branch changed");
+    requireVec(
+        vertex0.contact->contactPoint,
+        point0,
+        "first vertex point changed");
+
+    const Vec3 vertexCenter{1.2F, -1.2F, -0.2F};
+    const auto vertex =
+        legacyGameplayCameraSphereTriangleContact(
+            vertexCenter,
+            0.5F,
+            point0,
+            edge01,
+            edge02,
+            faceNormal);
+    require(
+        vertex.status ==
+                LegacyGameplayCameraSphereContactStatus::contact &&
+            vertex.contact.has_value() &&
+            vertex.contact->feature ==
+                LegacyGameplayCameraSphereContactFeature::vertex1 &&
+            close(
+                vertex.contact->penetrationDepth,
+                0.5F - std::sqrt(0.12F)),
+        "closest-vertex contact classification changed");
+    requireVec(
+        vertex.contact->contactPoint,
+        point1,
+        "closest-vertex point changed");
+    requireVec(
+        vertex.contact->direction,
+        Vec3{-0.2F, 0.2F, 0.2F},
+        "closest-vertex direction was incorrectly normalized");
+
+    const auto vertex2 =
+        legacyGameplayCameraSphereTriangleContact(
+            Vec3{0.0F, 1.3F, -0.2F},
+            0.5F,
+            point0,
+            edge01,
+            edge02,
+            faceNormal);
+    require(
+        vertex2.contact.has_value() &&
+            vertex2.contact->feature ==
+                LegacyGameplayCameraSphereContactFeature::vertex2,
+        "third vertex branch changed");
+    requireVec(
+        vertex2.contact->contactPoint,
+        Vec3{0.0F, 1.0F, 0.0F},
+        "third vertex point changed");
+
+    const auto tangentVertex =
+        legacyGameplayCameraSphereTriangleContact(
+            Vec3{1.375F, -1.0F, -0.5F},
+            0.625F,
+            point0,
+            edge01,
+            edge02,
+            faceNormal);
+    require(
+        tangentVertex.status ==
+                LegacyGameplayCameraSphereContactStatus::noContact &&
+            !tangentVertex.contact.has_value(),
+        "strict native vertex tangent was accepted");
+
+    constexpr auto sentinelBits = std::uint32_t{0xFFC00000U};
+    const float sentinel =
+        std::bit_cast<float>(sentinelBits);
+    const auto sentinelNormal =
+        legacyGameplayCameraSphereTriangleContact(
+            Vec3{0.0F, 0.0F, -0.25F},
+            0.5F,
+            point0,
+            edge01,
+            edge02,
+            Vec3{sentinel, sentinel, sentinel});
+    const auto invalid =
+        legacyGameplayCameraSphereTriangleContact(
+            Vec3{},
+            std::numeric_limits<float>::infinity(),
+            point0,
+            edge01,
+            edge02,
+            faceNormal);
+    require(
+        sentinelNormal.status ==
+                LegacyGameplayCameraSphereContactStatus::noContact &&
+            invalid.status ==
+                LegacyGameplayCameraSphereContactStatus::invalidInput,
+        "sentinel or invalid closest-feature boundary changed");
+}
+
 void testLineHitPoint() {
     const Vec3 anchor{10.0F, 20.0F, 30.0F};
     const Vec3 camera{14.0F, 12.0F, 34.0F};
@@ -639,6 +934,12 @@ void testPrimitivesDoNotAllocateOrMutateInputs() {
         Vec3{1.0F, 0.0F, 0.0F},
         Vec3{0.0F, 1.0F, 0.0F},
     };
+    const Vec3 triangle0{-1.0F, -1.0F, 0.0F};
+    const Vec3 triangle1{1.0F, -1.0F, 0.0F};
+    const Vec3 triangle2{0.0F, 1.0F, 0.0F};
+    const Vec3 triangleEdge01{2.0F, 0.0F, 0.0F};
+    const Vec3 triangleEdge02{1.0F, 2.0F, 0.0F};
+    const Vec3 triangleNormal{0.0F, 0.0F, 1.0F};
 
     allocationCount.store(0U, std::memory_order_relaxed);
     trackAllocations.store(true, std::memory_order_release);
@@ -664,6 +965,22 @@ void testPrimitivesDoNotAllocateOrMutateInputs() {
         const auto constrained =
             legacyGameplayCameraAttemptConstrainedMove(
                 Vec3{-1.0F, -1.0F, 1.0F}, planes);
+        const auto sphereCandidate =
+            legacyGameplayCameraSphereTriangleCandidate(
+                Vec3{0.0F, 0.0F, -0.25F},
+                0.5F,
+                triangle0,
+                triangle1,
+                triangle2,
+                triangleNormal);
+        const auto sphereContact =
+            legacyGameplayCameraSphereTriangleContact(
+                Vec3{0.0F, 0.0F, -0.25F},
+                0.5F,
+                triangle0,
+                triangleEdge01,
+                triangleEdge02,
+                triangleNormal);
         const auto hit = legacyGameplayCameraLineHitPoint(
             anchor, camera, 0.5F);
         const auto lookAt =
@@ -671,6 +988,8 @@ void testPrimitivesDoNotAllocateOrMutateInputs() {
         if (!radius.has_value() || !reduced.has_value() ||
             !recovered.has_value() || !accepts.has_value() ||
             !overrides.has_value() || !constrained.has_value() ||
+            sphereCandidate != std::optional<bool>{true} ||
+            !sphereContact.contact.has_value() ||
             !hit.has_value() || !lookAt.has_value()) {
             complete = false;
             break;
@@ -678,6 +997,7 @@ void testPrimitivesDoNotAllocateOrMutateInputs() {
         checksum += *radius + reduced->x + recovered->y +
             static_cast<float>(*accepts) +
             static_cast<float>(*overrides) + constrained->z +
+            sphereContact.contact->penetrationDepth +
             hit->z + lookAt->cameraWorldLinear.columns[0].x;
     }
     trackAllocations.store(false, std::memory_order_release);
@@ -708,6 +1028,8 @@ int main() {
         testAircraftFactorRecovery();
         testConstraintPlaneAdmissionAndOverrides();
         testConstrainedMovement();
+        testSphereTriangleCandidateAxes();
+        testSphereTriangleClosestFeatures();
         testLineHitPoint();
         testLookAtAxesAndCameraConvention();
         testPrimitivesDoNotAllocateOrMutateInputs();

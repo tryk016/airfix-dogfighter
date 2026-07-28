@@ -73,6 +73,77 @@ legacyGameplayCameraAttemptConstrainedMove(
     const Vec3& requestedMove,
     std::span<const Vec3> planesHeadFirst) noexcept;
 
+// Reconstructs PhSphere::GetCollision's seven-axis broad-phase test for one
+// triangle. splitNormal is the owning BSP node plane normal, not the
+// polygon's separately retained faceNormal. A finite positive sphere and
+// finite triangle are required; exact tangency remains a candidate.
+[[nodiscard]] std::optional<bool>
+legacyGameplayCameraSphereTriangleCandidate(
+    const Vec3& sphereCenter,
+    float sphereRadius,
+    const Vec3& point0,
+    const Vec3& point1,
+    const Vec3& point2,
+    const Vec3& splitNormal) noexcept;
+
+enum class LegacyGameplayCameraSphereContactFeature : std::uint8_t {
+    face,
+    edge01,
+    edge12,
+    edge20,
+    vertex0,
+    vertex1,
+    vertex2,
+};
+
+struct LegacyGameplayCameraSphereContact final {
+    float penetrationDepth{};
+    // Native GetCollisionAndBestFree direction: unit faceNormal for a face,
+    // but the raw contactPoint - sphereCenter vector for edges and vertices.
+    Vec3 direction{};
+    Vec3 contactPoint{};
+    LegacyGameplayCameraSphereContactFeature feature{
+        LegacyGameplayCameraSphereContactFeature::face};
+
+    [[nodiscard]] friend constexpr bool operator==(
+        const LegacyGameplayCameraSphereContact&,
+        const LegacyGameplayCameraSphereContact&) noexcept = default;
+};
+
+enum class LegacyGameplayCameraSphereContactStatus : std::uint8_t {
+    noContact,
+    contact,
+    invalidInput,
+};
+
+struct LegacyGameplayCameraSphereContactResult final {
+    LegacyGameplayCameraSphereContactStatus status{
+        LegacyGameplayCameraSphereContactStatus::noContact};
+    std::optional<LegacyGameplayCameraSphereContact> contact;
+
+    [[nodiscard]] bool valid() const noexcept {
+        return status !=
+            LegacyGameplayCameraSphereContactStatus::invalidInput;
+    }
+};
+
+// Reconstructs the closest-face/edge/vertex portion of
+// PhCollidedPolyList::GetCollisionAndBestFree for one candidate. faceNormal
+// uses the authored collision-facing orientation assumed by the native path.
+// edge01 and edge02 are the native collided-polygon fields: point1 - point0
+// and point2 - point0, respectively (edge02 is the binary32 sum of the two
+// authored consecutive CCF edges).
+// Face and edge tangencies are reported at zero depth; an exact vertex
+// tangency is rejected by the original strict comparison.
+[[nodiscard]] LegacyGameplayCameraSphereContactResult
+legacyGameplayCameraSphereTriangleContact(
+    const Vec3& sphereCenter,
+    float sphereRadius,
+    const Vec3& point0,
+    const Vec3& edge01,
+    const Vec3& edge02,
+    const Vec3& faceNormal) noexcept;
+
 // Reconstructs the point selected by the legacy vehicle-to-camera line trace:
 // anchor + hitFraction * (camera - anchor). The collision backend is expected
 // to supply a normalized fraction, so values outside [0,1] are rejected.
