@@ -84,9 +84,10 @@ succeeds. In particular:
 
 Optional nested sphere and room results are diagnostics showing which stages
 were reached. They are not independently publishable state. The input object
-and arena remain read-only. Atomicity is semantic: a future single-writer
-owner must copy the complete returned value under its own synchronization
-protocol.
+and arena remain read-only. Atomicity at this layer is semantic: the
+single-writer owner documented in
+[EXP-20260728-018](EXP-20260728-018-camera-state-owner-snapshot.md) copies the
+complete returned value under its synchronization protocol.
 
 ## Ordering consequence
 
@@ -145,10 +146,10 @@ this stage is merged.
 ## Result and next boundary
 
 The project now has one portable all-or-nothing proposal for the recovered
-static portion of event-5 camera collision. The next boundary is a
-single-writer simulation/camera owner that applies this complete state and
-publishes an immutable frame snapshot. That owner must be established before
-Metal consumes a gameplay camera pose.
+static portion of event-5 camera collision. A single-writer simulation/camera
+owner now applies this complete state and publishes an immutable frame
+snapshot. The next boundary is to assemble a complete gameplay-camera pose for
+one acquired snapshot before Metal consumes it.
 
 Dynamic-object BSP collision and controlled executable traces remain required
 before full gameplay parity can be claimed.
@@ -168,4 +169,5 @@ object BSP queries and controlled native multi-room traces are still pending.
 - [Sphere-contact recovery](EXP-20260728-014-camera-sphere-contact-recovery.md)
 - [Constraint solver](EXP-20260728-015-camera-constraint-solver.md)
 - [Static sphere resolver](EXP-20260728-016-camera-static-sphere-resolver.md)
+- [Camera state owner and snapshot](EXP-20260728-018-camera-state-owner-snapshot.md)
 - [Camera and projection contract](../re/systems/CAMERA-PROJECTION.md)

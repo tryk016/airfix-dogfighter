@@ -4,8 +4,9 @@
 camera presets, quaternion adapter, stateless chase smoothing, collision
 scalars/factors/line interpolation, look-at pose math, 4:3 layout, strict
 BSP/portal adaptation, static sphere/contact resolution, and atomic
-position/room/factor proposal implemented; dynamic-object collision,
-synchronized state ownership, and Metal join remain
+position/room/factor proposal plus synchronized immutable frame publication
+implemented; dynamic-object collision, complete pose assembly, and Metal join
+remain
 
 This document separates confirmed legacy behavior from reconstruction
 decisions. The complete evidence record is
@@ -398,8 +399,13 @@ never expose a partial state. The same module now composes the completed static
 sphere resolver, per-axis collision reduction, and corrected-position portal
 trace into one proposed `{position, room, axisFactors}` value. A correction may
 therefore prevent or preserve a portal transition before any state is exposed.
-This remains a portable semantic proposal, not yet a thread-safe mutable
-simulation owner.
+`src/airfix/render/LegacyGameplayCameraStateOwner.cpp` now applies that
+complete proposal behind a dedicated single-writer owner and exposes one
+owning immutable snapshot to the render consumer. Its two fixed slots use
+writer/reader claims and a generation tag, so a rejected or contended commit
+cannot change the producer state and a consumer cannot copy mixed fields. This
+is an SPSC reconstruction architecture decision, not a recovered claim about
+the legacy engine's threading.
 
 The exact next solver boundary is recorded in
 [EXP-20260728-014](../../experiments/EXP-20260728-014-camera-sphere-contact-recovery.md).
@@ -421,6 +427,8 @@ and iterative constrained correction. The caller supplies bounded workspaces,
 and non-orthonormal bases fail because they would turn a sphere into an
 ellipsoid. The all-or-nothing state join is documented in
 [EXP-20260728-017](../../experiments/EXP-20260728-017-camera-static-state-integration.md).
+[EXP-20260728-018](../../experiments/EXP-20260728-018-camera-state-owner-snapshot.md)
+documents the ownership, generation, contention, and immutable-copy contract.
 Dynamic-object BSP remains separate.
 
 ## Still unknown

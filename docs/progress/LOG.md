@@ -2117,3 +2117,28 @@ superseded evidence.
   public-boundary scan checks 316 files; Ghidra, working-copy, and Rizin wrapper
   tests, 12 Rizin normalization tests, the 222-entry unique function catalogue,
   `actionlint`, and `git diff --check` are clean.
+
+## 2026-07-28 - camera state owner and immutable snapshot
+
+- `EXP-20260728-018`: placed the complete static camera proposal behind a
+  non-copyable, non-moving single-writer owner. Initialization publishes
+  generation one; later commits require strictly increasing simulation steps
+  and never split position, room, or the three axis factors.
+- Added a bounded two-slot SPSC publication protocol. Writer and reader claims
+  prevent slot overwrite during a copy, generation revalidation rejects races,
+  and the render consumer receives an owning immutable value rather than a
+  pointer or span into mutable storage.
+- Invalid initialization, failed/missing/malformed proposals, stale steps,
+  generation exhaustion, and contention preserve the exact prior producer and
+  published snapshots. The hot commit/acquire/current path is allocation-free
+  and `noexcept`.
+- Synthetic tests cover lifecycle, atomic rejection, transitions, monotonic
+  steps/generations, 20,000 concurrent coherent frames repeated in 100 focused
+  stress runs, and 4,096 allocation-counted operations. A fresh Release/Ninja
+  build completed all 208 steps and all 63 tests pass; the code-intelligence
+  build and its 63 tests also pass. The public-boundary scan checks 320 files;
+  the Ghidra, working-copy, and Rizin wrapper tests pass; 12 Rizin normalization
+  tests pass; and `actionlint` is clean. An isolated Linux GCC 13
+  ThreadSanitizer build also passes the concurrent test with per-process ASLR
+  disabled only to satisfy WSL2's TSan shadow-memory mapping constraint.
+  Cross-platform and unsigned iOS validation remain required before merge.
