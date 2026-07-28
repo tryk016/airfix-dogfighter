@@ -84,6 +84,12 @@ struct LegacyDynamicBspLineObject final {
     // linear transform with unit scale, plus absolute runtime translation.
     Mat3 objectLocalToRuntime{};
     Vec3 runtimeTranslation{};
+    // CcObject portal metadata used only after this object wins the combined
+    // nearest-hit query. -1 is an ordinary solid object, 0 is a transparent
+    // portal candidate, and 1 remains a solid/reflecting portal surface.
+    std::int32_t portalType{-1};
+    std::optional<std::size_t> portalWorldRoomIndex;
+    bool portalObjectVisible{};
 
     [[nodiscard]] friend constexpr bool operator==(
         const LegacyDynamicBspLineObject&,
@@ -116,6 +122,8 @@ struct MissionWorldRuntimeCombinedLineHit final {
     std::optional<std::uint32_t> sourceTriangleIndex;
     std::optional<std::uint32_t> sourceMaterialReference;
     std::uint32_t actorObjectId{};
+    std::int32_t portalType{-1};
+    bool portalObjectVisible{};
     bool reverseFacing{};
     bool withinRequestedSegment{};
 
@@ -136,12 +144,16 @@ enum class MissionWorldRuntimeCombinedLineTraceStatus : std::uint8_t {
     dynamicObjectLimitExceeded,
     traversalDepthExceeded,
     outOfSegmentHit,
+    portalTransitionLimitExceeded,
 };
 
 struct MissionWorldRuntimeCombinedLineTraceResult final {
     MissionWorldRuntimeCombinedLineTraceStatus status{
         MissionWorldRuntimeCombinedLineTraceStatus::noHit};
     std::optional<MissionWorldRuntimeCombinedLineHit> hit;
+    // Zero for traceMissionWorldRuntimeCombinedLine. The portal-continuation
+    // adapter reports only transitions it completed before its final result.
+    std::size_t portalTransitionCount{};
 
     [[nodiscard]] bool valid() const noexcept {
         return status ==
@@ -154,6 +166,23 @@ struct MissionWorldRuntimeCombinedLineTraceResult final {
 struct MissionWorldRuntimeCombinedLineTraceOptions final {
     assets::MissionWorldSpatialLineTraceOptions staticTrace{};
     std::size_t maximumDynamicObjects{65'536U};
+};
+
+struct LegacyDynamicBspRoomObjectRange final {
+    std::size_t firstObjectIndex{};
+    std::size_t objectCount{};
+
+    [[nodiscard]] friend constexpr bool operator==(
+        const LegacyDynamicBspRoomObjectRange&,
+        const LegacyDynamicBspRoomObjectRange&) noexcept = default;
+};
+
+struct MissionWorldRuntimeCombinedPortalLineTraceOptions final {
+    MissionWorldRuntimeCombinedLineTraceOptions combinedLine{};
+    // The native recursion has no cycle guard. The portable adapter shares the
+    // retained-world hard ceiling so malformed self/cyclic portals cannot hang
+    // a frame. Zero permits a query only when no transparent portal wins.
+    std::size_t maximumPortalTransitions{64U};
 };
 
 // Reconstructs the non-portal portion of PhLine::GetBspCollision: room-static
@@ -173,5 +202,30 @@ traceMissionWorldRuntimeCombinedLine(
     std::span<const LegacyDynamicBspMesh> dynamicMeshes,
     std::span<const LegacyDynamicBspLineObject> dynamicObjects,
     const MissionWorldRuntimeCombinedLineTraceOptions& options = {}) noexcept;
+
+// Reconstructs the automatic portal-continuation tail of
+// PhLine::GetBspCollision after the combined static/dynamic nearest pass.
+// roomObjectRanges is parallel to staticArena.rooms and addresses one flat
+// native-order object span. A winning visible type-zero object continues from
+// its exact hit point into its target room. A later hit replaces the portal
+// provenance and receives the whole-segment legacy fraction:
+//
+//   outer + (1 - outer) * inner
+//
+// If no later hit exists, the complete query reports no collision, matching
+// the native return value. The operation is read-only, allocation-free,
+// noexcept, and bounded against portal cycles.
+[[nodiscard]] MissionWorldRuntimeCombinedLineTraceResult
+traceMissionWorldRuntimeCombinedPortalLine(
+    const assets::MissionWorldSpatialArena& staticArena,
+    const BasisTransform& runtimeBasis,
+    std::size_t worldRoomIndex,
+    const Vec3& runtimeStart,
+    const Vec3& runtimeEnd,
+    std::span<const LegacyDynamicBspMesh> dynamicMeshes,
+    std::span<const LegacyDynamicBspLineObject> dynamicObjects,
+    std::span<const LegacyDynamicBspRoomObjectRange> roomObjectRanges,
+    const MissionWorldRuntimeCombinedPortalLineTraceOptions& options = {})
+    noexcept;
 
 } // namespace airfix::render

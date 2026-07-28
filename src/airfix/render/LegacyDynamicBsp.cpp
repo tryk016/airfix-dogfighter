@@ -3,6 +3,7 @@
 #include "airfix/assets/MissionWorldSpatialLineTrace.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <new>
@@ -585,6 +586,31 @@ mapLocalStatus(
     };
 }
 
+[[nodiscard]] bool validPortalMetadata(
+    const LegacyDynamicBspLineObject& object,
+    const std::size_t worldRoomCount) noexcept {
+    if (object.portalType < -1 || object.portalType > 1) {
+        return false;
+    }
+    if (object.portalType == -1) {
+        return !object.portalWorldRoomIndex.has_value();
+    }
+    return object.portalWorldRoomIndex.has_value() &&
+        *object.portalWorldRoomIndex < worldRoomCount;
+}
+
+[[nodiscard]] float composeLegacyFraction(
+    const float outer,
+    const float inner) noexcept {
+    // The native x87 expression remains unspilled until the final binary32
+    // field store. Exact binary32 inputs fit this deterministic binary64
+    // staging; controlled x87 traces are still required for bitwise parity.
+    return static_cast<float>(
+        static_cast<double>(outer) +
+        (1.0 - static_cast<double>(outer)) *
+            static_cast<double>(inner));
+}
+
 [[nodiscard]] Vec3 interpolate(
     const Vec3& start,
     const Vec3& end,
@@ -1034,6 +1060,8 @@ traceMissionWorldRuntimeCombinedLine(
             .sourceTriangleIndex = std::nullopt,
             .sourceMaterialReference = std::nullopt,
             .actorObjectId = 0U,
+            .portalType = -1,
+            .portalObjectVisible = false,
             .reverseFacing = hit.reverseFacing,
             .withinRequestedSegment =
                 hit.withinRequestedSegment,
@@ -1074,6 +1102,12 @@ traceMissionWorldRuntimeCombinedLine(
         const auto& object = dynamicObjects[objectIndex];
         if (!object.active) {
             continue;
+        }
+        if (!validPortalMetadata(
+                object, staticArena.rooms.size())) {
+            return failure(
+                MissionWorldRuntimeCombinedLineTraceStatus::
+                    invalidDynamicObject);
         }
         if (object.meshIndex >= dynamicMeshes.size()) {
             return failure(
@@ -1184,7 +1218,8 @@ traceMissionWorldRuntimeCombinedLine(
             .treeIndex = std::nullopt,
             .nodeIndex = std::nullopt,
             .polygonIndex = std::nullopt,
-            .portalWorldRoomIndex = std::nullopt,
+            .portalWorldRoomIndex =
+                object.portalWorldRoomIndex,
             .dynamicObjectIndex = objectIndex,
             .dynamicMeshIndex = object.meshIndex,
             .sourceTriangleIndex = polygon.polygonIndex,
@@ -1192,6 +1227,9 @@ traceMissionWorldRuntimeCombinedLine(
                 mesh.polygonMaterialReferences[
                     localHit.polygonIndex],
             .actorObjectId = object.actorObjectId,
+            .portalType = object.portalType,
+            .portalObjectVisible =
+                object.portalObjectVisible,
             .reverseFacing = localHit.reverseFacing,
             .withinRequestedSegment =
                 localHit.fraction >= 0.0F &&
@@ -1230,6 +1268,155 @@ traceMissionWorldRuntimeCombinedLine(
             MissionWorldRuntimeCombinedLineTraceStatus::hit,
         .hit = nearest,
     };
+}
+
+MissionWorldRuntimeCombinedLineTraceResult
+traceMissionWorldRuntimeCombinedPortalLine(
+    const assets::MissionWorldSpatialArena& staticArena,
+    const BasisTransform& runtimeBasis,
+    const std::size_t worldRoomIndex,
+    const Vec3& runtimeStart,
+    const Vec3& runtimeEnd,
+    const std::span<const LegacyDynamicBspMesh> dynamicMeshes,
+    const std::span<const LegacyDynamicBspLineObject> dynamicObjects,
+    const std::span<const LegacyDynamicBspRoomObjectRange>
+        roomObjectRanges,
+    const MissionWorldRuntimeCombinedPortalLineTraceOptions& options)
+    noexcept {
+    if (options.maximumPortalTransitions >
+            assets::kMissionWorldSpatialMaximumPortalTransitions ||
+        roomObjectRanges.size() != staticArena.rooms.size()) {
+        return failure(
+            MissionWorldRuntimeCombinedLineTraceStatus::invalidInput);
+    }
+
+    std::size_t currentRoom = worldRoomIndex;
+    Vec3 currentStart = runtimeStart;
+    std::array<
+        float,
+        assets::kMissionWorldSpatialMaximumPortalTransitions>
+        portalFractions{};
+    std::size_t transitionCount = 0U;
+
+    while (true) {
+        if (currentRoom >= roomObjectRanges.size()) {
+            return {
+                .status =
+                    MissionWorldRuntimeCombinedLineTraceStatus::
+                        invalidWorldRoom,
+                .hit = std::nullopt,
+                .portalTransitionCount = transitionCount,
+            };
+        }
+        const auto& range = roomObjectRanges[currentRoom];
+        if (range.firstObjectIndex > dynamicObjects.size() ||
+            range.objectCount >
+                dynamicObjects.size() - range.firstObjectIndex) {
+            return {
+                .status =
+                    MissionWorldRuntimeCombinedLineTraceStatus::
+                        invalidDynamicObject,
+                .hit = std::nullopt,
+                .portalTransitionCount = transitionCount,
+            };
+        }
+
+        const auto roomObjects = dynamicObjects.subspan(
+            range.firstObjectIndex, range.objectCount);
+        auto current = traceMissionWorldRuntimeCombinedLine(
+            staticArena,
+            runtimeBasis,
+            currentRoom,
+            currentStart,
+            runtimeEnd,
+            dynamicMeshes,
+            roomObjects,
+            options.combinedLine);
+        current.portalTransitionCount = transitionCount;
+        if (current.hit.has_value() &&
+            current.hit->dynamicObjectIndex.has_value()) {
+            const auto localIndex =
+                *current.hit->dynamicObjectIndex;
+            if (localIndex >= range.objectCount ||
+                range.firstObjectIndex >
+                    std::numeric_limits<std::size_t>::max() -
+                        localIndex) {
+                return {
+                    .status =
+                        MissionWorldRuntimeCombinedLineTraceStatus::
+                            invalidDynamicObject,
+                    .hit = std::nullopt,
+                    .portalTransitionCount = transitionCount,
+                };
+            }
+            current.hit->dynamicObjectIndex =
+                range.firstObjectIndex + localIndex;
+        }
+
+        if (current.status ==
+            MissionWorldRuntimeCombinedLineTraceStatus::noHit) {
+            // Native recursive GetBspCollision returns false when a
+            // transparent portal has no later collision.
+            return current;
+        }
+        if (current.status !=
+                MissionWorldRuntimeCombinedLineTraceStatus::hit ||
+            !current.hit.has_value()) {
+            return current;
+        }
+
+        auto& hit = *current.hit;
+        const bool transparentPortal =
+            hit.kind ==
+                MissionWorldRuntimeCombinedLineHitKind::dynamicObject &&
+            hit.portalType == 0 &&
+            hit.portalObjectVisible;
+        if (!transparentPortal) {
+            if (transitionCount != 0U) {
+                float composedFraction = hit.legacyFraction;
+                // Native recursion composes while unwinding, so deeper
+                // fractions round to binary32 before the outer expression.
+                for (std::size_t index = transitionCount;
+                     index > 0U;
+                     --index) {
+                    composedFraction = composeLegacyFraction(
+                        portalFractions[index - 1U],
+                        composedFraction);
+                }
+                hit.legacyFraction = composedFraction;
+                hit.withinRequestedSegment =
+                    hit.legacyFraction >= 0.0F &&
+                    hit.legacyFraction <= 1.0F;
+                if (!std::isfinite(hit.legacyFraction) ||
+                    !hit.withinRequestedSegment) {
+                    current.status =
+                        MissionWorldRuntimeCombinedLineTraceStatus::
+                            outOfSegmentHit;
+                }
+            }
+            return current;
+        }
+
+        if (!hit.portalWorldRoomIndex.has_value() ||
+            *hit.portalWorldRoomIndex >= staticArena.rooms.size()) {
+            current.status =
+                MissionWorldRuntimeCombinedLineTraceStatus::
+                    invalidDynamicObject;
+            return current;
+        }
+        if (transitionCount >=
+            options.maximumPortalTransitions) {
+            current.status =
+                MissionWorldRuntimeCombinedLineTraceStatus::
+                    portalTransitionLimitExceeded;
+            return current;
+        }
+
+        portalFractions[transitionCount] = hit.legacyFraction;
+        currentStart = hit.runtimePoint;
+        currentRoom = *hit.portalWorldRoomIndex;
+        ++transitionCount;
+    }
 }
 
 } // namespace airfix::render
