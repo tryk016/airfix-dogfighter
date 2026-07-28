@@ -2344,3 +2344,36 @@ superseded evidence.
   zero errors. The three reverse-engineering wrapper suites, 12 Rizin tests,
   346-file public scan, 228-entry catalogue, `actionlint`, local-path scan, and
   `git diff --check` pass. GitHub Actions publication gates remain pending.
+
+## 2026-07-28 - AirCraft engine-start and thrust-integrity state
+
+- `EV-20260728-012` / `EXP-20260728-027`: proved that byte `+0x564` is active
+  only during the engine-start sound transition. Slot 44 sets it above the
+  strict `0.001f` smoothed-thrust threshold, accumulates the seconds timer at
+  `+0x55C`, and clears it after the timer becomes strictly greater than
+  `4.0f`. The byte selects the exact slow `0.0004f` smoothing branch in the
+  force step; the normal branch uses the recovered `0.3f` and `0.02f`
+  recurrence.
+- Proved that float `+0x568` is a thrust-integrity factor initialized to one.
+  Slot 30 qualifies collision responses with strict `0.9f` and `2.0f` gates,
+  subtracts half the average normal-velocity-dot fourth power without
+  clamping, and slot 44 then applies the exact `0x38000100` random recovery
+  scale and ordered `[0,1]` clamp. The result first affects the next force
+  step; recovery continues through the sleeping path.
+- Ghidra supplies canonical MSVC/vtable/sound context. Independently generated
+  Rizin reports match all four function boundaries, field widths, addresses,
+  constants, and branch order. Original labels remain unavailable, so
+  `engineStartTransitionActive` and `thrustIntegrityFactor` are explicit
+  behavior-backed working names.
+- Added three pure allocation-free C++20 helpers for smoothing, collision
+  degradation, and recovery/clamp. Non-finite values and arithmetic overflow
+  fail closed only when their native branch is reached; rejected branch inputs
+  remain uninspected. The global native PRNG is replaced by a caller-supplied
+  bounded sample and the helpers remain unwired from the frozen intent-only
+  player simulation.
+- Fresh Release and code-intelligence Ninja/GCC 15.2 builds each compile all
+  229 steps and pass 70/70 portable tests. Clangd 22.1.8 reports zero errors in
+  both new translation units. The three RE wrapper suites, 12 Rizin tests,
+  public-boundary tests and 350-file scan, 228-row catalogue, `actionlint`,
+  local-path scan, and `git diff --check` pass. GitHub Actions publication
+  gates remain pending.

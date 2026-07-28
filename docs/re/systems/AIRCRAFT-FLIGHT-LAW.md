@@ -5,7 +5,7 @@ implemented for parity
 
 **Evidence:** `EV-20260724-001`, `EV-20260724-002`,
 `EV-20260724-003`, `EV-20260724-004`, `EV-20260727-002`,
-`EV-20260728-011`
+`EV-20260728-011`, `EV-20260728-012`
 
 **Reference build:** SHA-256 values in
 `docs/evidence/source-manifest.sha256`
@@ -45,6 +45,10 @@ function above confidence 2.
 [EXP-20260728-026](../../experiments/EXP-20260728-026-vehicle-rest-sleep-gate.md)
 records the independent Ghidra/Rizin recovery of the surrounding rest/sleep
 gate and the exported `AfVehicle::IsOnGround` predicate.
+
+[EXP-20260728-027](../../experiments/EXP-20260728-027-aircraft-thrust-integrity.md)
+records the independent recovery of the engine-start flag and collision-driven
+thrust-integrity lifecycle.
 
 ## Timing and lifecycle
 
@@ -105,6 +109,8 @@ v       = vec3[A+0x2F4]
 q        = vec4[A+0x284]
 onGround = u8[A+0x464]
 restMs   = s64[A+0x458]
+starting = u8[A+0x564]
+thrustIntegrity = f32[A+0x568]
 ```
 
 `B` is copied from type field `+0x70` and scales both rigid-body mass
@@ -241,7 +247,7 @@ Every row is additionally subject to the entry gate.
 | `0x1000434C` | `health <= 0 && pitch == 0` | `F=R(0,+0.01*B,0)`, `r=R(-4,0,0)` |
 | `0x100044C1` | always | `G=-0.54555553*B*(health<=0 ? 8 : 1)`, `F=(0,G,0)`, `r=R(0,0.1*D,D)` |
 | `0x100045BC` | `L > 0.05*B` | `L=min(0.7*vz*B,0.2*B)`, `F=R(0,L,0)`, `r=R(0,0,D)` |
-| `0x100046C8` | always | `Q=(health<=0 ? 0.5*T[0x78]*B : 2*A[0x568]*A[0x560]*T[0x78]*B)`, `F=R(0,0,Q)`, `r=0` |
+| `0x100046C8` | always | `Q=(health<=0 ? 0.5*T[0x78]*B : 2*thrustIntegrity*x*T[0x78]*B)`, `F=R(0,0,Q)`, `r=0` |
 | `0x100049AF` | `pitch != 0` | `K=pitch*B*C*(health<=0 ? 0.0008 : 0.008)`, `tau=R(0,0,-1) x R(0,K,0)` |
 | `0x10004AB3` | `!onGround && bank != 0` | `K=C*B*bank*0.014`, `tau=R(-1,0,0) x R(0,K,0)` |
 | `0x10004B98` | `!onGround` | `K=m01*B*C*0.024`, `tau=R(-1,0,0) x R(0,K,0)` |
@@ -391,14 +397,54 @@ The smoothed value at `+0x560` is updated on every accepted force step:
 x = A[0x560]
 t = A[0x444]
 
-if u8[A+0x564] == 0:
+if !starting:
     x += (x + 0.3) * (t - x) * 0.02
 else:
     x += (t - x) * 0.0004
 ```
 
-There is no final clamp on `x`. `A+0x568` starts at `1.0` and is read as a
-thrust multiplier, but is not written here.
+There is no final clamp on `x`. `starting` is set only during the engine-start
+sound transition. Slot 44 starts that transition when `x > 0.001f`, accumulates
+its seconds timer at `+0x55C`, and clears the flag after the timer becomes
+strictly greater than `4.0f`. It also clears `x` and both start/running flags
+when `x < 0.001f` while either engine phase is active.
+
+`thrustIntegrity` starts at `1.0f` and scales only the live-health thrust path.
+The later static-collision and post-collision stages maintain it:
+
+```text
+qualifiedCount = 0
+fourthPowerSum = 0
+
+for each collision response:
+    d = dot(collisionNormal, currentVelocity)
+    if d > 0.9f and d * collisionScalar > 2.0f:
+        qualifiedCount += 1
+        fourthPowerSum += d^4
+
+if qualifiedCount != 0:
+    thrustIntegrity -=
+        (fourthPowerSum / qualifiedCount) * 0.5f
+
+if thrustIntegrity < 1:
+    thrustIntegrity +=
+        rand() * dt * bit_cast<float>(0x38000100)
+
+thrustIntegrity = clamp(thrustIntegrity, 0, 1)
+```
+
+The collision routine does not clamp. Slot 44 performs recovery and the ordered
+high-then-low clamp later in the same refresh. Consequently the current force
+step uses the old factor, collision reduces it, slot 44 slightly recovers and
+clamps it, and the resulting factor affects the next force step. Slot 44 still
+runs on sleeping refreshes, so recovery continues while active physics is
+skipped.
+
+The descriptive names `engineStartTransitionActive` and
+`thrustIntegrityFactor` are behavior-backed working labels, not recovered
+original member names. Full evidence and independent instruction addresses are
+recorded in
+[EXP-20260728-027](../../experiments/EXP-20260728-027-aircraft-thrust-integrity.md).
 
 Up to four nodes found through the `propeller`, `prop1`, and `prop2` naming
 paths are rotated only when `health > 0`. For node index `i`:
@@ -469,7 +515,8 @@ to another evidence source:
 - exact range and meaning of the BSP collision scalar;
 - controlled traces covering free flight, ground contact, inverted contact,
   water, and too-high branches;
-- the meanings and producers of `+0x564` and `+0x568`;
+- deterministic replacement and sequencing for the native global random source
+  used by thrust-integrity recovery;
 - the dynamic actor-to-render publication and projectile-spawn path; and
 - the required x87-versus-portable-float tolerance for deterministic parity.
 
