@@ -2097,3 +2097,23 @@ superseded evidence.
   public-boundary scan checks 315 files; Ghidra, working-copy, and Rizin wrapper
   tests, 12 Rizin normalization tests, the 222-entry unique function catalogue,
   `actionlint`, and `git diff --check` are clean.
+
+## 2026-07-28 - camera static collision state integration
+
+- `EV-20260728-004` / `EXP-20260728-017`: joined the recovered event-5 static
+  order without changing the existing portal-only primitive: exact near-plane
+  sphere radius, static BSP correction, per-axis factor reduction, then portal
+  tracing of the corrected endpoint.
+- Added one allocation-free `noexcept` proposal containing corrected runtime
+  position, final room, and all three axis factors. Candidate/constraint
+  exhaustion, invalid inputs or basis, sphere-room limits, and later portal
+  failures retain stage diagnostics but expose no partial proposed state.
+- Synthetic integration fixtures prove that correction can prevent a raw
+  candidate's portal transition or precede a valid transition, and protect
+  workspace failures, factor failures, portal-limit failure, input
+  immutability, and 4,096 allocation-counted complete calls.
+- A fresh Release/Ninja build completed all 205 steps and all 62 portable tests
+  pass. The code-intelligence build and its 62 tests also pass. The
+  public-boundary scan checks 316 files; Ghidra, working-copy, and Rizin wrapper
+  tests, 12 Rizin normalization tests, the 222-entry unique function catalogue,
+  `actionlint`, and `git diff --check` are clean.

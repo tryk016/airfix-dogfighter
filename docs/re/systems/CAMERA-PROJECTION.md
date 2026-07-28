@@ -3,8 +3,9 @@
 **Status:** legacy scalar projection, world-to-view, depth presets, gameplay
 camera presets, quaternion adapter, stateless chase smoothing, collision
 scalars/factors/line interpolation, look-at pose math, 4:3 layout, strict
-BSP/portal adaptation, and atomic position/room proposal implemented;
-sphere/contact resolution, synchronized state ownership, and Metal join remain
+BSP/portal adaptation, static sphere/contact resolution, and atomic
+position/room/factor proposal implemented; dynamic-object collision,
+synchronized state ownership, and Metal join remain
 
 This document separates confirmed legacy behavior from reconstruction
 decisions. The complete evidence record is
@@ -393,9 +394,12 @@ validates every local legacy fraction before its gate or room change.
 `src/airfix/render/LegacyGameplayCameraRoomState.cpp` then produces one complete
 candidate `{runtimeWorldPosition, worldRoomIndex}` only after that traversal
 finishes. Failures may retain a diagnostic hit and completed-hop count but
-never expose a partial state. This is a portable semantic proposal, not yet a
-thread-safe mutable simulation owner or the join to the completed static sphere
-resolver.
+never expose a partial state. The same module now composes the completed static
+sphere resolver, per-axis collision reduction, and corrected-position portal
+trace into one proposed `{position, room, axisFactors}` value. A correction may
+therefore prevent or preserve a portal transition before any state is exposed.
+This remains a portable semantic proposal, not yet a thread-safe mutable
+simulation owner.
 
 The exact next solver boundary is recorded in
 [EXP-20260728-014](../../experiments/EXP-20260728-014-camera-sphere-contact-recovery.md).
@@ -415,7 +419,9 @@ They preserve seven-axis broad-phase tests, static portal-room discovery,
 material filtering, raw edge/vertex directions, reverse-discovery tie order,
 and iterative constrained correction. The caller supplies bounded workspaces,
 and non-orthonormal bases fail because they would turn a sphere into an
-ellipsoid. Dynamic-object BSP remains separate.
+ellipsoid. The all-or-nothing state join is documented in
+[EXP-20260728-017](../../experiments/EXP-20260728-017-camera-static-state-integration.md).
+Dynamic-object BSP remains separate.
 
 ## Still unknown
 
@@ -455,3 +461,4 @@ evidence is recovered.
 - [Camera sphere-contact recovery](../../experiments/EXP-20260728-014-camera-sphere-contact-recovery.md)
 - [Camera constraint solver](../../experiments/EXP-20260728-015-camera-constraint-solver.md)
 - [Camera static sphere resolver](../../experiments/EXP-20260728-016-camera-static-sphere-resolver.md)
+- [Camera static state integration](../../experiments/EXP-20260728-017-camera-static-state-integration.md)

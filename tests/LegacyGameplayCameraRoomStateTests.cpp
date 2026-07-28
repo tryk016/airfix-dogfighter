@@ -1,6 +1,8 @@
 #include "airfix/render/LegacyGameplayCameraRoomState.hpp"
 
+#include <array>
 #include <atomic>
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <limits>
@@ -65,15 +67,35 @@ static_assert(noexcept(proposeLegacyGameplayCameraRoomState(
     std::declval<const BasisTransform&>(),
     std::declval<const LegacyGameplayCameraRoomState&>(),
     std::declval<const Vec3&>())));
+static_assert(noexcept(
+    proposeLegacyGameplayCameraStaticCollisionState(
+        std::declval<const MissionWorldSpatialArena&>(),
+        std::declval<const BasisTransform&>(),
+        std::declval<
+            const LegacyGameplayCameraStaticCollisionState&>(),
+        std::declval<const Vec3&>(),
+        std::declval<float>(),
+        std::declval<
+            std::span<MissionWorldRuntimeSphereCandidate>>(),
+        std::declval<std::span<Vec3>>())));
 static_assert(std::is_nothrow_copy_constructible_v<
               LegacyGameplayCameraRoomState>);
 static_assert(std::is_nothrow_copy_assignable_v<
               LegacyGameplayCameraRoomUpdateResult>);
+static_assert(std::is_nothrow_copy_assignable_v<
+              LegacyGameplayCameraStaticCollisionResult>);
 
 void require(const bool condition, const std::string& message) {
     if (!condition) {
         throw std::runtime_error(message);
     }
+}
+
+[[nodiscard]] bool close(
+    const float actual,
+    const float expected,
+    const float tolerance = 1.0e-6F) noexcept {
+    return std::abs(actual - expected) <= tolerance;
 }
 
 [[nodiscard]] MissionWorldSpatialPolygon portalTriangle(
@@ -153,6 +175,41 @@ void addPortalTree(
     });
     arena.polygons.push_back(
         portalTriangle(z, target, enabled));
+}
+
+void addStaticTree(
+    MissionWorldSpatialArena& arena,
+    const std::size_t ownerRoom,
+    const float z) {
+    const auto treeIndex = arena.trees.size();
+    const auto nodeIndex = arena.nodes.size();
+    const auto polygonIndex = arena.polygons.size();
+    const auto referenceIndex = arena.treeReferences.size();
+    arena.rooms[ownerRoom].firstStaticTreeReference =
+        referenceIndex;
+    arena.rooms[ownerRoom].staticTreeCount = 1U;
+    arena.treeReferences.push_back(treeIndex);
+    arena.trees.push_back({
+        .kind = CcfBspTreeKind::staticTree,
+        .worldRoomIndex = ownerRoom,
+        .rootNodeIndex = nodeIndex,
+        .firstNodeIndex = nodeIndex,
+        .nodeCount = 1U,
+    });
+    arena.nodes.push_back({
+        .splitNormal = {0.0F, 0.0F, 1.0F},
+        .pointOnPlane = {0.0F, 0.0F, z},
+        .firstPolygonIndex = polygonIndex,
+        .polygonCount = 1U,
+    });
+    arena.polygons.push_back({
+        .faceCross = {0.0F, 0.0F, 16.0F},
+        .faceNormal = {0.0F, 0.0F, 1.0F},
+        .point0 = {-2.0F, -2.0F, z},
+        .edge01 = {4.0F, 0.0F, 0.0F},
+        .edge12 = {-2.0F, 4.0F, 0.0F},
+        .materialCollisionMode2152 = 7U,
+    });
 }
 
 void testNoTransitionProposesCandidateInCurrentRoom() {
@@ -437,6 +494,333 @@ void testZeroTransitionLimitFailsBeforeRoomChange() {
         "zero transition limit changed the room before failing");
 }
 
+void testStaticCollisionProposesCorrectedStateAndFactors() {
+    auto arena = emptyArena(1U);
+    addStaticTree(arena, 0U, 0.0F);
+    const LegacyGameplayCameraStaticCollisionState current{
+        .roomState = {
+            .runtimeWorldPosition = {0.0F, 0.0F, -2.0F},
+            .worldRoomIndex = 0U,
+        },
+        .axisFactors = {0.8F, 0.6F, 1.0F},
+    };
+    std::array<MissionWorldRuntimeSphereCandidate, 4U>
+        candidates{};
+    std::array<Vec3, 4U> planes{};
+
+    const auto result =
+        proposeLegacyGameplayCameraStaticCollisionState(
+            arena,
+            {},
+            current,
+            {0.0F, 0.0F, -0.5F},
+            1.0F,
+            candidates,
+            planes);
+    require(
+        result.status ==
+                LegacyGameplayCameraStaticCollisionStatus::noTransition &&
+            result.valid() &&
+            result.proposedState.has_value() &&
+            result.sphereCollision.has_value() &&
+            result.sphereCollision->status ==
+                MissionWorldRuntimeSphereCollisionStatus::resolved &&
+            result.roomUpdate.has_value() &&
+            result.roomUpdate->status ==
+                LegacyGameplayCameraRoomUpdateStatus::noTransition,
+        "integrated static correction did not complete");
+    require(
+        close(
+            result.proposedState->roomState.runtimeWorldPosition.z,
+            -1.1F) &&
+            result.proposedState->roomState.worldRoomIndex == 0U &&
+            close(result.proposedState->axisFactors.x, 0.8F) &&
+            close(result.proposedState->axisFactors.y, 0.6F) &&
+            result.proposedState->axisFactors.z == 0.0F &&
+            current.roomState.runtimeWorldPosition ==
+                Vec3{0.0F, 0.0F, -2.0F} &&
+            current.axisFactors == Vec3{0.8F, 0.6F, 1.0F},
+        "corrected position, factors, or input atomicity changed");
+}
+
+void testCorrectedPositionControlsPortalTransition() {
+    auto blockedByCorrection = emptyArena();
+    addPortalTree(blockedByCorrection, 0U, 0.0F, 1U);
+    addStaticTree(blockedByCorrection, 0U, 0.5F);
+    const LegacyGameplayCameraStaticCollisionState current{
+        .roomState = {
+            .runtimeWorldPosition = {0.0F, 0.0F, -1.0F},
+            .worldRoomIndex = 0U,
+        },
+        .axisFactors = {1.0F, 1.0F, 1.0F},
+    };
+    std::array<MissionWorldRuntimeSphereCandidate, 4U>
+        candidates{};
+    std::array<Vec3, 4U> planes{};
+
+    const auto noTransition =
+        proposeLegacyGameplayCameraStaticCollisionState(
+            blockedByCorrection,
+            {},
+            current,
+            {0.0F, 0.0F, 0.1F},
+            0.5F,
+            candidates,
+            planes);
+    require(
+        noTransition.status ==
+                LegacyGameplayCameraStaticCollisionStatus::noTransition &&
+            noTransition.proposedState.has_value() &&
+            noTransition.proposedState->roomState.worldRoomIndex == 0U &&
+            close(
+                noTransition.proposedState->roomState
+                    .runtimeWorldPosition.z,
+                -0.05F,
+                2.0e-6F) &&
+            close(
+                noTransition.proposedState->axisFactors.z,
+                0.7F,
+                2.0e-6F) &&
+            noTransition.roomUpdate.has_value() &&
+            !noTransition.roomUpdate->diagnosticHit.has_value(),
+        "portal trace used the uncorrected candidate");
+
+    auto transitionAfterCorrection = emptyArena();
+    addPortalTree(transitionAfterCorrection, 0U, 0.0F, 1U);
+    addStaticTree(transitionAfterCorrection, 0U, 1.0F);
+    const auto transition =
+        proposeLegacyGameplayCameraStaticCollisionState(
+            transitionAfterCorrection,
+            {},
+            current,
+            {0.0F, 0.0F, 0.75F},
+            0.5F,
+            candidates,
+            planes);
+    require(
+        transition.status ==
+                LegacyGameplayCameraStaticCollisionStatus::transition &&
+            transition.proposedState.has_value() &&
+            transition.proposedState->roomState.worldRoomIndex == 1U &&
+            close(
+                transition.proposedState->roomState
+                    .runtimeWorldPosition.z,
+                0.45F,
+                2.0e-6F) &&
+            close(
+                transition.proposedState->axisFactors.z,
+                0.4F,
+                2.0e-6F) &&
+            transition.roomUpdate.has_value() &&
+            transition.roomUpdate->transitionCount == 1U,
+        "corrected endpoint did not drive the final room transition");
+}
+
+void testFactorReductionRemovesRuntimeUnitScale() {
+    auto arena = emptyArena(1U);
+    addStaticTree(arena, 0U, 0.0F);
+    const BasisTransform basis{
+        .runtimeUnitsPerSourceUnit = 2.0F,
+    };
+    const LegacyGameplayCameraStaticCollisionState current{
+        .roomState = {
+            .runtimeWorldPosition = {0.0F, 0.0F, -4.0F},
+            .worldRoomIndex = 0U,
+        },
+        .axisFactors = {1.0F, 1.0F, 2.0F},
+    };
+    std::array<MissionWorldRuntimeSphereCandidate, 4U>
+        candidates{};
+    std::array<Vec3, 4U> planes{};
+
+    const auto result =
+        proposeLegacyGameplayCameraStaticCollisionState(
+            arena,
+            basis,
+            current,
+            {0.0F, 0.0F, -1.0F},
+            2.0F,
+            candidates,
+            planes);
+    require(
+        result.valid() &&
+            result.proposedState.has_value() &&
+            close(
+                result.proposedState->roomState
+                    .runtimeWorldPosition.z,
+                -2.2F,
+                3.0e-6F) &&
+            close(
+                result.proposedState->axisFactors.z,
+                0.8F,
+                3.0e-6F),
+        "runtime unit scale leaked into legacy factor reduction");
+}
+
+void testStaticCollisionFailuresNeverProposeState() {
+    auto colliding = emptyArena(1U);
+    addStaticTree(colliding, 0U, 0.0F);
+    const LegacyGameplayCameraStaticCollisionState current{
+        .roomState = {
+            .runtimeWorldPosition = {0.0F, 0.0F, -2.0F},
+            .worldRoomIndex = 0U,
+        },
+        .axisFactors = {1.0F, 1.0F, 1.0F},
+    };
+    std::array<MissionWorldRuntimeSphereCandidate, 1U>
+        candidates{};
+    std::array<Vec3, 1U> planes{};
+    const auto candidateOverflow =
+        proposeLegacyGameplayCameraStaticCollisionState(
+            colliding,
+            {},
+            current,
+            {0.0F, 0.0F, -0.5F},
+            1.0F,
+            {},
+            planes);
+    const auto constraintOverflow =
+        proposeLegacyGameplayCameraStaticCollisionState(
+            colliding,
+            {},
+            current,
+            {0.0F, 0.0F, -0.5F},
+            1.0F,
+            candidates,
+            {});
+
+    auto selfPortal = onePortalArena(0.0F, 0U);
+    const auto portalFailure =
+        proposeLegacyGameplayCameraStaticCollisionState(
+            selfPortal,
+            {},
+            current,
+            {0.0F, 0.0F, 1.0F},
+            0.5F,
+            candidates,
+            planes,
+            {.maximumPortalTransitions = 0U});
+    auto invalidFactors = current;
+    invalidFactors.axisFactors.x =
+        std::numeric_limits<float>::infinity();
+    const auto factorFailure =
+        proposeLegacyGameplayCameraStaticCollisionState(
+            emptyArena(1U),
+            {},
+            invalidFactors,
+            {},
+            0.5F,
+            candidates,
+            planes);
+    BasisTransform anisotropic;
+    anisotropic.sourceToRuntime.columns[0].x = 2.0F;
+    const auto basisFailure =
+        proposeLegacyGameplayCameraStaticCollisionState(
+            colliding,
+            anisotropic,
+            current,
+            {0.0F, 0.0F, -0.5F},
+            1.0F,
+            candidates,
+            planes);
+    const auto nearFailure =
+        proposeLegacyGameplayCameraStaticCollisionState(
+            emptyArena(1U),
+            {},
+            current,
+            {},
+            std::numeric_limits<float>::infinity(),
+            candidates,
+            planes);
+
+    require(
+        candidateOverflow.status ==
+                LegacyGameplayCameraStaticCollisionStatus::
+                    candidateCapacityExceeded &&
+            constraintOverflow.status ==
+                LegacyGameplayCameraStaticCollisionStatus::
+                    constraintCapacityExceeded &&
+            portalFailure.status ==
+                LegacyGameplayCameraStaticCollisionStatus::
+                    transitionLimitExceeded &&
+            factorFailure.status ==
+                LegacyGameplayCameraStaticCollisionStatus::invalidInput &&
+            basisFailure.status ==
+                LegacyGameplayCameraStaticCollisionStatus::invalidBasis &&
+            nearFailure.status ==
+                LegacyGameplayCameraStaticCollisionStatus::invalidInput,
+        "integrated failure status mapping changed: candidate=" +
+            std::to_string(static_cast<int>(candidateOverflow.status)) +
+            " constraint=" +
+            std::to_string(static_cast<int>(constraintOverflow.status)) +
+            " portal=" +
+            std::to_string(static_cast<int>(portalFailure.status)) +
+            " factor=" +
+            std::to_string(static_cast<int>(factorFailure.status)) +
+            " basis=" +
+            std::to_string(static_cast<int>(basisFailure.status)) +
+            " near=" +
+            std::to_string(static_cast<int>(nearFailure.status)));
+    require(
+        !candidateOverflow.proposedState.has_value() &&
+            candidateOverflow.sphereCollision.has_value() &&
+            !candidateOverflow.roomUpdate.has_value() &&
+            !constraintOverflow.proposedState.has_value() &&
+            constraintOverflow.sphereCollision.has_value() &&
+            !constraintOverflow.roomUpdate.has_value() &&
+            !portalFailure.proposedState.has_value() &&
+            portalFailure.sphereCollision.has_value() &&
+            portalFailure.roomUpdate.has_value() &&
+            !factorFailure.proposedState.has_value() &&
+            factorFailure.sphereCollision.has_value() &&
+            !factorFailure.roomUpdate.has_value() &&
+            !basisFailure.proposedState.has_value() &&
+            basisFailure.sphereCollision.has_value() &&
+            !basisFailure.roomUpdate.has_value() &&
+            !nearFailure.proposedState.has_value() &&
+            !nearFailure.sphereCollision.has_value() &&
+            !nearFailure.roomUpdate.has_value(),
+        "failed integrated update exposed a partial proposal");
+}
+
+void testStaticCollisionProposalDoesNotAllocate() {
+    auto arena = emptyArena();
+    addPortalTree(arena, 0U, 0.0F, 1U);
+    addStaticTree(arena, 0U, 0.5F);
+    const LegacyGameplayCameraStaticCollisionState current{
+        .roomState = {
+            .runtimeWorldPosition = {0.0F, 0.0F, -1.0F},
+            .worldRoomIndex = 0U,
+        },
+        .axisFactors = {1.0F, 1.0F, 1.0F},
+    };
+    std::array<MissionWorldRuntimeSphereCandidate, 4U>
+        candidates{};
+    std::array<Vec3, 4U> planes{};
+
+    LegacyGameplayCameraStaticCollisionResult result;
+    allocationCount.store(0U, std::memory_order_relaxed);
+    countAllocations.store(true, std::memory_order_relaxed);
+    for (std::size_t iteration = 0U; iteration < 4'096U;
+         ++iteration) {
+        result =
+            proposeLegacyGameplayCameraStaticCollisionState(
+                arena,
+                {},
+                current,
+                {0.0F, 0.0F, 0.1F},
+                0.5F,
+                candidates,
+                planes);
+    }
+    countAllocations.store(false, std::memory_order_relaxed);
+
+    require(result.valid(), "integrated allocation probe failed");
+    require(
+        allocationCount.load(std::memory_order_relaxed) == 0U,
+        "integrated static collision proposal allocated");
+}
+
 void testHotPathDoesNotAllocate() {
     const auto arena = onePortalArena();
     const LegacyGameplayCameraRoomState current{
@@ -475,6 +859,11 @@ int main() {
         testOutOfSegmentAndPartialChainRemainDiagnosticOnly();
         testTransitionLimitFailureIsAtomic();
         testZeroTransitionLimitFailsBeforeRoomChange();
+        testStaticCollisionProposesCorrectedStateAndFactors();
+        testCorrectedPositionControlsPortalTransition();
+        testFactorReductionRemovesRuntimeUnitScale();
+        testStaticCollisionFailuresNeverProposeState();
+        testStaticCollisionProposalDoesNotAllocate();
         testHotPathDoesNotAllocate();
         std::cout << "LegacyGameplayCameraRoomState tests passed\n";
         return 0;

@@ -4,8 +4,8 @@
 
 **Scenario:** `SCN-CAMERA-001`
 
-**Status:** implemented portable state-proposal boundary; contact solver and
-runtime owner deferred
+**Status:** implemented portable portal-only boundary; static collision
+integration completed in a follow-up and the runtime owner remains deferred
 
 ## Question
 
@@ -22,9 +22,11 @@ This experiment covers only the semantic join between:
 - the strict runtime/source-world portal traversal; and
 - one complete proposed `{position, worldRoomIndex}` value.
 
-It does not implement the legacy sphere/contact solver, dynamic-object
+It does not itself implement the legacy sphere/contact solver, dynamic-object
 collision, camera orientation, synchronization between threads, a mutable
-simulation owner, Metal matrices, or native frame publication.
+simulation owner, Metal matrices, or native frame publication. The separate
+integrated static proposal composes this narrow primitive after sphere
+correction.
 
 ## Contract
 
@@ -95,11 +97,13 @@ and require no original game data.
 
 ## Result and next boundary
 
-The runtime portal adapter is now joined to a portable camera-position/room
-state value without inventing a contact algorithm or a shared mutable owner.
-The next camera integration step is to recover and implement the sphere/contact
-solver, then place this proposal behind the actual simulation owner and its
-frame-publication synchronization.
+The runtime portal adapter is joined to a portable camera-position/room state
+value without inventing a contact algorithm or a shared mutable owner. The
+static sphere solver and axis-factor response are now composed with this
+primitive by
+[EXP-20260728-017](EXP-20260728-017-camera-static-state-integration.md).
+The next step is to place that complete proposal behind the actual simulation
+owner and its frame-publication synchronization.
 
 Controlled executable traces are still required before declaring multi-room
 camera movement parity.
@@ -118,4 +122,5 @@ and strict fraction rejection are documented portable safety policies.
 - [Runtime/source-world spatial adapter](EXP-20260727-012-runtime-spatial-adapter.md)
 - [Portal BSP line trace](EXP-20260727-011-portal-bsp-line-trace.md)
 - [Gameplay camera modes](EXP-20260727-010-gameplay-camera-modes.md)
+- [Static collision state integration](EXP-20260728-017-camera-static-state-integration.md)
 - [Camera and projection contract](../re/systems/CAMERA-PROJECTION.md)
