@@ -538,10 +538,13 @@
   uniquely resolved triangle material into every retained spatial polygon.
   Native evidence confirms that the gameplay camera deletes collected
   contacts for non-null material modes `0` and `8`; numeric labels remain raw.
-  Sphere/contact collection and resolution, synchronized camera/simulation
-  ownership, dynamic-object collision, and the Metal join remain
-  unimplemented. Metal remains explicitly diagnostic and no full parity matrix
-  has been introduced.
+  The constraint projection stage now also reproduces strict plane admission,
+  directional override selection, oldest-active ordering, one-/two-plane
+  projection, and conflicting-plane stop behavior without allocation.
+  Sphere contact collection and closest-feature selection, synchronized
+  camera/simulation ownership, dynamic-object collision, and the Metal join
+  remain unimplemented. Metal remains explicitly diagnostic and no full parity
+  matrix has been introduced.
 - The authenticated setup-to-room provenance chain now crosses the native iOS
   publication boundary together with an immutable `PlayerSpawnPose`. Ghidra
   Headless and Rizin independently confirm x/y/z radians, mode zero, exact
@@ -591,7 +594,8 @@
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
 3. Implement the addressed static sphere-versus-triangle collector and
-   closest-feature/constraint resolution, then add synchronized
+   closest-feature selection using the completed constraint projection, then
+   add synchronized
    ownership/publication of the completed camera room-state proposal before
    introducing a Metal camera matrix or performing physical-device visual
    acceptance. World-to-camera, scalar projection with reciprocal depth, exact

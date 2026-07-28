@@ -1,6 +1,7 @@
 #include "airfix/render/LegacyCameraTransform.hpp"
 #include "airfix/render/LegacyGameplayCameraCollision.hpp"
 
+#include <array>
 #include <atomic>
 #include <bit>
 #include <cmath>
@@ -72,6 +73,19 @@ static_assert(noexcept(
         std::declval<float>(),
         std::declval<float>(),
         std::declval<bool>())));
+static_assert(noexcept(
+    legacyGameplayCameraConstraintAcceptsPlane(
+        std::declval<std::span<const Vec3>>(),
+        std::declval<const Vec3&>())));
+static_assert(noexcept(
+    legacyGameplayCameraConstraintPlaneOverrides(
+        std::declval<const Vec3&>(),
+        std::declval<const Vec3&>(),
+        std::declval<const Vec3&>())));
+static_assert(noexcept(
+    legacyGameplayCameraAttemptConstrainedMove(
+        std::declval<const Vec3&>(),
+        std::declval<std::span<const Vec3>>())));
 static_assert(noexcept(legacyGameplayCameraLineHitPoint(
     std::declval<const Vec3&>(),
     std::declval<const Vec3&>(),
@@ -125,6 +139,14 @@ void testRecoveredConstantsAndSphereRadius() {
             legacyGameplayCameraLinePortalTraceArgument) ==
             0x3DCCCCCDU,
         "line portal trace argument bits changed");
+    require(
+        std::bit_cast<std::uint64_t>(
+            legacyGameplayCameraConstraintDuplicateDotThreshold) ==
+            0x3FEFF7CED916872BULL &&
+            std::bit_cast<std::uint64_t>(
+                legacyGameplayCameraConstraintCrossLengthSquaredThreshold) ==
+                0x3F1A36E2EB1C432DULL,
+        "constraint threshold bits changed");
 
     const auto radius =
         legacyGameplayCameraCollisionSphereRadius(0.25F);
@@ -274,6 +296,172 @@ void testAircraftFactorRecovery() {
                  false)
                  .has_value(),
         "non-finite or overflowing recovery was accepted");
+}
+
+void testConstraintPlaneAdmissionAndOverrides() {
+    const std::array<Vec3, 1U> existing{
+        Vec3{1.0F, 0.0F, 0.0F},
+    };
+    const auto distinct =
+        legacyGameplayCameraConstraintAcceptsPlane(
+            existing,
+            Vec3{
+                std::nextafter(0.999F, 0.0F),
+                0.0F,
+                0.0F,
+            });
+    const auto duplicate =
+        legacyGameplayCameraConstraintAcceptsPlane(
+            existing, Vec3{0.999F, 0.0F, 0.0F});
+    require(
+        distinct == std::optional<bool>{true} &&
+            duplicate == std::optional<bool>{false},
+        "strict 0.999 plane admission threshold changed");
+
+    constexpr float inverseSqrt2 = 0.70710678118654752440F;
+    const Vec3 xPlane{1.0F, 0.0F, 0.0F};
+    const Vec3 diagonalPlane{
+        inverseSqrt2,
+        inverseSqrt2,
+        0.0F,
+    };
+    const Vec3 requestedMove{-1.0F, 1.0F, 0.0F};
+    const auto xOverridesDiagonal =
+        legacyGameplayCameraConstraintPlaneOverrides(
+            xPlane, diagonalPlane, requestedMove);
+    const auto diagonalOverridesX =
+        legacyGameplayCameraConstraintPlaneOverrides(
+            diagonalPlane, xPlane, requestedMove);
+    require(
+        xOverridesDiagonal == std::optional<bool>{true} &&
+            diagonalOverridesX == std::optional<bool>{false},
+        "directional Overrides predicate changed");
+
+    const Vec3 nonFinite{
+        std::numeric_limits<float>::quiet_NaN(),
+        0.0F,
+        0.0F,
+    };
+    require(
+        !legacyGameplayCameraConstraintAcceptsPlane(
+             existing, nonFinite)
+             .has_value() &&
+            !legacyGameplayCameraConstraintPlaneOverrides(
+                 xPlane, diagonalPlane, nonFinite)
+                 .has_value(),
+        "non-finite constraint predicate input was accepted");
+}
+
+void testConstrainedMovement() {
+    const Vec3 requested{-2.0F, -3.0F, 4.0F};
+    const auto unchanged =
+        legacyGameplayCameraAttemptConstrainedMove(requested, {});
+    require(
+        unchanged.has_value() && *unchanged == requested,
+        "empty constraint changed movement");
+
+    const std::array<Vec3, 1U> xPlane{
+        Vec3{1.0F, 0.0F, 0.0F},
+    };
+    const auto onePlane =
+        legacyGameplayCameraAttemptConstrainedMove(
+            requested, xPlane);
+    require(
+        onePlane.has_value(),
+        "single-plane constrained movement failed");
+    requireVec(
+        *onePlane,
+        Vec3{0.0F, -3.0F, 4.0F},
+        "single-plane projection changed");
+
+    const std::array<Vec3, 2U> xyPlanes{
+        Vec3{1.0F, 0.0F, 0.0F},
+        Vec3{0.0F, 1.0F, 0.0F},
+    };
+    const auto twoPlanes =
+        legacyGameplayCameraAttemptConstrainedMove(
+            requested, xyPlanes);
+    require(
+        twoPlanes.has_value(),
+        "two-plane constrained movement failed");
+    requireVec(
+        *twoPlanes,
+        Vec3{0.0F, 0.0F, 4.0F},
+        "two-plane cross-axis projection changed");
+
+    const std::array<Vec3, 3U> xyzPlanes{
+        Vec3{1.0F, 0.0F, 0.0F},
+        Vec3{0.0F, 1.0F, 0.0F},
+        Vec3{0.0F, 0.0F, 1.0F},
+    };
+    const auto threePlanes =
+        legacyGameplayCameraAttemptConstrainedMove(
+            Vec3{-1.0F, -1.0F, -1.0F}, xyzPlanes);
+    require(
+        threePlanes.has_value(),
+        "three-plane constrained movement failed");
+    requireVec(
+        *threePlanes,
+        Vec3{},
+        "three mutually overriding planes did not stop movement");
+
+    constexpr float narrowY = 0.005F;
+    const float narrowX =
+        std::sqrt(1.0F - narrowY * narrowY);
+    const std::array<Vec3, 2U> narrowPlanes{
+        Vec3{1.0F, 0.0F, 0.0F},
+        Vec3{narrowX, narrowY, 0.0F},
+    };
+    const Vec3 narrowMove{
+        -1.0F,
+        (narrowX - 1.0F) / narrowY,
+        4.0F,
+    };
+    const auto narrow =
+        legacyGameplayCameraAttemptConstrainedMove(
+            narrowMove, narrowPlanes);
+    require(
+        narrow.has_value(),
+        "narrow two-plane constraint failed");
+    requireVec(
+        *narrow,
+        Vec3{},
+        "sub-threshold cross product did not stop movement");
+
+    constexpr float openY = 0.02F;
+    const float openX =
+        std::sqrt(1.0F - openY * openY);
+    const std::array<Vec3, 2U> openPlanes{
+        Vec3{1.0F, 0.0F, 0.0F},
+        Vec3{openX, openY, 0.0F},
+    };
+    const Vec3 openMove{
+        -1.0F,
+        (openX - 1.0F) / openY,
+        4.0F,
+    };
+    const auto open =
+        legacyGameplayCameraAttemptConstrainedMove(
+            openMove, openPlanes);
+    require(
+        open.has_value(),
+        "open two-plane constraint failed");
+    requireVec(
+        *open,
+        Vec3{0.0F, 0.0F, 4.0F},
+        "above-threshold cross product changed");
+
+    require(
+        !legacyGameplayCameraAttemptConstrainedMove(
+             requested,
+             std::array<Vec3, 1U>{
+                 Vec3{
+                     std::numeric_limits<float>::infinity(),
+                     0.0F,
+                     0.0F,
+                 }})
+             .has_value(),
+        "non-finite constraint plane was accepted");
 }
 
 void testLineHitPoint() {
@@ -447,6 +635,10 @@ void testPrimitivesDoNotAllocateOrMutateInputs() {
     const Vec3 resolved{1.1F, 1.9F, 3.05F};
     const Vec3 anchor{4.0F, 5.0F, 6.0F};
     const Vec3 camera{-1.0F, 2.0F, -3.0F};
+    const std::array<Vec3, 2U> planes{
+        Vec3{1.0F, 0.0F, 0.0F},
+        Vec3{0.0F, 1.0F, 0.0F},
+    };
 
     allocationCount.store(0U, std::memory_order_relaxed);
     trackAllocations.store(true, std::memory_order_release);
@@ -461,17 +653,31 @@ void testPrimitivesDoNotAllocateOrMutateInputs() {
         const auto recovered =
             legacyAircraftRecoverGameplayCameraAxisFactors(
                 factors, 0.1F, 1.0F, false);
+        const auto accepts =
+            legacyGameplayCameraConstraintAcceptsPlane(
+                planes, Vec3{0.0F, 0.0F, 1.0F});
+        const auto overrides =
+            legacyGameplayCameraConstraintPlaneOverrides(
+                planes[0],
+                planes[1],
+                Vec3{-1.0F, -1.0F, 1.0F});
+        const auto constrained =
+            legacyGameplayCameraAttemptConstrainedMove(
+                Vec3{-1.0F, -1.0F, 1.0F}, planes);
         const auto hit = legacyGameplayCameraLineHitPoint(
             anchor, camera, 0.5F);
         const auto lookAt =
             legacyGameplayCameraLookAt(anchor, camera);
         if (!radius.has_value() || !reduced.has_value() ||
-            !recovered.has_value() || !hit.has_value() ||
-            !lookAt.has_value()) {
+            !recovered.has_value() || !accepts.has_value() ||
+            !overrides.has_value() || !constrained.has_value() ||
+            !hit.has_value() || !lookAt.has_value()) {
             complete = false;
             break;
         }
         checksum += *radius + reduced->x + recovered->y +
+            static_cast<float>(*accepts) +
+            static_cast<float>(*overrides) + constrained->z +
             hit->z + lookAt->cameraWorldLinear.columns[0].x;
     }
     trackAllocations.store(false, std::memory_order_release);
@@ -487,7 +693,9 @@ void testPrimitivesDoNotAllocateOrMutateInputs() {
             original == Vec3{1.0F, 2.0F, 3.0F} &&
             resolved == Vec3{1.1F, 1.9F, 3.05F} &&
             anchor == Vec3{4.0F, 5.0F, 6.0F} &&
-            camera == Vec3{-1.0F, 2.0F, -3.0F},
+            camera == Vec3{-1.0F, 2.0F, -3.0F} &&
+            planes[0] == Vec3{1.0F, 0.0F, 0.0F} &&
+            planes[1] == Vec3{0.0F, 1.0F, 0.0F},
         "camera primitive mutated an input");
 }
 
@@ -498,6 +706,8 @@ int main() {
         testRecoveredConstantsAndSphereRadius();
         testCollisionFactorReduction();
         testAircraftFactorRecovery();
+        testConstraintPlaneAdmissionAndOverrides();
+        testConstrainedMovement();
         testLineHitPoint();
         testLookAtAxesAndCameraConvention();
         testPrimitivesDoNotAllocateOrMutateInputs();

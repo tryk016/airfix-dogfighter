@@ -402,6 +402,14 @@ It fixes static sphere traversal order, the sphere-versus-triangle entry, the
 material deletion rule, best-penetration fields, and the constraint loop while
 keeping dynamic-object BSP separate.
 
+The bounded constraint stage is implemented and documented in
+[EXP-20260728-015](../../experiments/EXP-20260728-015-camera-constraint-solver.md).
+It preserves the native newest-first plane list, oldest-first active scan,
+directional `Overrides` predicate, exact `0.999` duplicate cutoff, exact
+`0.0001` two-plane cutoff, and one-/two-/three-plane projection outcomes.
+It remains separate from the unimplemented BSP contact collector and
+face/edge/vertex penetration selector.
+
 ## Still unknown
 
 - runtime parity of the recovered chase recurrence and collision-axis factors,
@@ -438,3 +446,4 @@ evidence is recovered.
 - [Runtime spatial adapter](../../experiments/EXP-20260727-012-runtime-spatial-adapter.md)
 - [Camera room-state proposal](../../experiments/EXP-20260728-013-camera-room-state-proposal.md)
 - [Camera sphere-contact recovery](../../experiments/EXP-20260728-014-camera-sphere-contact-recovery.md)
+- [Camera constraint solver](../../experiments/EXP-20260728-015-camera-constraint-solver.md)

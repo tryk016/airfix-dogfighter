@@ -5,6 +5,7 @@
 #include <bit>
 #include <cstdint>
 #include <optional>
+#include <span>
 
 namespace airfix::render {
 
@@ -15,6 +16,12 @@ inline constexpr float legacyGameplayCameraSpherePortalTraceArgument =
     std::bit_cast<float>(std::uint32_t{0x3E4CCCCDU});
 inline constexpr float legacyGameplayCameraLinePortalTraceArgument =
     std::bit_cast<float>(std::uint32_t{0x3DCCCCCDU});
+inline constexpr double
+    legacyGameplayCameraConstraintDuplicateDotThreshold =
+        std::bit_cast<double>(std::uint64_t{0x3FEFF7CED916872BULL});
+inline constexpr double
+    legacyGameplayCameraConstraintCrossLengthSquaredThreshold =
+        std::bit_cast<double>(std::uint64_t{0x3F1A36E2EB1C432DULL});
 
 // Returns nearClipping * 1.1 using the recovered binary32 multiplier.
 // A non-positive/non-finite near plane or non-finite result fails closed.
@@ -40,6 +47,31 @@ legacyAircraftRecoverGameplayCameraAxisFactors(
     float rawRefreshArgument,
     float vehicleField98,
     bool vehicleFlag460) noexcept;
+
+// Reconstructs CcConstraint::AddPlane's duplicate test. existingPlanesHeadFirst
+// uses the native linked-list order (newest plane first). The candidate is
+// retained unless one existing dot product is strictly greater than 0.999.
+[[nodiscard]] std::optional<bool>
+legacyGameplayCameraConstraintAcceptsPlane(
+    std::span<const Vec3> existingPlanesHeadFirst,
+    const Vec3& candidate) noexcept;
+
+// Reconstructs CcConstraintPlane::Overrides. `plane` is the native receiver:
+// it overrides `otherPlane` when movement projected onto the other plane still
+// has a strictly negative component along this plane.
+[[nodiscard]] std::optional<bool>
+legacyGameplayCameraConstraintPlaneOverrides(
+    const Vec3& plane,
+    const Vec3& otherPlane,
+    const Vec3& requestedMove) noexcept;
+
+// Reconstructs CcConstraint::AttemptMove for a finite requested vector and
+// finite plane normals in native head-first order. The original assumes the
+// normals are normalized; this function preserves their supplied magnitudes.
+[[nodiscard]] std::optional<Vec3>
+legacyGameplayCameraAttemptConstrainedMove(
+    const Vec3& requestedMove,
+    std::span<const Vec3> planesHeadFirst) noexcept;
 
 // Reconstructs the point selected by the legacy vehicle-to-camera line trace:
 // anchor + hitFraction * (camera - anchor). The collision backend is expected
