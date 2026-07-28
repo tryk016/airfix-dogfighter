@@ -2534,3 +2534,31 @@ superseded evidence.
   Rizin tests, public-boundary tests and 372-file scan, 253-row catalogue,
   `actionlint`, nine-file local-path scan, and `git diff --check` pass.
   GitHub Actions remains the publication gate.
+
+## 2026-07-28 - shared projectile collision decision
+
+- `EV-20260728-018` / `EXP-20260728-034`: separated the deterministic
+  `NfProjectile::DetectCollisions` decision layer from the still-missing live
+  combined spatial iterator.
+- Ghidra 12.1.2 confirms the canonical MSVC classes and high-level control
+  flow. Rizin 0.9.1 independently confirms the automatic
+  `PhLine::GetBspCollision` boundary, static-room list before dynamic objects,
+  shared strict-nearest fraction, object-local transforms, recursive visible
+  type-zero portal continuation, combined fraction, and exact projectile
+  material/actor/position branches.
+- Added an allocation-free C++20 decision for no hit, material-8 pass-through,
+  client/server and actor-state pass-through, portal continuation, actor
+  contact, and surface contact. It preserves callback position swaps,
+  normalization, resolved identity, material, room, and material-15 water
+  state and composes with the existing WpMGun surface callback.
+- The retained static tracer is deliberately not presented as complete:
+  moving actor geometry must compete through the same nearest fraction, live
+  actor state must supply the native gates, and portal continuation needs a
+  portable traversal ceiling.
+- Fresh Release and code-intelligence Ninja/GCC 15.2 builds each compile all
+  244 steps and pass 75/75 portable tests. The compilation database contains
+  155 portable entries, including both changed translation units; clangd
+  22.1.8 reports zero errors in each. The three RE wrapper suites, 12 Rizin
+  tests, public-boundary tests and 373-file scan, 254-row catalogue validation,
+  `actionlint`, nine-file local-path scan, and `git diff --check` pass. GitHub
+  Actions remains the publication gate.
