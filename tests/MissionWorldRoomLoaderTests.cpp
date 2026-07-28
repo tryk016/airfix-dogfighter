@@ -611,7 +611,15 @@ void testPlayerVisualSeparateCcfTexturesAndTablePose() {
                         .firstInstanceIndex = 1U,
                         .instanceCount = 1U}} &&
             room.playerActorMeshProvenance.size() == 1U &&
-            room.playerActorInstanceProvenance.size() == 1U,
+            room.playerActorInstanceProvenance.size() == 1U &&
+            room.playerActorCollision.has_value() &&
+            room.playerActorCollision->complete() &&
+            room.playerActorCollision->meshes.size() == 1U &&
+            room.playerActorCollision->instances.size() == 1U &&
+            room.playerActorCollision->meshProvenance[0].actor ==
+                room.playerActorMeshProvenance[0].actor &&
+            room.playerActorCollision->instances[0].actor ==
+                room.playerActorInstanceProvenance[0].actor,
         "player actor was not appended after the static room prefix");
     const auto &actorProvenance =
         room.playerActorInstanceProvenance.front();
@@ -626,6 +634,28 @@ void testPlayerVisualSeparateCcfTexturesAndTablePose() {
                 actorProvenance.actor.blueprintReference &&
             actorProvenance.actor.legacySkinSlot == 0U,
         "table actor world/local transform was not composed exactly once");
+    std::vector<airfix::render::LegacyDynamicBspLineObject>
+        collisionObjects(
+            room.playerActorCollision->instances.size());
+    std::vector<airfix::render::LegacyDynamicBspRoomObjectRange>
+        collisionRanges(room.spatialArena.rooms.size());
+    require(
+        airfix::render::publishPlayerActorCollisionFrame(
+            *room.playerActorCollision,
+            actorWorldFrom(room.playerSpawnPose),
+            321U,
+            true,
+            room.startSelection.worldRoomIndex,
+            collisionObjects,
+            collisionRanges) ==
+                airfix::render::
+                    PlayerActorCollisionPublicationStatus::published &&
+            collisionRanges[room.startSelection.worldRoomIndex] ==
+                airfix::render::LegacyDynamicBspRoomObjectRange{
+                    0U,
+                    collisionObjects.size()} &&
+            collisionObjects[0].actorObjectId == 321U,
+        "authenticated player collider did not publish into its start room");
     require(
         room.textures.size() == 3U,
         "player texture merge count mismatch");
@@ -1423,6 +1453,9 @@ sourceFootprint(const VerifiedContentSession &session,
              sizeof(airfix::render::PlayerActorSceneMeshProvenance);
     total += room.playerActorInstanceProvenance.size() *
              sizeof(airfix::render::PlayerActorSceneInstanceProvenance);
+    if (room.playerActorCollision.has_value()) {
+        total += room.playerActorCollision->retainedPayloadBytes;
+    }
     total += room.submission.meshUploads.size() *
              sizeof(airfix::render::DrawMeshUploadMetadata);
     total += room.submission.commands.size() *
@@ -1669,6 +1702,7 @@ void testPlayerExactAndOneUnderBudgets() {
     std::size_t playerCcfFileIndex = 0U;
     std::size_t playerCcfFootprint = 0U;
     std::size_t playerVisualLogicalBytes = 0U;
+    std::size_t playerCollisionLogicalBytes = 0U;
     std::size_t playerSceneLogicalBytes = 0U;
     std::uint64_t publishedCpuBytesBeforeAssembly = 0U;
     {
@@ -1692,7 +1726,12 @@ void testPlayerExactAndOneUnderBudgets() {
         require(
             room.playerActorBinding.has_value(),
             "player budget baseline omitted actor binding");
+        require(
+            room.playerActorCollision.has_value() &&
+                room.playerActorCollision->complete(),
+            "player budget baseline omitted actor collision");
         const auto &actorBinding = *room.playerActorBinding;
+        const auto &actorCollision = *room.playerActorCollision;
         const auto finalModelLogicalBytes =
             independentModelLogicalBytes(
                 room.model,
@@ -1730,6 +1769,13 @@ void testPlayerExactAndOneUnderBudgets() {
             "player logical admission byte fixture is invalid");
         playerVisualLogicalBytes =
             static_cast<std::size_t>(visualLogicalBytes);
+        require(
+            actorCollision.retainedPayloadBytes <=
+                std::numeric_limits<std::size_t>::max(),
+            "player collision byte fixture exceeds size_t");
+        playerCollisionLogicalBytes =
+            static_cast<std::size_t>(
+                actorCollision.retainedPayloadBytes);
         playerSceneLogicalBytes =
             static_cast<std::size_t>(sceneLogicalBytes);
 
@@ -1745,6 +1791,7 @@ void testPlayerExactAndOneUnderBudgets() {
             static_cast<std::uint64_t>(
                 room.playerActorInstanceProvenance.size()) *
                 sizeof(airfix::render::PlayerActorSceneInstanceProvenance) +
+            actorCollision.retainedPayloadBytes +
             static_cast<std::uint64_t>(
                 room.submission.meshUploads.size()) *
                 sizeof(airfix::render::DrawMeshUploadMetadata) +
@@ -1783,6 +1830,12 @@ void testPlayerExactAndOneUnderBudgets() {
             room.playerActorBinding->instanceCount;
         exact.playerVisual.maximumTotalBytes =
             playerVisualLogicalBytes;
+        exact.playerCollision.maximumMeshes =
+            actorCollision.meshes.size();
+        exact.playerCollision.maximumInstances =
+            actorCollision.instances.size();
+        exact.playerCollision.maximumRetainedBytes =
+            actorCollision.retainedPayloadBytes;
         exact.playerScene.maximumMeshes = room.model.meshes.size();
         exact.playerScene.maximumInstances =
             room.model.instances.size();
@@ -1963,6 +2016,15 @@ void testPlayerExactAndOneUnderBudgets() {
     }
     {
         auto limits = exact;
+        --limits.playerCollision.maximumRetainedBytes;
+        requireOneUnder(
+            limits,
+            MissionWorldRoomLoadIssueKind::
+                playerCollisionAssemblyFailure,
+            "one-under player collision bytes succeeded");
+    }
+    {
+        auto limits = exact;
         --limits.playerScene.maximumMeshes;
         requireOneUnder(
             limits,
@@ -1983,6 +2045,7 @@ void testPlayerExactAndOneUnderBudgets() {
         auto limits = exact;
         limits.maximumPublishedCpuBytes =
             publishedCpuBytesBeforeAssembly +
+            playerCollisionLogicalBytes +
             playerSceneLogicalBytes;
         auto session = openSession(pack);
         auto manifest = buildManifest(session, true);

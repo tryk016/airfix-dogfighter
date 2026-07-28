@@ -2629,3 +2629,42 @@ superseded evidence.
   scan, and `git diff --check` pass. The exact pushed commit also compiles all
   247 steps with GCC 13.3 and passes 76/76 tests in the isolated `Airfix-Dev`
   WSL environment. GitHub Actions remains the final publication gate.
+
+## 2026-07-28 - authenticated player dynamic-collider publication
+
+- `EXP-20260728-037` composes the already confirmed visible-slot
+  `AfVehicle::SetSkin` hierarchy (`EV-20260727-004`) with the recovered
+  `CcSrtNode` / `CcObject::CreateDynamicBsp` path (`EV-20260728-019`). It adds
+  no new binary interpretation and reads no original file outside the existing
+  verified-content transaction.
+- Added a bounded `PlayerActorCollisionAssembly`. It resolves physical meshes
+  and collision materials only through the same parsed player CCF and
+  actor-local visual provenance used by rendering, builds immutable per-mesh
+  dynamic BSPs in first-use order, and retains hierarchy instances in blueprint
+  DFS order. All geometry, material, BSP, count, depth, and aggregate retained-
+  byte limits fail atomically with typed issues.
+- The authenticated asset is now owned by `LoadedMissionWorldRoom`, charged to
+  the global published-CPU budget before scene composition, and covered by the
+  allocation-free publication proof. Mesh/instance counts, actor provenance,
+  local transforms, nested BSP byte accounting, and present/absent co-occurrence
+  must agree with the final player scene.
+- Added a two-pass `noexcept` frame publisher. It validates every actor-world
+  composition before writing, then fills exact-size caller-owned dynamic object
+  and per-room range spans with the supplied live object ID, active flag, pose,
+  and room. Failure leaves both outputs untouched; 4,096 successive
+  publications perform no observed heap allocation.
+- Synthetic tests drive a published player object through the complete
+  combined portal-line query and cover ordering, collision materials, exact
+  retained bytes, authenticated loader integration, exact/one-under limits,
+  provenance/transform/byte tampering, invalid output/room/pose inputs, and
+  atomic failures. Fresh Release and code-intelligence Ninja/GCC 15.2 builds
+  each pass 77/77 tests; the latter compiles 250 steps and produces 159
+  portable compilation-database entries. Focused clangd 22.1.8 checks report
+  zero code diagnostics in all four changed translation units (the reported
+  nonzero implementation statuses are optional feature-probe failures).
+  The three RE wrapper suites, 12 Rizin normalization tests, public-boundary
+  tests and 382-file scan, 259-row catalogue with only its two pre-existing
+  missing references, `actionlint`, 16-file changed-scope scan, and
+  `git diff --check` pass. The exact pushed commit builds all 250 steps with
+  GCC 13.3 and passes 77/77 tests in a new isolated `Airfix-Dev` WSL clone.
+  GitHub Actions remains the final publication gate.

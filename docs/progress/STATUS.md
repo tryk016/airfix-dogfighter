@@ -649,10 +649,15 @@
   per-room object ranges, follows automatic visible type-zero portals, replaces
   portal provenance with the later hit, composes whole-segment fractions, and
   fails typed on malformed ranges, out-of-segment hits, or cycles. Private
-  allocation/event dispatch, live muzzle transforms, authenticated actor/room
-  publication, the separate projectile-level follow-portal loop,
+  allocation/event dispatch, live muzzle transforms, non-player actor and
+  dynamic-portal publication, the separate projectile-level follow-portal loop,
   tracer/effect realization, secondary weapon families, dynamic camera-sphere
   contacts, runtime traces, and integration remain pending.
+  The authenticated player CCF now also produces bounded immutable per-mesh
+  colliders and ordered actor-local instances inside the atomic mission load.
+  A two-pass `noexcept` frame adapter publishes a supplied live player
+  world-pose, object ID, active flag, and current room into exact-size combined
+  line object/range spans without allocation or partial mutation.
 
 ## Confirmed
 
@@ -698,12 +703,12 @@
    controlled multi-room executable traces when the isolated runtime is ready.
 5. Keep BSP render culling disabled until its separate runtime semantics are
    proven against executable evidence.
-6. Publish authenticated mesh colliders and ordered actor instances into the
-   implemented combined line and automatic-portal query, then join `WpMGun`
-   timing, event `0xE2`, motion, damage, and ricochet contracts to the remaining
-   projectile-level portal loop, private type allocation/event dispatch, live
-   muzzle transforms, and tracer/effect adapters before wiring primary-fire
-   intent into runtime.
+6. Extend the implemented authenticated player collider publication to
+   non-player actors and dynamic portal objects with recovered native room/list
+   order. Then join `WpMGun` timing, event `0xE2`, motion, damage, and ricochet
+   contracts to the remaining projectile-level portal loop, private type
+   allocation/event dispatch, live muzzle transforms, and tracer/effect
+   adapters before wiring primary-fire intent into runtime.
 
 ## Open questions
 

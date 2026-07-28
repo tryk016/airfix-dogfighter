@@ -66,6 +66,7 @@ makeIssue(const MissionWorldRoomLoadIssueKind kind) noexcept {
         .submissionIssue = std::nullopt,
         .playerTextureBindingIssue = std::nullopt,
         .playerVisualAssemblyIssue = std::nullopt,
+        .playerCollisionAssemblyIssue = std::nullopt,
         .playerSceneAssemblyIssue = std::nullopt,
         .publicationIssue = std::nullopt,
     };
@@ -1637,6 +1638,7 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             .playerActorMeshProvenance = {},
             .playerActorInstanceProvenance = {},
             .playerActorBinding = std::nullopt,
+            .playerActorCollision = std::nullopt,
             .submission = {},
             .textures = {},
             .semanticCcfSourceCount = descriptors.size(),
@@ -1997,6 +1999,91 @@ loadMissionWorldRoom(VerifiedContentSession &session,
                     guardedProgress,
                     MissionWorldRoomLoadPhase::
                         assemblingPlayerVisual,
+                    1U,
+                    1U) ||
+                !report(
+                    result,
+                    stopToken,
+                    guardedProgress,
+                    MissionWorldRoomLoadPhase::
+                        assemblingPlayerCollision,
+                    0U,
+                    1U)) {
+                return result;
+            }
+
+            render::PlayerActorCollisionAssembly actorCollision;
+            auto playerCollisionLimits = limits.playerCollision;
+            playerCollisionLimits.maximumRetainedBytes =
+                std::min(
+                    playerCollisionLimits.maximumRetainedBytes,
+                    remaining(
+                        limits.maximumPublishedCpuBytes,
+                        publishedCpuBytes));
+            try {
+                requireExpectedSession(
+                    session, expectedIdentity, expectedRevision);
+                actorCollision =
+                    render::buildPlayerActorCollisionAssembly(
+                        *playerCcf,
+                        actorVisual,
+                        request.basis,
+                        playerCollisionLimits);
+                requireExpectedSession(
+                    session, expectedIdentity, expectedRevision);
+            } catch (const std::bad_alloc &) {
+                throw;
+            } catch (const SessionIdentityChanged &) {
+                throw;
+            } catch (...) {
+                addIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::
+                        playerCollisionAssemblyFailure);
+                return result;
+            }
+            if (!actorCollision.complete()) {
+                for (const auto &upstream : actorCollision.issues) {
+                    auto issue = makeIssue(
+                        MissionWorldRoomLoadIssueKind::
+                            playerCollisionAssemblyFailure);
+                    issue.playerCollisionAssemblyIssue =
+                        upstream.kind;
+                    addIssue(result, std::move(issue));
+                }
+                if (actorCollision.issues.empty()) {
+                    addIssue(
+                        result,
+                        MissionWorldRoomLoadIssueKind::
+                            playerCollisionAssemblyFailure);
+                }
+                return result;
+            }
+            candidate.playerActorCollision =
+                std::move(actorCollision);
+            if (!checkedMissionWorldRoomByteAdd(
+                    publishedCpuBytes,
+                    candidate.playerActorCollision->
+                        retainedPayloadBytes)) {
+                addIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::integerOverflow);
+                return result;
+            }
+            if (publishedCpuBytes >
+                limits.maximumPublishedCpuBytes) {
+                addIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::
+                        publishedCpuLimitExceeded);
+                return result;
+            }
+            if (!report(
+                    result,
+                    stopToken,
+                    guardedProgress,
+                    MissionWorldRoomLoadPhase::
+                        assemblingPlayerCollision,
                     1U,
                     1U) ||
                 !report(

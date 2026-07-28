@@ -165,6 +165,7 @@ add_library(airfix_render
     src/airfix/render/LegacyGameplayCameraStateOwner.cpp
     src/airfix/render/LegacyGameplayCameraStepCoordinator.cpp
     src/airfix/render/LegacyDynamicBsp.cpp
+    src/airfix/render/PlayerActorCollisionAssembly.cpp
     src/airfix/render/LegacyGeometry.cpp
     src/airfix/render/LegacyQuaternionRotation.cpp
     src/airfix/render/LegacyScreenProjection.cpp
@@ -703,6 +704,14 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_player_actor_scene_assembly_tests
         COMMAND airfix_player_actor_scene_assembly_tests)
+
+    add_executable(airfix_player_actor_collision_assembly_tests
+        tests/PlayerActorCollisionAssemblyTests.cpp)
+    target_link_libraries(
+        airfix_player_actor_collision_assembly_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_player_actor_collision_assembly_tests
+        COMMAND airfix_player_actor_collision_assembly_tests)
 
     add_executable(airfix_player_actor_pose_frame_tests
         tests/PlayerActorPoseFrameTests.cpp)
