@@ -1,12 +1,12 @@
 # Camera and projection contract
 
 **Status:** legacy scalar projection, world-to-view, depth presets, gameplay
-camera presets, quaternion adapter, stateless chase smoothing, collision
+camera presets, quaternion adapter, chase smoothing, collision
 scalars/factors/line interpolation, look-at pose math, 4:3 layout, strict
-BSP/portal adaptation, static sphere/contact resolution, and atomic
-position/room/factor proposal plus synchronized immutable frame publication
-implemented; dynamic-object collision, complete pose assembly, and Metal join
-remain
+BSP/portal adaptation, static sphere/contact resolution, atomic
+position/room/factor publication, producer-side step composition, and Metal
+clip/depth consumption implemented; raw refresh units, cross-thread packet
+publication, dynamic-object collision, and device acceptance remain
 
 This document separates confirmed legacy behavior from reconstruction
 decisions. The complete evidence record is
@@ -449,6 +449,17 @@ bootstrap. Objective-C++ repacks the camera basis, translation, cached
 inverse-square, projection scalars, and logical canvas into a fixed Metal ABI.
 The shader repeats the recovered operations instead of precomposing them.
 
+`src/airfix/render/LegacyGameplayCameraStepCoordinator.cpp` composes the
+recovered producer stages without hiding missing inputs. It accepts the raw
+AirCraft factor-recovery argument and vehicle gates, applies cumulative camera
+presses to the persistent three-mode cycle, treats rear view as a momentary
+tuple, and preserves the distinct native chase-position and vehicle-anchor
+inputs. It prebuilds the complete next pose and clip packet before committing
+state, mode, or the input count. Failures at any stage expose no packet and
+retain the prior authoritative values. The caller still owns the retained
+arena, basis, and bounded collision workspaces; no cross-thread Metal
+publication is claimed by this producer-side contract.
+
 The exact next solver boundary is recorded in
 [EXP-20260728-014](../../experiments/EXP-20260728-014-camera-sphere-contact-recovery.md).
 It fixes static sphere traversal order, the sphere-versus-triangle entry, the
@@ -476,6 +487,9 @@ documents line completion, unit SRT evidence, and pose composition.
 [EXP-20260728-020](../../experiments/EXP-20260728-020-metal-gameplay-camera-packet.md)
 documents homogeneous Metal packaging, reverse depth, presentation, and the
 explicit bootstrap policy.
+[EXP-20260728-021](../../experiments/EXP-20260728-021-camera-step-coordinator.md)
+documents recovered producer ordering, explicit raw inputs, and transactional
+step behavior.
 Dynamic-object BSP and transparent collision-portal traversal remain separate.
 
 ## Still unknown
@@ -521,3 +535,4 @@ evidence is recovered.
 - [Camera state owner and snapshot](../../experiments/EXP-20260728-018-camera-state-owner-snapshot.md)
 - [Retained-static line and pose snapshot](../../experiments/EXP-20260728-019-camera-retained-static-pose-snapshot.md)
 - [Metal gameplay-camera clip packet](../../experiments/EXP-20260728-020-metal-gameplay-camera-packet.md)
+- [Gameplay-camera step coordinator](../../experiments/EXP-20260728-021-camera-step-coordinator.md)

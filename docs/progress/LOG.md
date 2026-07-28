@@ -2199,3 +2199,25 @@ superseded evidence.
   65 portable tests. Pull-request CI passes the clangd preset plus Ubuntu,
   Windows, ARM64 macOS 26, unsigned `iphoneos`, and unsigned
   `iphonesimulator`; Xcode 26.6 accepts the Objective-C++ and Metal contracts.
+
+## 2026-07-28 - transactional gameplay-camera step coordinator
+
+- `EV-20260728-007` / `EXP-20260728-021`: composed the recovered AirCraft
+  producer order into one portable transaction: factor recovery, persistent
+  mode and momentary rear selection, chase, static sphere/factor/portal
+  correction, retained vehicle line and second portal update, look-at pose,
+  homogeneous clip packet, then atomic state commit.
+- Kept the unproven factor-recovery refresh argument and both recovered vehicle
+  gates as explicit caller inputs. The coordinator does not substitute 60 Hz,
+  the aircraft's 12 ms dependent interval, or another guessed `dt`, so native
+  iOS integration remains intentionally separate.
+- Mode, cumulative camera-cycle count, state, and returned packet change only
+  after every stage and the single-writer commit succeed. Rear view never
+  mutates the persistent mode; skipped accepted input counts cycle modulo
+  three.
+- Synthetic tests cover initialization provenance, complete stationary steps,
+  separation of native chase-position and vehicle-anchor inputs, factor
+  clear/recovery ordering, mode/rear input, early and late failure rollback,
+  stale commits, and 4,096 allocation-counted successful steps. Fresh Release
+  and code-intelligence builds both pass the current 66/66 portable suite;
+  focused clangd 22 checks report zero errors.
