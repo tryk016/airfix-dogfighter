@@ -12,6 +12,7 @@ inline constexpr std::uint32_t legacyRicochetPositionEvent = 0xA6U;
 inline constexpr std::uint32_t legacyRicochetMaterialEvent = 0xB6U;
 inline constexpr std::uint32_t legacyRicochetNormalEvent = 0xB7U;
 inline constexpr std::int32_t legacyMachineGunInterpolatedMaterial = 15;
+inline constexpr std::int32_t legacyProjectilePassThroughMaterial = 8;
 inline constexpr float legacyRicochetPrimaryScalar = 1.0F;
 inline constexpr float legacyRicochetSecondaryScalar = 0.2F;
 
@@ -107,6 +108,76 @@ legacyMachineGunProjectileAdvanceUnobstructed(
     const LegacyMachineGunProjectileState& current,
     const LegacyMachineGunAmmoProfile& profile,
     float deltaSeconds) noexcept;
+
+struct LegacyProjectileCollisionActorOwner final {
+    // Nonzero CcObject +0x19C identity. Resolution and gates are supplied by
+    // the live actor adapter because retained mission BSP has no actor state.
+    std::uint32_t uid{};
+    bool projectileIsServer{};
+    bool actorResolved{};
+    bool projectileActorCollisionsEnabled{};
+    bool actorAcceptsProjectileCollision{};
+    bool actorActive{};
+};
+
+struct LegacyProjectileCollisionHit final {
+    float fraction{};
+    LegacyMachineGunVector3 normal{};
+    // Native owner-backed polygons dereference their material before any
+    // portal or actor decision. Absence is accepted only for ownerless hits.
+    std::optional<std::int32_t> material;
+    bool ownerObjectPresent{};
+    // Exact CcObject::GetPortalType domain: -1 nonportal, 0 traversable,
+    // 1 reflecting/solid. It is ignored for actor-owned and ownerless hits.
+    std::int32_t portalType{-1};
+    std::optional<std::int32_t> portalRoomId;
+    std::optional<LegacyProjectileCollisionActorOwner> actorOwner;
+};
+
+struct LegacyProjectileCollisionStepInput final {
+    LegacyMachineGunVector3 segmentStart{};
+    LegacyMachineGunVector3 segmentEnd{};
+    std::int32_t roomId{};
+    std::optional<LegacyProjectileCollisionHit> hit;
+};
+
+enum class LegacyProjectileCollisionOutcome : std::uint8_t {
+    advanceNoHit,
+    advanceMaterialPassThrough,
+    advanceActorGate,
+    followPortal,
+    actorContact,
+    surfaceContact,
+};
+
+struct LegacyProjectileCollisionDecision final {
+    LegacyProjectileCollisionOutcome outcome{
+        LegacyProjectileCollisionOutcome::advanceNoHit};
+    // Exact semantic equivalents of NfProjectile +0xC0 and +0xCC after the
+    // shared transition. For a portal continuation, position is the next
+    // trace start and previousPosition still carries the segment endpoint.
+    LegacyMachineGunVector3 position{};
+    LegacyMachineGunVector3 previousPosition{};
+    std::int32_t roomId{};
+    float collisionFraction{};
+    LegacyMachineGunVector3 normal{};
+    std::optional<std::int32_t> material;
+    // Present only for actorContact. A failed server actor lookup follows the
+    // native surface path without claiming that identity as resolved.
+    std::optional<std::uint32_t> actorUid;
+    // Material 15 sets NfProjectile's water flag before the surface callback.
+    bool marksWater{};
+};
+
+// Reconstructs the deterministic decision layer of
+// NfProjectile::DetectCollisions for one nearest PhLine result. The caller
+// still owns the combined static/dynamic spatial query and repeats it after
+// followPortal. Portable input rejects non-finite/out-of-segment hits and
+// incomplete owner-backed material/portal metadata instead of reproducing
+// unsafe native dereferences.
+[[nodiscard]] std::optional<LegacyProjectileCollisionDecision>
+legacyProjectileCollisionDecision(
+    const LegacyProjectileCollisionStepInput& input) noexcept;
 
 struct LegacyMachineGunDamageCommand final {
     std::uint32_t eventType{legacyMachineGunDamageEvent};

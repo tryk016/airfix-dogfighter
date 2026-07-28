@@ -635,10 +635,16 @@
   already-advanced cadence/barrel/ammunition state so a later private
   allocation failure cannot incorrectly roll it back. Root ID zero,
   monotonic ordinary-room IDs, and newest-first lookup now map bidirectionally
-  to the retained mission-world catalogue without native pointers. Private
-  allocation/event dispatch, live muzzle transforms, combined
-  room/BSP/portal/dynamic-actor collision, tracer/effect realization, secondary
-  weapon families, runtime traces, and integration remain pending.
+  to the retained mission-world catalogue without native pointers.
+  `PhLine::GetBspCollision` now also confirms static-before-dynamic traversal
+  through one strict-nearest fraction plus recursive visible type-zero portal
+  continuation. An allocation-free single-hit decision seam implements the
+  exact shared material-8, portal, client/server actor-gate, actor-contact,
+  surface, normal, position-swap, and material-15 water behavior. Private
+  allocation/event dispatch, live muzzle transforms, combined retained-static
+  and live-dynamic geometry, bounded portal iteration, tracer/effect
+  realization, secondary weapon families, runtime traces, and integration
+  remain pending.
 
 ## Confirmed
 

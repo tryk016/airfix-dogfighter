@@ -255,6 +255,41 @@ Age greater than four deactivates the projectile without advancing it. The
 subclass refresh at RVA `0x0000B5D0` synchronizes the optional tracer position
 and then invokes the shared projectile refresh.
 
+## Shared collision decision
+
+`PhLine::GetBspCollision` at RVA `0x00038BD0` traces room static BSP first and
+then active dynamic-object BSP through one shared strict-nearest fraction.
+Visible type-zero portals recursively continue from the contact point into the
+target room and combine the inner and outer fractions. This ordering means a
+static-only query cannot safely stand in for the full native result: a moving
+actor may be nearer.
+
+After each returned hit, `NfProjectile::DetectCollisions` applies:
+
+```text
+ownerless                         -> surface
+owner material 8                  -> commit endpoint
+actor object on non-server        -> commit endpoint
+server actor lookup failure       -> surface
+disabled projectile/actor gates   -> commit endpoint
+eligible actor                    -> actor contact
+nonportal/type-1 scene object     -> surface
+type-0 scene object               -> change room and query again
+```
+
+Actor and surface paths normalize a non-unit normal. Material `15` swaps the
+full endpoint into the callback state, sets the projectile water flag, and
+leaves fraction interpolation to the subclass; other surfaces interpolate in
+the shared layer.
+
+`legacyProjectileCollisionDecision` now preserves this deterministic
+single-hit state machine as an allocation-free seam. It exposes endpoint,
+portal, actor, and surface outcomes and composes with the existing WpMGun
+contact functions. The live adapter still must merge static and dynamic BSP,
+supply actor identities/gates, bound repeated portal traversal, and dispatch
+callbacks. See
+[EXP-20260728-034](../../experiments/EXP-20260728-034-projectile-collision-decision.md).
+
 ## Actor damage and surface reaction
 
 The actor-hit override at RVA `0x0000B2C0` emits damage event `0x7D` only when
@@ -303,7 +338,10 @@ fields, and the effect-creation request without owning an effect runtime.
 - target-velocity lead and the exact zero-direction fallback;
 - an unobstructed ballistic/lifetime step;
 - the creator/self actor-hit gate and damage command; and
-- surface interpolation, deactivation, and a bounded ricochet event request.
+- surface interpolation, deactivation, and a bounded ricochet event request;
+  and
+- the shared material/portal/actor/surface decision order for one already
+  selected nearest collision.
 
 `LegacyMachineGunShotCoordinator` composes the timing request with the selected
 already-rotated muzzle, capped technology ammo profile, and complete payload.
@@ -315,17 +353,18 @@ The helpers accept seconds because the owning scheduler boundary already
 performs the recovered millisecond conversion. They reject non-finite or unsafe
 consumed inputs instead of reproducing x87 unordered behavior or invalid
 attachment memory. They remain unwired: an eventual runtime adapter must
-resolve private types and authored muzzle transforms, trace the room/BSP and
-dynamic actor segment, dispatch events, and honor allocation failure without
-inventing a projectile or effect.
+resolve private types and authored muzzle transforms, merge room BSP and
+dynamic actor geometry into one strict-nearest result, repeat bounded portal
+continuations, dispatch events, and honor allocation failure without inventing
+a projectile or effect.
 
 ## Remaining work
 
 - Consume the prepared-shot transaction through private type allocation and
   event dispatch without rolling back fire state on allocation failure.
-- Join projectile movement to a combined static/portal/dynamic-actor spatial
-  adapter after dynamic actor ownership and collision-iterator ordering are
-  explicit.
+- Join projectile movement to a combined static/dynamic-actor spatial adapter
+  using the now-explicit strict-nearest ordering and decision seam; add bounded
+  portal continuation after dynamic actor ownership is retained.
 - Recreate the optional `mguntracer` and `FxRicochet` visual/effect adapters.
 - Trace sample/effect commands associated with a shot.
 - Recover secondary weapon selection and each secondary projectile family.

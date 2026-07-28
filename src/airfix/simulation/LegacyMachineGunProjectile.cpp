@@ -74,6 +74,53 @@ constexpr float half = 0.5F;
     return value.x * value.x + value.y * value.y + value.z * value.z;
 }
 
+[[nodiscard]] LegacyMachineGunVector3 interpolate(
+    const LegacyMachineGunVector3& start,
+    const LegacyMachineGunVector3& end,
+    const float fraction) noexcept {
+    return {
+        (end.x - start.x) * fraction + start.x,
+        (end.y - start.y) * fraction + start.y,
+        (end.z - start.z) * fraction + start.z,
+    };
+}
+
+[[nodiscard]] std::optional<LegacyMachineGunVector3> normalizedNormal(
+    const LegacyMachineGunVector3& normal,
+    const bool actorOrder) noexcept {
+    if (!finite(normal)) {
+        return std::nullopt;
+    }
+    const double x = static_cast<double>(normal.x);
+    const double y = static_cast<double>(normal.y);
+    const double z = static_cast<double>(normal.z);
+    // Every binary32 product is exact in binary64, which is a closer
+    // deterministic proxy for the unspilled x87 sum than forcing binary32
+    // intermediates. The actor and surface paths use different recovered
+    // addition orders.
+    const double lengthSquaredValue = actorOrder
+        ? (x * x + y * y) + z * z
+        : (y * y + z * z) + x * x;
+    if (!std::isfinite(lengthSquaredValue) ||
+        lengthSquaredValue <= 0.0) {
+        return std::nullopt;
+    }
+    if (lengthSquaredValue == 1.0) {
+        return normal;
+    }
+    const double inverseLength =
+        1.0 / std::sqrt(lengthSquaredValue);
+    const LegacyMachineGunVector3 result{
+        .x = static_cast<float>(x * inverseLength),
+        .y = static_cast<float>(y * inverseLength),
+        .z = static_cast<float>(z * inverseLength),
+    };
+    if (!finite(result)) {
+        return std::nullopt;
+    }
+    return result;
+}
+
 } // namespace
 
 std::optional<LegacyMachineGunAmmoProfile>
@@ -252,6 +299,152 @@ legacyMachineGunProjectileAdvanceUnobstructed(
         return std::nullopt;
     }
     return step;
+}
+
+std::optional<LegacyProjectileCollisionDecision>
+legacyProjectileCollisionDecision(
+    const LegacyProjectileCollisionStepInput& input) noexcept {
+    if (!finite(input.segmentStart) || !finite(input.segmentEnd)) {
+        return std::nullopt;
+    }
+
+    const auto advance = [&input](
+                             const LegacyProjectileCollisionOutcome outcome) {
+        return LegacyProjectileCollisionDecision{
+            .outcome = outcome,
+            .position = input.segmentEnd,
+            .previousPosition = input.segmentStart,
+            .roomId = input.roomId,
+            .collisionFraction = 0.0F,
+            .normal = {},
+            .material = std::nullopt,
+            .actorUid = std::nullopt,
+            .marksWater = false,
+        };
+    };
+    if (!input.hit.has_value()) {
+        return advance(
+            LegacyProjectileCollisionOutcome::advanceNoHit);
+    }
+
+    const auto& hit = *input.hit;
+    if (!std::isfinite(hit.fraction) ||
+        hit.fraction < 0.0F ||
+        hit.fraction > 1.0F ||
+        !finite(hit.normal) ||
+        (!hit.ownerObjectPresent && hit.actorOwner.has_value()) ||
+        (hit.ownerObjectPresent && !hit.material.has_value())) {
+        return std::nullopt;
+    }
+    if (hit.actorOwner.has_value() && hit.actorOwner->uid == 0U) {
+        return std::nullopt;
+    }
+
+    if (hit.ownerObjectPresent &&
+        *hit.material == legacyProjectilePassThroughMaterial) {
+        auto result = advance(
+            LegacyProjectileCollisionOutcome::
+                advanceMaterialPassThrough);
+        result.collisionFraction = hit.fraction;
+        result.normal = hit.normal;
+        result.material = hit.material;
+        return result;
+    }
+
+    const auto contactPosition = interpolate(
+        input.segmentStart, input.segmentEnd, hit.fraction);
+    if (!finite(contactPosition)) {
+        return std::nullopt;
+    }
+
+    if (hit.actorOwner.has_value()) {
+        const auto& actor = *hit.actorOwner;
+        if (!actor.projectileIsServer) {
+            auto result = advance(
+                LegacyProjectileCollisionOutcome::advanceActorGate);
+            result.collisionFraction = hit.fraction;
+            result.normal = hit.normal;
+            result.material = hit.material;
+            return result;
+        }
+        if (actor.actorResolved &&
+            (!actor.projectileActorCollisionsEnabled ||
+             !actor.actorAcceptsProjectileCollision ||
+             !actor.actorActive)) {
+            auto result = advance(
+                LegacyProjectileCollisionOutcome::advanceActorGate);
+            result.collisionFraction = hit.fraction;
+            result.normal = hit.normal;
+            result.material = hit.material;
+            return result;
+        }
+        if (actor.actorResolved) {
+            const auto normal = normalizedNormal(hit.normal, true);
+            if (!normal.has_value()) {
+                return std::nullopt;
+            }
+            return LegacyProjectileCollisionDecision{
+                .outcome =
+                    LegacyProjectileCollisionOutcome::actorContact,
+                .position = contactPosition,
+                .previousPosition = input.segmentStart,
+                .roomId = input.roomId,
+                .collisionFraction = hit.fraction,
+                .normal = *normal,
+                .material = hit.material,
+                .actorUid = actor.uid,
+            };
+        }
+        // The native server path treats an object whose actor lookup fails as
+        // a surface. The subclass may independently attempt owner resolution.
+    }
+    else if (hit.ownerObjectPresent) {
+        if (hit.portalType == 0) {
+            if (!hit.portalRoomId.has_value()) {
+                return std::nullopt;
+            }
+            return LegacyProjectileCollisionDecision{
+                .outcome =
+                    LegacyProjectileCollisionOutcome::followPortal,
+                .position = contactPosition,
+                .previousPosition = input.segmentEnd,
+                .roomId = *hit.portalRoomId,
+                .collisionFraction = hit.fraction,
+                .normal = hit.normal,
+                .material = hit.material,
+                .actorUid = std::nullopt,
+                .marksWater = false,
+            };
+        }
+        if (hit.portalType != -1 && hit.portalType != 1) {
+            return std::nullopt;
+        }
+    }
+
+    const auto normal = normalizedNormal(hit.normal, false);
+    if (!normal.has_value()) {
+        return std::nullopt;
+    }
+    const bool marksWater =
+        hit.material == legacyMachineGunInterpolatedMaterial;
+    return LegacyProjectileCollisionDecision{
+        .outcome = LegacyProjectileCollisionOutcome::surfaceContact,
+        // Material 15 swaps the full endpoint into +0xC0 and leaves the
+        // interpolation to the subclass callback. Other materials interpolate
+        // before that callback.
+        .position = marksWater ? input.segmentEnd : contactPosition,
+        .previousPosition = input.segmentStart,
+        .roomId = input.roomId,
+        .collisionFraction = hit.fraction,
+        .normal = *normal,
+        .material = hit.material,
+        .actorUid =
+            hit.actorOwner.has_value() &&
+                hit.actorOwner->actorResolved
+            ? std::optional<std::uint32_t>{hit.actorOwner->uid}
+            : std::nullopt,
+        .marksWater = marksWater,
+    };
 }
 
 std::optional<LegacyMachineGunDamageCommand>

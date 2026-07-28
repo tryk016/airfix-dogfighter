@@ -19,6 +19,10 @@ using airfix::simulation::LegacyMachineGunProjectileState;
 using airfix::simulation::LegacyMachineGunSurfaceContactInput;
 using airfix::simulation::LegacyMachineGunTargetLead;
 using airfix::simulation::LegacyMachineGunVector3;
+using airfix::simulation::LegacyProjectileCollisionActorOwner;
+using airfix::simulation::LegacyProjectileCollisionHit;
+using airfix::simulation::LegacyProjectileCollisionOutcome;
+using airfix::simulation::LegacyProjectileCollisionStepInput;
 using airfix::simulation::legacyMachineGunAmmoProfile;
 using airfix::simulation::legacyMachineGunDamageEvent;
 using airfix::simulation::legacyMachineGunInterpolatedMaterial;
@@ -28,6 +32,8 @@ using airfix::simulation::legacyMachineGunProjectileEvent;
 using airfix::simulation::legacyMachineGunProjectileInitialState;
 using airfix::simulation::legacyMachineGunProjectileSpawnPayload;
 using airfix::simulation::legacyMachineGunProjectileSurfaceContact;
+using airfix::simulation::legacyProjectileCollisionDecision;
+using airfix::simulation::legacyProjectilePassThroughMaterial;
 using airfix::simulation::legacyRicochetMaterialEvent;
 using airfix::simulation::legacyRicochetNormalEvent;
 using airfix::simulation::legacyRicochetPositionEvent;
@@ -341,6 +347,255 @@ void testFlightRejectsUnsafeInput() {
         "non-finite projectile state was accepted");
 }
 
+[[nodiscard]] LegacyProjectileCollisionStepInput collisionInput() {
+    return {
+        .segmentStart = {2.0F, 4.0F, 6.0F},
+        .segmentEnd = {10.0F, 20.0F, 30.0F},
+        .roomId = 12,
+        .hit = LegacyProjectileCollisionHit{
+            .fraction = 0.25F,
+            .normal = {0.0F, 2.0F, 0.0F},
+            .material = 4,
+            .ownerObjectPresent = true,
+            .portalType = -1,
+        },
+    };
+}
+
+void testCollisionNoHitAndMaterialPassThrough() {
+    auto input = collisionInput();
+    input.hit = std::nullopt;
+    const auto noHit = legacyProjectileCollisionDecision(input);
+    require(
+        noHit.has_value() &&
+            noHit->outcome ==
+                LegacyProjectileCollisionOutcome::advanceNoHit &&
+            noHit->position == input.segmentEnd &&
+            noHit->previousPosition == input.segmentStart &&
+            noHit->roomId == input.roomId,
+        "no-hit collision decision did not commit the endpoint");
+
+    input = collisionInput();
+    input.hit->material = legacyProjectilePassThroughMaterial;
+    input.hit->actorOwner = LegacyProjectileCollisionActorOwner{
+        .uid = 91U,
+        .projectileIsServer = true,
+        .actorResolved = true,
+        .projectileActorCollisionsEnabled = true,
+        .actorAcceptsProjectileCollision = true,
+        .actorActive = true,
+    };
+    const auto materialPass =
+        legacyProjectileCollisionDecision(input);
+    require(
+        materialPass.has_value() &&
+            materialPass->outcome ==
+                LegacyProjectileCollisionOutcome::
+                    advanceMaterialPassThrough &&
+            materialPass->position == input.segmentEnd &&
+            materialPass->previousPosition == input.segmentStart &&
+            materialPass->material ==
+                std::optional<std::int32_t>{
+                    legacyProjectilePassThroughMaterial},
+        "material-8 gate did not precede the actor path");
+}
+
+void testCollisionPortalContinuation() {
+    auto input = collisionInput();
+    input.hit->portalType = 0;
+    input.hit->portalRoomId = 27;
+    const auto result = legacyProjectileCollisionDecision(input);
+    require(
+        result.has_value() &&
+            result->outcome ==
+                LegacyProjectileCollisionOutcome::followPortal &&
+            result->position ==
+                LegacyMachineGunVector3{4.0F, 8.0F, 12.0F} &&
+            result->previousPosition == input.segmentEnd &&
+            result->roomId == 27 &&
+            result->collisionFraction == 0.25F &&
+            result->normal ==
+                LegacyMachineGunVector3{0.0F, 2.0F, 0.0F},
+        "type-zero portal did not prepare the remaining segment");
+
+    input.hit->portalRoomId = std::nullopt;
+    require(
+        !legacyProjectileCollisionDecision(input).has_value(),
+        "traversable portal without a target room was accepted");
+}
+
+void testCollisionActorGatesAndContact() {
+    auto input = collisionInput();
+    input.hit->actorOwner = LegacyProjectileCollisionActorOwner{
+        .uid = 91U,
+        .projectileIsServer = false,
+        .actorResolved = true,
+        .projectileActorCollisionsEnabled = true,
+        .actorAcceptsProjectileCollision = true,
+        .actorActive = true,
+    };
+    const auto client = legacyProjectileCollisionDecision(input);
+    require(
+        client.has_value() &&
+            client->outcome ==
+                LegacyProjectileCollisionOutcome::advanceActorGate &&
+            client->position == input.segmentEnd,
+        "client-side actor collision did not pass the segment");
+
+    input.hit->actorOwner->projectileIsServer = true;
+    input.hit->actorOwner->actorAcceptsProjectileCollision = false;
+    const auto actorBlocked =
+        legacyProjectileCollisionDecision(input);
+    require(
+        actorBlocked.has_value() &&
+            actorBlocked->outcome ==
+                LegacyProjectileCollisionOutcome::advanceActorGate,
+        "disabled actor collision gate did not pass the segment");
+
+    input.hit->actorOwner->actorAcceptsProjectileCollision = true;
+    input.hit->actorOwner->projectileActorCollisionsEnabled = false;
+    const auto projectileBlocked =
+        legacyProjectileCollisionDecision(input);
+    require(
+        projectileBlocked.has_value() &&
+            projectileBlocked->outcome ==
+                LegacyProjectileCollisionOutcome::advanceActorGate,
+        "disabled projectile collision gate did not pass the segment");
+
+    input.hit->actorOwner->projectileActorCollisionsEnabled = true;
+    input.hit->actorOwner->actorActive = false;
+    const auto inactiveActor =
+        legacyProjectileCollisionDecision(input);
+    require(
+        inactiveActor.has_value() &&
+            inactiveActor->outcome ==
+                LegacyProjectileCollisionOutcome::advanceActorGate,
+        "inactive actor collision gate did not pass the segment");
+
+    input.hit->actorOwner->actorActive = true;
+    const auto actorHit = legacyProjectileCollisionDecision(input);
+    require(
+        actorHit.has_value() &&
+            actorHit->outcome ==
+                LegacyProjectileCollisionOutcome::actorContact &&
+            actorHit->position ==
+                LegacyMachineGunVector3{4.0F, 8.0F, 12.0F} &&
+            actorHit->previousPosition == input.segmentStart &&
+            actorHit->normal ==
+                LegacyMachineGunVector3{0.0F, 1.0F, 0.0F} &&
+            actorHit->actorUid == std::optional<std::uint32_t>{91U},
+        "eligible server actor did not produce normalized contact");
+}
+
+void testCollisionSurfaceAndWaterCallbackState() {
+    auto input = collisionInput();
+    input.hit->ownerObjectPresent = false;
+    input.hit->material = std::nullopt;
+    input.hit->portalType = -1;
+    const auto ownerless = legacyProjectileCollisionDecision(input);
+    require(
+        ownerless.has_value() &&
+            ownerless->outcome ==
+                LegacyProjectileCollisionOutcome::surfaceContact &&
+            ownerless->position ==
+                LegacyMachineGunVector3{4.0F, 8.0F, 12.0F} &&
+            ownerless->normal ==
+                LegacyMachineGunVector3{0.0F, 1.0F, 0.0F} &&
+            !ownerless->marksWater,
+        "ownerless polygon did not enter the surface path");
+
+    input = collisionInput();
+    input.hit->portalType = 1;
+    input.hit->portalRoomId = 27;
+    const auto reflectingPortal =
+        legacyProjectileCollisionDecision(input);
+    require(
+        reflectingPortal.has_value() &&
+            reflectingPortal->outcome ==
+                LegacyProjectileCollisionOutcome::surfaceContact &&
+            reflectingPortal->roomId == input.roomId,
+        "type-one portal did not remain a surface");
+
+    input = collisionInput();
+    input.hit->material = legacyMachineGunInterpolatedMaterial;
+    const auto water = legacyProjectileCollisionDecision(input);
+    require(
+        water.has_value() &&
+            water->outcome ==
+                LegacyProjectileCollisionOutcome::surfaceContact &&
+            water->position == input.segmentEnd &&
+            water->previousPosition == input.segmentStart &&
+            water->marksWater,
+        "material-15 surface did not preserve callback interpolation state");
+
+    const auto composed = legacyMachineGunProjectileSurfaceContact({
+        .creatorUid = 7U,
+        .ownerActorUid = water->actorUid,
+        .position = water->position,
+        .previousPosition = water->previousPosition,
+        .collisionFraction = water->collisionFraction,
+        .normal = water->normal,
+        .material = *water->material,
+        .roomId = water->roomId,
+    });
+    require(
+        composed.has_value() &&
+            composed->position ==
+                LegacyMachineGunVector3{4.0F, 8.0F, 12.0F},
+        "material-15 decision did not compose with the ammo callback");
+}
+
+void testCollisionUnresolvedActorFallsBackToSurface() {
+    auto input = collisionInput();
+    input.hit->actorOwner = LegacyProjectileCollisionActorOwner{
+        .uid = 91U,
+        .projectileIsServer = true,
+        .actorResolved = false,
+        .projectileActorCollisionsEnabled = true,
+        .actorAcceptsProjectileCollision = true,
+        .actorActive = true,
+    };
+    const auto result = legacyProjectileCollisionDecision(input);
+    require(
+        result.has_value() &&
+            result->outcome ==
+                LegacyProjectileCollisionOutcome::surfaceContact &&
+            !result->actorUid.has_value(),
+        "unresolved server actor did not fall back to a surface");
+}
+
+void testCollisionRejectsUnsafeOrIncompleteHit() {
+    auto input = collisionInput();
+    input.hit->fraction = 1.01F;
+    require(
+        !legacyProjectileCollisionDecision(input).has_value(),
+        "out-of-segment collision fraction was accepted");
+
+    input = collisionInput();
+    input.hit->normal = {};
+    require(
+        !legacyProjectileCollisionDecision(input).has_value(),
+        "zero contact normal was accepted");
+
+    input = collisionInput();
+    input.hit->material = std::nullopt;
+    require(
+        !legacyProjectileCollisionDecision(input).has_value(),
+        "owner-backed hit without material was accepted");
+
+    input = collisionInput();
+    input.hit->portalType = 2;
+    require(
+        !legacyProjectileCollisionDecision(input).has_value(),
+        "unsupported portal type was accepted");
+
+    input = collisionInput();
+    input.hit->actorOwner = LegacyProjectileCollisionActorOwner{};
+    require(
+        !legacyProjectileCollisionDecision(input).has_value(),
+        "zero actor-object identity was accepted");
+}
+
 void testActorDamage() {
     for (std::uint32_t level = 0U; level < 5U; ++level) {
         const auto damage =
@@ -490,6 +745,12 @@ int main() {
     testInitialStateAndUnobstructedFlight();
     testFlightLifetimeAndInactiveGate();
     testFlightRejectsUnsafeInput();
+    testCollisionNoHitAndMaterialPassThrough();
+    testCollisionPortalContinuation();
+    testCollisionActorGatesAndContact();
+    testCollisionSurfaceAndWaterCallbackState();
+    testCollisionUnresolvedActorFallsBackToSurface();
+    testCollisionRejectsUnsafeOrIncompleteHit();
     testActorDamage();
     testSurfaceCreatorGate();
     testSurfaceRicochetSequence();
