@@ -1066,9 +1066,33 @@ void testCcfPlacedNodes() {
     Bytes objectChildren = ccfU32Property(0xF0B0U, 1U);
     appendBytes(objectChildren, ccfU32Property(0xF0B1U, 2U));
     appendBytes(objectChildren, ccfU32Property(0x4501U, 3U));
-    appendBytes(objectChildren, ccfChunk(0x4101U, Bytes{
-        0xFFU, 0xFFU, 0x01U, 0x00U, 0x00U, 0x00U, 0xA5U,
-    }));
+    const auto dynamicChild = ccfBspNode(
+        0U,
+        std::nullopt,
+        0U,
+        std::nullopt,
+        {0.0F, 1.0F, 0.0F},
+        {2.0F, 3.0F, 4.0F},
+        ccfBspPolygon(20.0F, 6U, 100U));
+    Bytes dynamicBspPayload = ccfChunk(0x41FFU, Bytes{0xA5U});
+    appendBytes(dynamicBspPayload, ccfBspNode(
+        1U,
+        dynamicChild,
+        0U,
+        std::nullopt,
+        {1.0F, 0.0F, 0.0F},
+        {5.0F, 6.0F, 7.0F},
+        ccfBspPolygon(1.0F, 5U, 100U)));
+    appendBytes(dynamicBspPayload, ccfBspNode(
+        0U,
+        std::nullopt,
+        0U,
+        std::nullopt,
+        {0.0F, 0.0F, 1.0F},
+        {8.0F, 9.0F, 10.0F},
+        ccfBspPolygon(40.0F, 7U, 100U)));
+    appendBytes(dynamicBspPayload, ccfChunk(0x41FEU, {}));
+    appendBytes(objectChildren, ccfChunk(0x4101U, dynamicBspPayload));
     appendBytes(objectChildren, ccfChunk(0x4999U, Bytes{0xAAU}));
 
     Bytes nullBlock;
@@ -1111,11 +1135,52 @@ void testCcfPlacedNodes() {
         objectData.portalType == 500U && objectData.portalRoomReference == 600U &&
         objectData.propertyF0B0 == 1U && objectData.propertyF0B1 == 2U &&
         objectData.value4501 == 3U && objectData.bsp4101.has_value() &&
-        objectData.bsp4101->directChildren.empty(),
+        objectData.bsp4101->directChildren.size() == 4U &&
+        objectData.bsp4101->directChildren.front().id == 0x41FFU &&
+        objectData.bsp4101->directChildren.back().id == 0x41FEU &&
+        objectData.dynamicBspTrees.size() == 2U,
         "CCF placed object variant fields mismatch");
+    const auto& firstDynamicTree = objectData.dynamicBspTrees[0];
+    require(
+        firstDynamicTree.kind ==
+                airfix::assets::CcfBspTreeKind::dynamicObjectTree &&
+            firstDynamicTree.source ==
+                airfix::assets::CcfBspTreeSource::placedObject4101 &&
+            firstDynamicTree.nodes.size() == 2U &&
+            firstDynamicTree.polygons.size() == 2U &&
+            firstDynamicTree.nodes[0].childAPresenceRaw == 1U &&
+            firstDynamicTree.nodes[0].childAIndex == 1U &&
+            !firstDynamicTree.nodes[0].childBIndex.has_value() &&
+            firstDynamicTree.nodes[0].splitNormal ==
+                airfix::assets::CcfVector3{1.0F, 0.0F, 0.0F} &&
+            firstDynamicTree.polygons[0].polygonIndex == 5U &&
+            firstDynamicTree.polygons[0].placedObjectReference == 100U &&
+            firstDynamicTree.polygons[1].polygonIndex == 6U &&
+            firstDynamicTree.polygons[1].placedObjectReference == 100U,
+        "CCF placed object first dynamic BSP tree mismatch");
+    const auto& secondDynamicTree = objectData.dynamicBspTrees[1];
+    require(
+        secondDynamicTree.nodes.size() == 1U &&
+            secondDynamicTree.polygons.size() == 1U &&
+            secondDynamicTree.nodes[0].splitNormal ==
+                airfix::assets::CcfVector3{0.0F, 0.0F, 1.0F} &&
+            secondDynamicTree.polygons[0].polygonIndex == 7U,
+        "CCF placed object physical dynamic BSP root order mismatch");
     require(object.directChildren.size() == 5U &&
         object.directChildren.back().id == 0x4999U,
         "CCF placed object unknown child was not retained");
+
+    const auto emptyDynamic = airfix::assets::parseCcf(
+        makePlacedCcf(makePlacedRecord(
+            0x4100U, ccfChunk(0x4101U, {}))));
+    const auto& emptyDynamicData =
+        std::get<airfix::assets::CcfPlacedObjectMetadata>(
+            emptyDynamic.placedNodes[0].data);
+    require(
+        emptyDynamicData.bsp4101.has_value() &&
+            emptyDynamicData.bsp4101->directChildren.empty() &&
+            emptyDynamicData.dynamicBspTrees.empty(),
+        "CCF placed object empty dynamic BSP wrapper mismatch");
 
     const auto& nullNode = metadata.placedNodes[1];
     require(std::holds_alternative<airfix::assets::CcfVector3>(
@@ -1206,6 +1271,30 @@ void testCcfPlacedNodes() {
     Bytes duplicateBsp = ccfChunk(0x4101U, {});
     appendBytes(duplicateBsp, ccfChunk(0x4101U, {}));
     requirePlacedError(0x4100U, duplicateBsp);
+    requirePlacedError(0x4100U, ccfChunk(0x4101U, Bytes{
+        0xFFU, 0xFFU, 0x01U, 0x00U, 0x00U, 0x00U, 0xA5U,
+    }));
+    requirePlacedError(0x4100U, ccfChunk(
+        0x4101U,
+        ccfBspNode(
+            1U,
+            ccfChunk(0xF0C1U, Bytes(98U, 0U)))));
+    requirePlacedError(0x4100U, ccfChunk(
+        0x4101U,
+        ccfBspNode(
+            0U,
+            std::nullopt,
+            0U,
+            std::nullopt,
+            {1.0F, 0.0F, 0.0F},
+            {0.0F, 1.0F, 0.0F},
+            ccfChunk(0xF0C1U, Bytes(97U, 0U)))));
+    auto tooDeepDynamic = ccfBspNode();
+    for (std::size_t depth = 0U; depth < 1'024U; ++depth) {
+        tooDeepDynamic = ccfBspNode(1U, tooDeepDynamic);
+    }
+    requirePlacedError(
+        0x4100U, ccfChunk(0x4101U, tooDeepDynamic));
 
     Bytes shortNullBlock;
     appendU32(shortNullBlock, 4U);

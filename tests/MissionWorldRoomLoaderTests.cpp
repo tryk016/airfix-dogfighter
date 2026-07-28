@@ -153,6 +153,7 @@ literalCompression(const std::span<const std::uint8_t> decoded) {
 
 struct FixtureOptions {
     bool compressedCcfs{};
+    bool mainCcfDynamicBsp{};
     bool malformedObjectCcf{};
     bool malformedDetailGti{};
     bool objectUsesMainCcf{};
@@ -210,6 +211,7 @@ missionEntries(const FixtureOptions options = {}) {
         .secondaryTexture = std::string{"Detail"},
         .placedTranslation = {1.0F, 2.0F, 3.0F},
         .placedRoomReference = 999U,
+        .includePlacedDynamicBsp = options.mainCcfDynamicBsp,
     });
     auto backdropCcf = airfix::testing::makeSyntheticLegacyCcf({
         .primaryTexture = "Detail",
@@ -1489,6 +1491,7 @@ void testAccountingOverflowBoundaries() {
 void testExactAndOneUnderBudgets() {
     const auto pack = makePack({
         .compressedCcfs = true,
+        .mainCcfDynamicBsp = true,
     });
     MissionWorldRoomLoadLimits exact;
     std::uint64_t maximumCcfFootprint = 0U;

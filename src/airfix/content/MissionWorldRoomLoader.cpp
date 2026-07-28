@@ -288,6 +288,10 @@ retainedCcfMetadataBytes(const assets::CcfMetadata &ccf) {
                         chunkStack.push_back(&*data.bsp4101);
                         dynamicOk = accountChunkChildren(total, chunkStack);
                     }
+                    if (dynamicOk) {
+                        dynamicOk = accountBspTrees(
+                            total, data.dynamicBspTrees, chunkStack);
+                    }
                 } else if constexpr (std::is_same_v<
                                          T, assets::CcfPlacedLightMetadata>) {
                     if (data.property4310.has_value() &&
