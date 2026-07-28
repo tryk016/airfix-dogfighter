@@ -991,7 +991,8 @@ void validateCcfMaterialVectors(
 [[nodiscard]] CcfPlacedNodeMetadata parseCcfPlacedNode(
     const std::span<const std::uint8_t> bytes,
     CcfChunk& node,
-    CcfParseBudget& budget) {
+    CcfParseBudget& budget,
+    CcfSpatialBudget& spatialBudget) {
     if (node.id != 0x4100U && node.id != 0x4200U && node.id != 0x4300U) {
         throw ParseError("CCF placed-node parser received an unsupported chunk");
     }
@@ -1088,6 +1089,7 @@ void validateCcfMaterialVectors(
                 .propertyF0B1 = std::nullopt,
                 .value4501 = std::nullopt,
                 .bsp4101 = std::nullopt,
+                .dynamicBspTrees = {},
             }}
             : (node.id == 0x4200U
                 ? CcfPlacedNodeData{CcfPlacedNullMetadata{}}
@@ -1125,9 +1127,38 @@ void validateCcfMaterialVectors(
                 break;
             case 0x4101U:
                 if (objectData.bsp4101.has_value()) {
-                    throw ParseError("CCF placed object repeats its opaque 0x4101 property");
+                    throw ParseError("CCF placed object repeats its 0x4101 property");
                 }
                 objectData.bsp4101 = property;
+                {
+                    auto& wrapper = *objectData.bsp4101;
+                    const auto wrapperBegin = checkedAdd(
+                        wrapper.offset, 6U, "CCF placed object 0x4101 payload");
+                    const auto wrapperEnd = checkedAdd(
+                        wrapper.offset,
+                        wrapper.totalSize,
+                        "CCF placed object 0x4101 end");
+                    wrapper.directChildren = parseCcfChunkSequence(
+                        bytes,
+                        static_cast<std::size_t>(wrapperBegin),
+                        static_cast<std::size_t>(wrapperEnd),
+                        "CCF placed object 0x4101 child",
+                        budget);
+                    for (const auto& root : wrapper.directChildren) {
+                        // LoadSceneCcf skips extension chunks it does not
+                        // recognize and decodes every physical F0C0 root.
+                        if (root.id != 0xF0C0U) {
+                            continue;
+                        }
+                        objectData.dynamicBspTrees.push_back(parseCcfBspTree(
+                            bytes,
+                            root,
+                            CcfBspTreeKind::dynamicObjectTree,
+                            CcfBspTreeSource::placedObject4101,
+                            budget,
+                            spatialBudget));
+                    }
+                }
                 break;
             default:
                 break;
@@ -2156,7 +2187,8 @@ CcfMetadata parseCcf(const std::span<const std::uint8_t> bytes) {
                 if (metadata.placedNodes.size() >= kCcfPlacedNodeLimit) {
                     throw ParseError("CCF exceeds the placed-node limit");
                 }
-                metadata.placedNodes.push_back(parseCcfPlacedNode(bytes, node, budget));
+                metadata.placedNodes.push_back(parseCcfPlacedNode(
+                    bytes, node, budget, spatialBudget));
             }
         }
     }

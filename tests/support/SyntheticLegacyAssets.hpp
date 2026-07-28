@@ -63,6 +63,7 @@ struct SyntheticLegacyCcfOptions {
     std::optional<std::string> secondaryTexture;
     std::array<float, 3U> placedTranslation{4.0F, 5.0F, 6.0F};
     std::uint32_t placedRoomReference{20U};
+    bool includePlacedDynamicBsp{};
 };
 
 struct SyntheticLegacyAssetOptions {
@@ -226,6 +227,26 @@ inline void appendBytes(
     return ccfChunk(0x1100U, payload);
 }
 
+[[nodiscard]] inline LegacyAssetBytes placedDynamicBsp() {
+    LegacyAssetBytes polygon;
+    for (std::size_t vector = 0U; vector < 5U; ++vector) {
+        const auto base = static_cast<float>(vector * 3U);
+        appendBytes(
+            polygon,
+            ccfVector3(0xF040U, base, base + 1.0F, base + 2.0F));
+    }
+    appendU32(polygon, 0U);
+    appendU32(polygon, 100U);
+
+    LegacyAssetBytes node;
+    appendU32(node, 0U);
+    appendU32(node, 0U);
+    appendBytes(node, ccfVector3(0xF040U, 1.0F, 0.0F, 0.0F));
+    appendBytes(node, ccfVector3(0xF040U, 0.0F, 1.0F, 0.0F));
+    appendBytes(node, ccfChunk(0xF0C1U, polygon));
+    return ccfChunk(0x4101U, ccfChunk(0xF0C0U, node));
+}
+
 [[nodiscard]] inline LegacyAssetBytes placedObject(
     const SyntheticLegacyCcfOptions& options) {
     auto payload = ccfName("PlacedMesh", "Synthetic");
@@ -245,6 +266,9 @@ inline void appendBytes(
             options.placedTranslation[2]));
     appendFloat(payload, 1.0F);
     appendBytes(payload, ccfOrientation());
+    if (options.includePlacedDynamicBsp) {
+        appendBytes(payload, placedDynamicBsp());
+    }
     return ccfChunk(0x4100U, payload);
 }
 
@@ -303,6 +327,27 @@ inline void validateCcf(
             options.placedRoomReference) {
         throw std::runtime_error(
             "synthetic CCF failed its semantic self-check");
+    }
+    const auto& placed =
+        std::get<assets::CcfPlacedObjectMetadata>(parsed.placedNodes[0].data);
+    if (placed.bsp4101.has_value() != options.includePlacedDynamicBsp ||
+        placed.dynamicBspTrees.size() !=
+            static_cast<std::size_t>(options.includePlacedDynamicBsp)) {
+        throw std::runtime_error(
+            "synthetic CCF dynamic BSP failed its semantic self-check");
+    }
+    if (options.includePlacedDynamicBsp) {
+        const auto& tree = placed.dynamicBspTrees.front();
+        if (tree.nodes.size() != 1U ||
+            tree.polygons.size() != 1U ||
+            tree.nodes.front().polygonIndices !=
+                std::vector<std::size_t>{0U} ||
+            tree.polygons.front().polygonIndex != 0U ||
+            tree.polygons.front().placedObjectReference != 100U) {
+            throw std::runtime_error(
+                "synthetic CCF dynamic BSP payload failed its semantic "
+                "self-check");
+        }
     }
 }
 

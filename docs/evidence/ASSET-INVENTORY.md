@@ -105,9 +105,10 @@ The semantic placed-scene pass validates all 9,328 `0x4000` records in physical
 order: 6,995 objects, 2,130 null nodes, and 203 lights. Exact transforms and
 references plus bounded known child shapes are decoded; all shipped records use
 the F050 matrix orientation, while the loader-supported alternate F040 form is
-covered synthetically. Dynamic per-object `0x4101` BSP and null payload blocks
-remain opaque zero-copy descriptors; the decoded room BSP is a separate
-`0x1000` structure.
+covered synthetically. Dynamic per-object `0x4101` wrappers retain their raw
+descriptors and now also decode through the bounded flat BSP model: 1,160
+roots, 10,641 nodes, and 16,212 polygons. Null payload blocks remain opaque
+zero-copy descriptors; room BSP remains a separate `0x1000` structure.
 
 The same read-only inventory validates the runtime conversion boundary for all
 6,995 meshes. GTI inspection covers 3,990 variants and 9,617 declared mip

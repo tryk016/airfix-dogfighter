@@ -676,16 +676,15 @@ because it is present in the original loader but not in the selected corpus.
 
 | Record | Corpus count | Decoded direct children |
 |---:|---:|---|
-| `0x4100` object | 6,995 | `0xF0B0`, `0xF0B1`, `0x4501` u32; opaque `0x4101` BSP container |
+| `0x4100` object | 6,995 | `0xF0B0`, `0xF0B1`, `0x4501` u32; typed and raw `0x4101` dynamic-BSP container |
 | `0x4200` null | 2,130 | `0x4210` length plus zero-copy opaque bytes; `0x4500` u32 |
 | `0x4300` light | 203 | bounded `0x4310`, `0x4320`, `0x4330`, and `0xF0B0` shapes |
 
 The light values and optional texture strings retain neutral field names until
-their rendering semantics are proven. `0x4101` is deliberately preserved
-without recursively materializing its BSP tree. Known singleton duplicates,
-invalid fixed sizes, string/count mismatches, parent-container overruns, and
-the shared descriptor budget fail closed. A separate 100,000-record ceiling
-precedes placed-node growth.
+their rendering semantics are proven. Known singleton duplicates, invalid
+fixed sizes, string/count mismatches, parent-container overruns, and the shared
+descriptor budget fail closed. A separate 100,000-record ceiling precedes
+placed-node growth.
 
 Loader consumers narrow several otherwise raw child values:
 
@@ -704,6 +703,43 @@ references also resolve uniquely; 6,841 objects store zero and therefore have
 no portal room. The portable model exposes current/mesh/room/parent/portal
 references and resolves their scene dependencies without inferring semantic
 names for the remaining raw flags and light values.
+
+### Placed-object dynamic BSP (`0x4101`)
+
+An object `0x4101` property is a container for zero or more `0xF0C0` roots.
+Its node and `0xF0C1` polygon encodings are byte-identical to the room BSP
+shapes above. The second polygon word remains `placedObjectReference`: after
+the complete scene loads, the native code resolves the pair
+`(placedObjectReference, polygonIndex)` to the owning `CcObjPolygon` and stores
+that pointer at `CcBspNodePoly + 0x44`.
+
+The portable parser preserves the raw wrapper and every direct child while
+also decoding each recognized `0xF0C0` root into a flat
+`dynamicObjectTree`. Unknown direct wrapper children remain inspectable and
+are skipped, matching the native loader. Physical root order is retained.
+Native `CcBspTree` construction prepends every root, so a future runtime
+adapter must reverse that order when reproducing the linked-list traversal;
+the parser does not silently reorder source metadata.
+
+The loaded object owns its tree at `CcObject + 0x15c`. Native loading caches
+the first decoded tree list at `CcMesh + 0x13c`; a later instance of the same
+physical mesh reuses the cache and skips its serialized children. This is an
+ownership and publication rule, not part of raw CCF decoding.
+
+The selected corpus contains 1,160 non-empty `0x4101` wrappers and exactly one
+root per wrapper: 10,641 nodes and 16,212 polygon descriptors in total.
+Maximum depth is 29; the largest tree has 267 nodes and 315 polygons. Every
+child-presence word is zero or one, every polygon index is within the owner's
+mesh, and every serialized object reference equals the wrapper owner. The
+largest wrapper is 46,116 bytes. These are observations, not relaxed limits.
+Dynamic trees share the same per-CCF depth, tree, node, polygon, and descriptor
+budgets as room trees, so malformed or adversarial `0x4101` data fails before
+unbounded arena growth.
+
+This parser milestone does not yet publish placed objects into the live
+dynamic-collision room lists. Binding decoded trees to materials, reproducing
+first-use mesh caching, native list order, portals, and live transforms is a
+separate fail-closed assembly step.
 
 ### Placed-scene reference graph
 

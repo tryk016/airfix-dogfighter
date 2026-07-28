@@ -78,11 +78,13 @@ struct CcfFogMetadata {
 enum class CcfBspTreeKind : std::uint8_t {
     staticTree,
     portalTree,
+    dynamicObjectTree,
 };
 
 enum class CcfBspTreeSource : std::uint8_t {
     direct,
     wrapped,
+    placedObject4101,
 };
 
 struct CcfBspPolygonMetadata {
@@ -266,7 +268,12 @@ struct CcfPlacedObjectMetadata {
     std::optional<std::uint32_t> propertyF0B1;
     // Serialized 1-based limb-count/ordinal bound, not a parent reference.
     std::optional<std::uint32_t> value4501;
+    // Raw 0x4101 wrapper and its direct descriptors remain available for
+    // format inspection. Known F0C0 roots are also decoded below.
     std::optional<CcfChunk> bsp4101;
+    // Physical F0C0 order. The legacy loader prepends CcBspTree records, so a
+    // later runtime adapter must reverse this order when reproducing its list.
+    std::vector<CcfBspTreeMetadata> dynamicBspTrees;
 };
 
 struct CcfPlacedNullMetadata {

@@ -2668,3 +2668,37 @@ superseded evidence.
   `git diff --check` pass. The exact pushed commit builds all 250 steps with
   GCC 13.3 and passes 77/77 tests in a new isolated `Airfix-Dev` WSL clone.
   GitHub Actions remains the final publication gate.
+
+## 2026-07-28 - placed-object serialized dynamic BSP decoding
+
+- `EV-20260728-021` / `EXP-20260728-038`: recovered the preserved object
+  `0x4101` container as the same `F0C0`/`F0C1` node and polygon encoding used
+  by room BSP. Ghidra 12.1.2 confirms the loader, first-use `CcMesh + 0x13c`
+  cache, reverse prepended root-list order, and scene-complete polygon binding.
+- Fresh automatic Rizin 0.9.1/rzpipe 0.6.2 reports independently match the
+  161-byte polygon loader at RVA `0x0002A2F0` and the 39-byte deferred-binding
+  helper at RVA `0x0002A3E0`. The latter stores the node-polygon pointer,
+  polygon index, and placed-object reference in one global pending list.
+- Added typed `dynamicObjectTree` metadata while preserving the raw `0x4101`
+  wrapper and unknown direct children. Known roots reuse the iterative flat BSP
+  decoder and shared depth/tree/node/polygon/descriptor budgets; mission
+  retained-byte accounting now includes both the raw descriptors and every
+  typed dynamic arena.
+- A read-only corpus diagnostic parses all 286 CCF files and all 1,160 wrappers:
+  1,160 roots, 10,641 nodes, 16,212 polygons, maximum depth 29, and zero
+  non-Boolean child words, owner-reference mismatches, or out-of-range polygon
+  indices. No private paths, names, hashes, geometry, or payloads are recorded.
+- Synthetic tests cover multiple physical roots, nested children, exact
+  polygon fields/order/source tags, preserved extension descriptors, duplicate
+  and malformed wrappers, invalid child/polygon shapes, and the shared
+  1,024-depth ceiling. The full mission loader exact/one-under retained
+  metadata test now contains a typed `0x4101` tree. Runtime
+  material/cache/list binding and placed dynamic collision publication
+  deliberately remain a later atomic assembly.
+- Fresh Release and code-intelligence Ninja/GCC 15.2 builds both pass 77/77
+  tests, and the portable compilation database contains 159 entries. Clangd
+  22.1.8 reports zero code diagnostics for the changed integration test (its
+  three reported failures are optional extract-function probes). All three RE
+  wrapper suites, 12 Rizin normalization tests, public-boundary tests and the
+  383-file scan, `actionlint`, and `git diff --check` pass. Exact-commit WSL
+  and GitHub Actions remain publication gates.

@@ -658,6 +658,14 @@
   A two-pass `noexcept` frame adapter publishes a supplied live player
   world-pose, object ID, active flag, and current room into exact-size combined
   line object/range spans without allocation or partial mutation.
+- The preserved placed-object `0x4101` property is now decoded as the same
+  bounded flat `F0C0`/`F0C1` format used by room BSP while its raw wrapper and
+  extension children remain available. Ghidra and Rizin confirm deferred
+  `(placedObjectReference, polygonIndex)` binding, first-use mesh caching, and
+  reverse runtime root-list order. All 1,160 selected wrappers parse into
+  10,641 nodes and 16,212 polygons with zero owner/index mismatches. This is an
+  authenticated metadata milestone only; material binding, per-room placed
+  object publication, dynamic portals, and live transforms remain separate.
 
 ## Confirmed
 
@@ -703,12 +711,14 @@
    controlled multi-room executable traces when the isolated runtime is ready.
 5. Keep BSP render culling disabled until its separate runtime semantics are
    proven against executable evidence.
-6. Extend the implemented authenticated player collider publication to
-   non-player actors and dynamic portal objects with recovered native room/list
-   order. Then join `WpMGun` timing, event `0xE2`, motion, damage, and ricochet
-   contracts to the remaining projectile-level portal loop, private type
-   allocation/event dispatch, live muzzle transforms, and tracer/effect
-   adapters before wiring primary-fire intent into runtime.
+6. Convert the now semantically decoded placed-object `0x4101` trees into an
+   atomic material-bound, first-use mesh cache and native-order per-room object
+   publication; include dynamic portal metadata and live transforms only after
+   their complete ownership/order contract passes. Then extend beyond the
+   authenticated player and join `WpMGun` timing, event `0xE2`, motion, damage,
+   and ricochet contracts to the remaining projectile-level portal loop,
+   private type allocation/event dispatch, live muzzle transforms, and
+   tracer/effect adapters before wiring primary-fire intent into runtime.
 
 ## Open questions
 
