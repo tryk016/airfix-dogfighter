@@ -2377,3 +2377,29 @@ superseded evidence.
   public-boundary tests and 350-file scan, 228-row catalogue, `actionlint`,
   local-path scan, and `git diff --check` pass. GitHub Actions publication
   gates remain pending.
+
+## 2026-07-28 - AirCraft engine-audio cadence and modulation
+
+- `EV-20260728-013` / `EXP-20260728-028`: completed the engine-only subset of
+  AirCraft primary vtable slot 44. The timer at `+0x55C` advances on every call
+  while starting, while the counter at `+0x5E8` evaluates transitions and
+  sound parameters exactly every fifth call.
+- Confirmed strict start, four-second completion, and shutdown thresholds plus
+  the ordered `0x1A..0x1E` engine-on, idle, turn, start, and stop roles. The
+  native dependency strings were checked read-only; no sound file, binary,
+  path, or generated report enters Git.
+- Closed the producer/consumer join for `+0x558`: the flight step low-pass
+  filters orientation matrix `m01`, and slot 44 uses its absolute value to
+  modulate engine-turn volume. Recovered the exact speed/thrust load, upper-only
+  running-volume clamp, running/turn pitch, complementary idle volume, mixer
+  update, and model-parameter order.
+- Added a pure allocation-free C++20 transition returning caller-owned state,
+  adjusted smoothed thrust, and at most 14 ordered commands. It contains no
+  playback backend or original asset dependency, validates only values reached
+  by the native branch, and remains unwired from the intent-only player state.
+- Fresh Release and code-intelligence Ninja/GCC 15.2 builds each compile all
+  232 steps and pass 71/71 portable tests. Clangd 22.1.8 reports zero errors in
+  both new translation units. The three RE wrapper suites, 12 Rizin tests,
+  public-boundary tests and 354-file scan, 228-row catalogue, `actionlint`,
+  local-path scan, and `git diff --check` pass. GitHub Actions publication
+  gates remain pending.

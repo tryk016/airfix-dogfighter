@@ -196,11 +196,15 @@
   recovered. Slot 44's engine-start transition now proves the `+0x564`
   smoothing branch, while slot 30 and slot 44 prove the full `+0x568`
   collision-degraded thrust-integrity lifecycle and its next-step timing.
-  Isolated allocation-free C++20 helpers specify sleep, smoothing, collision
-  degradation, recovery, and clamp without pretending the frozen player
-  simulation owns rigid-body integration. Physical units, runtime contact
-  traces, deterministic PRNG ownership, x87 numeric tolerance, and dynamic
-  actor-to-render publication remain unknown.
+  Slot 44's counter now also proves the five-call engine-audio cadence, exact
+  start/running/stop command order, five sound roles, and the speed/thrust/
+  orientation pitch-volume equations. Isolated allocation-free C++20 helpers
+  specify sleep, smoothing, collision degradation, recovery/clamp, and the
+  bounded engine-only command stream without pretending the frozen player
+  simulation owns rigid-body integration or audio playback. Physical units,
+  runtime contact/audio traces, deterministic PRNG ownership, x87 numeric
+  tolerance, mixer integration, and dynamic actor-to-render publication remain
+  unknown.
 - Recovered the complete player spawn/type/primary-actor event chain and the
   fixed 16-entry mission start table. The selector uses requested index modulo
   count, with the primary receiving CCF room as the empty-table fallback.

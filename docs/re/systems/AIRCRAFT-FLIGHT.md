@@ -3,7 +3,8 @@
 **Status:** observed, not yet specified or implemented for parity
 **Evidence:** `EV-20260724-001`, `EV-20260724-002`,
 `EV-20260724-003`, `EV-20260724-004`, `EV-20260724-005`,
-`EV-20260728-010`, `EV-20260728-011`
+`EV-20260728-010`, `EV-20260728-011`, `EV-20260728-012`,
+`EV-20260728-013`
 **Reference build:** SHA-256 values in `docs/evidence/source-manifest.sha256`
 
 This note records the current clean-room boundary around
@@ -20,6 +21,9 @@ latch, and the complete gameplay-camera live-input set is recorded in
 The signed 64-bit vehicle rest accumulator, exact two-second sleep gate, and
 exported `IsOnGround` field are recorded in
 [EXP-20260728-026](../../experiments/EXP-20260728-026-vehicle-rest-sleep-gate.md).
+The complete engine phase, five-call audio cadence, sound roles, and modulation
+contract are recorded in
+[EXP-20260728-028](../../experiments/EXP-20260728-028-aircraft-engine-audio-state.md).
 
 The player spawn, primary-actor, mission start-room, and selected-skin
 hierarchy contract is maintained in `PLAYER-SPAWN.md`. That static identity
@@ -138,6 +142,15 @@ machine proves that this byte means an active engine-start transition: it sets
 the byte when smoothed thrust becomes strictly greater than `0.001f`, maintains
 the seconds timer at `+0x55C`, and clears it after the timer becomes strictly
 greater than `4.0f`.
+
+Slot 44 evaluates phase changes and the engine parameter stream every fifth
+call through the counter at `+0x5E8`; the start timer itself advances on every
+call. Its five engine roles are start, stop, idle, running, and turn. Running
+and turn pitch depend on smoothed thrust plus speed, idle volume complements
+running volume, and turn volume is additionally modulated by the absolute
+low-pass orientation `m01` value at `+0x558`. A pure bounded C++20 helper now
+preserves this engine-only command contract without owning sound files or a
+playback backend.
 
 ### Collision/auxiliary method
 
@@ -383,9 +396,10 @@ Until those unknowns are resolved, the portable simulation may:
 
 Separate pure helpers may also preserve already confirmed local contracts for
 the vehicle sleep gate, smoothed thrust, collision-driven thrust-integrity
-degradation, and later recovery/clamping. They remain unwired until a runtime
-owns the native 12 ms scheduler, rigid-body/collision state, engine phase, and
-deterministic random sequence.
+degradation, later recovery/clamping, and the bounded engine-only audio command
+stream. They remain unwired until a runtime owns the native 12 ms scheduler,
+rigid-body/collision state, engine phase, deterministic random sequence, and
+audio backend.
 
 It must not yet move or rotate the aircraft, apply throttle, spawn a weapon,
 or label provisional constants as original behavior. That narrow state bridge
