@@ -4,7 +4,7 @@
 
 **Scenario:** `SCN-CAMERA-001`
 
-**Status:** implemented portable boundary; state publication deferred
+**Status:** implemented portable boundary; state proposal completed separately
 
 ## Question
 
@@ -107,12 +107,14 @@ moving basis conversion into `assets` or introducing a dependency cycle.
 `render` remains the correct layer because it already depends on `assets` and
 owns `BasisTransform`.
 
-The next stateful step needs a runtime owner for current position and
-`worldRoomIndex`. The current simulation state contains input intentions but no
-mutable world pose/room, while the iOS mission payload already owns the basis
-and arena. That owner must atomically commit candidate camera position and
-resolved room only after portal resolution succeeds. Sphere/contact resolution
-remains separately blocked on its unimplemented solver semantics.
+The follow-up
+[camera position and room-state proposal](EXP-20260728-013-camera-room-state-proposal.md)
+now returns a complete candidate position and resolved room only after portal
+resolution succeeds. It deliberately remains a pure value boundary: the
+current simulation state contains input intentions but no mutable world
+pose/room owner, while the iOS mission payload already owns the basis and
+arena. Sphere/contact resolution and synchronized runtime publication remain
+separate, unimplemented boundaries.
 
 ## Confidence
 

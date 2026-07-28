@@ -2,9 +2,9 @@
 
 **Status:** legacy scalar projection, world-to-view, depth presets, gameplay
 camera presets, quaternion adapter, stateless chase smoothing, collision
-scalars/factors/line interpolation, look-at pose math, and 4:3 layout
-implemented; BSP/portal integration, stateful publication, and Metal join
-remain
+scalars/factors/line interpolation, look-at pose math, 4:3 layout, strict
+BSP/portal adaptation, and atomic position/room proposal implemented;
+sphere/contact resolution, synchronized state ownership, and Metal join remain
 
 This document separates confirmed legacy behavior from reconstruction
 decisions. The complete evidence record is
@@ -378,6 +378,16 @@ every other value. It also exposes the confirmed reverse-depth clear scalar.
 This is an allocation-free backend-neutral contract; it does not alter the
 current diagnostic Metal renderer or decide batching/encoder policy.
 
+`src/airfix/render/MissionWorldRuntimeSpatialTrace.cpp` converts runtime camera
+segments through the mission basis into the retained source-world BSP and
+adapts points and plane covectors back to runtime space. Portal traversal
+validates every local legacy fraction before its gate or room change.
+`src/airfix/render/LegacyGameplayCameraRoomState.cpp` then produces one complete
+candidate `{runtimeWorldPosition, worldRoomIndex}` only after that traversal
+finishes. Failures may retain a diagnostic hit and completed-hop count but
+never expose a partial state. This is a portable semantic proposal, not yet a
+thread-safe mutable simulation owner or the missing sphere/contact solver.
+
 ## Still unknown
 
 - runtime parity of the recovered chase recurrence and collision-axis factors,
@@ -410,3 +420,6 @@ evidence is recovered.
 - [Depth-clear experiment](../../experiments/EXP-20260727-008-depth-clear.md)
 - [Depth-mode caller experiment](../../experiments/EXP-20260727-009-depth-mode-callers.md)
 - [Gameplay camera experiment](../../experiments/EXP-20260727-010-gameplay-camera-modes.md)
+- [Portal BSP line trace](../../experiments/EXP-20260727-011-portal-bsp-line-trace.md)
+- [Runtime spatial adapter](../../experiments/EXP-20260727-012-runtime-spatial-adapter.md)
+- [Camera room-state proposal](../../experiments/EXP-20260728-013-camera-room-state-proposal.md)
