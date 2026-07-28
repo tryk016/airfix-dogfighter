@@ -284,6 +284,12 @@ fields, and the effect-creation request without owning an effect runtime.
 - the creator/self actor-hit gate and damage command; and
 - surface interpolation, deactivation, and a bounded ricochet event request.
 
+`LegacyMachineGunShotCoordinator` composes the timing request with the selected
+already-rotated muzzle, capped technology ammo profile, and complete payload.
+It returns the already-advanced fire state alongside the prepared shot because
+the native refresh cycles the barrel and decrements nonzero ammunition before
+private allocation. A later allocation failure must not roll that state back.
+
 The helpers accept seconds because the owning scheduler boundary already
 performs the recovered millisecond conversion. They reject non-finite or unsafe
 consumed inputs instead of reproducing x87 unordered behavior or invalid
@@ -294,8 +300,10 @@ inventing a projectile or effect.
 
 ## Remaining work
 
-- Join the portable spawn and contact contracts to private type allocation,
-  the mission room-spatial tracer, dynamic actor collision, and event dispatch.
+- Consume the prepared-shot transaction through private type allocation and
+  event dispatch without rolling back fire state on allocation failure.
+- Join projectile movement to a combined static/portal/dynamic-actor spatial
+  adapter after native room IDs and actor ownership are explicit.
 - Recreate the optional `mguntracer` and `FxRicochet` visual/effect adapters.
 - Trace sample/effect commands associated with a shot.
 - Recover secondary weapon selection and each secondary projectile family.
