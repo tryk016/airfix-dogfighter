@@ -70,7 +70,10 @@ Implemented foundations include:
 - a producer-side camera-step coordinator that transactionally composes
   recovered AirCraft factor recovery, input mode/rear selection, chase,
   retained-static collision, pose, clip packaging, and state commit while
-  keeping the still-unproven raw refresh argument explicit.
+  keeping the still-unproven raw refresh argument explicit;
+- a bounded, allocation-free SPSC exchange that publishes only complete
+  gameplay-camera packets and lets Metal retain one coherent camera generation
+  through command encoding.
 
 The portable authenticated load now produces one validated room-and-player
 draw model plus a mission-lifetime BSP arena for every runtime room. The actor

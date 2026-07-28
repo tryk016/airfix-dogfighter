@@ -5,8 +5,9 @@ camera presets, quaternion adapter, chase smoothing, collision
 scalars/factors/line interpolation, look-at pose math, 4:3 layout, strict
 BSP/portal adaptation, static sphere/contact resolution, atomic
 position/room/factor publication, producer-side step composition, and Metal
-clip/depth consumption implemented; raw refresh units, cross-thread packet
-publication, dynamic-object collision, and device acceptance remain
+clip/depth consumption plus a bounded packet exchange implemented; raw refresh
+units, the simulation producer endpoint, dynamic-object collision, and device
+acceptance remain
 
 This document separates confirmed legacy behavior from reconstruction
 decisions. The complete evidence record is
@@ -460,6 +461,15 @@ retain the prior authoritative values. The caller still owns the retained
 arena, basis, and bounded collision workspaces; no cross-thread Metal
 publication is claimed by this producer-side contract.
 
+`src/airfix/render/LegacyGameplayCameraPacketExchange.cpp` provides that
+separate render transport for complete owning clip packets. Its two fixed
+slots use writer/lease claims plus an exchange-local generation; simulation
+steps and camera generations must increase but may skip after a legitimate
+busy result. Metal mission snapshots account and own the exchange, validate
+the camera0 bootstrap through its first lease, and retain a lease through
+command encoding. No simulation producer endpoint is exposed until all
+AirCraft inputs are evidence-backed.
+
 The exact next solver boundary is recorded in
 [EXP-20260728-014](../../experiments/EXP-20260728-014-camera-sphere-contact-recovery.md).
 It fixes static sphere traversal order, the sphere-versus-triangle entry, the
@@ -490,6 +500,9 @@ explicit bootstrap policy.
 [EXP-20260728-021](../../experiments/EXP-20260728-021-camera-step-coordinator.md)
 documents recovered producer ordering, explicit raw inputs, and transactional
 step behavior.
+[EXP-20260728-022](../../experiments/EXP-20260728-022-camera-packet-exchange.md)
+documents complete-packet SPSC publication, lease lifetime, generation policy,
+and Metal consumption.
 Dynamic-object BSP and transparent collision-portal traversal remain separate.
 
 ## Still unknown
@@ -536,3 +549,4 @@ evidence is recovered.
 - [Retained-static line and pose snapshot](../../experiments/EXP-20260728-019-camera-retained-static-pose-snapshot.md)
 - [Metal gameplay-camera clip packet](../../experiments/EXP-20260728-020-metal-gameplay-camera-packet.md)
 - [Gameplay-camera step coordinator](../../experiments/EXP-20260728-021-camera-step-coordinator.md)
+- [Gameplay-camera packet exchange](../../experiments/EXP-20260728-022-camera-packet-exchange.md)

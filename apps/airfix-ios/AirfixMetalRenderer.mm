@@ -10,6 +10,7 @@
 #include "airfix/render/LegacyCanvasLayout.hpp"
 #include "airfix/render/LegacyDepthState.hpp"
 #include "airfix/render/LegacyGameplayCameraClipPacket.hpp"
+#include "airfix/render/LegacyGameplayCameraPacketExchange.hpp"
 #include "airfix/render/PlayerActorPoseRuntime.hpp"
 #include "airfix/render/SnapshotGpuBudgetLedger.hpp"
 
@@ -777,8 +778,9 @@ struct ScenePoseRuntimePlan {
     std::vector<NSUInteger> _indexOffsets;
     std::shared_ptr<airfix::render::PlayerActorPoseRuntime>
         _scenePoseRuntime;
-    std::optional<airfix::render::LegacyGameplayCameraClipPacket>
-        _cameraClipPacket;
+    std::shared_ptr<
+        airfix::render::LegacyGameplayCameraPacketExchange>
+        _cameraPacketExchange;
 }
 @property(nonatomic, strong) NSArray<AirfixMetalMeshBuffers*>* meshBuffers;
 @property(nonatomic, strong) NSArray<id<MTLTexture>>* textures;
@@ -792,7 +794,7 @@ struct ScenePoseRuntimePlan {
     // Suballocated resources must release before their backing heaps. The
     // snapshot token is consumed only after this complete owner is destroyed.
     _scenePoseRuntime.reset();
-    _cameraClipPacket.reset();
+    _cameraPacketExchange.reset();
     _meshBuffers = nil;
     _textures = nil;
     _bufferHeap = nil;
@@ -2063,6 +2065,18 @@ bool preflightPrivateRoom(
             }
             return nil;
         }
+        if (!accountCpuPackedBytes(
+                airfix::render::LegacyGameplayCameraPacketExchange::
+                    retainedBytes(),
+                preflight.aggregateCpuPackedBytes,
+                kMaximumPrivateRoomCpuPackedBytes)) {
+            if (error != nullptr) {
+                *error = makeError(
+                    RendererError::resourceLimit,
+                    @"The private room camera exchange exceeds the retained CPU budget.");
+            }
+            return nil;
+        }
 
         const auto scenePosePlan = planScenePoseRuntime(room);
         if (scenePosePlan.status ==
@@ -2111,6 +2125,41 @@ bool preflightPrivateRoom(
                     @"The private room pose runtime is inconsistent.");
             }
             return nil;
+        }
+        std::shared_ptr<
+            airfix::render::LegacyGameplayCameraPacketExchange>
+            cameraPacketExchange;
+        try {
+            cameraPacketExchange = std::make_shared<
+                airfix::render::LegacyGameplayCameraPacketExchange>(
+                *bootstrapCamera);
+        } catch (const std::bad_alloc&) {
+            if (error != nullptr) {
+                *error = makeError(
+                    RendererError::resourceLimit,
+                    @"The private room camera exchange could not reserve its bounded storage.");
+            }
+            return nil;
+        }
+        {
+            const auto initialCamera =
+                cameraPacketExchange->tryAcquire();
+            if (!initialCamera.has_value() ||
+                !initialCamera->valid() ||
+                initialCamera->packet() == nullptr ||
+                initialCamera->simulationStep() !=
+                    bootstrapCamera->pose().frame().simulationStep ||
+                initialCamera->cameraPublicationGeneration() !=
+                    bootstrapCamera->pose()
+                        .frame()
+                        .publicationGeneration) {
+                if (error != nullptr) {
+                    *error = makeError(
+                        RendererError::invalidPayload,
+                        @"The private room gameplay camera exchange is invalid.");
+                }
+                return nil;
+            }
         }
 
         // Keep the cheap logical-byte rejection before building allocator
@@ -2548,8 +2597,8 @@ bool preflightPrivateRoom(
         candidateResources->_revision = room.revision;
         candidateResources->_scenePoseRuntime =
             std::move(scenePosePreparation.runtime);
-        candidateResources->_cameraClipPacket.emplace(
-            *bootstrapCamera);
+        candidateResources->_cameraPacketExchange =
+            std::move(cameraPacketExchange);
         candidate->_resources = candidateResources;
         candidate->_releaseQueue = resourceReleaseQueue;
         candidate->_worldRoomInstalled = YES;
@@ -2592,7 +2641,8 @@ bool preflightPrivateRoom(
         preparedRoom->_snapshot->_resources == nil ||
         !hasActiveGpuBudgetReservation(preparedRoom->_snapshot) ||
         !preparedRoom->_snapshot->_worldRoomInstalled ||
-        !preparedRoom->_snapshot->_resources->_cameraClipPacket.has_value()) {
+        preparedRoom->_snapshot->_resources->_cameraPacketExchange ==
+            nullptr) {
         return AirfixPlayerActorPoseRuntimeEndpoint{
             std::in_place,
             std::weak_ptr<
@@ -2644,7 +2694,8 @@ bool preflightPrivateRoom(
         preparedRoom->_snapshot->_resources == nil ||
         !hasActiveGpuBudgetReservation(preparedRoom->_snapshot) ||
         !preparedRoom->_snapshot->_worldRoomInstalled ||
-        !preparedRoom->_snapshot->_resources->_cameraClipPacket.has_value()) {
+        preparedRoom->_snapshot->_resources->_cameraPacketExchange ==
+            nullptr) {
         if (error != nullptr) {
             *error = makeError(
                 RendererError::invalidPreparedRoom,
@@ -2683,10 +2734,16 @@ bool preflightPrivateRoom(
     }
     const bool gameplayCameraActive =
         resources->_missionRoom.has_value();
+    std::optional<airfix::render::LegacyGameplayCameraPacketLease>
+        gameplayCameraLease;
+    if (gameplayCameraActive &&
+        resources->_cameraPacketExchange != nullptr) {
+        gameplayCameraLease =
+            resources->_cameraPacketExchange->tryAcquire();
+    }
     const auto* gameplayCamera =
-        gameplayCameraActive &&
-            resources->_cameraClipPacket.has_value()
-        ? &*resources->_cameraClipPacket
+        gameplayCameraLease.has_value()
+        ? gameplayCameraLease->packet()
         : nullptr;
     if (gameplayCameraActive && gameplayCamera == nullptr) {
         return;
