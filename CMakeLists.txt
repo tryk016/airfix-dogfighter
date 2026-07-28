@@ -139,6 +139,7 @@ add_library(airfix_render
     src/airfix/render/MissionWorldRoomDrawAssembly.cpp
     src/airfix/render/MissionWorldRoomTextureBindings.cpp
     src/airfix/render/MissionWorldRuntimeSpatialTrace.cpp
+    src/airfix/render/MissionWorldRuntimeSphereCollision.cpp
     src/airfix/render/DiagnosticRasterizer.cpp
     src/airfix/render/DynamicInstancePose.cpp
     src/airfix/render/DrawMesh.cpp
@@ -496,6 +497,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_mission_world_runtime_spatial_trace_tests
         COMMAND airfix_mission_world_runtime_spatial_trace_tests)
+
+    add_executable(airfix_mission_world_runtime_sphere_collision_tests
+        tests/MissionWorldRuntimeSphereCollisionTests.cpp)
+    target_link_libraries(airfix_mission_world_runtime_sphere_collision_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_mission_world_runtime_sphere_collision_tests
+        COMMAND airfix_mission_world_runtime_sphere_collision_tests)
 
     add_executable(airfix_legacy_gameplay_camera_room_state_tests
         tests/LegacyGameplayCameraRoomStateTests.cpp)

@@ -245,8 +245,8 @@ All helpers are allocation-free, `noexcept`, and fail atomically on
 non-finite input or intermediate overflow. The look-at uses widened
 intermediates as a portable approximation and rejects the still-unverified
 zero-direction case. Static and portal BSP line tracing plus the portal/room
-state proposal are now present. No actual sphere contact collector/resolver,
-dynamic-object query, or final camera publication is present yet.
+state proposal are now present. The static room sphere collector and resolver
+are also present; dynamic-object queries and final camera publication are not.
 
 See
 [EXP-20260727-010](../../experiments/EXP-20260727-010-gameplay-camera-modes.md)
@@ -394,7 +394,8 @@ validates every local legacy fraction before its gate or room change.
 candidate `{runtimeWorldPosition, worldRoomIndex}` only after that traversal
 finishes. Failures may retain a diagnostic hit and completed-hop count but
 never expose a partial state. This is a portable semantic proposal, not yet a
-thread-safe mutable simulation owner or the missing sphere/contact solver.
+thread-safe mutable simulation owner or the join to the completed static sphere
+resolver.
 
 The exact next solver boundary is recorded in
 [EXP-20260728-014](../../experiments/EXP-20260728-014-camera-sphere-contact-recovery.md).
@@ -407,8 +408,14 @@ The bounded constraint stage is implemented and documented in
 It preserves the native newest-first plane list, oldest-first active scan,
 directional `Overrides` predicate, exact `0.999` duplicate cutoff, exact
 `0.0001` two-plane cutoff, and one-/two-/three-plane projection outcomes.
-It remains separate from the unimplemented BSP contact collector and
-face/edge/vertex penetration selector.
+The static BSP contact collector and face/edge/vertex penetration selector are
+implemented in
+[EXP-20260728-016](../../experiments/EXP-20260728-016-camera-static-sphere-resolver.md).
+They preserve seven-axis broad-phase tests, static portal-room discovery,
+material filtering, raw edge/vertex directions, reverse-discovery tie order,
+and iterative constrained correction. The caller supplies bounded workspaces,
+and non-orthonormal bases fail because they would turn a sphere into an
+ellipsoid. Dynamic-object BSP remains separate.
 
 ## Still unknown
 
@@ -447,3 +454,4 @@ evidence is recovered.
 - [Camera room-state proposal](../../experiments/EXP-20260728-013-camera-room-state-proposal.md)
 - [Camera sphere-contact recovery](../../experiments/EXP-20260728-014-camera-sphere-contact-recovery.md)
 - [Camera constraint solver](../../experiments/EXP-20260728-015-camera-constraint-solver.md)
+- [Camera static sphere resolver](../../experiments/EXP-20260728-016-camera-static-sphere-resolver.md)

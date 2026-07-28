@@ -6,8 +6,8 @@
 
 **Scenario:** `SCN-CAMERA-001`
 
-**Status:** material contract implemented; constraint projection implemented
-in follow-up; static sphere collection remains specified but not implemented
+**Status:** material contract implemented; constraint projection and static
+sphere resolution implemented in follow-ups; dynamic objects remain separate
 
 ## Question
 
@@ -129,9 +129,10 @@ confirmed rules:
 - preserve legacy tree and polygon prepend order already retained by the arena.
 
 `PhSphere::GetCollision` first rejects plane separation, then tests three
-vertex axes and three edge-derived axes. Its vector normalization, binary32
-spills, x87 comparisons, and degenerate-input behavior must be translated and
-tested before the portable collector is claimed complete.
+vertex axes and three edge-derived axes. Its finite nondegenerate behavior,
+identified binary32 stores, comparison strictness, and static B-then-A
+collector are now implemented and protected by golden fixtures in
+[EXP-20260728-016](EXP-20260728-016-camera-static-sphere-resolver.md).
 
 ## Constraint boundary
 
@@ -156,9 +157,9 @@ product above the native duplicate threshold. `AttemptMove`:
 The `Overrides` predicate, both native thresholds, active-plane ordering, and
 projection outcomes were closed and implemented in
 [EXP-20260728-015](EXP-20260728-015-camera-constraint-solver.md). The large
-`GetCollisionAndBestFree` function still requires golden closest-face,
-closest-edge, and closest-vertex fixtures. Transliteration without those
-contracts would create plausible but unverified sphere-contact selection.
+`GetCollisionAndBestFree` face/edge/vertex selector, static portal-room walk,
+material filter, tie ordering, and iterative correction are implemented in
+[EXP-20260728-016](EXP-20260728-016-camera-static-sphere-resolver.md).
 
 ## Dynamic objects
 
@@ -193,9 +194,10 @@ provenance and the gameplay-camera deletion rule for values `0` and `8`.
 Confidence is **3/3** for the native stage order and static BSP recursion
 conditions.
 
-Confidence is **2/3** for the complete closest-feature semantics until its
-boundary fixtures are recovered. Constraint projection is now independently
-closed at confidence **3/3**. Dynamic-object parity remains outside this stage.
+Confidence is **3/3** for finite nondegenerate closest-feature semantics after
+the boundary fixtures in EXP-016. Constraint projection is independently
+closed at confidence **3/3**. Degenerate/x87 pathological bit parity remains
+**2/3**, and dynamic-object parity remains outside this stage.
 
 ## Related evidence
 
@@ -203,5 +205,6 @@ closed at confidence **3/3**. Dynamic-object parity remains outside this stage.
 - [Portal BSP line trace](EXP-20260727-011-portal-bsp-line-trace.md)
 - [Camera room-state proposal](EXP-20260728-013-camera-room-state-proposal.md)
 - [Camera constraint solver](EXP-20260728-015-camera-constraint-solver.md)
+- [Camera static sphere resolver](EXP-20260728-016-camera-static-sphere-resolver.md)
 - [CCF format](../formats/CCF.md)
 - [Camera and projection contract](../re/systems/CAMERA-PROJECTION.md)

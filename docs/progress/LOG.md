@@ -2071,3 +2071,29 @@ superseded evidence.
   public-boundary scan checks 311 files, the function catalogue contains 222
   unique entries, and the Ghidra/Rizin/working-copy wrapper tests, 12 Rizin
   normalization tests, `actionlint`, and `git diff --check` are clean.
+
+## 2026-07-28 - camera static sphere resolver
+
+- `EV-20260728-003` / `EXP-20260728-016`: closed the finite nondegenerate
+  `PhSphere::GetCollision` seven-axis candidate test and
+  `PhCollidedPolyList::GetCollisionAndBestFree` face/edge/vertex selector.
+  Rizin independently discovered the selector's exact 3,049-byte automatic
+  boundary and its six squared-vector helper calls.
+- Preserved native irregularities that a generic closest-point replacement
+  would lose: strict versus inclusive tangent branches, stored
+  `edge01`/`edge02` rounding, raw non-normalized edge/vertex directions, and
+  reverse-discovery first-wins depth ties.
+- Added an allocation-free `noexcept` static BSP resolver with B-then-A
+  traversal, visible type-zero portal-room discovery, material modes `0`/`8`
+  filtering, iterative candidate re-test, and caller-owned candidate/constraint
+  workspaces. Non-orthonormal runtime bases fail closed because they would map
+  the source sphere to an ellipsoid.
+- Synthetic fixtures cover every face/edge/vertex branch, tangency, material,
+  visible/invisible/nonzero portal behavior, adjacent-room discovery, limits,
+  scale, basis, workspace, tie, and the 4,096-call allocation boundary.
+  Dynamic-object BSP and synchronized camera-state publication remain separate.
+- A fresh Release/Ninja build completed all 205 steps and all 62 portable tests
+  pass. The code-intelligence build and its 62 tests also pass. The
+  public-boundary scan checks 315 files; Ghidra, working-copy, and Rizin wrapper
+  tests, 12 Rizin normalization tests, the 222-entry unique function catalogue,
+  `actionlint`, and `git diff --check` are clean.
