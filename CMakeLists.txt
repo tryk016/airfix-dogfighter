@@ -72,6 +72,7 @@ add_library(airfix_simulation
     src/airfix/simulation/LegacyAircraftDestroyedDiveAudioState.cpp
     src/airfix/simulation/LegacyAircraftEngineAudioState.cpp
     src/airfix/simulation/LegacyAircraftThrustState.cpp
+    src/airfix/simulation/LegacyMachineGunFireState.cpp
     src/airfix/simulation/LegacyVehicleSleepState.cpp
     src/airfix/simulation/PlayerAircraftSimulation.cpp
 )
@@ -484,6 +485,13 @@ if(AIRFIX_BUILD_TESTS)
     add_test(
         NAME airfix_legacy_aircraft_destroyed_dive_audio_state_tests
         COMMAND airfix_legacy_aircraft_destroyed_dive_audio_state_tests)
+
+    add_executable(airfix_legacy_machine_gun_fire_state_tests
+        tests/LegacyMachineGunFireStateTests.cpp)
+    target_link_libraries(airfix_legacy_machine_gun_fire_state_tests
+        PRIVATE airfix::simulation)
+    add_test(NAME airfix_legacy_machine_gun_fire_state_tests
+        COMMAND airfix_legacy_machine_gun_fire_state_tests)
 
     add_executable(airfix_render_tests tests/LegacyGeometryTests.cpp)
     target_link_libraries(airfix_render_tests PRIVATE airfix::render)

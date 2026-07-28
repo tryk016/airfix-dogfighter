@@ -618,6 +618,17 @@
   A separate allocation-free C++20 transition preserves the exact command
   order and deliberately initializes the original constructor's unwritten
   `+0x566` state byte to false. It remains unwired from an audio backend.
+- Recovered the primary weapon path from `EVENT_PRIMARY_ATTACK` through the
+  AirCraft `WpMgun` pointer and persistent `AfWeapon::Fire` state into the
+  separate `WpMGun` time-dependant refresh. The five technology levels use
+  exact `0.12..0.08` second intervals and `40..100` projectile speeds; the
+  refresh preserves a tenfold zero-ammunition cadence, selects/wraps the
+  attachment-provided barrel, decrements only nonzero ammunition, creates a
+  private `WpMGunAmmoTechN`, and processes projectile event `0xE2`.
+  An allocation-free C++20 helper now preserves the timing/state subset and
+  emits a bounded spawn request. Complete projectile event assembly, motion,
+  collision, impact damage/effects, secondary weapon families, and runtime
+  integration remain pending.
 
 ## Confirmed
 
@@ -663,6 +674,9 @@
    controlled multi-room executable traces when the isolated runtime is ready.
 5. Keep BSP render culling disabled until its separate runtime semantics are
    proven against executable evidence.
+6. Continue the weapon slice through `WpMGunAmmoTechN` event `0xE2`
+   activation, motion, collision, impact damage, and ricochet behavior before
+   wiring primary-fire intent into the runtime.
 
 ## Open questions
 
