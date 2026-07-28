@@ -73,6 +73,16 @@ static_assert(noexcept(traceMissionWorldRuntimeCombinedLine(
     std::declval<const Vec3&>(),
     std::declval<std::span<const LegacyDynamicBspMesh>>(),
     std::declval<std::span<const LegacyDynamicBspLineObject>>())));
+static_assert(noexcept(traceMissionWorldRuntimeCombinedPortalLine(
+    std::declval<const MissionWorldSpatialArena&>(),
+    std::declval<const BasisTransform&>(),
+    std::declval<std::size_t>(),
+    std::declval<const Vec3&>(),
+    std::declval<const Vec3&>(),
+    std::declval<std::span<const LegacyDynamicBspMesh>>(),
+    std::declval<std::span<const LegacyDynamicBspLineObject>>(),
+    std::declval<
+        std::span<const LegacyDynamicBspRoomObjectRange>>())));
 static_assert(std::is_nothrow_copy_constructible_v<
               MissionWorldRuntimeCombinedLineHit>);
 
@@ -164,9 +174,10 @@ void require(const bool condition, const std::string& message) {
     };
 }
 
-[[nodiscard]] MissionWorldSpatialArena emptyStaticArena() {
+[[nodiscard]] MissionWorldSpatialArena emptyStaticArena(
+    const std::size_t roomCount = 1U) {
     MissionWorldSpatialArena arena;
-    arena.rooms.resize(1U);
+    arena.rooms.resize(roomCount);
     return arena;
 }
 
@@ -209,6 +220,19 @@ void require(const bool condition, const std::string& message) {
         .objectLocalToRuntime = {},
         .runtimeTranslation = {},
     };
+}
+
+[[nodiscard]] LegacyDynamicBspLineObject portalObject(
+    const float height,
+    const std::size_t targetWorldRoomIndex,
+    const bool visible = true,
+    const std::int32_t portalType = 0) {
+    auto result = object(0U, 0U);
+    result.runtimeTranslation.z = height;
+    result.portalType = portalType;
+    result.portalWorldRoomIndex = targetWorldRoomIndex;
+    result.portalObjectVisible = visible;
+    return result;
 }
 
 [[nodiscard]] LegacyDynamicBspBuildIssueKind firstIssue(
@@ -748,6 +772,445 @@ void testOutOfSegmentHitFailsClosed() {
         "epsilon-admitted out-of-segment hit did not fail closed");
 }
 
+void testCombinedPortalContinuationAndFraction() {
+    const std::array heights{0.0F};
+    const auto mesh = buildLegacyDynamicBsp(
+        parallelTriangles(heights, 800U));
+    const std::array meshes{mesh};
+    auto solid = object(0U, 22U);
+    solid.runtimeTranslation.z = 1.0F;
+    const std::array objects{
+        portalObject(-1.0F, 1U),
+        solid,
+    };
+    const std::array ranges{
+        LegacyDynamicBspRoomObjectRange{
+            .firstObjectIndex = 0U,
+            .objectCount = 1U,
+        },
+        LegacyDynamicBspRoomObjectRange{
+            .firstObjectIndex = 1U,
+            .objectCount = 1U,
+        },
+    };
+
+    const auto result = traceMissionWorldRuntimeCombinedPortalLine(
+        emptyStaticArena(2U),
+        {},
+        0U,
+        {0.0F, 0.0F, -2.0F},
+        {0.0F, 0.0F, 2.0F},
+        meshes,
+        objects,
+        ranges);
+    require(
+        result.status ==
+                MissionWorldRuntimeCombinedLineTraceStatus::hit &&
+            result.hit.has_value() &&
+            result.portalTransitionCount == 1U &&
+            result.hit->dynamicObjectIndex ==
+                std::optional<std::size_t>{1U} &&
+            result.hit->actorObjectId == 22U &&
+            result.hit->portalType == -1 &&
+            !result.hit->portalWorldRoomIndex.has_value() &&
+            close(result.hit->legacyFraction, 0.75F) &&
+            close(
+                result.hit->runtimePoint,
+                Vec3{0.0F, 0.0F, 1.0F}),
+        "visible type-zero portal did not continue to the later hit");
+}
+
+void testCombinedPortalNoLaterHitAndBlockingGates() {
+    const std::array heights{0.0F};
+    const auto mesh = buildLegacyDynamicBsp(
+        parallelTriangles(heights, 810U));
+    const std::array meshes{mesh};
+    const std::array ranges{
+        LegacyDynamicBspRoomObjectRange{
+            .firstObjectIndex = 0U,
+            .objectCount = 1U,
+        },
+        LegacyDynamicBspRoomObjectRange{
+            .firstObjectIndex = 1U,
+            .objectCount = 0U,
+        },
+    };
+
+    std::array objects{portalObject(0.0F, 1U)};
+    const auto noLaterHit =
+        traceMissionWorldRuntimeCombinedPortalLine(
+            emptyStaticArena(2U),
+            {},
+            0U,
+            {0.0F, 0.0F, -1.0F},
+            {0.0F, 0.0F, 1.0F},
+            meshes,
+            objects,
+            ranges);
+    require(
+        noLaterHit.status ==
+                MissionWorldRuntimeCombinedLineTraceStatus::noHit &&
+            !noLaterHit.hit.has_value() &&
+            noLaterHit.portalTransitionCount == 1U,
+        "transparent portal without a later hit did not clear collision");
+
+    objects[0].portalObjectVisible = false;
+    const auto hidden = traceMissionWorldRuntimeCombinedPortalLine(
+        emptyStaticArena(2U),
+        {},
+        0U,
+        {0.0F, 0.0F, -1.0F},
+        {0.0F, 0.0F, 1.0F},
+        meshes,
+        objects,
+        ranges);
+    require(
+        hidden.status ==
+                MissionWorldRuntimeCombinedLineTraceStatus::hit &&
+            hidden.hit.has_value() &&
+            hidden.portalTransitionCount == 0U &&
+            hidden.hit->portalType == 0 &&
+            !hidden.hit->portalObjectVisible &&
+            hidden.hit->portalWorldRoomIndex ==
+                std::optional<std::size_t>{1U},
+        "hidden type-zero portal was incorrectly followed");
+
+    objects[0].portalObjectVisible = true;
+    objects[0].portalType = 1;
+    const auto solidPortal =
+        traceMissionWorldRuntimeCombinedPortalLine(
+            emptyStaticArena(2U),
+            {},
+            0U,
+            {0.0F, 0.0F, -1.0F},
+            {0.0F, 0.0F, 1.0F},
+            meshes,
+            objects,
+            ranges);
+    require(
+        solidPortal.status ==
+                MissionWorldRuntimeCombinedLineTraceStatus::hit &&
+            solidPortal.hit.has_value() &&
+            solidPortal.portalTransitionCount == 0U &&
+            solidPortal.hit->portalType == 1,
+        "type-one portal was incorrectly treated as transparent");
+}
+
+void testCombinedPortalChainAndStrictNearest() {
+    const std::array heights{0.0F};
+    const auto mesh = buildLegacyDynamicBsp(
+        parallelTriangles(heights, 820U));
+    const std::array meshes{mesh};
+    auto solid = object(0U, 55U);
+    solid.runtimeTranslation.z = 1.0F;
+    const std::array objects{
+        portalObject(-1.0F, 1U),
+        portalObject(0.0F, 2U),
+        solid,
+    };
+    const std::array ranges{
+        LegacyDynamicBspRoomObjectRange{0U, 1U},
+        LegacyDynamicBspRoomObjectRange{1U, 1U},
+        LegacyDynamicBspRoomObjectRange{2U, 1U},
+    };
+    const auto chain = traceMissionWorldRuntimeCombinedPortalLine(
+        emptyStaticArena(3U),
+        {},
+        0U,
+        {0.0F, 0.0F, -2.0F},
+        {0.0F, 0.0F, 2.0F},
+        meshes,
+        objects,
+        ranges);
+    require(
+        chain.status ==
+                MissionWorldRuntimeCombinedLineTraceStatus::hit &&
+            chain.hit.has_value() &&
+            chain.portalTransitionCount == 2U &&
+            chain.hit->dynamicObjectIndex ==
+                std::optional<std::size_t>{2U} &&
+            close(chain.hit->legacyFraction, 0.75F),
+        "two-portal fraction composition or absolute provenance changed");
+
+    auto portalBehindStatic = portalObject(-1.0F, 0U);
+    const std::array oneObject{portalBehindStatic};
+    const std::array oneRange{
+        LegacyDynamicBspRoomObjectRange{0U, 1U},
+    };
+    const auto staticFirst =
+        traceMissionWorldRuntimeCombinedPortalLine(
+            staticArenaAt(-1.5F, 99U),
+            {},
+            0U,
+            {0.0F, 0.0F, -2.0F},
+            {0.0F, 0.0F, 2.0F},
+            meshes,
+            oneObject,
+            oneRange);
+    require(
+        staticFirst.status ==
+                MissionWorldRuntimeCombinedLineTraceStatus::hit &&
+            staticFirst.hit.has_value() &&
+            staticFirst.hit->kind ==
+                MissionWorldRuntimeCombinedLineHitKind::staticRoom &&
+            staticFirst.portalTransitionCount == 0U &&
+            staticFirst.hit->materialCollisionMode2152 ==
+                std::optional<std::uint32_t>{99U},
+        "nearer static hit did not block a farther transparent portal");
+}
+
+void testCombinedPortalUsesRecursiveFractionOrder() {
+    const std::array heights{0.0F};
+    const auto mesh = buildLegacyDynamicBsp(
+        parallelTriangles(heights, 825U));
+    const std::array meshes{mesh};
+    auto solid = object(0U, 66U);
+    solid.runtimeTranslation.z = 9.0F;
+    const std::array objects{
+        portalObject(1.0F, 1U),
+        portalObject(2.0F, 2U),
+        solid,
+    };
+    const std::array ranges{
+        LegacyDynamicBspRoomObjectRange{0U, 1U},
+        LegacyDynamicBspRoomObjectRange{1U, 1U},
+        LegacyDynamicBspRoomObjectRange{2U, 1U},
+    };
+    const auto arena = emptyStaticArena(3U);
+    const Vec3 end{0.0F, 0.0F, 1'000.0F};
+
+    const auto first = traceMissionWorldRuntimeCombinedLine(
+        arena, {}, 0U, {}, end, meshes,
+        std::span{objects}.subspan(0U, 1U));
+    require(
+        first.status ==
+                MissionWorldRuntimeCombinedLineTraceStatus::hit &&
+            first.hit.has_value(),
+        "first recursive-order fixture portal did not hit");
+    const auto second = traceMissionWorldRuntimeCombinedLine(
+        arena, {}, 1U, first.hit->runtimePoint, end, meshes,
+        std::span{objects}.subspan(1U, 1U));
+    require(
+        second.status ==
+                MissionWorldRuntimeCombinedLineTraceStatus::hit &&
+            second.hit.has_value(),
+        "second recursive-order fixture portal did not hit");
+    const auto third = traceMissionWorldRuntimeCombinedLine(
+        arena, {}, 2U, second.hit->runtimePoint, end, meshes,
+        std::span{objects}.subspan(2U, 1U));
+    require(
+        third.status ==
+                MissionWorldRuntimeCombinedLineTraceStatus::hit &&
+            third.hit.has_value(),
+        "recursive-order fixture final surface did not hit");
+
+    const auto compose = [](const float outer, const float inner) {
+        return static_cast<float>(
+            static_cast<double>(outer) +
+            (1.0 - static_cast<double>(outer)) *
+                static_cast<double>(inner));
+    };
+    const float recursiveExpected = compose(
+        first.hit->legacyFraction,
+        compose(
+            second.hit->legacyFraction,
+            third.hit->legacyFraction));
+    const float forwardRounded = compose(
+        compose(
+            first.hit->legacyFraction,
+            second.hit->legacyFraction),
+        third.hit->legacyFraction);
+    require(
+        recursiveExpected != forwardRounded,
+        "recursive-order fixture did not distinguish rounding order");
+
+    const auto combined = traceMissionWorldRuntimeCombinedPortalLine(
+        arena,
+        {},
+        0U,
+        {},
+        end,
+        meshes,
+        objects,
+        ranges);
+    require(
+        combined.status ==
+                MissionWorldRuntimeCombinedLineTraceStatus::hit &&
+            combined.hit.has_value() &&
+            combined.hit->legacyFraction == recursiveExpected,
+        "portal fractions were not composed in native recursion-unwind order");
+}
+
+void testCombinedPortalLimitsAndMalformedPublication() {
+    const std::array heights{0.0F};
+    const auto mesh = buildLegacyDynamicBsp(
+        parallelTriangles(heights, 830U));
+    const std::array meshes{mesh};
+    const std::array objects{portalObject(0.0F, 0U)};
+    const std::array ranges{
+        LegacyDynamicBspRoomObjectRange{0U, 1U},
+    };
+    auto options =
+        MissionWorldRuntimeCombinedPortalLineTraceOptions{};
+    options.maximumPortalTransitions = 0U;
+    const auto zeroBudgetPortal =
+        traceMissionWorldRuntimeCombinedPortalLine(
+            emptyStaticArena(),
+            {},
+            0U,
+            {0.0F, 0.0F, -1.0F},
+            {0.0F, 0.0F, 1.0F},
+            meshes,
+            objects,
+            ranges,
+            options);
+    require(
+        zeroBudgetPortal.status ==
+                MissionWorldRuntimeCombinedLineTraceStatus::
+                    portalTransitionLimitExceeded &&
+            zeroBudgetPortal.hit.has_value() &&
+            zeroBudgetPortal.portalTransitionCount == 0U,
+        "zero portal budget did not reject a winning portal");
+
+    const std::array solidObjects{object()};
+    const auto zeroBudgetSolid =
+        traceMissionWorldRuntimeCombinedPortalLine(
+            emptyStaticArena(),
+            {},
+            0U,
+            {0.0F, 0.0F, -1.0F},
+            {0.0F, 0.0F, 1.0F},
+            meshes,
+            solidObjects,
+            ranges,
+            options);
+    require(
+        zeroBudgetSolid.status ==
+                MissionWorldRuntimeCombinedLineTraceStatus::hit &&
+            zeroBudgetSolid.hit.has_value() &&
+            zeroBudgetSolid.portalTransitionCount == 0U,
+        "zero portal budget rejected an ordinary collision");
+
+    options.maximumPortalTransitions = 2U;
+    const auto cycle = traceMissionWorldRuntimeCombinedPortalLine(
+        emptyStaticArena(),
+        {},
+        0U,
+        {0.0F, 0.0F, -1.0F},
+        {0.0F, 0.0F, 1.0F},
+        meshes,
+        objects,
+        ranges,
+        options);
+    require(
+        cycle.status ==
+                MissionWorldRuntimeCombinedLineTraceStatus::
+                    portalTransitionLimitExceeded &&
+            cycle.hit.has_value() &&
+            cycle.portalTransitionCount == 2U,
+        "self-portal did not stop at the explicit transition budget");
+
+    options.maximumPortalTransitions =
+        kMissionWorldSpatialMaximumPortalTransitions + 1U;
+    require(
+        traceMissionWorldRuntimeCombinedPortalLine(
+            emptyStaticArena(),
+            {},
+            0U,
+            {0.0F, 0.0F, -1.0F},
+            {0.0F, 0.0F, 1.0F},
+            meshes,
+            objects,
+            ranges,
+            options).status ==
+            MissionWorldRuntimeCombinedLineTraceStatus::invalidInput,
+        "portal budget above the hard safety ceiling was accepted");
+
+    const std::array badRange{
+        LegacyDynamicBspRoomObjectRange{1U, 1U},
+    };
+    require(
+        traceMissionWorldRuntimeCombinedPortalLine(
+            emptyStaticArena(),
+            {},
+            0U,
+            {0.0F, 0.0F, -1.0F},
+            {0.0F, 0.0F, 1.0F},
+            meshes,
+            objects,
+            badRange).status ==
+            MissionWorldRuntimeCombinedLineTraceStatus::
+                invalidDynamicObject,
+        "out-of-range room object publication was accepted");
+
+    auto malformed = object();
+    malformed.portalType = 0;
+    const std::array malformedObjects{malformed};
+    require(
+        traceMissionWorldRuntimeCombinedLine(
+            emptyStaticArena(),
+            {},
+            0U,
+            {0.0F, 0.0F, -1.0F},
+            {0.0F, 0.0F, 1.0F},
+            meshes,
+            malformedObjects).status ==
+            MissionWorldRuntimeCombinedLineTraceStatus::
+                invalidDynamicObject,
+        "type-zero object without a target room was accepted");
+
+    malformed.portalType = 2;
+    malformed.portalWorldRoomIndex = 0U;
+    const std::array invalidTypeObjects{malformed};
+    require(
+        traceMissionWorldRuntimeCombinedLine(
+            emptyStaticArena(),
+            {},
+            0U,
+            {0.0F, 0.0F, -1.0F},
+            {0.0F, 0.0F, 1.0F},
+            meshes,
+            invalidTypeObjects).status ==
+            MissionWorldRuntimeCombinedLineTraceStatus::
+                invalidDynamicObject,
+        "portal type outside the native domain was accepted");
+}
+
+void testCombinedPortalRejectsLaterOutOfSegmentHit() {
+    const std::array heights{0.0F};
+    const auto mesh = buildLegacyDynamicBsp(
+        parallelTriangles(heights, 840U));
+    const std::array meshes{mesh};
+    auto behindPortal = object(0U, 77U);
+    behindPortal.runtimeTranslation.z = -0.5e-6F;
+    const std::array objects{
+        portalObject(0.0F, 1U),
+        behindPortal,
+    };
+    const std::array ranges{
+        LegacyDynamicBspRoomObjectRange{0U, 1U},
+        LegacyDynamicBspRoomObjectRange{1U, 1U},
+    };
+    const auto result = traceMissionWorldRuntimeCombinedPortalLine(
+        emptyStaticArena(2U),
+        {},
+        0U,
+        {0.0F, 0.0F, -1.0F},
+        {0.0F, 0.0F, 1.0F},
+        meshes,
+        objects,
+        ranges);
+    require(
+        result.status ==
+                MissionWorldRuntimeCombinedLineTraceStatus::
+                    outOfSegmentHit &&
+            result.hit.has_value() &&
+            result.portalTransitionCount == 1U &&
+            result.hit->legacyFraction < 0.0F &&
+            !result.hit->withinRequestedSegment,
+        "later epsilon-admitted hit did not fail before publication");
+}
+
 void testRuntimeTraceDoesNotAllocate() {
     const std::array heights{0.0F};
     const auto mesh = buildLegacyDynamicBsp(parallelTriangles(heights));
@@ -775,6 +1238,38 @@ void testRuntimeTraceDoesNotAllocate() {
     require(
         allocationCount.load(std::memory_order_relaxed) == 0U,
         "combined static/dynamic trace allocated on the hot path");
+
+    const std::array portalObjects{
+        portalObject(-1.0F, 1U),
+        object(0U, 44U),
+    };
+    const std::array portalRanges{
+        LegacyDynamicBspRoomObjectRange{0U, 1U},
+        LegacyDynamicBspRoomObjectRange{1U, 1U},
+    };
+    const auto portalArena = emptyStaticArena(2U);
+    allocationCount.store(0U, std::memory_order_relaxed);
+    countAllocations.store(true, std::memory_order_relaxed);
+    for (std::size_t iteration = 0U; iteration < 4'096U;
+         ++iteration) {
+        result = traceMissionWorldRuntimeCombinedPortalLine(
+            portalArena,
+            {},
+            0U,
+            {0.0F, 0.0F, -2.0F},
+            {0.0F, 0.0F, 2.0F},
+            meshes,
+            portalObjects,
+            portalRanges);
+    }
+    countAllocations.store(false, std::memory_order_relaxed);
+    require(
+        result.valid() &&
+            result.portalTransitionCount == 1U,
+        "allocation probe portal trace failed");
+    require(
+        allocationCount.load(std::memory_order_relaxed) == 0U,
+        "combined portal trace allocated on the hot path");
 }
 
 } // namespace
@@ -791,6 +1286,12 @@ int main() {
         testBuildValidationAndLimits();
         testRuntimeValidation();
         testOutOfSegmentHitFailsClosed();
+        testCombinedPortalContinuationAndFraction();
+        testCombinedPortalNoLaterHitAndBlockingGates();
+        testCombinedPortalChainAndStrictNearest();
+        testCombinedPortalUsesRecursiveFractionOrder();
+        testCombinedPortalLimitsAndMalformedPublication();
+        testCombinedPortalRejectsLaterOutOfSegmentHit();
         testRuntimeTraceDoesNotAllocate();
         std::cout << "LegacyDynamicBsp tests passed\n";
         return 0;

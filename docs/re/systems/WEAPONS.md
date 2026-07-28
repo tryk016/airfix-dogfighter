@@ -298,13 +298,21 @@ strict-nearest fraction. Static geometry and earlier objects retain exact
 ties; object-local hits return transformed normals and actor/material
 provenance without allocating.
 
-The adapter deliberately stops before native portal recursion. A live
-coordinator must publish authenticated mesh colliders and room membership,
-supply actor identity/gates, repeat visible type-zero portal continuations
-with a bounded budget, and dispatch callbacks. See
+`traceMissionWorldRuntimeCombinedPortalLine` now consumes a flat native-order
+object publication plus one range per retained room and performs the automatic
+visible type-zero tail of `PhLine::GetBspCollision`. It iteratively repeats the
+complete static/dynamic competition, replaces portal provenance with a later
+hit, composes the whole-segment fraction, returns no collision when no later
+hit exists, and stops cycles at an explicit maximum of 256 transitions. The
+hot path remains allocation-free.
+
+A live coordinator must still publish authenticated mesh colliders and room
+membership, supply actor identity/gates, repeat the separate projectile-level
+`followPortal` outcome when required, and dispatch callbacks. See
 [EXP-20260728-034](../../experiments/EXP-20260728-034-projectile-collision-decision.md)
+[EXP-20260728-035](../../experiments/EXP-20260728-035-dynamic-bsp-line-adapter.md),
 and
-[EXP-20260728-035](../../experiments/EXP-20260728-035-dynamic-bsp-line-adapter.md).
+[EXP-20260728-036](../../experiments/EXP-20260728-036-combined-line-portal-continuation.md).
 
 ## Actor damage and surface reaction
 
@@ -370,17 +378,17 @@ performs the recovered millisecond conversion. They reject non-finite or unsafe
 consumed inputs instead of reproducing x87 unordered behavior or invalid
 attachment memory. They remain unwired: an eventual runtime adapter must
 resolve private types and authored muzzle transforms, merge room BSP and
-dynamic actor geometry into one strict-nearest result, repeat bounded portal
-continuations, dispatch events, and honor allocation failure without inventing
-a projectile or effect.
+dynamic actor geometry into the implemented bounded automatic-portal query,
+repeat any later projectile-level portal outcome, dispatch events, and honor
+allocation failure without inventing a projectile or effect.
 
 ## Remaining work
 
 - Consume the prepared-shot transaction through private type allocation and
   event dispatch without rolling back fire state on allocation failure.
 - Join projectile movement to dynamic actors by publishing the implemented
-  per-mesh collider and ordered room-object instances; add bounded portal
-  continuation after dynamic actor ownership is retained.
+  per-mesh collider and ordered room-object ranges; then compose the remaining
+  projectile-level portal/actor decision loop.
 - Recreate the optional `mguntracer` and `FxRicochet` visual/effect adapters.
 - Trace sample/effect commands associated with a shot.
 - Recover secondary weapon selection and each secondary projectile family.

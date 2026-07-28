@@ -645,8 +645,12 @@
   prepend, clipping, material/provenance, and radius contracts. A non-portal
   allocation-free adapter lets retained static geometry and caller-ordered
   unit-scale dynamic instances compete through that same strict-nearest
-  fraction. Private allocation/event dispatch, live muzzle transforms,
-  authenticated actor/room publication, bounded portal iteration,
+  fraction. A second bounded allocation-free adapter now consumes flat
+  per-room object ranges, follows automatic visible type-zero portals, replaces
+  portal provenance with the later hit, composes whole-segment fractions, and
+  fails typed on malformed ranges, out-of-segment hits, or cycles. Private
+  allocation/event dispatch, live muzzle transforms, authenticated actor/room
+  publication, the separate projectile-level follow-portal loop,
   tracer/effect realization, secondary weapon families, dynamic camera-sphere
   contacts, runtime traces, and integration remain pending.
 
@@ -695,10 +699,11 @@
 5. Keep BSP render culling disabled until its separate runtime semantics are
    proven against executable evidence.
 6. Publish authenticated mesh colliders and ordered actor instances into the
-   implemented non-portal combined line query, then join `WpMGun` timing,
-   event `0xE2`, motion, damage, and ricochet contracts to bounded portal
-   iteration, private type allocation/event dispatch, live muzzle transforms,
-   and tracer/effect adapters before wiring primary-fire intent into runtime.
+   implemented combined line and automatic-portal query, then join `WpMGun`
+   timing, event `0xE2`, motion, damage, and ricochet contracts to the remaining
+   projectile-level portal loop, private type allocation/event dispatch, live
+   muzzle transforms, and tracer/effect adapters before wiring primary-fire
+   intent into runtime.
 
 ## Open questions
 

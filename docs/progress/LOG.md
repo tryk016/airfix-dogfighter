@@ -2596,3 +2596,36 @@ superseded evidence.
   public-boundary tests and 377-file scan, 259-row catalogue with only the two
   pre-existing missing references, `actionlint`, local-path scan, and
   `git diff --check` pass. GitHub Actions remains the publication gate.
+
+## 2026-07-28 - combined line automatic portal continuation
+
+- `EV-20260728-020` / `EXP-20260728-036`: completed the recursive tail of
+  `PhLine::GetBspCollision` over the implemented room-static/dynamic strict-
+  nearest query.
+- Rechecked the typed Ghidra 12.1.2 body at RVA `0x00038BD0`: only a winning
+  visible type-zero owner recurses from the exact contact into its target room;
+  a later hit replaces polygon/normal provenance and uses
+  `outer + (1 - outer) * inner`, while no later hit clears the complete
+  collision. The existing independent Rizin 0.9.1 report confirms the exact
+  1,175-byte function boundary and recursive call at `0x10038FFF`.
+- Added an allocation-free iterative C++20 adapter over one flat object
+  publication and per-room ranges. It preserves native list order, translates
+  room-local object indices back to absolute provenance, carries portal
+  type/target/visibility, and adds typed range, metadata, out-of-segment, and
+  maximum-256 transition failures.
+- Synthetic tests cover one/two portals, fraction composition, no later hit,
+  recursion-unwind rounding, visibility/type gates, strict-nearest static
+  blocking, malformed publication, an epsilon-admitted later hit outside its
+  subsegment, zero/excessive budgets, self-cycle termination, and 4,096
+  zero-allocation portal traces.
+- A fresh Release Ninja/GCC 15.2 build compiles all 247 steps and passes 76/76
+  tests; its compilation database contains 157 portable entries. Clangd 22.1.8
+  reports zero diagnostics for the test translation unit and zero code
+  diagnostics for the implementation (its seven reported failures are the
+  same optional `ExtractFunction` feature probes seen before this slice).
+  The three RE wrapper suites, 12 Rizin normalization tests, public-boundary
+  tests and 378-file scan, 259-row catalogue validation with only the two
+  pre-existing missing references, `actionlint`, changed-scope local-path
+  scan, and `git diff --check` pass. The exact pushed commit also compiles all
+  247 steps with GCC 13.3 and passes 76/76 tests in the isolated `Airfix-Dev`
+  WSL environment. GitHub Actions remains the final publication gate.
