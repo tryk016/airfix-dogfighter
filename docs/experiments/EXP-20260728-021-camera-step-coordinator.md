@@ -44,7 +44,7 @@ again before they become the next authoritative state.
 The recovered aircraft factor rule is:
 
 ```text
-if vehicleField98 <= 0 or vehicleFlag460:
+if vehicleHealth <= 0 or vehicleInactive:
     factor = 0
 else:
     if factor < 1:
@@ -59,7 +59,10 @@ therefore supplies `0.012f`; see
 [EXP-20260728-023](EXP-20260728-023-camera-refresh-time-contract.md).
 
 The coordinator still requires the caller to provide this value together with
-the two recovered vehicle gates. It must not substitute the input pump's
+the recovered live health and inactive state. Their exact native sources and
+lifecycle transitions are confirmed in
+[EXP-20260728-025](EXP-20260728-025-camera-aircraft-input-contract.md). It must
+not substitute the input pump's
 nominal `1/60`, because input sampling and the recovered aircraft scheduler are
 separate clocks. Native iOS integration remains separate until the simulation
 can provide all live AirCraft inputs.
@@ -174,4 +177,5 @@ controlled runtime traces are still missing.
 - [Metal gameplay-camera packet](EXP-20260728-020-metal-gameplay-camera-packet.md)
 - [Camera refresh time contract](EXP-20260728-023-camera-refresh-time-contract.md)
 - [Gameplay-camera mission runtime](EXP-20260728-024-camera-mission-runtime.md)
+- [AirCraft input contract](EXP-20260728-025-camera-aircraft-input-contract.md)
 - [Camera and projection contract](../re/systems/CAMERA-PROJECTION.md)

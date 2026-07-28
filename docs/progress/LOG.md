@@ -2294,3 +2294,27 @@ superseded evidence.
   regenerated code-intelligence target builds and focused clangd 22 checks
   report zero errors. Apple Objective-C++/Metal compilation remains a required
   CI gate for this change.
+
+## 2026-07-28 - named AirCraft camera input contract
+
+- `EV-20260728-010` / `EXP-20260728-025`: Ghidra's exported
+  `NfActor::GetHealth` symbol proves that instance float `+0x98` is current
+  health. `AfVehicle::Activate` clears byte `+0x460`, while `Deactivate` and
+  death paths set it, establishing the broader inactive-latch meaning.
+- Independently generated Rizin reports confirm the exact getter and lifecycle
+  boundaries, field widths and writes, plus the health/inactive tests in the
+  AirCraft slot-44 target. Ghidra remains canonical for typed MSVC signatures;
+  Rizin supplies the instruction-level cross-check.
+- The complete camera input map now names distinct chase position
+  `+0x278..+0x280`, world anchor `+0x1A4..+0x1AC`, quaternion
+  `+0x284..+0x290`, live health, inactive state, and scheduler delta in
+  seconds. The portable API now says `vehicleHealth` and `vehicleInactive`
+  instead of exposing offset-derived placeholder names.
+- This closes naming, not live publication. The weak iOS endpoint remains
+  inactive until one reconstructed producer owns changing pose, health,
+  lifecycle, and the native 12 ms scheduler event as a coherent step.
+- Fresh Release and code-intelligence Ninja/GCC 15.2 builds compile all 223
+  steps and pass 68/68 tests; clangd 22.1.8 reports zero errors in all five
+  changed C++ translation units. The three RE wrapper suites, 12 Rizin tests,
+  342-file public scan, 227-entry catalogue, `actionlint`, local-path scan, and
+  `git diff --check` pass.

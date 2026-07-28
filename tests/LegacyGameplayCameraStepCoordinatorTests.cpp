@@ -95,8 +95,8 @@ input(const std::uint64_t simulationStep,
         .vehicleWorldRotation = {},
         .refreshDeltaSeconds =
             legacyAircraftNominalRefreshDeltaSeconds,
-        .vehicleField98 = 1.0F,
-        .vehicleFlag460 = false,
+        .vehicleHealth = 1.0F,
+        .vehicleInactive = false,
         .cameraCyclePressCount = cameraCyclePressCount,
         .rearViewHeld = false,
         .simulationStep = simulationStep,
@@ -197,7 +197,7 @@ void testAircraftFactorRecoveryPrecedesChaseAndCollision() {
     auto gated = input(1U);
     gated.vehicleChaseWorldPosition = {0.0F, 0.0F, 1.0F};
     gated.vehicleWorldAnchor = {0.0F, 0.0F, 1.0F};
-    gated.vehicleField98 = 0.0F;
+    gated.vehicleHealth = 0.0F;
     const auto cleared =
         coordinator.tryAdvance(arena, {}, gated, candidates, constraints);
     require(cleared.complete() &&
@@ -312,7 +312,7 @@ void testPoseAndCommitFailuresRemainAtomic() {
     auto degeneratePose = input(1U, 1U);
     degeneratePose.vehicleWorldAnchor =
         initial->state.roomState.runtimeWorldPosition;
-    degeneratePose.vehicleField98 = 0.0F;
+    degeneratePose.vehicleHealth = 0.0F;
     const auto pose = coordinator.tryAdvance(
         arena, {}, degeneratePose, candidates, constraints);
     require(

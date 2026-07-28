@@ -394,15 +394,15 @@ std::optional<Vec3> legacyGameplayCameraReduceCollisionAxisFactors(
 std::optional<Vec3> legacyAircraftRecoverGameplayCameraAxisFactors(
     const Vec3& currentFactors,
     const float refreshDeltaSeconds,
-    const float vehicleField98,
-    const bool vehicleFlag460) noexcept {
+    const float vehicleHealth,
+    const bool vehicleInactive) noexcept {
     if (!finite(currentFactors) ||
         !std::isfinite(refreshDeltaSeconds) ||
-        !std::isfinite(vehicleField98)) {
+        !std::isfinite(vehicleHealth)) {
         return std::nullopt;
     }
 
-    if (!(vehicleField98 > 0.0F) || vehicleFlag460) {
+    if (!(vehicleHealth > 0.0F) || vehicleInactive) {
         return Vec3{};
     }
 

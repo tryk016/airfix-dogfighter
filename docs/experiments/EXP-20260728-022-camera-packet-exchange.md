@@ -112,9 +112,12 @@ producer still needs:
 
 - the distinct live AirCraft chase position and vehicle anchor;
 - the live vehicle rotation;
-- the two recovered AirCraft factor gates; and
+- live `NfActor` health and the `AfVehicle` inactive state; and
 - the scheduler-derived factor-refresh delta in seconds, now confirmed in
   [EXP-20260728-023](EXP-20260728-023-camera-refresh-time-contract.md).
+
+The complete field mapping is confirmed in
+[EXP-20260728-025](EXP-20260728-025-camera-aircraft-input-contract.md).
 
 Only after those values exist may the simulation advance the coordinator and
 offer its successful packet to this exchange.
@@ -135,4 +138,5 @@ producer inputs and physical-device acceptance are not yet available.
 - [Metal gameplay-camera packet](EXP-20260728-020-metal-gameplay-camera-packet.md)
 - [Camera step coordinator](EXP-20260728-021-camera-step-coordinator.md)
 - [Gameplay-camera mission runtime](EXP-20260728-024-camera-mission-runtime.md)
+- [AirCraft input contract](EXP-20260728-025-camera-aircraft-input-contract.md)
 - [Camera and projection contract](../re/systems/CAMERA-PROJECTION.md)

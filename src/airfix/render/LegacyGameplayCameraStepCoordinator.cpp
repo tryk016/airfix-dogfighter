@@ -126,8 +126,8 @@ LegacyGameplayCameraStepCoordinator::tryAdvance(
         legacyAircraftRecoverGameplayCameraAxisFactors(
             current->state.axisFactors,
             input.refreshDeltaSeconds,
-            input.vehicleField98,
-            input.vehicleFlag460);
+            input.vehicleHealth,
+            input.vehicleInactive);
     if (!recoveredFactors.has_value()) {
         return failure(LegacyGameplayCameraStepCoordinatorStatus::
                            axisFactorRecoveryFailed);

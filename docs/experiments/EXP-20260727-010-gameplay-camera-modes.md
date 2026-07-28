@@ -209,6 +209,8 @@ The relevant `AfVehicle` fields are:
 
 | Offset | Initial value | Role |
 |---:|---:|---|
+| `+0x98` | type health | current `NfActor` health returned by `GetHealth()` |
+| `+0x1A4..+0x1AC` | dynamic | world anchor used by look-at and line queries |
 | `+0x22C` | null | attached `CcCamera*` |
 | `+0x278..+0x280` | dynamic | vehicle position used by chase target |
 | `+0x284..+0x290` | dynamic | four-component vehicle rotation |
@@ -219,6 +221,7 @@ The relevant `AfVehicle` fields are:
 | `+0x42C` | `1.0` | X movement factor modified by collision response |
 | `+0x430` | `1.0` | Y movement factor modified by collision response |
 | `+0x434` | `1.0` | Z movement factor modified by collision response |
+| `+0x460` | `0` while active | inactive latch; `Activate()` clears it, `Deactivate()` and kill paths set it |
 
 The world-relation position at `AfVehicle + 0x1A4..+0x1AC` is used for the
 initial attach and pre-render look-at target. This report keeps it distinct
@@ -443,7 +446,7 @@ aircraft-specific recovery in `AirCraft.type` RVA `0x2F60`, reached through
 vehicle vtable slot `+0xB0` before the chase update:
 
 ```text
-if vehicleField_98 <= 0 or vehicleFlag_460 != 0:
+if vehicleHealth <= 0 or vehicleInactive:
     factor = 0
 else:
     if factor < 1:
@@ -455,6 +458,9 @@ This applies independently to X, Y, and Z. The constants and ordering are
 confidence **3/3** for `AirCraft`. A later scheduler join confirmed that
 `refreshArgument` is the event delta converted from milliseconds to seconds;
 see [EXP-20260728-023](EXP-20260728-023-camera-refresh-time-contract.md).
+Ghidra symbols and independent Rizin instructions identify the gates as
+`NfActor` health and the `AfVehicle` inactive latch; see
+[EXP-20260728-025](EXP-20260728-025-camera-aircraft-input-contract.md).
 Equivalent behavior of other vehicle types remains unverified.
 
 `LegacyGameplayCameraCollision.cpp` implements these backend-neutral

@@ -573,8 +573,10 @@
   as one allocation-free transaction. Ghidra and Rizin independently confirm
   that its factor-recovery argument is the same scheduler delta converted from
   milliseconds to seconds; the nominal 12 ms AirCraft interval supplies
-  `0.012f`, not the 60 Hz input-pump interval. The two vehicle gates remain
-  explicit. A fixed mission-lifetime SPSC exchange transports only complete
+  `0.012f`, not the 60 Hz input-pump interval. Exported Ghidra symbols and
+  independent Rizin instructions now name the two explicit inputs as live
+  `NfActor` health and the `AfVehicle` inactive latch. A fixed
+  mission-lifetime SPSC exchange transports only complete
   owning clip packets, and Metal retains one lease through encoding. A new
   non-moving mission runtime now owns the arena by move, runtime basis,
   exact-size collision workspaces, coordinator, and exchange under checked
@@ -632,8 +634,8 @@
    and controller-only acceptance on both target iPhones.
 3. Connect the implemented weak camera-runtime endpoint to the recovered live
    AirCraft producer once it supplies distinct chase position, world anchor,
-   vehicle rotation, both factor gates, and the confirmed scheduler delta in
-   seconds without resampling the separate 60 Hz input pump. Replace the
+   vehicle rotation, live health, inactive state, and the confirmed scheduler
+   delta in seconds without resampling the separate 60 Hz input pump. Replace the
    camera0-only publication only when that complete input exists. Preserve
    scalar clip, reciprocal-depth, and parity-first 4:3 behavior through device
    acceptance; dynamic-object and transparent collision-portal paths remain

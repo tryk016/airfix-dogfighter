@@ -257,30 +257,30 @@ void testAircraftFactorRecovery() {
                 std::bit_cast<std::uint32_t>(0.25F),
         "aircraft recovery rate changed");
 
-    const auto clearedByScalar =
+    const auto clearedByHealth =
         legacyAircraftRecoverGameplayCameraAxisFactors(
             Vec3{0.5F, 0.5F, 0.5F},
             0.1F,
             0.0F,
             false);
-    const auto clearedByFlag =
+    const auto clearedByInactive =
         legacyAircraftRecoverGameplayCameraAxisFactors(
             Vec3{0.5F, 0.5F, 0.5F},
             0.1F,
             1.0F,
             true);
     require(
-        clearedByScalar.has_value() &&
-            clearedByFlag.has_value(),
+        clearedByHealth.has_value() &&
+            clearedByInactive.has_value(),
         "valid gated recovery failed");
     requireVec(
-        *clearedByScalar,
+        *clearedByHealth,
         Vec3{},
-        "non-positive vehicle field did not clear factors");
+        "non-positive vehicle health did not clear factors");
     requireVec(
-        *clearedByFlag,
+        *clearedByInactive,
         Vec3{},
-        "vehicle flag did not clear factors");
+        "inactive vehicle did not clear factors");
 
     const auto negativeRefresh =
         legacyAircraftRecoverGameplayCameraAxisFactors(

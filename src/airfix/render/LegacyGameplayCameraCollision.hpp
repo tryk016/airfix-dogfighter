@@ -43,7 +43,9 @@ legacyGameplayCameraReduceCollisionAxisFactors(
     const Vec3& originalCameraPosition,
     const Vec3& resolvedCameraPosition) noexcept;
 
-// Reconstructs the AirCraft.type vtable-slot +0xB0 recovery.
+// Reconstructs the AirCraft.type vtable-slot +0xB0 recovery. NfActor's
+// exported GetHealth() names +0x98, while AfVehicle::Activate/Deactivate and
+// kill paths establish +0x460 as the inactive latch.
 // refreshDeltaSeconds is the scheduler event delta converted from milliseconds
 // by AfVehicle::ProcessEvent. The native arithmetic accepts finite negative
 // values and clamps the result; this narrow algebraic contract preserves that
@@ -53,8 +55,8 @@ legacyGameplayCameraReduceCollisionAxisFactors(
 legacyAircraftRecoverGameplayCameraAxisFactors(
     const Vec3& currentFactors,
     float refreshDeltaSeconds,
-    float vehicleField98,
-    bool vehicleFlag460) noexcept;
+    float vehicleHealth,
+    bool vehicleInactive) noexcept;
 
 // Reconstructs CcConstraint::AddPlane's duplicate test. existingPlanesHeadFirst
 // uses the native linked-list order (newest plane first). The candidate is
