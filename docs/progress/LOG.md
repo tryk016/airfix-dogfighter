@@ -2221,3 +2221,22 @@ superseded evidence.
   stale commits, and 4,096 allocation-counted successful steps. Fresh Release
   and code-intelligence builds both pass the current 66/66 portable suite;
   focused clangd 22 checks report zero errors.
+
+## 2026-07-28 - mission-lifetime gameplay-camera packet exchange
+
+- `EV-20260728-008` / `EXP-20260728-022`: added a fixed two-slot SPSC exchange
+  for complete owning gameplay-camera clip packets. Camera step/generation
+  monotonicity is independent of the exchange's contiguous ABA-resistant slot
+  generation, so one busy render slot can drop a packet without wedging later
+  complete camera publications.
+- Move-only leases retain private shared storage, prevent slot overwrite, and
+  remain readable after the facade lifetime. Publish/acquire are bounded,
+  `noexcept`, and allocation-free; a failed race exposes no partial packet.
+- Private Metal mission snapshots now own the exchange, account its storage
+  under the retained CPU ceiling, validate the bootstrap through an initial
+  lease, and hold one lease through each camera-dependent command encoding.
+  No simulation producer endpoint or guessed refresh time was introduced.
+- Tests cover rejection atomicity, two retained slots, a later generation
+  after `busy`, move/lifetime behavior, 4,096 zero-allocation cycles, and
+  20,000 concurrent coherent publications. Release and code-intelligence
+  builds pass 67/67 tests; focused clangd 22 checks report zero errors.

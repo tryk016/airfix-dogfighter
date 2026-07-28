@@ -572,7 +572,11 @@
   retained-static collision path, pose, clip packet, and atomic state commit
   as one allocation-free transaction. Its raw refresh argument and vehicle
   gates remain explicit; no guessed `dt` has been connected to iOS. A
-  mission-lifetime workspace owner and cross-thread packet exchange remain.
+  fixed mission-lifetime SPSC exchange now transports only complete owning
+  clip packets, and Metal retains one lease through encoding. The current
+  exchange contains only the explicit bootstrap; a producer endpoint,
+  mission-lifetime collision workspaces, and complete recovered aircraft
+  inputs remain.
 - The authenticated setup-to-room provenance chain now crosses the native iOS
   publication boundary together with an immutable `PlayerSpawnPose`. Ghidra
   Headless and Rizin independently confirm x/y/z radians, mode zero, exact
@@ -624,8 +628,9 @@
 3. Establish the raw AirCraft camera-factor refresh argument from controlled
    traces or another confirmed scheduler join, then place the implemented
    step coordinator behind preallocated mission-lifetime workspaces and a
-   bounded SPSC clip-packet exchange. Replace the camera0 Metal bootstrap only
-   when the complete producer input exists. Preserve scalar clip,
+   weak producer endpoint to the implemented SPSC clip-packet exchange.
+   Replace the camera0-only publication only when the complete producer input
+   exists. Preserve scalar clip,
    reciprocal-depth, and parity-first 4:3 behavior through device acceptance;
    dynamic-object and transparent collision-portal paths remain separate.
 4. Validate the implemented runtime portal-to-room-state proposal against
