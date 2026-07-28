@@ -4,7 +4,8 @@
 implemented for parity
 
 **Evidence:** `EV-20260724-001`, `EV-20260724-002`,
-`EV-20260724-003`, `EV-20260724-004`, `EV-20260727-002`
+`EV-20260724-003`, `EV-20260724-004`, `EV-20260727-002`,
+`EV-20260728-011`
 
 **Reference build:** SHA-256 values in
 `docs/evidence/source-manifest.sha256`
@@ -22,6 +23,8 @@ The main result is:
 - `AfVehicle::ProcessEvent` multiplies the 64-bit interval by `0.001f`;
 - the nominal force-step argument is therefore `dt = 0.012f` seconds
   (83 1/3 Hz);
+- the containing vehicle refresh uses a signed 64-bit millisecond rest
+  accumulator and skips the force step at 2000 ms;
 - the method contains 15 `ApplyForce`, five `ApplyTorqueOnly`, and one
   `ApplyForceOnly` sites;
 - every one of those sites and every direct state write in the method is
@@ -38,6 +41,10 @@ vtable target, but a guarded read-only function creation at the confirmed RVA
 matches Ghidra's exact end boundary. Its ABI, argument, call-role, and global
 recovery are materially weaker, so this static agreement does not raise the
 function above confidence 2.
+
+[EXP-20260728-026](../../experiments/EXP-20260728-026-vehicle-rest-sleep-gate.md)
+records the independent Ghidra/Rizin recovery of the surrounding rest/sleep
+gate and the exported `AfVehicle::IsOnGround` predicate.
 
 ## Timing and lifecycle
 
@@ -95,8 +102,9 @@ pitch   = f32[A+0x448]
 bank    = f32[A+0x44C]
 p       = vec3[A+0x278]
 v       = vec3[A+0x2F4]
-q       = vec4[A+0x284]
-contact = u8[A+0x464]
+q        = vec4[A+0x284]
+onGround = u8[A+0x464]
+restMs   = s64[A+0x458]
 ```
 
 `B` is copied from type field `+0x70` and scales both rigid-body mass
@@ -151,31 +159,47 @@ state-dependent order is:
    zero-pitch forces when their gate is true;
 3. update `A+0x560`, then apply gravity, the conditional lift-like force,
    thrust, propeller-node animation, and pitch torque in address order;
-4. branch on the **contact value from the previous probe pass**:
+4. branch on the **on-ground value from the previous probe pass**:
    - when it is zero, apply the bank torque, update `A+0x558`, apply the next
      two stabilization torques, and apply the side force;
    - when it is nonzero and bank is nonzero, apply the alternate side force;
 5. update the probe cadence counter; only a probe pass calls `DisableBsp`,
-   clears `contact`, and performs the seven BSP queries;
+   clears `onGround`, and performs the seven BSP queries;
 6. update and apply the too-high and water branches;
 7. always call `EnableBsp`, then apply final state damping.
 
 Consequently, the current step's thrust and propeller animation use the newly
-smoothed `A+0x560`. All direct contact-gated forces/torques and the `A+0x558`
-low-pass update use the contact state inherited from the preceding probe pass,
+smoothed `A+0x560`. All direct on-ground-gated forces/torques and the `A+0x558`
+low-pass update use the on-ground state inherited from the preceding probe pass,
 not the value that may be cleared or set later in the current step.
 
 ## Entry gate
 
-The method returns before any other calculation when:
+The method returns before any other calculation when the signed 64-bit rest
+duration is at least 2000 ms:
 
 ```text
-s32[A+0x45C] > 0
-OR
-(s32[A+0x45C] >= 0 AND u32[A+0x458] > 1999)
+restMs >= 2000
 ```
 
-The physical/gameplay meanings of `+0x458` and `+0x45C` remain unknown.
+The native comparison is implemented as a signed high-DWORD check followed by
+an unsigned low-DWORD comparison. `+0x458` and `+0x45C` are not separate
+fields: they are the low and high DWORDs of one signed millisecond
+accumulator. `AfVehicle::AfVehicle` initializes it to 1999 ms. Active refreshes
+accumulate the signed scheduler delta only while all five wake controls are
+exactly zero and either:
+
+```text
+IsOnGround() && velocitySquared < 0.03f
+IsWaterUnit() && velocitySquared < 0.08f
+```
+
+Otherwise they reset it to zero. The active step that first reaches 2000 ms
+still calls this force method and later clears force, torque, and six
+rigid-body dynamic-state floats. The next sleeping refresh skips the force
+method. AirCraft's water-unit predicate is false, so only the on-ground leg
+applies to this class. The exported `AfVehicle::IsOnGround` proves that byte
+`+0x464` is the ground-state field.
 
 ## Type-constructor join
 
@@ -219,11 +243,11 @@ Every row is additionally subject to the entry gate.
 | `0x100045BC` | `L > 0.05*B` | `L=min(0.7*vz*B,0.2*B)`, `F=R(0,L,0)`, `r=R(0,0,D)` |
 | `0x100046C8` | always | `Q=(health<=0 ? 0.5*T[0x78]*B : 2*A[0x568]*A[0x560]*T[0x78]*B)`, `F=R(0,0,Q)`, `r=0` |
 | `0x100049AF` | `pitch != 0` | `K=pitch*B*C*(health<=0 ? 0.0008 : 0.008)`, `tau=R(0,0,-1) x R(0,K,0)` |
-| `0x10004AB3` | `!contact && bank != 0` | `K=C*B*bank*0.014`, `tau=R(-1,0,0) x R(0,K,0)` |
-| `0x10004B98` | `!contact` | `K=m01*B*C*0.024`, `tau=R(-1,0,0) x R(0,K,0)` |
-| `0x10004C77` | `!contact` | `K=abs(m01*B*C*0.014)`, `tau=R(0,0,1) x R(0,K,0)` |
-| `0x10004D31` | `!contact` | `K=m01*B*C*0.03`, `F=R(K,0,0)`, `r=R(0,0,-0.75)` |
-| `0x10004E0D` | `contact && bank != 0` | `K=-0.02*B*bank`, `F=R(K,0,0)`, `r=R(0,0,-0.75)` |
+| `0x10004AB3` | `!onGround && bank != 0` | `K=C*B*bank*0.014`, `tau=R(-1,0,0) x R(0,K,0)` |
+| `0x10004B98` | `!onGround` | `K=m01*B*C*0.024`, `tau=R(-1,0,0) x R(0,K,0)` |
+| `0x10004C77` | `!onGround` | `K=abs(m01*B*C*0.014)`, `tau=R(0,0,1) x R(0,K,0)` |
+| `0x10004D31` | `!onGround` | `K=m01*B*C*0.03`, `F=R(K,0,0)`, `r=R(0,0,-0.75)` |
+| `0x10004E0D` | `onGround && bank != 0` | `K=-0.02*B*bank`, `F=R(K,0,0)`, `r=R(0,0,-0.75)` |
 
 The instruction listing at `0x10004E0B` confirms `ECX` is the rigid body at
 `A+0x238` before the indirect `ApplyForce` call. This removes the ambiguity in
@@ -237,7 +261,7 @@ Otherwise the counter increments by one and no BSP probe runs. On a probe pass:
 ```text
 A[0x5E4] -= 50
 DisableBsp()
-contact = 0
+onGround = 0
 ... probes ...
 ```
 
@@ -280,9 +304,9 @@ J = (1-h) * dot(n,v) * B * 12
 supports the working collision-normal interpretation, but the original type
 name and unit have not been recovered.
 
-The first four qualified central/small probes set `contact=1` even when `k` is
+The first four qualified central/small probes set `onGround=1` even when `k` is
 not positive. A positive response resets `A+0x5E4` to 50. The two wide probes
-and the upper/inverted probe do not set `contact`.
+and the upper/inverted probe do not set `onGround`.
 
 The local value later used by final damping starts at zero. A qualified central
 hit writes:
@@ -397,7 +421,7 @@ node[bc]' = cs*node[bc] - sn*node[b8]
 The old value of each pair is retained until both new values are calculated.
 The method then calls `CcSrtNode::NotifyChange`.
 
-When `contact == 0`, one additional low-pass field is updated:
+When `onGround == 0`, one additional low-pass field is updated:
 
 ```text
 A[0x558] += 0.05 * (m01 - A[0x558])
@@ -445,7 +469,7 @@ to another evidence source:
 - exact range and meaning of the BSP collision scalar;
 - controlled traces covering free flight, ground contact, inverted contact,
   water, and too-high branches;
-- the meanings and producers of `+0x564`, `+0x568`, `+0x458`, and `+0x45C`;
+- the meanings and producers of `+0x564` and `+0x568`;
 - the dynamic actor-to-render publication and projectile-spawn path; and
 - the required x87-versus-portable-float tolerance for deterministic parity.
 

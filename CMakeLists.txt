@@ -69,6 +69,7 @@ else()
 endif()
 
 add_library(airfix_simulation
+    src/airfix/simulation/LegacyVehicleSleepState.cpp
     src/airfix/simulation/PlayerAircraftSimulation.cpp
 )
 add_library(airfix::simulation ALIAS airfix_simulation)
@@ -450,6 +451,13 @@ if(AIRFIX_BUILD_TESTS)
     target_link_libraries(airfix_simulation_tests
         PRIVATE airfix::simulation)
     add_test(NAME airfix_simulation_tests COMMAND airfix_simulation_tests)
+
+    add_executable(airfix_legacy_vehicle_sleep_state_tests
+        tests/LegacyVehicleSleepStateTests.cpp)
+    target_link_libraries(airfix_legacy_vehicle_sleep_state_tests
+        PRIVATE airfix::simulation)
+    add_test(NAME airfix_legacy_vehicle_sleep_state_tests
+        COMMAND airfix_legacy_vehicle_sleep_state_tests)
 
     add_executable(airfix_render_tests tests/LegacyGeometryTests.cpp)
     target_link_libraries(airfix_render_tests PRIVATE airfix::render)
