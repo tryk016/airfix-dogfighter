@@ -90,7 +90,7 @@ Let `A` be the AirCraft instance and `T` its type at `A+0x524`.
 
 ```text
 B       = f32[A+0x3FC]
-s       = f32[A+0x98]
+health  = f32[A+0x98]
 pitch   = f32[A+0x448]
 bank    = f32[A+0x44C]
 p       = vec3[A+0x278]
@@ -147,8 +147,8 @@ state-dependent order is:
 
 1. apply the entry gate, build the basis, transform `v`, and initialize the
    local `contactAccumulator` to zero;
-2. update the throttle target when `s > 0`, otherwise apply the two zero-pitch
-   forces when their gate is true;
+2. update the throttle target when `health > 0`, otherwise apply the two
+   zero-pitch forces when their gate is true;
 3. update `A+0x560`, then apply gravity, the conditional lift-like force,
    thrust, propeller-node animation, and pitch torque in address order;
 4. branch on the **contact value from the previous probe pass**:
@@ -188,7 +188,7 @@ The physical/gameplay meanings of `+0x458` and `+0x45C` remain unknown.
 | `T2` | `+0x78` | multiplied by `0.01`; consumed by thrust |
 | `T3` | `+0xDC` | multiplied by `0.01`; consumed by force/damping |
 | `T4` | `+0x70` | copied to instance `+0x3FC` as `B` |
-| `T5` | `+0x48` | copied to instance `+0x3F4` and `+0x98` |
+| `T5` | `+0x48` | copied to instance `+0x3F4` and current health `+0x98` |
 | `T6` | `+0x6C` | copied to instance `+0x3F8` and `+0x400` |
 | `T7` | none | unused by the constructor |
 | `T8` | `+0xE4` | direct 32-bit value, observed as 1 or 3 |
@@ -197,6 +197,9 @@ The physical/gameplay meanings of `+0x458` and `+0x45C` remain unknown.
 
 The constructor also scales inherited `+0xD8` by `0.01`, writes
 `+0x74 = 6.0`, and creates five engine-sound dependencies.
+
+The exported `NfActor::GetHealth` returns the float at instance `+0x98`;
+Ghidra and Rizin independently confirm the getter and the AirCraft reads.
 
 The instance constructor adds two massive blocks with weights `0.375*B` and
 one massive particle with weight `0.125*B`, then resets force and torque. This
@@ -210,12 +213,12 @@ Every row is additionally subject to the entry gate.
 
 | Call VA | Additional condition | Exact operation |
 |---:|---|---|
-| `0x100042B5` | `s <= 0 && pitch == 0` | `F=R(0,-0.01*B,0)`, `r=R(2,0,0)` |
-| `0x1000434C` | `s <= 0 && pitch == 0` | `F=R(0,+0.01*B,0)`, `r=R(-4,0,0)` |
-| `0x100044C1` | always | `G=-0.54555553*B*(s<=0 ? 8 : 1)`, `F=(0,G,0)`, `r=R(0,0.1*D,D)` |
+| `0x100042B5` | `health <= 0 && pitch == 0` | `F=R(0,-0.01*B,0)`, `r=R(2,0,0)` |
+| `0x1000434C` | `health <= 0 && pitch == 0` | `F=R(0,+0.01*B,0)`, `r=R(-4,0,0)` |
+| `0x100044C1` | always | `G=-0.54555553*B*(health<=0 ? 8 : 1)`, `F=(0,G,0)`, `r=R(0,0.1*D,D)` |
 | `0x100045BC` | `L > 0.05*B` | `L=min(0.7*vz*B,0.2*B)`, `F=R(0,L,0)`, `r=R(0,0,D)` |
-| `0x100046C8` | always | `Q=(s<=0 ? 0.5*T[0x78]*B : 2*A[0x568]*A[0x560]*T[0x78]*B)`, `F=R(0,0,Q)`, `r=0` |
-| `0x100049AF` | `pitch != 0` | `K=pitch*B*C*(s<=0 ? 0.0008 : 0.008)`, `tau=R(0,0,-1) x R(0,K,0)` |
+| `0x100046C8` | always | `Q=(health<=0 ? 0.5*T[0x78]*B : 2*A[0x568]*A[0x560]*T[0x78]*B)`, `F=R(0,0,Q)`, `r=0` |
+| `0x100049AF` | `pitch != 0` | `K=pitch*B*C*(health<=0 ? 0.0008 : 0.008)`, `tau=R(0,0,-1) x R(0,K,0)` |
 | `0x10004AB3` | `!contact && bank != 0` | `K=C*B*bank*0.014`, `tau=R(-1,0,0) x R(0,K,0)` |
 | `0x10004B98` | `!contact` | `K=m01*B*C*0.024`, `tau=R(-1,0,0) x R(0,K,0)` |
 | `0x10004C77` | `!contact` | `K=abs(m01*B*C*0.014)`, `tau=R(0,0,1) x R(0,K,0)` |
@@ -352,7 +355,7 @@ true.
 
 ## Throttle, propeller, and persistent state
 
-When `s > 0`, the target throttle is updated without `dt`:
+When `health > 0`, the target throttle is updated without `dt`:
 
 ```text
 A[0x444] = clamp(A[0x444] + A[0x440], 0, 1)
@@ -374,7 +377,7 @@ There is no final clamp on `x`. `A+0x568` starts at `1.0` and is read as a
 thrust multiplier, but is not written here.
 
 Up to four nodes found through the `propeller`, `prop1`, and `prop2` naming
-paths are rotated only when `s > 0`. For node index `i`:
+paths are rotated only when `health > 0`. For node index `i`:
 
 ```text
 angle = dt * A[0x560] * 120 / (1 + 0.3*i)

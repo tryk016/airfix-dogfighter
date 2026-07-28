@@ -91,8 +91,8 @@ retains input intentions only and cannot supply all of:
 - the distinct live AirCraft chase position;
 - the distinct live vehicle world anchor;
 - the live vehicle rotation;
-- recovered vehicle field `+0x98`;
-- recovered vehicle flag `+0x460`; and
+- live `NfActor` health at `+0x98`;
+- the live `AfVehicle` inactive latch at `+0x460`; and
 - the AirCraft scheduler delta in seconds.
 
 Using the authenticated spawn pose for both positions, inventing gate values,
@@ -148,4 +148,5 @@ available.
 - [Gameplay-camera step coordinator](EXP-20260728-021-camera-step-coordinator.md)
 - [Gameplay-camera packet exchange](EXP-20260728-022-camera-packet-exchange.md)
 - [Camera refresh time contract](EXP-20260728-023-camera-refresh-time-contract.md)
+- [AirCraft input contract](EXP-20260728-025-camera-aircraft-input-contract.md)
 - [Camera and projection contract](../re/systems/CAMERA-PROJECTION.md)

@@ -6,9 +6,10 @@ scalars/factors/line interpolation, look-at pose math, 4:3 layout, strict
 BSP/portal adaptation, static sphere/contact resolution, atomic
 position/room/factor publication, producer-side step composition,
 mission-lifetime ownership, weak iOS endpoint, and Metal clip/depth consumption
-plus a bounded packet exchange implemented; factor refresh delta confirmed in
-seconds; complete live producer inputs, dynamic-object collision, and device
-acceptance remain
+plus a bounded packet exchange implemented; factor refresh delta, live health,
+inactive state, pose sources, and lifecycle transitions confirmed; complete
+live producer publication, dynamic-object collision, and device acceptance
+remain
 
 This document separates confirmed legacy behavior from reconstruction
 decisions. The complete evidence record is
@@ -453,14 +454,14 @@ The shader repeats the recovered operations instead of precomposing them.
 
 `src/airfix/render/LegacyGameplayCameraStepCoordinator.cpp` composes the
 recovered producer stages without hiding missing inputs. It accepts the raw
-AirCraft factor-recovery argument and vehicle gates, applies cumulative camera
-presses to the persistent three-mode cycle, treats rear view as a momentary
-tuple, and preserves the distinct native chase-position and vehicle-anchor
-inputs. It prebuilds the complete next pose and clip packet before committing
-state, mode, or the input count. Failures at any stage expose no packet and
-retain the prior authoritative values. The caller still owns the retained
-arena, basis, and bounded collision workspaces; no cross-thread Metal
-publication is claimed by this producer-side contract.
+AirCraft scheduler delta, live health, and inactive state, applies cumulative
+camera presses to the persistent three-mode cycle, treats rear view as a
+momentary tuple, and preserves the distinct native chase-position and
+vehicle-anchor inputs. It prebuilds the complete next pose and clip packet
+before committing state, mode, or the input count. Failures at any stage
+expose no packet and retain the prior authoritative values. The caller still
+owns the retained arena, basis, and bounded collision workspaces; no
+cross-thread Metal publication is claimed by this producer-side contract.
 
 `src/airfix/render/LegacyGameplayCameraPacketExchange.cpp` provides that
 separate render transport for complete owning clip packets. Its two fixed
@@ -517,6 +518,9 @@ confirms the scheduler-to-factor-recovery delta in seconds and its nominal
 [EXP-20260728-024](../../experiments/EXP-20260728-024-camera-mission-runtime.md)
 documents mission ownership, workspace admission, weak endpoint lifetime, and
 the deliberate live-producer gate.
+[EXP-20260728-025](../../experiments/EXP-20260728-025-camera-aircraft-input-contract.md)
+names the complete live input set, including actor health and the vehicle
+inactive latch, through a Ghidra/Rizin cross-check.
 Dynamic-object BSP and transparent collision-portal traversal remain separate.
 
 ## Still unknown
@@ -565,3 +569,4 @@ evidence is recovered.
 - [Gameplay-camera step coordinator](../../experiments/EXP-20260728-021-camera-step-coordinator.md)
 - [Gameplay-camera packet exchange](../../experiments/EXP-20260728-022-camera-packet-exchange.md)
 - [Gameplay-camera mission runtime](../../experiments/EXP-20260728-024-camera-mission-runtime.md)
+- [AirCraft camera input contract](../../experiments/EXP-20260728-025-camera-aircraft-input-contract.md)

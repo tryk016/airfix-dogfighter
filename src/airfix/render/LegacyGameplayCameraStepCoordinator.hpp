@@ -49,10 +49,11 @@ struct LegacyGameplayCameraStepCoordinatorInput final {
 
     // Recovered AirCraft.type factor-recovery inputs. The delta is the same
     // scheduler payload that AfVehicle converts from milliseconds to seconds
-    // before invoking AirCraft vtable slot +0xB0.
+    // before invoking AirCraft vtable slot +0xB0. Health is NfActor +0x98;
+    // inactive is the AfVehicle +0x460 activate/deactivate/kill latch.
     float refreshDeltaSeconds{};
-    float vehicleField98{1.0F};
-    bool vehicleFlag460{};
+    float vehicleHealth{1.0F};
+    bool vehicleInactive{};
 
     std::uint64_t cameraCyclePressCount{};
     bool rearViewHeld{};

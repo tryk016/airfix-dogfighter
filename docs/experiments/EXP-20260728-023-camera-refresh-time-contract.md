@@ -95,7 +95,7 @@ seconds:
 refreshDeltaSeconds =
     binary32(signedEventDeltaMilliseconds * 0.001f)
 
-if AirCraft+0x98 <= 0 or AirCraft+0x460 != 0:
+if health[AirCraft+0x98] <= 0 or inactive[AirCraft+0x460] != 0:
     factors = (0, 0, 0)
 else for each factor:
     if factor < 1:
@@ -138,8 +138,9 @@ native finite-negative arithmetic and clamp behavior; rejecting backwards
 scheduler time belongs at the future scheduler boundary, not inside this
 recovered function.
 
-The step coordinator still requires the caller to supply the delta and both
-vehicle gates. Confirming the unit does not invent the missing dynamic
+The step coordinator still requires the caller to supply the delta, live
+health, and inactive state. `EXP-20260728-025` independently names the two
+native fields; confirming them does not invent the missing dynamic
 aircraft-state producer.
 
 ## Validation
@@ -175,4 +176,5 @@ argument or using seconds in the portable contract.
 - [Aircraft flight law](../re/systems/AIRCRAFT-FLIGHT-LAW.md)
 - [Gameplay camera modes](EXP-20260727-010-gameplay-camera-modes.md)
 - [Gameplay-camera step coordinator](EXP-20260728-021-camera-step-coordinator.md)
+- [AirCraft input contract](EXP-20260728-025-camera-aircraft-input-contract.md)
 - [Camera and projection contract](../re/systems/CAMERA-PROJECTION.md)

@@ -102,8 +102,8 @@ initializeInput() {
         .vehicleWorldRotation = {},
         .refreshDeltaSeconds =
             legacyAircraftNominalRefreshDeltaSeconds,
-        .vehicleField98 = 1.0F,
-        .vehicleFlag460 = false,
+        .vehicleHealth = 1.0F,
+        .vehicleInactive = false,
         .cameraCyclePressCount = cameraCyclePressCount,
         .rearViewHeld = false,
         .simulationStep = simulationStep,

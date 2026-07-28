@@ -2,7 +2,8 @@
 
 **Status:** observed, not yet specified or implemented for parity
 **Evidence:** `EV-20260724-001`, `EV-20260724-002`,
-`EV-20260724-003`, `EV-20260724-004`, `EV-20260724-005`
+`EV-20260724-003`, `EV-20260724-004`, `EV-20260724-005`,
+`EV-20260728-010`
 **Reference build:** SHA-256 values in `docs/evidence/source-manifest.sha256`
 
 This note records the current clean-room boundary around
@@ -13,6 +14,9 @@ remain in the ignored `artifacts/` tree.
 The complete static equation, constructor-field, and 12 ms timing contract is
 maintained separately in `AIRCRAFT-FLIGHT-LAW.md`. This file retains the wider
 system boundary, event joins, and implementation policy.
+The Ghidra/Rizin cross-check that names actor health, the vehicle inactive
+latch, and the complete gameplay-camera live-input set is recorded in
+[EXP-20260728-025](../../experiments/EXP-20260728-025-camera-aircraft-input-contract.md).
 
 The player spawn, primary-actor, mission start-room, and selected-skin
 hierarchy contract is maintained in `PLAYER-SPAWN.md`. That static identity
@@ -115,8 +119,9 @@ consumes:
 | `+0x448` | `EVENT_PITCH_SET`: `payload * 0.043` | read by multiple torque paths |
 | `+0x44C` | `EVENT_BANK_SET`: `payload * 0.043` | read by multiple torque and force paths |
 
-The `+0x444` update is inside a branch gated by an as-yet unnamed field at
-`+0x98`. `EVENT_THRUST_APPLY` stores a persistent delta/rate in `+0x440`; the
+The `+0x444` update is inside a branch gated by current `NfActor` health at
+`+0x98`. The exported `NfActor::GetHealth` returns this exact float.
+`EVENT_THRUST_APPLY` stores a persistent delta/rate in `+0x440`; the
 flight step does not clear it. A release event must write zero (or the opposite
 held direction) to stop or reverse the change. The exported
 `AfVehicle::GetThrottle` returns `+0x444`; that symbol proves the field name,
@@ -226,7 +231,8 @@ The naming trap is material: aircraft thrust is controlled by
 values locally and delegates these control events to
 `AfVehicle::ProcessEvent` at `0x1001B6C0`. The packed payload is a signed
 32-bit integer at event offset `+0x11`. The pitch, bank, and thrust cases are
-skipped while an unnamed byte at vehicle offset `+0x460` is nonzero. A
+skipped while the inactive latch at vehicle offset `+0x460` is nonzero.
+`AfVehicle::Activate` clears this byte; `Deactivate` and death paths set it. A
 successful nonzero control write also clears two still-unnamed fields at
 `+0x458` and `+0x45C`.
 
@@ -313,8 +319,7 @@ constants without another confirming source.
 - the full scheduler target-mask and large-gap policy;
 - the complete actor-vs-actor slot-29 order outside the shown static/BSP path;
 - the semantic meaning of the `AICONTROL` index enum names;
-- the meaning of AirCraft/AfVehicle fields `+0x98`, `+0x458`, `+0x45C`, and
-  `+0x460`;
+- the meaning of AirCraft/AfVehicle fields `+0x458` and `+0x45C`;
 - the gameplay meanings of several constructor fields even though every tuple
   value is now joined to its exact storage and immediate consumers;
 - world distance, mass, force, and torque units;
