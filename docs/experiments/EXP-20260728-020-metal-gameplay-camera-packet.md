@@ -158,8 +158,10 @@ No proprietary content is required. A fresh Ninja/GCC 15.2 Release build and
 the regenerated code-intelligence build each pass all 65 portable tests.
 Focused clangd checks, the public-source boundary, workbench wrapper suites,
 Rizin normalization tests, function-catalogue uniqueness, `actionlint`, and
-`git diff --check` are clean. Unsigned `iphoneos` and `iphonesimulator`
-compilation is required before merge.
+`git diff --check` are clean. Pull-request CI also passes on Ubuntu 24.04,
+Windows 2025, ARM64 macOS 26, and the code-intelligence preset. Xcode 26.6
+successfully compiles both unsigned `iphoneos` and `iphonesimulator` targets,
+including the Objective-C++ adapter and Metal shader.
 
 ## Result and remaining boundary
 
@@ -182,9 +184,9 @@ Confidence is **3/3** for the homogeneous derivation, reverse-depth state,
 aspect-fit policy, immutable ownership, bootstrap provenance, and portable
 test equivalence.
 
-Confidence remains **2/3** for end-to-end visual parity until Apple compilation
-and physical-device comparison are complete, and for complete event-5 behavior
-until the missing dynamic paths and traces are available.
+Confidence remains **2/3** for end-to-end visual parity until physical-device
+comparison is complete, and for complete event-5 behavior until the missing
+dynamic paths and traces are available.
 
 ## Related material
 

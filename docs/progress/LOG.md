@@ -2196,5 +2196,6 @@ superseded evidence.
   near/far boundaries, offset centres, invalid/overflow failures, bootstrap
   provenance, and 4,096 allocation-counted packet operations. A fresh
   Ninja/GCC 15.2 Release build and code-intelligence validation each pass all
-  65 portable tests. Unsigned Apple compilation remains required before
-  merge.
+  65 portable tests. Pull-request CI passes the clangd preset plus Ubuntu,
+  Windows, ARM64 macOS 26, unsigned `iphoneos`, and unsigned
+  `iphonesimulator`; Xcode 26.6 accepts the Objective-C++ and Metal contracts.
