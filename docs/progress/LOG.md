@@ -2626,5 +2626,6 @@ superseded evidence.
   The three RE wrapper suites, 12 Rizin normalization tests, public-boundary
   tests and 378-file scan, 259-row catalogue validation with only the two
   pre-existing missing references, `actionlint`, changed-scope local-path
-  scan, and `git diff --check` pass. Isolated Linux and GitHub Actions remain
-  the publication gates.
+  scan, and `git diff --check` pass. The exact pushed commit also compiles all
+  247 steps with GCC 13.3 and passes 76/76 tests in the isolated `Airfix-Dev`
+  WSL environment. GitHub Actions remains the final publication gate.
