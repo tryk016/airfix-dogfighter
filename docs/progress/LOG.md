@@ -2488,3 +2488,25 @@ superseded evidence.
   public-boundary tests and 367-file scan, 251-row catalogue, `actionlint`,
   local-path scan, and `git diff --check` pass. GitHub Actions remains the
   publication gate.
+
+## 2026-07-28 - transactional WpMGun shot preparation
+
+- `EXP-20260728-032` joins `EV-20260728-015` and `EV-20260728-016` at the
+  runtime-facing boundary: cadence, barrel, and nonzero-ammunition state
+  advance before private ammo allocation; event `0xE2` is assembled and
+  dispatched only after allocation succeeds.
+- Added an allocation-free C++20 coordinator that caps technology at four,
+  selects one coherent already-rotated muzzle snapshot, joins the exact ammo
+  profile and complete payload, and returns the advanced fire state beside the
+  prepared request. Payload-only inputs are not consumed when no shot is due.
+- Audited the retained mission BSP tracer as the next possible adapter. It
+  carries static fractions, normals, and material collision values, but the
+  complete native projectile loop also requires dynamic actor ownership,
+  native-room mapping, and combined static/portal ordering. This slice
+  therefore does not claim premature `DetectCollisions` parity.
+- Fresh Release and code-intelligence Ninja/GCC 15.2 builds each compile all
+  244 steps and pass 75/75 portable tests. Clangd 22.1.8 reports zero errors in
+  both new translation units. The three RE wrapper suites, 12 Rizin tests,
+  public-boundary tests and 371-file scan, 251-row catalogue, `actionlint`,
+  local-path scan, and `git diff --check` pass. GitHub Actions remains the
+  publication gate.

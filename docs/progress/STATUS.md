@@ -630,9 +630,13 @@
   packed field meanings, zero target UID, five impact-damage profiles, exact
   acceleration bits, four-second lifetime, unobstructed ballistic step, actor
   damage command, material-15 impact interpolation, and bounded ricochet
-  request. Private allocation/event dispatch, live muzzle transforms,
-  room/BSP/dynamic-actor collision adapters, tracer/effect realization,
-  secondary weapon families, runtime traces, and integration remain pending.
+  request. A transactional coordinator now selects the emitted rotated muzzle,
+  caps the technology profile, produces the complete payload, and returns the
+  already-advanced cadence/barrel/ammunition state so a later private
+  allocation failure cannot incorrectly roll it back. Private allocation/event
+  dispatch, live muzzle transforms, native-room mapping, combined
+  room/BSP/portal/dynamic-actor collision, tracer/effect realization, secondary
+  weapon families, runtime traces, and integration remain pending.
 
 ## Confirmed
 
