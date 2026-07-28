@@ -633,8 +633,10 @@
   request. A transactional coordinator now selects the emitted rotated muzzle,
   caps the technology profile, produces the complete payload, and returns the
   already-advanced cadence/barrel/ammunition state so a later private
-  allocation failure cannot incorrectly roll it back. Private allocation/event
-  dispatch, live muzzle transforms, native-room mapping, combined
+  allocation failure cannot incorrectly roll it back. Root ID zero,
+  monotonic ordinary-room IDs, and newest-first lookup now map bidirectionally
+  to the retained mission-world catalogue without native pointers. Private
+  allocation/event dispatch, live muzzle transforms, combined
   room/BSP/portal/dynamic-actor collision, tracer/effect realization, secondary
   weapon families, runtime traces, and integration remain pending.
 

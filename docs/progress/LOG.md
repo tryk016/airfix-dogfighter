@@ -2510,3 +2510,27 @@ superseded evidence.
   public-boundary tests and 371-file scan, 251-row catalogue, `actionlint`,
   local-path scan, and `git diff --check` pass. GitHub Actions remains the
   publication gate.
+
+## 2026-07-28 - native world-room ID mapping
+
+- `EV-20260728-017` / `EXP-20260728-033`: recovered the complete room identity
+  law needed to join event `0xE2` to the retained mission BSP. `CcWorld` root
+  has ID zero, its ordinary-room counter starts at one, and every created room
+  is assigned the counter before it increments and is prepended to the
+  newest-first list.
+- Ghidra 12.1.2 provides the canonical `CcRoom`/`CcWorld` class and export
+  meaning. Rizin 0.9.1 independently confirms the automatic boundaries,
+  exact `+0x48/+0x8C/+0x78/+0x24` field accesses, root-first comparison, and
+  newest-first loop.
+- The existing `MissionWorldRoomCatalog` preserves the same successful-load
+  order, including name-deduplicated rooms that consume no new identity.
+  Added allocation-free bidirectional C++20 helpers using
+  `roomCount - worldRoomIndex` for non-root rooms. Incomplete catalogues,
+  negative/out-of-range values, and counts outside signed 32-bit IDs fail
+  closed.
+- Fresh Release and code-intelligence Ninja/GCC 15.2 builds each compile all
+  244 steps and pass 75/75 portable tests. Clangd 22.1.8 reports zero errors in
+  the changed production and test ranges. The three RE wrapper suites, 12
+  Rizin tests, public-boundary tests and 372-file scan, 253-row catalogue,
+  `actionlint`, nine-file local-path scan, and `git diff --check` pass.
+  GitHub Actions remains the publication gate.

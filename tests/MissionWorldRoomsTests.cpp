@@ -119,6 +119,74 @@ void testOrderedLoadsMergeRoomsAndRoot() {
         "non-root creation/merge ordering is wrong");
 }
 
+void testLegacyRoomIdsFollowCreationOrder() {
+    const auto catalog = build({
+        {
+            room("", "", true),
+            room("Hangar"),
+            room("Outside"),
+        },
+        {
+            room("", "", true),
+            room("hangar"),
+            room("Tunnel"),
+        },
+    });
+    require(
+        catalog.complete() && catalog.rooms.size() == 4U,
+        "room-ID catalog is incomplete");
+
+    const std::vector<std::int32_t> expectedIds{0, 3, 2, 1};
+    for (std::size_t worldRoomIndex = 0U;
+         worldRoomIndex < expectedIds.size();
+         ++worldRoomIndex) {
+        const auto roomId =
+            airfix::assets::legacyCcRoomIdForWorldRoomIndex(
+                catalog, worldRoomIndex);
+        require(
+            roomId == std::optional{expectedIds[worldRoomIndex]},
+            "world-room index mapped to the wrong legacy room ID");
+        require(
+            airfix::assets::worldRoomIndexForLegacyCcRoomId(
+                catalog, expectedIds[worldRoomIndex]) ==
+                std::optional{worldRoomIndex},
+            "legacy room ID did not round-trip to its world-room index");
+    }
+
+    require(
+        !airfix::assets::legacyCcRoomIdForWorldRoomIndex(
+            catalog, catalog.rooms.size()).has_value(),
+        "out-of-range world-room index was accepted");
+    require(
+        !airfix::assets::worldRoomIndexForLegacyCcRoomId(
+            catalog, -1).has_value() &&
+        !airfix::assets::worldRoomIndexForLegacyCcRoomId(
+            catalog, 4).has_value(),
+        "invalid legacy room ID was accepted");
+
+    auto incomplete = catalog;
+    incomplete.issues.push_back({
+        .kind =
+            MissionWorldRoomBuildIssueKind::invalidSourceMetadata,
+    });
+    require(
+        !airfix::assets::legacyCcRoomIdForWorldRoomIndex(
+            incomplete, 0U).has_value() &&
+        !airfix::assets::worldRoomIndexForLegacyCcRoomId(
+            incomplete, 0).has_value(),
+        "incomplete catalog was accepted by room-ID mapping");
+
+    const auto rootOnly = build({});
+    require(
+        airfix::assets::legacyCcRoomIdForWorldRoomIndex(
+            rootOnly, 0U) == std::optional<std::int32_t>{0} &&
+        airfix::assets::worldRoomIndexForLegacyCcRoomId(
+            rootOnly, 0) == std::optional<std::size_t>{0U} &&
+        !airfix::assets::worldRoomIndexForLegacyCcRoomId(
+            rootOnly, 1).has_value(),
+        "root-only room-ID mapping is wrong");
+}
+
 void testMultipleAndNonLeadingRoomSections() {
     CcfMetadata sectioned;
     sectioned.rooms = {
@@ -642,6 +710,7 @@ static_assert(std::is_trivially_copyable_v<
 int main() {
     try {
         testOrderedLoadsMergeRoomsAndRoot();
+        testLegacyRoomIdsFollowCreationOrder();
         testMultipleAndNonLeadingRoomSections();
         testRootNamingAndRoomSectionFlags();
         testRootRenameCollisionKeepsExistingChild();

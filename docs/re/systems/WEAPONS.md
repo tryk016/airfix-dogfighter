@@ -218,6 +218,27 @@ The selected target affects lead only; the event target field remains zero.
 shared `NfProjectile` state, resolves the room ID, aligns/places the optional
 visual node, and activates the projectile.
 
+## Room identity bridge
+
+`CcWorld` is its root room with ID zero and initializes a monotonically
+increasing ordinary-room counter at one. Each ordinary `CcRoom` is prepended to
+the world's linked list and receives the current counter before it increments.
+`CcWorld::GetRoomById` checks root first, then scans that list newest-first.
+
+`MissionWorldRoomCatalog` already preserves the identical successful-load
+snapshot: root at index zero and ordinary rooms newest-created first. Therefore
+for a non-root room:
+
+```text
+legacyRoomId = catalog.rooms.size() - worldRoomIndex
+```
+
+The inverse uses the same subtraction. Allocation-free helpers now implement
+both directions and reject incomplete catalogues, negative/out-of-range IDs,
+or counts outside the native signed 32-bit domain. This supplies the room
+identity needed by event `0xE2` and the retained BSP arena without retaining
+native pointers or looking rooms up by name.
+
 ## Flight and lifetime
 
 The shared `NfProjectile::ProcessEvent` handles time-step events. For seconds
@@ -303,7 +324,8 @@ inventing a projectile or effect.
 - Consume the prepared-shot transaction through private type allocation and
   event dispatch without rolling back fire state on allocation failure.
 - Join projectile movement to a combined static/portal/dynamic-actor spatial
-  adapter after native room IDs and actor ownership are explicit.
+  adapter after dynamic actor ownership and collision-iterator ordering are
+  explicit.
 - Recreate the optional `mguntracer` and `FxRicochet` visual/effect adapters.
 - Trace sample/effect commands associated with a shot.
 - Recover secondary weapon selection and each secondary projectile family.

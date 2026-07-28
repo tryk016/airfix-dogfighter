@@ -112,6 +112,21 @@ struct MissionWorldRoomCatalog {
     const MissionWorldRoomBuildInput& input,
     const MissionWorldRoomBuildLimits& limits = {});
 
+// CcWorld assigns root ID zero, then monotonically assigns IDs from one as
+// rooms are created. The catalog stores non-root rooms in the legacy linked
+// list's newest-first order, so their portable index is the reverse of that
+// creation ID. These helpers translate a complete mission-load snapshot only;
+// they do not model later room deletion or creation.
+[[nodiscard]] std::optional<std::int32_t>
+legacyCcRoomIdForWorldRoomIndex(
+    const MissionWorldRoomCatalog& catalog,
+    std::size_t worldRoomIndex) noexcept;
+
+[[nodiscard]] std::optional<std::size_t>
+worldRoomIndexForLegacyCcRoomId(
+    const MissionWorldRoomCatalog& catalog,
+    std::int32_t roomId) noexcept;
+
 enum class MissionWorldStartIssueKind : std::uint8_t {
     catalogIncomplete,
     startPositionLimitExceeded,
