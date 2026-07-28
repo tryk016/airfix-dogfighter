@@ -2265,3 +2265,32 @@ superseded evidence.
   wrapper suites, 12 Rizin normalization tests, public-boundary tests and
   337-file scan pass; the 224-entry function catalogue, `actionlint`, and
   `git diff --check` are clean.
+
+## 2026-07-28 - gameplay-camera mission runtime and weak endpoint
+
+- `EXP-20260728-024`: added one non-copyable, non-moving mission runtime that
+  owns the authenticated arena by move, runtime basis, exact-size
+  sphere-candidate and constraint workspaces, camera coordinator, and complete
+  packet exchange. Creation performs all allocation and validates the camera0
+  packet through its first lease.
+- Workspace counts are bounded by the retained polygon count and explicit
+  two-million-record ceilings. Checked additional storage covers both
+  workspaces plus the exchange. iOS tightens that byte limit to the remainder
+  of its existing 128 MiB private CPU-packed budget; the already admitted arena
+  is transferred without copying or double charging.
+- A private mission snapshot now strongly owns the runtime and Metal acquires
+  packets through it. The main-thread room transaction also installs a weak
+  producer endpoint. Mission replacement expires that endpoint, while a
+  previously locked runtime remains self-contained and a retained render lease
+  keeps its exact exchange slot readable.
+- `tryAdvance` and `tryAcquire` are bounded, `noexcept`, and allocation-free.
+  Coordinator failure never reaches transport; `busy` advances authoritative
+  camera state but drops only that visual packet, and a later generation may
+  publish. The iOS input consumer deliberately does not call the endpoint
+  until all distinct live AirCraft fields and the scheduler delta exist.
+- Synthetic tests cover ownership preflight, limits, initialization,
+  publication, busy generation skips, rollback, weak/lease lifetime, and 4,096
+  zero-allocation steps. The local Release suite passes 68/68 tests; the
+  regenerated code-intelligence target builds and focused clangd 22 checks
+  report zero errors. Apple Objective-C++/Metal compilation remains a required
+  CI gate for this change.

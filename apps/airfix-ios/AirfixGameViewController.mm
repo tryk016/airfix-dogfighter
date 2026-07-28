@@ -11,6 +11,7 @@
 #include "AirfixPrivateMissionConfig.h"
 #include "AirfixMissionWorldRoomSnapshot+Private.hpp"
 #include "AirfixIOSInputCoordinator+Private.hpp"
+#include "airfix/render/LegacyGameplayCameraMissionRuntime.hpp"
 #include "airfix/render/PlayerActorPoseRuntime.hpp"
 #include "airfix/runtime/AppSession.hpp"
 #include "airfix/simulation/PlayerAircraftSimulation.hpp"
@@ -79,6 +80,7 @@ namespace {
     airfix::simulation::PlayerAircraftState _playerAircraftState;
     std::optional<airfix::simulation::PlayerSpawnPose> _playerSpawnPose;
     AirfixPlayerActorPoseRuntimeEndpoint _playerActorPoseRuntime;
+    AirfixGameplayCameraMissionRuntimeEndpoint _gameplayCameraRuntime;
     dispatch_queue_t _rendererPreparationQueue;
 }
 @property(nonatomic, strong) AirfixMetalRenderer* renderer;
@@ -577,6 +579,24 @@ namespace {
                 return;
             }
 
+            const auto gameplayCameraRuntime =
+                [renderer
+                    gameplayCameraMissionRuntimeEndpointForPreparedRoom:
+                        preparedRoom];
+            if (gameplayCameraRuntime.expired()) {
+                [strongSelf.contentCoordinator
+                    abandonMissionWorldRoomSnapshot:snapshot];
+                strongSelf->_session.setContentState(
+                    airfix::runtime::ContentState::rejected);
+                [strongSelf.inputCoordinator resetForGameplayBoundary];
+                ((MTKView*)strongSelf.view).paused = YES;
+                strongSelf.touchControlsView.hidden = YES;
+                strongSelf.statusLabel.text =
+                    @"Airfix Dogfighter reconstruction\n"
+                     @"Gameplay camera runtime publication failed";
+                return;
+            }
+
             // Main owns this complete transaction. Validation is read-only;
             // consuming the exact ticket is immediately followed by the
             // renderer's no-fail constant-time pointer swap.
@@ -589,6 +609,12 @@ namespace {
             [renderer commitValidatedPreparedRoom:preparedRoom];
             strongSelf->_playerActorPoseRuntime =
                 playerActorPoseRuntime;
+            // This weak endpoint is committed with the same snapshot but is
+            // deliberately not advanced from the 60 Hz input consumer. The
+            // recovered camera requires distinct live AirCraft positions,
+            // factor gates, and the scheduler delta in seconds.
+            strongSelf->_gameplayCameraRuntime =
+                gameplayCameraRuntime;
             strongSelf->_playerSpawnPose = *playerSpawnPose;
             strongSelf->_playerAircraftState = {};
 

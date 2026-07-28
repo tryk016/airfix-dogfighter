@@ -575,10 +575,13 @@
   milliseconds to seconds; the nominal 12 ms AirCraft interval supplies
   `0.012f`, not the 60 Hz input-pump interval. The two vehicle gates remain
   explicit. A fixed mission-lifetime SPSC exchange transports only complete
-  owning clip packets, and Metal retains one lease through encoding. The
-  current exchange contains only the explicit bootstrap; a producer endpoint,
-  mission-lifetime collision workspaces, and complete recovered aircraft
-  inputs remain.
+  owning clip packets, and Metal retains one lease through encoding. A new
+  non-moving mission runtime now owns the arena by move, runtime basis,
+  exact-size collision workspaces, coordinator, and exchange under checked
+  portable and iOS memory ceilings. The atomic room transaction publishes a
+  weak producer endpoint that expires safely on mission replacement. The
+  endpoint remains deliberately inactive and the exchange contains only the
+  explicit bootstrap until complete recovered aircraft inputs exist.
 - The authenticated setup-to-room provenance chain now crosses the native iOS
   publication boundary together with an immutable `PlayerSpawnPose`. Ghidra
   Headless and Rizin independently confirm x/y/z radians, mode zero, exact
@@ -627,14 +630,14 @@
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Place the implemented camera-step coordinator behind preallocated
-   mission-lifetime workspaces and a weak producer endpoint to the implemented
-   SPSC clip-packet exchange. Feed its confirmed scheduler delta in seconds
-   without resampling the separate 60 Hz input pump.
-   Replace the camera0-only publication only when the complete producer input
-   exists. Preserve scalar clip,
-   reciprocal-depth, and parity-first 4:3 behavior through device acceptance;
-   dynamic-object and transparent collision-portal paths remain separate.
+3. Connect the implemented weak camera-runtime endpoint to the recovered live
+   AirCraft producer once it supplies distinct chase position, world anchor,
+   vehicle rotation, both factor gates, and the confirmed scheduler delta in
+   seconds without resampling the separate 60 Hz input pump. Replace the
+   camera0-only publication only when that complete input exists. Preserve
+   scalar clip, reciprocal-depth, and parity-first 4:3 behavior through device
+   acceptance; dynamic-object and transparent collision-portal paths remain
+   separate.
 4. Validate the implemented runtime portal-to-room-state proposal against
    controlled multi-room executable traces when the isolated runtime is ready.
 5. Keep BSP render culling disabled until its separate runtime semantics are
