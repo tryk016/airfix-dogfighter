@@ -285,10 +285,26 @@ the shared layer.
 `legacyProjectileCollisionDecision` now preserves this deterministic
 single-hit state machine as an allocation-free seam. It exposes endpoint,
 portal, actor, and surface outcomes and composes with the existing WpMGun
-contact functions. The live adapter still must merge static and dynamic BSP,
-supply actor identities/gates, bound repeated portal traversal, and dispatch
-callbacks. See
-[EXP-20260728-034](../../experiments/EXP-20260728-034-projectile-collision-decision.md).
+contact functions.
+
+`buildLegacyDynamicBsp` now constructs the native-style object-local collision
+tree from converted mesh triangles. It preserves source triangle/material
+provenance, the standard dynamic-polygon cross product, deterministic
+splitter scoring, prepend order, negative-A/nonnegative-B children,
+`+/-0.000001` classification, `0.0001` fragment rejection, and local bounding
+radius. `traceMissionWorldRuntimeCombinedLine` then lets retained room-static
+geometry and caller-ordered active object instances compete through one
+strict-nearest fraction. Static geometry and earlier objects retain exact
+ties; object-local hits return transformed normals and actor/material
+provenance without allocating.
+
+The adapter deliberately stops before native portal recursion. A live
+coordinator must publish authenticated mesh colliders and room membership,
+supply actor identity/gates, repeat visible type-zero portal continuations
+with a bounded budget, and dispatch callbacks. See
+[EXP-20260728-034](../../experiments/EXP-20260728-034-projectile-collision-decision.md)
+and
+[EXP-20260728-035](../../experiments/EXP-20260728-035-dynamic-bsp-line-adapter.md).
 
 ## Actor damage and surface reaction
 
@@ -362,9 +378,9 @@ a projectile or effect.
 
 - Consume the prepared-shot transaction through private type allocation and
   event dispatch without rolling back fire state on allocation failure.
-- Join projectile movement to a combined static/dynamic-actor spatial adapter
-  using the now-explicit strict-nearest ordering and decision seam; add bounded
-  portal continuation after dynamic actor ownership is retained.
+- Join projectile movement to dynamic actors by publishing the implemented
+  per-mesh collider and ordered room-object instances; add bounded portal
+  continuation after dynamic actor ownership is retained.
 - Recreate the optional `mguntracer` and `FxRicochet` visual/effect adapters.
 - Trace sample/effect commands associated with a shot.
 - Recover secondary weapon selection and each secondary projectile family.
