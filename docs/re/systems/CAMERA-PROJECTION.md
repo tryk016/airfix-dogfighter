@@ -4,10 +4,11 @@
 camera presets, quaternion adapter, chase smoothing, collision
 scalars/factors/line interpolation, look-at pose math, 4:3 layout, strict
 BSP/portal adaptation, static sphere/contact resolution, atomic
-position/room/factor publication, producer-side step composition, and Metal
-clip/depth consumption plus a bounded packet exchange implemented; factor
-refresh delta confirmed in seconds; the simulation producer endpoint,
-dynamic-object collision, and device acceptance remain
+position/room/factor publication, producer-side step composition,
+mission-lifetime ownership, weak iOS endpoint, and Metal clip/depth consumption
+plus a bounded packet exchange implemented; factor refresh delta confirmed in
+seconds; complete live producer inputs, dynamic-object collision, and device
+acceptance remain
 
 This document separates confirmed legacy behavior from reconstruction
 decisions. The complete evidence record is
@@ -465,9 +466,16 @@ publication is claimed by this producer-side contract.
 separate render transport for complete owning clip packets. Its two fixed
 slots use writer/lease claims plus an exchange-local generation; simulation
 steps and camera generations must increase but may skip after a legitimate
-busy result. Metal mission snapshots account and own the exchange, validate
-the camera0 bootstrap through its first lease, and retain a lease through
-command encoding. No simulation producer endpoint is exposed until all
+busy result.
+
+`src/airfix/render/LegacyGameplayCameraMissionRuntime.cpp` now owns the
+authenticated arena by move, a copy of the runtime basis, exact-size
+candidate/constraint workspaces, the coordinator, and that exchange. Metal
+mission snapshots account the additional workspace/exchange bytes, validate
+camera0 through the runtime's first lease, and retain a lease through command
+encoding. A weak iOS producer endpoint expires with mission replacement; a
+temporary strong lock remains safe because it borrows no arena or basis from
+the Objective-C room envelope. The endpoint is not advanced until all
 AirCraft inputs are evidence-backed.
 
 The exact next solver boundary is recorded in
@@ -506,6 +514,9 @@ and Metal consumption.
 [EXP-20260728-023](../../experiments/EXP-20260728-023-camera-refresh-time-contract.md)
 confirms the scheduler-to-factor-recovery delta in seconds and its nominal
 12 ms AirCraft value.
+[EXP-20260728-024](../../experiments/EXP-20260728-024-camera-mission-runtime.md)
+documents mission ownership, workspace admission, weak endpoint lifetime, and
+the deliberate live-producer gate.
 Dynamic-object BSP and transparent collision-portal traversal remain separate.
 
 ## Still unknown
@@ -553,3 +564,4 @@ evidence is recovered.
 - [Metal gameplay-camera clip packet](../../experiments/EXP-20260728-020-metal-gameplay-camera-packet.md)
 - [Gameplay-camera step coordinator](../../experiments/EXP-20260728-021-camera-step-coordinator.md)
 - [Gameplay-camera packet exchange](../../experiments/EXP-20260728-022-camera-packet-exchange.md)
+- [Gameplay-camera mission runtime](../../experiments/EXP-20260728-024-camera-mission-runtime.md)

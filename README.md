@@ -73,15 +73,18 @@ Implemented foundations include:
   preserving the confirmed scheduler-derived refresh delta in seconds;
 - a bounded, allocation-free SPSC exchange that publishes only complete
   gameplay-camera packets and lets Metal retain one coherent camera generation
-  through command encoding.
+  through command encoding;
+- a preallocated mission-lifetime camera runtime that owns the retained BSP,
+  basis, collision workspaces, coordinator, and packet exchange, plus a weak
+  iOS producer endpoint that expires safely when the mission is replaced.
 
 The portable authenticated load now produces one validated room-and-player
 draw model plus a mission-lifetime BSP arena for every runtime room. The actor
 still remains at its authenticated spawn transform until the recovered
 movement law supplies a changing world pose. Dynamic-object camera collision,
-changing event-5 camera publication, full gameplay simulation, campaign flow,
-audio, finished menus, physical-device rendering, and visual acceptance
-remain future milestones.
+live event-5 camera production from complete AirCraft state, full gameplay
+simulation, campaign flow, audio, finished menus, physical-device rendering,
+and visual acceptance remain future milestones.
 
 For frequently updated details, use
 [project status](docs/progress/STATUS.md) and the

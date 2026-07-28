@@ -8,8 +8,11 @@ namespace airfix::content {
 struct LoadedMissionWorldRoom;
 }
 namespace airfix::render {
+class LegacyGameplayCameraMissionRuntime;
 class PlayerActorPoseRuntime;
 }
+using AirfixGameplayCameraMissionRuntimeEndpoint =
+    std::weak_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>;
 using AirfixPlayerActorPoseRuntimeEndpoint =
     std::optional<
         std::weak_ptr<airfix::render::PlayerActorPoseRuntime>>;
@@ -42,6 +45,13 @@ NS_ASSUME_NONNULL_BEGIN
 // callers must never retain strong ownership across a main-thread boundary.
 - (AirfixPlayerActorPoseRuntimeEndpoint)
     playerActorPoseRuntimeEndpointForPreparedRoom:
+        (AirfixPreparedMetalRoom*)preparedRoom;
+
+// Every private mission owns one camera runtime. An expired weak pointer is an
+// invalid candidate sentinel. The simulation must not advance this endpoint
+// until it can provide the complete recovered AirCraft input contract.
+- (AirfixGameplayCameraMissionRuntimeEndpoint)
+    gameplayCameraMissionRuntimeEndpointForPreparedRoom:
         (AirfixPreparedMetalRoom*)preparedRoom;
 #endif
 

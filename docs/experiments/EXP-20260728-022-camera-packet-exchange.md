@@ -6,8 +6,8 @@
 
 **Scenario:** `SCN-CAMERA-001`
 
-**Status:** bounded SPSC exchange and Metal consumption implemented; the
-simulation producer endpoint and recovered aircraft inputs remain separate
+**Status:** bounded SPSC exchange, mission runtime, weak iOS endpoint, and Metal
+consumption implemented; complete live aircraft inputs remain separate
 
 ## Question
 
@@ -77,10 +77,11 @@ standalone optional bootstrap packet. Snapshot preparation:
 4. commits the exchange with the rest of the immutable mission resources.
 
 For each private-room draw, Metal acquires one lease before reading any camera
-field and retains it through command encoding. Snapshot replacement keeps the
-old exchange alive for an in-flight draw. The current simulation does not yet
-receive a producer endpoint, so the only packet published on iOS remains the
-explicit camera0 bootstrap.
+field and retains it through command encoding. The mission snapshot now owns
+the exchange inside `LegacyGameplayCameraMissionRuntime`; snapshot replacement
+keeps an in-flight lease safe. A weak producer endpoint is committed with the
+room but deliberately remains inactive, so the only packet published on iOS
+remains the explicit camera0 bootstrap.
 
 ## Validation
 
@@ -104,14 +105,13 @@ Objective-C++/Metal compilation requires the unsigned Apple CI matrix.
 
 ## Remaining join
 
-This step deliberately does not publish guessed camera movement. The next
-producer boundary still needs:
+This step deliberately does not publish guessed camera movement. The
+mission-lifetime ownership and weak endpoint are now implemented in
+[EXP-20260728-024](EXP-20260728-024-camera-mission-runtime.md). The live
+producer still needs:
 
-- mission-lifetime ownership of the camera coordinator, immutable spatial
-  arena reference, runtime basis, and preallocated collision workspaces;
-- a weak producer endpoint installed in the same atomic mission commit as the
-  render snapshot;
 - the distinct live AirCraft chase position and vehicle anchor;
+- the live vehicle rotation;
 - the two recovered AirCraft factor gates; and
 - the scheduler-derived factor-refresh delta in seconds, now confirmed in
   [EXP-20260728-023](EXP-20260728-023-camera-refresh-time-contract.md).
@@ -134,4 +134,5 @@ producer inputs and physical-device acceptance are not yet available.
 - [Retained-static pose snapshot](EXP-20260728-019-camera-retained-static-pose-snapshot.md)
 - [Metal gameplay-camera packet](EXP-20260728-020-metal-gameplay-camera-packet.md)
 - [Camera step coordinator](EXP-20260728-021-camera-step-coordinator.md)
+- [Gameplay-camera mission runtime](EXP-20260728-024-camera-mission-runtime.md)
 - [Camera and projection contract](../re/systems/CAMERA-PROJECTION.md)

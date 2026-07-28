@@ -8,8 +8,8 @@
 
 **Status:** recovered retained-static AirCraft step composition implemented;
 refresh delta later confirmed in seconds and cross-thread packet exchange
-implemented; dynamic-object collision and the native iOS producer remain
-separate
+implemented; mission runtime and weak iOS endpoint implemented; live AirCraft
+production and dynamic-object collision remain separate
 
 ## Question
 
@@ -94,23 +94,21 @@ Camera presses skipped between accepted producer calls are applied modulo
 three. Rear view selects the recovered rear tuple only for that call and never
 changes the persistent mode.
 
-## Ownership and remaining runtime join
+## Ownership and mission runtime join
 
 The coordinator is non-copyable and non-moving. It owns only the compact
-camera state owner, mode, and last cumulative input count. The mission BSP,
-runtime basis, sphere-candidate workspace, and constraint workspace remain
-caller-owned. No original asset or platform type enters this API.
+camera state owner, mode, and last cumulative input count. No original asset or
+platform type enters this API.
 
-The operation is producer-side only. It returns an owning immutable clip
-packet after a successful commit, but it does not yet expose that packet to
-Metal across threads. The eventual runtime owner must:
+`LegacyGameplayCameraMissionRuntime`, documented in
+[EXP-20260728-024](EXP-20260728-024-camera-mission-runtime.md), now owns the
+mission BSP, runtime basis, exact-size sphere/constraint workspaces,
+coordinator, and packet exchange. It exposes a weak iOS endpoint that expires
+with mission replacement. Its remaining live producer must:
 
-- retain the authenticated mission arena and basis for the coordinator's
-  lifetime;
-- preallocate both workspaces under an explicit iOS memory ceiling;
 - source the aircraft scheduler delta in seconds and both recovery gates;
-- publish only complete packets through a bounded SPSC exchange; and
-- make mission replacement invalidate the prior weak endpoint atomically.
+- supply the distinct chase position, world anchor, and vehicle rotation; and
+- call the existing runtime without resampling the input pump.
 
 The steady-state input keeps the recovered chase position and vehicle
 world-anchor position separate. Native AirCraft code reads them from distinct
@@ -152,11 +150,10 @@ producer-side transaction. This closes the ordering and rollback problem;
 the later scheduler join also closes the refresh unit without inventing
 dynamic-object data.
 
-The SPSC clip-packet exchange is now implemented. The next implementation
-boundary is a preallocated mission-lifetime runtime and weak producer endpoint.
-It can be connected to iOS only after the simulation publishes the required
-aircraft inputs. Controlled native traces remain necessary for end-to-end
-parity, not for the refresh argument's unit.
+The SPSC exchange, preallocated mission runtime, and weak producer endpoint are
+now implemented. The endpoint is intentionally inactive until the simulation
+publishes the required aircraft inputs. Controlled native traces remain
+necessary for end-to-end parity, not for the refresh argument's unit.
 
 ## Confidence
 
@@ -176,4 +173,5 @@ controlled runtime traces are still missing.
 - [Retained-static pose snapshot](EXP-20260728-019-camera-retained-static-pose-snapshot.md)
 - [Metal gameplay-camera packet](EXP-20260728-020-metal-gameplay-camera-packet.md)
 - [Camera refresh time contract](EXP-20260728-023-camera-refresh-time-contract.md)
+- [Gameplay-camera mission runtime](EXP-20260728-024-camera-mission-runtime.md)
 - [Camera and projection contract](../re/systems/CAMERA-PROJECTION.md)

@@ -150,6 +150,7 @@ add_library(airfix_render
     src/airfix/render/LegacyGameplayCameraChase.cpp
     src/airfix/render/LegacyGameplayCameraClipPacket.cpp
     src/airfix/render/LegacyGameplayCameraCollision.cpp
+    src/airfix/render/LegacyGameplayCameraMissionRuntime.cpp
     src/airfix/render/LegacyGameplayCameraPacketExchange.cpp
     src/airfix/render/LegacyGameplayCameraPreset.cpp
     src/airfix/render/LegacyGameplayCameraPoseSnapshot.cpp
@@ -551,6 +552,14 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_legacy_gameplay_camera_packet_exchange_tests
         COMMAND airfix_legacy_gameplay_camera_packet_exchange_tests)
+
+    add_executable(airfix_legacy_gameplay_camera_mission_runtime_tests
+        tests/LegacyGameplayCameraMissionRuntimeTests.cpp)
+    target_link_libraries(
+        airfix_legacy_gameplay_camera_mission_runtime_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_legacy_gameplay_camera_mission_runtime_tests
+        COMMAND airfix_legacy_gameplay_camera_mission_runtime_tests)
 
     add_executable(airfix_legacy_gameplay_camera_step_coordinator_tests
         tests/LegacyGameplayCameraStepCoordinatorTests.cpp)
