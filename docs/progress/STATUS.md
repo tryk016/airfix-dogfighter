@@ -545,6 +545,10 @@
   test, B-then-A BSP traversal, visible type-zero portal-room discovery,
   material filtering, face/edge/vertex selection, native tie order, and
   iterative constrained correction through caller-owned bounded workspaces.
+  The corrected centre now feeds factor reduction and portal tracing in native
+  order, producing one allocation-free all-or-nothing proposal containing
+  position, final room, and all three axis factors. Workspace, geometry,
+  basis, factor, and later portal failures expose no partial state.
   Synchronized camera/simulation ownership, dynamic-object collision, and the
   Metal join remain unimplemented. Metal remains explicitly diagnostic and no
   full parity matrix has been introduced.
@@ -596,14 +600,15 @@
 2. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Join the implemented static sphere resolver to the camera room-state
-   proposal, then add synchronized ownership/publication before
-   introducing a Metal camera matrix or performing physical-device visual
-   acceptance. World-to-camera, scalar projection with reciprocal depth, exact
-   zero clear, depth modes, camera presets, quaternion
-   matrix, stateless chase target/smoothing, collision/factor/line primitives,
-   look-at pose math, and parity-first 4:3 presentation are recovered and
-   implemented. Auxiliary weapons and effects remain separate.
+3. Place the implemented all-or-nothing static camera collision proposal
+   behind synchronized single-writer ownership/publication before introducing
+   a Metal camera matrix or performing physical-device visual acceptance.
+   World-to-camera, scalar projection with reciprocal depth, exact zero clear,
+   depth modes, camera presets, quaternion matrix, stateless chase
+   target/smoothing, collision/factor/line primitives, static sphere-to-room
+   state integration, look-at pose math, and parity-first 4:3 presentation are
+   recovered and implemented. Dynamic-object collision, auxiliary weapons, and
+   effects remain separate.
 4. Validate the implemented runtime portal-to-room-state proposal against
    controlled multi-room executable traces when the isolated runtime is ready.
 5. Keep BSP render culling disabled until its separate runtime semantics are

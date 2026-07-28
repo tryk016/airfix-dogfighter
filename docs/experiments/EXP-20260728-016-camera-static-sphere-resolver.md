@@ -198,6 +198,9 @@ extended-precision bit parity. The implementation preserves identified
 binary32 stores and comparison strictness but does not claim every
 intermediate bit for arbitrary inputs.
 
+The corrected centre is now consumed atomically with axis-factor reduction and
+portal-room proposal by
+[EXP-20260728-017](EXP-20260728-017-camera-static-state-integration.md).
 Dynamic-object collision remains unimplemented and has no portable parity
 claim.
 
@@ -206,4 +209,5 @@ claim.
 - [Sphere-contact and material recovery](EXP-20260728-014-camera-sphere-contact-recovery.md)
 - [Camera constraint solver](EXP-20260728-015-camera-constraint-solver.md)
 - [Portal BSP line trace](EXP-20260727-011-portal-bsp-line-trace.md)
+- [Static collision state integration](EXP-20260728-017-camera-static-state-integration.md)
 - [Camera and projection contract](../re/systems/CAMERA-PROJECTION.md)
