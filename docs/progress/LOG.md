@@ -2739,5 +2739,7 @@ superseded evidence.
   three RE wrapper suites, 12 Rizin normalization tests, public-boundary tests
   and 387-file scan, 263-row catalogue validation with only the two
   pre-existing missing references, `actionlint`, 11-file local-path scan, and
-  `git diff --check` pass. Exact-commit WSL and GitHub Actions remain
-  publication gates.
+  `git diff --check` pass. The exact code commit
+  `a531e663a5d4ffa87ccd459686b5d67fc39680c9` also compiles all 253 steps
+  with GCC 13.3 and passes 78/78 tests in a new isolated `Airfix-Dev` WSL
+  clone. GitHub Actions remains the final publication gate.
