@@ -12,6 +12,7 @@
 #include "airfix/render/LegacyGameplayCameraClipPacket.hpp"
 #include "airfix/render/LegacyGameplayCameraMissionRuntime.hpp"
 #include "airfix/render/PlayerActorPoseRuntime.hpp"
+#include "airfix/render/PublicRenderSmokeScene.hpp"
 #include "airfix/render/SnapshotGpuBudgetLedger.hpp"
 
 #include <algorithm>
@@ -321,98 +322,6 @@ simd_float4x4 toSimdMatrix(
         translation.z,
         1.0F);
     return result;
-}
-
-airfix::render::DrawModelPayload makeSyntheticPayload() {
-    using airfix::render::DrawMaterial;
-    using airfix::render::DrawMeshInstance;
-    using airfix::render::DrawRange;
-    using airfix::render::DrawVertex;
-    using airfix::render::TexcoordMode;
-    using airfix::render::TextureAssetId;
-    using airfix::render::Vec2;
-    using airfix::render::Vec3;
-
-    // Mesh zero deliberately contains both a missing primary texture and
-    // TexcoordMode::none. The renderer maps those explicit states to a
-    // one-pixel fallback without modifying the backend-neutral payload.
-    airfix::render::DrawMeshPayload meshZero;
-    meshZero.vertices = {
-        DrawVertex{Vec3{-0.7F, -0.7F, 0.0F}, Vec3{0.0F, 0.0F, 1.0F}, Vec2{0.0F, 1.0F}},
-        DrawVertex{Vec3{0.7F, -0.7F, 0.0F}, Vec3{0.0F, 0.0F, 1.0F}, Vec2{1.0F, 1.0F}},
-        DrawVertex{Vec3{0.7F, 0.7F, 0.0F}, Vec3{0.0F, 0.0F, 1.0F}, Vec2{1.0F, 0.0F}},
-        DrawVertex{Vec3{-0.7F, 0.7F, 0.0F}, Vec3{0.0F, 0.0F, 1.0F}, Vec2{0.0F, 0.0F}},
-    };
-    meshZero.indices = {0U, 1U, 2U, 0U, 2U, 3U};
-    meshZero.materials = {
-        DrawMaterial{0U, std::nullopt, std::nullopt, std::nullopt},
-        DrawMaterial{1U, TextureAssetId{0U}, std::nullopt, std::nullopt},
-    };
-    meshZero.ranges = {
-        DrawRange{0U, 3U, 0U, TexcoordMode::uv0},
-        DrawRange{3U, 3U, 1U, TexcoordMode::none},
-    };
-    meshZero.localBounds = {
-        Vec3{-0.7F, -0.7F, 0.0F},
-        Vec3{0.7F, 0.7F, 0.0F},
-    };
-
-    airfix::render::DrawMeshPayload meshOne;
-    meshOne.vertices = {
-        DrawVertex{Vec3{-0.65F, -0.55F, 0.0F}, Vec3{0.0F, 0.0F, 1.0F}, Vec2{0.0F, 1.0F}},
-        DrawVertex{Vec3{0.65F, -0.55F, 0.0F}, Vec3{0.0F, 0.0F, 1.0F}, Vec2{1.0F, 1.0F}},
-        DrawVertex{Vec3{0.0F, 0.7F, 0.0F}, Vec3{0.0F, 0.0F, 1.0F}, Vec2{0.5F, 0.0F}},
-    };
-    meshOne.indices = {0U, 1U, 2U};
-    meshOne.materials = {
-        DrawMaterial{2U, TextureAssetId{0U}, std::nullopt, std::nullopt},
-    };
-    meshOne.ranges = {
-        DrawRange{0U, 3U, 0U, TexcoordMode::uv0},
-    };
-    meshOne.localBounds = {
-        Vec3{-0.65F, -0.55F, 0.0F},
-        Vec3{0.65F, 0.7F, 0.0F},
-    };
-
-    airfix::render::DrawModelPayload payload;
-    payload.meshes.push_back(std::move(meshZero));
-    payload.meshes.push_back(std::move(meshOne));
-    // The deliberately non-monotonic order proves that draw submission
-    // follows instance order and rebinds reusable mesh buffers: 1, 0, 1.
-    payload.instances = {
-        DrawMeshInstance{
-            .meshSlot = 1U,
-            .sourceNodeReference = 1U,
-            .modelLinear = airfix::render::Mat3{{
-                Vec3{0.48F, 0.0F, 0.0F},
-                Vec3{0.0F, 0.48F, 0.0F},
-                Vec3{0.0F, 0.0F, 0.48F},
-            }},
-            .modelTranslation = Vec3{-0.52F, 0.28F, 0.35F},
-        },
-        DrawMeshInstance{
-            .meshSlot = 0U,
-            .sourceNodeReference = 2U,
-            .modelLinear = airfix::render::Mat3{{
-                Vec3{0.46F, 0.0F, 0.0F},
-                Vec3{0.0F, 0.46F, 0.0F},
-                Vec3{0.0F, 0.0F, 0.46F},
-            }},
-            .modelTranslation = Vec3{0.0F, -0.3F, 0.2F},
-        },
-        DrawMeshInstance{
-            .meshSlot = 1U,
-            .sourceNodeReference = 3U,
-            .modelLinear = airfix::render::Mat3{{
-                Vec3{0.38F, 0.0F, 0.0F},
-                Vec3{0.0F, 0.38F, 0.0F},
-                Vec3{0.0F, 0.0F, 0.38F},
-            }},
-            .modelTranslation = Vec3{0.54F, 0.3F, 0.1F},
-        },
-    };
-    return payload;
 }
 
 std::vector<GpuVertex> repackVertices(
@@ -1266,7 +1175,9 @@ bool preflightPrivateRoom(
     // No C++ allocation or conversion failure may escape this Objective-C
     // initializer boundary.
     try {
-    airfix::render::DrawModelPayload payload = makeSyntheticPayload();
+    airfix::render::PublicRenderSmokeScene smokeScene =
+        airfix::render::makePublicRenderSmokeScene();
+    airfix::render::DrawModelPayload payload = std::move(smokeScene.model);
     airfix::render::DrawSubmissionDescription submission =
         airfix::render::buildDrawSubmissionPlan(payload, 1U);
     if (!submission.plan.has_value() || !submission.issues.empty()) {
@@ -1513,8 +1424,8 @@ bool preflightPrivateRoom(
         indexByteCounts.push_back(indexBytes);
     }
 
-    constexpr std::size_t syntheticTextureBytes = 2U * 2U * 4U;
-    constexpr std::size_t fallbackTextureBytes = 1U * 1U * 4U;
+    const std::size_t syntheticTextureBytes = smokeScene.textureRgba8.size();
+    const std::size_t fallbackTextureBytes = smokeScene.fallbackRgba8.size();
     if (!resourcePreflightValid ||
         !accountGpuBytes(
             syntheticTextureBytes,
@@ -1833,15 +1744,9 @@ bool preflightPrivateRoom(
         return nil;
     }
 
-    const std::array<std::uint8_t, 16U> pixels = {
-        238U, 91U, 72U, 255U,
-        247U, 201U, 72U, 255U,
-        54U, 179U, 126U, 255U,
-        64U, 129U, 216U, 255U,
-    };
     [syntheticTexture replaceRegion:MTLRegionMake2D(0U, 0U, 2U, 2U)
                         mipmapLevel:0U
-                          withBytes:pixels.data()
+                          withBytes:smokeScene.textureRgba8.data()
                         bytesPerRow:2U * 4U];
 
     id<MTLTexture> fallbackTexture =
@@ -1853,12 +1758,9 @@ bool preflightPrivateRoom(
         }
         return nil;
     }
-    const std::array<std::uint8_t, 4U> fallbackPixel = {
-        255U, 255U, 255U, 255U,
-    };
     [fallbackTexture replaceRegion:MTLRegionMake2D(0U, 0U, 1U, 1U)
                        mipmapLevel:0U
-                         withBytes:fallbackPixel.data()
+                         withBytes:smokeScene.fallbackRgba8.data()
                        bytesPerRow:1U * 4U];
     NSArray<AirfixMetalMeshBuffers*>* meshBufferSnapshot =
         [meshBuffers copy];

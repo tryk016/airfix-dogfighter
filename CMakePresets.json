@@ -17,7 +17,30 @@
         "CMAKE_EXPORT_COMPILE_COMMANDS": true,
         "AIRFIX_BUILD_TESTS": true,
         "AIRFIX_BUILD_TOOLS": true,
-        "AIRFIX_BUILD_IOS_APP": false
+        "AIRFIX_BUILD_IOS_APP": false,
+        "AIRFIX_BUILD_WINDOWS_APP": false
+      }
+    },
+    {
+      "name": "windows-product",
+      "displayName": "Windows x64 product (Visual Studio 2022)",
+      "description": "Data-less SDL3 and Direct3D 11 application shell with tests",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "generator": "Visual Studio 17 2022",
+      "architecture": {
+        "value": "x64",
+        "strategy": "set"
+      },
+      "binaryDir": "${sourceDir}/build/windows-product",
+      "cacheVariables": {
+        "AIRFIX_BUILD_TESTS": true,
+        "AIRFIX_BUILD_TOOLS": false,
+        "AIRFIX_BUILD_IOS_APP": false,
+        "AIRFIX_BUILD_WINDOWS_APP": true
       }
     }
   ],
@@ -26,6 +49,12 @@
       "name": "code-intelligence",
       "displayName": "Build code-intelligence targets",
       "configurePreset": "code-intelligence"
+    },
+    {
+      "name": "windows-product-release",
+      "displayName": "Build Windows x64 product (Release)",
+      "configurePreset": "windows-product",
+      "configuration": "Release"
     }
   ],
   "testPresets": [
@@ -33,6 +62,18 @@
       "name": "code-intelligence",
       "displayName": "Test code-intelligence build",
       "configurePreset": "code-intelligence",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "windows-product-release",
+      "displayName": "Test Windows x64 product (Release)",
+      "configurePreset": "windows-product",
+      "configuration": "Release",
       "output": {
         "outputOnFailure": true
       },

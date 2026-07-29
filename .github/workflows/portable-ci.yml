@@ -98,3 +98,36 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --build-config Release --output-on-failure
+
+  windows-product:
+    name: Windows x64 product / D3D11 GPU smoke
+    runs-on: windows-2025
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Show toolchain
+        shell: pwsh
+        run: |
+          cmake --version
+          & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
+            -latest -products * -property installationVersion
+
+      - name: Configure Windows product
+        run: cmake --preset windows-product
+
+      - name: Build Windows product
+        run: cmake --build --preset windows-product-release --parallel
+
+      - name: Test Windows product
+        run: ctest --preset windows-product-release
+
+      - name: Verify SDL license staging
+        shell: pwsh
+        run: |
+          $license = "build/windows-product/apps/airfix-windows/Release/third-party-licenses/SDL3.txt"
+          if (-not (Test-Path -LiteralPath $license)) {
+            throw "SDL3 license was not staged beside the Windows product"
+          }

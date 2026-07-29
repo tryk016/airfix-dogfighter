@@ -5,6 +5,7 @@ project(AirfixDogfighterReconstruction VERSION 0.1.0 LANGUAGES CXX)
 option(AIRFIX_BUILD_TESTS "Build reconstruction tests" ON)
 option(AIRFIX_BUILD_TOOLS "Build desktop reconstruction tools" ON)
 option(AIRFIX_BUILD_IOS_APP "Build the data-less iOS application shell" OFF)
+option(AIRFIX_BUILD_WINDOWS_APP "Build the data-less Windows x64 application shell" OFF)
 set(AIRFIX_IOS_DEPLOYMENT_TARGET "16.4" CACHE STRING
     "Minimum iOS version supported by the application")
 
@@ -14,6 +15,14 @@ endif()
 
 if(AIRFIX_BUILD_IOS_APP AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     message(FATAL_ERROR "AIRFIX_BUILD_IOS_APP requires an iOS CMake toolchain")
+endif()
+
+if(AIRFIX_BUILD_WINDOWS_APP AND NOT WIN32)
+    message(FATAL_ERROR "AIRFIX_BUILD_WINDOWS_APP requires a Windows toolchain")
+endif()
+
+if(AIRFIX_BUILD_TESTS)
+    enable_testing()
 endif()
 
 add_library(airfix_crypto
@@ -180,6 +189,7 @@ add_library(airfix_render
     src/airfix/render/PlayerActorSceneAssembly.cpp
     src/airfix/render/PlayerActorTextureBindings.cpp
     src/airfix/render/PlayerActorVisualDrawAssembly.cpp
+    src/airfix/render/PublicRenderSmokeScene.cpp
     src/airfix/render/SnapshotGpuBudgetLedger.cpp
     src/airfix/render/TextureRuntimeData.cpp
     src/airfix/render/TextureRuntimePlan.cpp
@@ -287,8 +297,11 @@ if(AIRFIX_BUILD_IOS_APP)
     add_subdirectory(apps/airfix-ios)
 endif()
 
+if(AIRFIX_BUILD_WINDOWS_APP)
+    add_subdirectory(apps/airfix-windows)
+endif()
+
 if(AIRFIX_BUILD_TESTS)
-    enable_testing()
     add_executable(airfix_udsp_tests tests/UdspArchiveTests.cpp)
     target_link_libraries(airfix_udsp_tests PRIVATE airfix::udsp)
     add_test(NAME airfix_udsp_tests COMMAND airfix_udsp_tests)
@@ -557,6 +570,13 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_render_tests tests/LegacyGeometryTests.cpp)
     target_link_libraries(airfix_render_tests PRIVATE airfix::render)
     add_test(NAME airfix_render_tests COMMAND airfix_render_tests)
+
+    add_executable(airfix_public_render_smoke_scene_tests
+        tests/PublicRenderSmokeSceneTests.cpp)
+    target_link_libraries(airfix_public_render_smoke_scene_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_public_render_smoke_scene_tests
+        COMMAND airfix_public_render_smoke_scene_tests)
 
     add_executable(airfix_legacy_camera_transform_tests
         tests/LegacyCameraTransformTests.cpp)
