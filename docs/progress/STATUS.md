@@ -46,9 +46,16 @@
   4:3, diagnostics, and the Classic/Enhanced selector form one validated
   snapshot; sparse overrides reject atomically; a deterministic delta
   identifies target/layout/overlay/profile work; and a versioned semantic
-  record fails closed on future schemas or malformed values. Enhanced remains
-  a selector only, not a claim that modern passes exist. Native persistence,
-  prepared-resource commit, and the final settings UI remain pending.
+  record fails closed on future schemas or malformed values. D3D11 now applies
+  the full snapshot as one prepare-before-publish transaction. Exact old color,
+  RTV, SRV, depth, and DSV identities survive invalid candidates, unavailable
+  surfaces, late allocation failure, failed scaled resize, and a rejected
+  pre-publication persistence gate. Minimize retains the scaled bundle, restore
+  retries safely with bounded exponential frame backoff, 100% remains a direct
+  backbuffer path, and startup override failure falls back to the active
+  snapshot. Enhanced remains a selector only, not a claim that modern passes
+  exist. The equivalent Metal transaction, native persistence, sparse CLI
+  precedence, and final settings UI remain pending.
 - The native Windows x64 product foundation is implemented. A statically
   linked SDL3 shell owns the window and lifecycle events; a separate
   D3D11/DXGI backend compiles HLSL, uploads the same public scene used by Metal,

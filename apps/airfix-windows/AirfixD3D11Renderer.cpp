@@ -307,6 +307,31 @@ class AirfixD3D11Renderer::Implementation final {
     bool issued{};
   };
 
+  struct ScaledSceneTargets {
+    ComPtr<ID3D11Texture2D> colorTexture;
+    ComPtr<ID3D11RenderTargetView> renderTarget;
+    ComPtr<ID3D11ShaderResourceView> shaderResource;
+    ComPtr<ID3D11Texture2D> depthTexture;
+    ComPtr<ID3D11DepthStencilView> depthView;
+    airfix::render::RenderTargetPixelExtent extent{};
+
+    [[nodiscard]] bool complete() const noexcept {
+      return colorTexture && renderTarget && shaderResource &&
+             depthTexture && depthView && extent.width != 0U &&
+             extent.height != 0U;
+    }
+
+    void swap(ScaledSceneTargets &other) noexcept {
+      colorTexture.Swap(other.colorTexture);
+      renderTarget.Swap(other.renderTarget);
+      shaderResource.Swap(other.shaderResource);
+      depthTexture.Swap(other.depthTexture);
+      depthView.Swap(other.depthView);
+      std::swap(extent, other.extent);
+    }
+
+  };
+
   struct MissionResources {
     airfix::content::LoadedMissionWorldRoom room;
     airfix::render::LegacyGameplayCameraClipPacket camera;
@@ -327,6 +352,11 @@ class AirfixD3D11Renderer::Implementation final {
           textures(std::move(textureResources)) {}
   };
 
+  enum class ResizeAttemptKind : std::uint8_t {
+    explicitSignal,
+    pendingRetry,
+  };
+
 public:
   explicit Implementation(SDL_Window &window)
       : window_(&window), scene_(airfix::render::makePublicRenderSmokeScene()) {
@@ -342,56 +372,222 @@ public:
     createPipeline();
     meshResources_ = createGeometryResources(scene_.model);
     createTextures();
-    createSwapTargets();
+    const auto [initialWidth, initialHeight] = pixelSize(*window_);
+    createSwapTargets(initialWidth, initialHeight);
   }
 
   void resize() {
     const auto [newWidth, newHeight] = pixelSize(*window_);
-    releaseSwapTargets();
+    (void)resizeToPixelExtent(
+        newWidth, newHeight, ResizeAttemptKind::explicitSignal);
+  }
 
+  [[nodiscard]] bool resizeToPixelExtent(
+      const int newWidth, const int newHeight,
+      const ResizeAttemptKind attemptKind) {
+    if (attemptKind == ResizeAttemptKind::explicitSignal) {
+      resetPendingResizeBackoff();
+    }
     if (newWidth <= 0 || newHeight <= 0) {
+      releaseSwapTargets();
       width_ = 0;
       height_ = 0;
-      return;
+      viewport_ = {};
+      clearPendingResize();
+      return true;
     }
 
+    const auto layout = buildLayout(
+        settings_, static_cast<std::uint32_t>(newWidth),
+        static_cast<std::uint32_t>(newHeight));
+    if (!layout.complete()) {
+      throw std::runtime_error(
+          "native render layout is invalid after swap-chain resize");
+    }
+    const auto renderExtent = layout.layout->renderTargetExtent();
+    if (!targetExtentSupported(renderExtent)) {
+      throw std::runtime_error(
+          "scaled 3D target exceeds the D3D11 texture dimension limit");
+    }
+
+    ScaledSceneTargets preparedTargets;
+    const bool replacesScaledTargets =
+        usesScaledSceneTarget(settings_) &&
+        (!scaledSceneTargets_.complete() ||
+         scaledSceneTargets_.extent != renderExtent);
+    if (replacesScaledTargets &&
+        !prepareScaledSceneTargets(renderExtent, preparedTargets)) {
+      recordPendingResizeFailure(
+          {
+              static_cast<std::uint32_t>(newWidth),
+              static_cast<std::uint32_t>(newHeight),
+          },
+          attemptKind);
+      return false;
+    }
+
+    releaseSwapTargets();
     requireSuccess(swapChain_->ResizeBuffers(0U, static_cast<UINT>(newWidth),
                                              static_cast<UINT>(newHeight),
                                              DXGI_FORMAT_UNKNOWN, 0U),
                    "IDXGISwapChain::ResizeBuffers");
-    createSwapTargets();
+    createSwapTargets(newWidth, newHeight);
+    if (replacesScaledTargets) {
+      releaseScaledSceneTargetBindings();
+      scaledSceneTargets_.swap(preparedTargets);
+    }
+    clearPendingResize();
+    return true;
   }
 
-  void setRenderScalePercent(const float renderScalePercent) {
-    if (!std::isfinite(renderScalePercent) ||
-        renderScalePercent <
-            airfix::render::native_render_policy::
-                minimumRenderScalePercent ||
-        renderScalePercent >
-            airfix::render::native_render_policy::
-                maximumRenderScalePercent) {
-      throw std::runtime_error(
-          "render scale must be finite and between 50 and 200 percent");
+  [[nodiscard]] RenderPresentationSettingsApplyResult
+  applyRenderPresentationSettings(
+      const airfix::render::RenderPresentationSettings &candidate,
+      const RenderPresentationSettingsPublicationGate
+          publicationGate) noexcept {
+    const auto delta =
+        airfix::render::diffRenderPresentationSettings(settings_, candidate);
+    if (!delta.complete()) {
+      return {
+          .changed = false,
+          .issue =
+              RenderPresentationSettingsApplyIssueKind::invalidSettings,
+      };
     }
-    if (renderScalePercent_ == renderScalePercent) {
-      return;
+    if (!delta.delta->anyChanged()) {
+      return {
+          .changed = false,
+          .issue = std::nullopt,
+      };
     }
-    renderScalePercent_ = renderScalePercent;
-    releaseScaledSceneTargets();
+
+    const bool reportUnavailable =
+        std::exchange(reportSurfaceUnavailableForNextApply_, false);
+    if (reportUnavailable || width_ <= 0 || height_ <= 0 ||
+        !renderTarget_ || !depthView_) {
+      return {
+          .changed = false,
+          .issue =
+              RenderPresentationSettingsApplyIssueKind::surfaceUnavailable,
+      };
+    }
+
+    const auto layout = buildLayout(
+        candidate, static_cast<std::uint32_t>(width_),
+        static_cast<std::uint32_t>(height_));
+    if (!layout.complete()) {
+      return {
+          .changed = false,
+          .issue =
+              RenderPresentationSettingsApplyIssueKind::invalidLayout,
+      };
+    }
+    const auto renderExtent = layout.layout->renderTargetExtent();
+    if (!targetExtentSupported(renderExtent)) {
+      return {
+          .changed = false,
+          .issue =
+              RenderPresentationSettingsApplyIssueKind::
+                  unsupportedTargetExtent,
+      };
+    }
+
+    ScaledSceneTargets preparedTargets;
+    if (delta.delta->scaleTargetsChanged &&
+        usesScaledSceneTarget(candidate) &&
+        !prepareScaledSceneTargets(renderExtent, preparedTargets)) {
+      return {
+          .changed = false,
+          .issue =
+              RenderPresentationSettingsApplyIssueKind::
+                  targetPreparationFailed,
+      };
+    }
+
+    if (!delta.delta->scaleTargetsChanged &&
+        usesScaledSceneTarget(candidate) &&
+        (!scaledSceneTargets_.complete() ||
+         scaledSceneTargets_.extent != renderExtent)) {
+      return {
+          .changed = false,
+          .issue =
+              RenderPresentationSettingsApplyIssueKind::
+                  targetPreparationFailed,
+      };
+    }
+
+    if (!publicationGate.accepts(candidate)) {
+      return {
+          .changed = false,
+          .issue =
+              RenderPresentationSettingsApplyIssueKind::
+                  publicationGateRejected,
+      };
+    }
+
+    if (delta.delta->scaleTargetsChanged) {
+      releaseScaledSceneTargetBindings();
+      scaledSceneTargets_.swap(preparedTargets);
+    }
+    if (delta.delta->diagnosticsChanged) {
+      overlaySuppressed_ = false;
+      if (!candidate.diagnosticsOverlayEnabled) {
+        releaseDiagnosticsOverlayResources();
+      }
+    }
+    settings_ = candidate;
+    return {
+        .changed = true,
+        .issue = std::nullopt,
+    };
   }
 
-  void setScenePresentationMode(
-      const airfix::render::ScenePresentationMode mode) noexcept {
-    scenePresentationMode_ = mode;
+  [[nodiscard]] airfix::render::RenderPresentationSettings
+  renderPresentationSettings() const noexcept {
+    return settings_;
   }
 
-  void setDiagnosticsOverlayEnabled(const bool enabled) noexcept {
-    diagnosticsOverlayEnabled_ = enabled;
-    if (!enabled) {
-      overlayTexture_.Reset();
-      overlayShaderResource_.Reset();
-      overlayExtent_ = {};
-    }
+  void failNextScaledTargetPreparationsAfterColorForTesting(
+      const std::uint32_t failureCount) noexcept {
+    remainingScaledTargetPreparationFailuresAfterColor_ =
+        failureCount;
+  }
+
+  void reportSurfaceUnavailableForNextApplyForTesting() noexcept {
+    reportSurfaceUnavailableForNextApply_ = true;
+  }
+
+  [[nodiscard]] bool resizeToPixelExtentForTesting(
+      const int width, const int height) {
+    return resizeToPixelExtent(
+        width, height, ResizeAttemptKind::explicitSignal);
+  }
+
+  [[nodiscard]] std::array<const void *, 5U>
+  scaledSceneTargetIdentityForTesting() const noexcept {
+    return {
+        scaledSceneTargets_.colorTexture.Get(),
+        scaledSceneTargets_.renderTarget.Get(),
+        scaledSceneTargets_.shaderResource.Get(),
+        scaledSceneTargets_.depthTexture.Get(),
+        scaledSceneTargets_.depthView.Get(),
+    };
+  }
+
+  [[nodiscard]] std::optional<airfix::render::RenderTargetPixelRect>
+  lastSceneViewportForTesting() const noexcept {
+    return lastRenderedSceneViewport_;
+  }
+
+  [[nodiscard]] std::optional<airfix::render::ScenePresentationMode>
+  lastScenePresentationForTesting() const noexcept {
+    return lastRenderedScenePresentation_;
+  }
+
+  [[nodiscard]] bool
+  hasDiagnosticsOverlayResourcesForTesting() const noexcept {
+    return overlayTexture_ && overlayShaderResource_ &&
+           overlayExtent_.width != 0U && overlayExtent_.height != 0U;
   }
 
   void installLoadedMissionRoom(
@@ -503,59 +699,47 @@ public:
     previousFrameStart_ = frameStarted;
     collectGpuTimestamps();
 
+    if (pendingResizeExtent_.has_value()) {
+      if (pendingResizeRetryDelayFrames_ != 0U) {
+        --pendingResizeRetryDelayFrames_;
+      } else {
+        const auto pending = *pendingResizeExtent_;
+        (void)resizeToPixelExtent(
+            static_cast<int>(pending.width),
+            static_cast<int>(pending.height),
+            ResizeAttemptKind::pendingRetry);
+      }
+    }
     if (!renderTarget_) {
-      const auto [currentWidth, currentHeight] = pixelSize(*window_);
-      if (currentWidth <= 0 || currentHeight <= 0) {
+      if (pendingResizeExtent_.has_value()) {
         return !validateGpuOutput;
       }
-      requireSuccess(swapChain_->ResizeBuffers(0U,
-                                               static_cast<UINT>(currentWidth),
-                                               static_cast<UINT>(currentHeight),
-                                               DXGI_FORMAT_UNKNOWN, 0U),
-                     "IDXGISwapChain::ResizeBuffers");
-      createSwapTargets();
+      resize();
+      if (!renderTarget_) {
+        return !validateGpuOutput;
+      }
     }
 
     constexpr std::array<float, 4U> clearColor{0.035F, 0.055F, 0.085F, 1.0F};
     const bool gameplay = mission_ != nullptr;
-    auto layoutConfig = airfix::render::NativeRenderLayoutConfig{
-        .outputExtent = {
-            static_cast<std::uint32_t>(width_),
-            static_cast<std::uint32_t>(height_),
-        },
-        .renderScalePercent = renderScalePercent_,
-        .scenePresentation = scenePresentationMode_,
-    };
-    if (gameplay) {
-      const auto &cameraProjection = mission_->camera.pose().projection();
-      layoutConfig.referenceCameraCanvas = {
-          mission_->camera.logicalCanvasWidth(),
-          mission_->camera.logicalCanvasHeight(),
-      };
-      layoutConfig.referenceHorizontalFovDegrees =
-          cameraProjection.horizontalFovDegrees();
-    }
-    const auto layout =
-        airfix::render::buildNativeRenderLayout(layoutConfig);
+    const auto layout = buildLayout(
+        settings_, static_cast<std::uint32_t>(width_),
+        static_cast<std::uint32_t>(height_));
     if (!layout.complete()) {
       throw std::runtime_error("native render layout is invalid");
     }
     const auto renderExtent = layout.layout->renderTargetExtent();
-    if (renderExtent.width >
-            D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION ||
-        renderExtent.height >
-            D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION) {
+    if (!targetExtentSupported(renderExtent)) {
       throw std::runtime_error(
           "scaled 3D target exceeds the D3D11 texture dimension limit");
     }
     const bool usesScaledSceneTarget =
-        renderExtent !=
-        airfix::render::RenderTargetPixelExtent{
-            static_cast<std::uint32_t>(width_),
-            static_cast<std::uint32_t>(height_),
-        };
-    if (usesScaledSceneTarget) {
-      ensureScaledSceneTargets(renderExtent);
+        Implementation::usesScaledSceneTarget(settings_);
+    if (usesScaledSceneTarget &&
+        (!scaledSceneTargets_.complete() ||
+         scaledSceneTargets_.extent != renderExtent)) {
+      throw std::runtime_error(
+          "published render settings have no prepared scaled targets");
     }
     GpuTimestampQueries *const gpuTimestamp =
         beginGpuTimestamp();
@@ -563,11 +747,11 @@ public:
     context_->ClearRenderTargetView(renderTarget_.Get(), clearColor.data());
     ID3D11RenderTargetView *sceneRenderTarget =
         usesScaledSceneTarget
-        ? scaledSceneRenderTarget_.Get()
+        ? scaledSceneTargets_.renderTarget.Get()
         : renderTarget_.Get();
     ID3D11DepthStencilView *sceneDepthView =
         usesScaledSceneTarget
-        ? scaledSceneDepthView_.Get()
+        ? scaledSceneTargets_.depthView.Get()
         : depthView_.Get();
     if (usesScaledSceneTarget) {
       context_->ClearRenderTargetView(
@@ -581,6 +765,9 @@ public:
         1U, &sceneRenderTarget, sceneDepthView);
     const auto fitted =
         layout.layout->sceneViewportInRenderTarget();
+    lastRenderedSceneViewport_ = fitted;
+    lastRenderedScenePresentation_ =
+        layout.layout->scenePresentation();
     const D3D11_VIEWPORT activeViewport{
         fitted.x, fitted.y, fitted.width, fitted.height, 0.0F, 1.0F,
     };
@@ -703,7 +890,7 @@ public:
                 static_cast<std::uint32_t>(height_),
             },
         .renderTargetExtent = renderExtent,
-        .renderScalePercent = renderScalePercent_,
+        .renderScalePercent = settings_.renderScalePercent,
         .frameIntervalMilliseconds = frameIntervalMilliseconds,
         .cpuFrameMilliseconds = cpuFrameMilliseconds,
         .gpuFrameMilliseconds = latestGpuFrameMilliseconds_,
@@ -718,13 +905,15 @@ public:
         .gpuMemoryMeasurement =
             airfix::render::GpuMemoryMeasurement::estimated,
     });
-    if (diagnosticAccepted && diagnosticsOverlayEnabled_) {
+    if (diagnosticAccepted && settings_.diagnosticsOverlayEnabled &&
+        !overlaySuppressed_) {
       try {
         drawDiagnosticsOverlay(frameStarted);
       } catch (...) {
         // Developer instrumentation is best-effort and cannot suppress a
         // valid game frame or influence deterministic simulation.
-        setDiagnosticsOverlayEnabled(false);
+        overlaySuppressed_ = true;
+        releaseDiagnosticsOverlayResources();
       }
     }
     endGpuTimestamp(gpuTimestamp);
@@ -760,7 +949,13 @@ public:
       throw std::runtime_error(
           "public diagnostic capture rejects installed private content");
     }
-    setDiagnosticsOverlayEnabled(true);
+    auto captureSettings = settings_;
+    captureSettings.diagnosticsOverlayEnabled = true;
+    if (!applyRenderPresentationSettings(captureSettings, {}).accepted()) {
+      throw std::runtime_error(
+          "public diagnostic capture settings could not be applied");
+    }
+    overlaySuppressed_ = false;
     if (!renderFrame(true, &outputPath)) {
       throw std::runtime_error(
           "public diagnostic capture produced no visible D3D11 output");
@@ -768,6 +963,62 @@ public:
   }
 
 private:
+  [[nodiscard]] static bool usesScaledSceneTarget(
+      const airfix::render::RenderPresentationSettings &settings) noexcept {
+    return settings.renderScalePercent !=
+           airfix::render::native_render_policy::
+               defaultRenderScalePercent;
+  }
+
+  [[nodiscard]] static bool targetExtentSupported(
+      const airfix::render::RenderTargetPixelExtent extent) noexcept {
+    return extent.width <= D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION &&
+           extent.height <= D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION;
+  }
+
+  [[nodiscard]] airfix::render::NativeRenderLayoutBuildResult
+  buildLayout(
+      const airfix::render::RenderPresentationSettings &settings,
+      const std::uint32_t outputWidth,
+      const std::uint32_t outputHeight) const noexcept {
+    auto config = airfix::render::NativeRenderLayoutConfig{
+        .outputExtent = {
+            outputWidth,
+            outputHeight,
+        },
+        .renderScalePercent = settings.renderScalePercent,
+        .scenePresentation = settings.scenePresentation,
+    };
+    if (mission_ != nullptr) {
+      const auto &cameraProjection = mission_->camera.pose().projection();
+      config.referenceCameraCanvas = {
+          mission_->camera.logicalCanvasWidth(),
+          mission_->camera.logicalCanvasHeight(),
+      };
+      config.referenceHorizontalFovDegrees =
+          cameraProjection.horizontalFovDegrees();
+    }
+    return airfix::render::buildNativeRenderLayout(config);
+  }
+
+  void releaseDiagnosticsOverlayResources() noexcept {
+    if (context_) {
+      ID3D11ShaderResourceView *nullView = nullptr;
+      context_->PSSetShaderResources(0U, 1U, &nullView);
+    }
+    overlayShaderResource_.Reset();
+    overlayTexture_.Reset();
+    overlayExtent_ = {};
+    lastOverlayRefresh_.reset();
+  }
+
+  void releaseScaledSceneTargetBindings() noexcept {
+    if (context_) {
+      ID3D11ShaderResourceView *nullView = nullptr;
+      context_->PSSetShaderResources(0U, 1U, &nullView);
+    }
+  }
+
   void collectGpuTimestamps() noexcept {
     for (auto &queries : gpuTimestampQueries_) {
       if (!queries.issued) {
@@ -1045,26 +1296,43 @@ private:
         nullptr, blendFactor.data(), 0xFFFFFFFFU);
   }
 
-  void releaseScaledSceneTargets() noexcept {
-    if (context_) {
-      ID3D11ShaderResourceView *nullView = nullptr;
-      context_->PSSetShaderResources(0U, 1U, &nullView);
-    }
-    scaledSceneShaderResource_.Reset();
-    scaledSceneRenderTarget_.Reset();
-    scaledSceneDepthView_.Reset();
-    scaledSceneColorTexture_.Reset();
-    scaledSceneExtent_ = {};
-  }
-
   void releaseSwapTargets() {
     context_->OMSetRenderTargets(0U, nullptr, nullptr);
-    releaseScaledSceneTargets();
     renderTarget_.Reset();
     depthView_.Reset();
     // ResizeBuffers requires every immediate-context reference to the old
     // back buffer to be released before the call.
     context_->Flush();
+  }
+
+  void resetPendingResizeBackoff() noexcept {
+    pendingResizeRetryDelayFrames_ = 0U;
+    pendingResizeRetryFailureCount_ = 0U;
+  }
+
+  void clearPendingResize() noexcept {
+    pendingResizeExtent_.reset();
+    resetPendingResizeBackoff();
+  }
+
+  void recordPendingResizeFailure(
+      const airfix::render::OutputPixelExtent extent,
+      const ResizeAttemptKind attemptKind) noexcept {
+    pendingResizeExtent_ = extent;
+    if (attemptKind == ResizeAttemptKind::explicitSignal) {
+      resetPendingResizeBackoff();
+      return;
+    }
+
+    constexpr std::uint32_t maximumDelayFrames = 120U;
+    constexpr std::uint32_t maximumShift = 7U;
+    const auto shift =
+        std::min(pendingResizeRetryFailureCount_, maximumShift);
+    pendingResizeRetryDelayFrames_ =
+        std::min(1U << shift, maximumDelayFrames);
+    if (pendingResizeRetryFailureCount_ < maximumShift) {
+      ++pendingResizeRetryFailureCount_;
+    }
   }
 
   void createDeviceAndSwapChain() {
@@ -1534,16 +1802,14 @@ private:
     fallbackTexture_ = createTexture(1U, 1U, scene_.fallbackRgba8.data());
   }
 
-  void ensureScaledSceneTargets(
-      const airfix::render::RenderTargetPixelExtent extent) {
-    if (scaledSceneExtent_ == extent &&
-        scaledSceneColorTexture_ &&
-        scaledSceneRenderTarget_ &&
-        scaledSceneShaderResource_ &&
-        scaledSceneDepthView_) {
-      return;
+  [[nodiscard]] bool prepareScaledSceneTargets(
+      const airfix::render::RenderTargetPixelExtent extent,
+      ScaledSceneTargets &prepared) noexcept {
+    const bool failAfterColor =
+        remainingScaledTargetPreparationFailuresAfterColor_ != 0U;
+    if (failAfterColor) {
+      --remainingScaledTargetPreparationFailuresAfterColor_;
     }
-
     D3D11_TEXTURE2D_DESC colorDescription{};
     colorDescription.Width = extent.width;
     colorDescription.Height = extent.height;
@@ -1555,21 +1821,19 @@ private:
     colorDescription.BindFlags =
         D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
 
-    ComPtr<ID3D11Texture2D> colorTexture;
-    ComPtr<ID3D11RenderTargetView> colorTarget;
-    ComPtr<ID3D11ShaderResourceView> colorView;
-    requireSuccess(
-        device_->CreateTexture2D(
-            &colorDescription, nullptr, colorTexture.GetAddressOf()),
-        "ID3D11Device::CreateTexture2D(scaled scene color)");
-    requireSuccess(
-        device_->CreateRenderTargetView(
-            colorTexture.Get(), nullptr, colorTarget.GetAddressOf()),
-        "ID3D11Device::CreateRenderTargetView(scaled scene)");
-    requireSuccess(
-        device_->CreateShaderResourceView(
-            colorTexture.Get(), nullptr, colorView.GetAddressOf()),
-        "ID3D11Device::CreateShaderResourceView(scaled scene)");
+    ScaledSceneTargets candidate;
+    if (FAILED(device_->CreateTexture2D(
+            &colorDescription, nullptr,
+            candidate.colorTexture.GetAddressOf())) ||
+        FAILED(device_->CreateRenderTargetView(
+            candidate.colorTexture.Get(), nullptr,
+            candidate.renderTarget.GetAddressOf())) ||
+        FAILED(device_->CreateShaderResourceView(
+            candidate.colorTexture.Get(), nullptr,
+            candidate.shaderResource.GetAddressOf())) ||
+        failAfterColor) {
+      return false;
+    }
 
     D3D11_TEXTURE2D_DESC depthDescription{};
     depthDescription.Width = extent.width;
@@ -1581,27 +1845,25 @@ private:
     depthDescription.Usage = D3D11_USAGE_DEFAULT;
     depthDescription.BindFlags = D3D11_BIND_DEPTH_STENCIL;
 
-    ComPtr<ID3D11Texture2D> depthTexture;
-    ComPtr<ID3D11DepthStencilView> depthView;
-    requireSuccess(
-        device_->CreateTexture2D(
-            &depthDescription, nullptr, depthTexture.GetAddressOf()),
-        "ID3D11Device::CreateTexture2D(scaled scene depth)");
-    requireSuccess(
-        device_->CreateDepthStencilView(
-            depthTexture.Get(), nullptr, depthView.GetAddressOf()),
-        "ID3D11Device::CreateDepthStencilView(scaled scene)");
+    if (FAILED(device_->CreateTexture2D(
+            &depthDescription, nullptr,
+            candidate.depthTexture.GetAddressOf())) ||
+        FAILED(device_->CreateDepthStencilView(
+            candidate.depthTexture.Get(), nullptr,
+            candidate.depthView.GetAddressOf()))) {
+      return false;
+    }
 
-    releaseScaledSceneTargets();
-    scaledSceneColorTexture_ = std::move(colorTexture);
-    scaledSceneRenderTarget_ = std::move(colorTarget);
-    scaledSceneShaderResource_ = std::move(colorView);
-    scaledSceneDepthView_ = std::move(depthView);
-    scaledSceneExtent_ = extent;
+    candidate.extent = extent;
+    if (!candidate.complete()) {
+      return false;
+    }
+    prepared.swap(candidate);
+    return true;
   }
 
   void presentScaledScene() {
-    if (!scaledSceneShaderResource_ || !renderTarget_) {
+    if (!scaledSceneTargets_.shaderResource || !renderTarget_) {
       throw std::runtime_error(
           "scaled scene presentation resources are unavailable");
     }
@@ -1621,7 +1883,7 @@ private:
     ID3D11SamplerState *sampler = presentationSampler_.Get();
     context_->PSSetSamplers(0U, 1U, &sampler);
     ID3D11ShaderResourceView *sceneView =
-        scaledSceneShaderResource_.Get();
+        scaledSceneTargets_.shaderResource.Get();
     context_->PSSetShaderResources(0U, 1U, &sceneView);
     context_->Draw(3U, 0U);
 
@@ -1629,8 +1891,8 @@ private:
     context_->PSSetShaderResources(0U, 1U, &nullView);
   }
 
-  void createSwapTargets() {
-    const auto [currentWidth, currentHeight] = pixelSize(*window_);
+  void createSwapTargets(
+      const int currentWidth, const int currentHeight) {
     if (currentWidth <= 0 || currentHeight <= 0) {
       width_ = 0;
       height_ = 0;
@@ -1641,8 +1903,9 @@ private:
     requireSuccess(
         swapChain_->GetBuffer(0U, IID_PPV_ARGS(backBuffer.GetAddressOf())),
         "IDXGISwapChain::GetBuffer");
+    ComPtr<ID3D11RenderTargetView> renderTarget;
     requireSuccess(device_->CreateRenderTargetView(
-                       backBuffer.Get(), nullptr, renderTarget_.GetAddressOf()),
+                       backBuffer.Get(), nullptr, renderTarget.GetAddressOf()),
                    "ID3D11Device::CreateRenderTargetView");
 
     D3D11_TEXTURE2D_DESC depthDescription{};
@@ -1656,13 +1919,16 @@ private:
     depthDescription.BindFlags = D3D11_BIND_DEPTH_STENCIL;
 
     ComPtr<ID3D11Texture2D> depthTexture;
+    ComPtr<ID3D11DepthStencilView> depthView;
     requireSuccess(device_->CreateTexture2D(&depthDescription, nullptr,
                                             depthTexture.GetAddressOf()),
                    "ID3D11Device::CreateTexture2D(depth)");
     requireSuccess(device_->CreateDepthStencilView(depthTexture.Get(), nullptr,
-                                                   depthView_.GetAddressOf()),
+                                                   depthView.GetAddressOf()),
                    "ID3D11Device::CreateDepthStencilView");
 
+    renderTarget_ = std::move(renderTarget);
+    depthView_ = std::move(depthView);
     width_ = currentWidth;
     height_ = currentHeight;
     viewport_ = {
@@ -1809,10 +2075,7 @@ private:
   ComPtr<IDXGISwapChain> swapChain_;
   ComPtr<ID3D11RenderTargetView> renderTarget_;
   ComPtr<ID3D11DepthStencilView> depthView_;
-  ComPtr<ID3D11Texture2D> scaledSceneColorTexture_;
-  ComPtr<ID3D11RenderTargetView> scaledSceneRenderTarget_;
-  ComPtr<ID3D11ShaderResourceView> scaledSceneShaderResource_;
-  ComPtr<ID3D11DepthStencilView> scaledSceneDepthView_;
+  ScaledSceneTargets scaledSceneTargets_;
   ComPtr<ID3D11VertexShader> smokeVertexShader_;
   ComPtr<ID3D11PixelShader> smokePixelShader_;
   ComPtr<ID3D11VertexShader> gameplayVertexShader_;
@@ -1842,19 +2105,24 @@ private:
   std::size_t nextGpuTimestampQuery_{};
   std::optional<double> latestGpuFrameMilliseconds_;
   airfix::render::RenderFrameDiagnosticsAccumulator diagnostics_;
-  airfix::render::RenderTargetPixelExtent scaledSceneExtent_{};
   airfix::render::RenderTargetPixelExtent overlayExtent_{};
   std::optional<std::chrono::steady_clock::time_point>
       previousFrameStart_;
   std::optional<std::chrono::steady_clock::time_point>
       lastOverlayRefresh_;
+  std::optional<airfix::render::RenderTargetPixelRect>
+      lastRenderedSceneViewport_;
+  std::optional<airfix::render::ScenePresentationMode>
+      lastRenderedScenePresentation_;
+  std::optional<airfix::render::OutputPixelExtent>
+      pendingResizeExtent_;
+  std::uint32_t pendingResizeRetryDelayFrames_{};
+  std::uint32_t pendingResizeRetryFailureCount_{};
   std::uint32_t overlayPixelScale_{1U};
-  float renderScalePercent_{
-      airfix::render::native_render_policy::
-          defaultRenderScalePercent};
-  airfix::render::ScenePresentationMode scenePresentationMode_{
-      airfix::render::ScenePresentationMode::widescreenHorPlus};
-  bool diagnosticsOverlayEnabled_{false};
+  airfix::render::RenderPresentationSettings settings_;
+  bool overlaySuppressed_{};
+  std::uint32_t remainingScaledTargetPreparationFailuresAfterColor_{};
+  bool reportSurfaceUnavailableForNextApply_{};
   D3D11_VIEWPORT viewport_{};
   int width_{};
   int height_{};
@@ -1867,19 +2135,57 @@ AirfixD3D11Renderer::~AirfixD3D11Renderer() = default;
 
 void AirfixD3D11Renderer::resize() { implementation_->resize(); }
 
-void AirfixD3D11Renderer::setRenderScalePercent(
-    const float renderScalePercent) {
-  implementation_->setRenderScalePercent(renderScalePercent);
+RenderPresentationSettingsApplyResult
+AirfixD3D11Renderer::applyRenderPresentationSettings(
+    const airfix::render::RenderPresentationSettings &candidate,
+    const RenderPresentationSettingsPublicationGate
+        publicationGate) noexcept {
+  return implementation_->applyRenderPresentationSettings(
+      candidate, publicationGate);
 }
 
-void AirfixD3D11Renderer::setScenePresentationMode(
-    const airfix::render::ScenePresentationMode mode) noexcept {
-  implementation_->setScenePresentationMode(mode);
+airfix::render::RenderPresentationSettings
+AirfixD3D11Renderer::renderPresentationSettings() const noexcept {
+  return implementation_->renderPresentationSettings();
 }
 
-void AirfixD3D11Renderer::setDiagnosticsOverlayEnabled(
-    const bool enabled) noexcept {
-  implementation_->setDiagnosticsOverlayEnabled(enabled);
+void AirfixD3D11Renderer::
+failNextScaledTargetPreparationsAfterColorForTesting(
+    const std::uint32_t failureCount) noexcept {
+  implementation_->
+      failNextScaledTargetPreparationsAfterColorForTesting(
+          failureCount);
+}
+
+void AirfixD3D11Renderer::
+reportSurfaceUnavailableForNextApplyForTesting() noexcept {
+  implementation_->reportSurfaceUnavailableForNextApplyForTesting();
+}
+
+bool AirfixD3D11Renderer::resizeToPixelExtentForTesting(
+    const int width, const int height) {
+  return implementation_->resizeToPixelExtentForTesting(width, height);
+}
+
+std::array<const void *, 5U>
+AirfixD3D11Renderer::
+scaledSceneTargetIdentityForTesting() const noexcept {
+  return implementation_->scaledSceneTargetIdentityForTesting();
+}
+
+std::optional<airfix::render::RenderTargetPixelRect>
+AirfixD3D11Renderer::lastSceneViewportForTesting() const noexcept {
+  return implementation_->lastSceneViewportForTesting();
+}
+
+std::optional<airfix::render::ScenePresentationMode>
+AirfixD3D11Renderer::lastScenePresentationForTesting() const noexcept {
+  return implementation_->lastScenePresentationForTesting();
+}
+
+bool AirfixD3D11Renderer::
+hasDiagnosticsOverlayResourcesForTesting() const noexcept {
+  return implementation_->hasDiagnosticsOverlayResourcesForTesting();
 }
 
 void AirfixD3D11Renderer::installLoadedMissionRoom(

@@ -76,19 +76,52 @@ configure_file(
     @ONLY
 )
 
-add_executable(airfix_windows WIN32
+add_library(airfix_windows_renderer STATIC
     AirfixD3D11Renderer.cpp
     AirfixD3D11Renderer.hpp
     AirfixSmoke.hlsl
+)
+set_source_files_properties(AirfixSmoke.hlsl PROPERTIES HEADER_FILE_ONLY TRUE)
+target_include_directories(airfix_windows_renderer PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+target_include_directories(airfix_windows_renderer PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}/generated"
+)
+target_compile_features(airfix_windows_renderer PUBLIC cxx_std_20)
+target_compile_definitions(airfix_windows_renderer PRIVATE
+    NOMINMAX
+    WIN32_LEAN_AND_MEAN
+)
+if(MSVC)
+    target_compile_options(airfix_windows_renderer PRIVATE
+        /W4 /permissive-)
+else()
+    target_compile_options(airfix_windows_renderer PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+endif()
+target_link_libraries(airfix_windows_renderer
+    PUBLIC
+        airfix::content
+        airfix::render
+    PRIVATE
+        SDL3::SDL3-static
+        d3d11
+        d3dcompiler
+        dxgi
+)
+
+add_executable(airfix_windows WIN32
     AirfixWindowsApp.cpp
     AirfixXAudio2Backend.cpp
     AirfixXAudio2Backend.hpp
 )
-set_source_files_properties(AirfixSmoke.hlsl PROPERTIES HEADER_FILE_ONLY TRUE)
 
 target_include_directories(airfix_windows PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
-    "${CMAKE_CURRENT_BINARY_DIR}/generated"
 )
 target_compile_features(airfix_windows PRIVATE cxx_std_20)
 target_compile_definitions(airfix_windows PRIVATE
@@ -107,14 +140,12 @@ endif()
 target_link_libraries(airfix_windows PRIVATE
     airfix_windows_command_line
     airfix_windows_input
+    airfix_windows_renderer
     airfix::audio
     airfix::content
     airfix::render
     airfix::runtime
     airfix::simulation
-    d3d11
-    d3dcompiler
-    dxgi
     ole32
 )
 
@@ -171,6 +202,34 @@ if(AIRFIX_BUILD_TESTS)
         airfix_windows_input)
     add_test(NAME airfix_windows_input_mapping_tests
         COMMAND airfix_windows_input_mapping_tests)
+
+    add_executable(airfix_windows_renderer_tests
+        AirfixD3D11RendererTests.cpp)
+    target_compile_features(airfix_windows_renderer_tests
+        PRIVATE cxx_std_20)
+    target_compile_definitions(airfix_windows_renderer_tests PRIVATE
+        NOMINMAX
+        WIN32_LEAN_AND_MEAN
+    )
+    if(MSVC)
+        target_compile_options(airfix_windows_renderer_tests
+            PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(airfix_windows_renderer_tests PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+    endif()
+    target_link_libraries(airfix_windows_renderer_tests PRIVATE
+        airfix_windows_renderer
+        SDL3::SDL3-static
+    )
+    add_test(NAME airfix_windows_renderer_tests
+        COMMAND airfix_windows_renderer_tests)
+    set_tests_properties(airfix_windows_renderer_tests PROPERTIES
+        TIMEOUT 60
+    )
 
     add_test(NAME airfix_windows_product_smoke_tests
         COMMAND airfix_windows --smoke-test --render-diagnostics)

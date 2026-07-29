@@ -1,10 +1,12 @@
 #pragma once
 
 #include "airfix/content/MissionWorldRoomLoader.hpp"
-#include "airfix/render/NativeRenderLayout.hpp"
 #include "airfix/render/PlayerActorPoseRuntime.hpp"
 #include "airfix/render/RenderFrameDiagnostics.hpp"
+#include "airfix/render/RenderPresentationSettings.hpp"
 
+#include <array>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -12,6 +14,45 @@
 struct SDL_Window;
 
 namespace airfix::windows {
+
+enum class RenderPresentationSettingsApplyIssueKind : std::uint8_t {
+  invalidSettings,
+  surfaceUnavailable,
+  invalidLayout,
+  unsupportedTargetExtent,
+  targetPreparationFailed,
+  publicationGateRejected,
+};
+
+struct RenderPresentationSettingsApplyResult final {
+  bool changed{};
+  std::optional<RenderPresentationSettingsApplyIssueKind> issue;
+
+  [[nodiscard]] constexpr bool accepted() const noexcept {
+    return !issue.has_value();
+  }
+
+  [[nodiscard]] constexpr explicit operator bool() const noexcept {
+    return accepted();
+  }
+};
+
+struct RenderPresentationSettingsPublicationGate final {
+  using Callback = bool (*)(
+      void *context,
+      const airfix::render::RenderPresentationSettings &candidate) noexcept;
+
+  Callback callback{};
+  void *context{};
+
+  [[nodiscard]] constexpr bool accepts(
+      const airfix::render::RenderPresentationSettings
+          &candidate) const noexcept {
+    return callback == nullptr || callback(context, candidate);
+  }
+};
+
+struct AirfixD3D11RendererTestAccess;
 
 class AirfixD3D11Renderer final {
 public:
@@ -25,12 +66,17 @@ public:
 
   void resize();
 
-  // Applies to the complete 3D scene while leaving the swapchain/output
-  // resolution unchanged. Invalid values are rejected before publication.
-  void setRenderScalePercent(float renderScalePercent);
-  void setScenePresentationMode(
-      airfix::render::ScenePresentationMode mode) noexcept;
-  void setDiagnosticsOverlayEnabled(bool enabled) noexcept;
+  // Render-thread-only transaction. A complete candidate and any replacement
+  // scaled scene targets are prepared before the no-fail publication step.
+  // Rejection preserves both the active snapshot and active target bundle.
+  [[nodiscard]] RenderPresentationSettingsApplyResult
+  applyRenderPresentationSettings(
+      const airfix::render::RenderPresentationSettings &candidate,
+      RenderPresentationSettingsPublicationGate publicationGate =
+          {}) noexcept;
+
+  [[nodiscard]] airfix::render::RenderPresentationSettings
+  renderPresentationSettings() const noexcept;
 
   // Builds every private GPU resource before replacing the currently visible
   // scene. A failure leaves the public diagnostic scene installed.
@@ -63,6 +109,22 @@ public:
   [[nodiscard]] bool renderFrame(bool validateGpuOutput);
 
 private:
+  friend struct AirfixD3D11RendererTestAccess;
+
+  void failNextScaledTargetPreparationsAfterColorForTesting(
+      std::uint32_t failureCount) noexcept;
+  void reportSurfaceUnavailableForNextApplyForTesting() noexcept;
+  [[nodiscard]] bool resizeToPixelExtentForTesting(
+      int width, int height);
+  [[nodiscard]] std::array<const void *, 5U>
+  scaledSceneTargetIdentityForTesting() const noexcept;
+  [[nodiscard]] std::optional<airfix::render::RenderTargetPixelRect>
+  lastSceneViewportForTesting() const noexcept;
+  [[nodiscard]] std::optional<airfix::render::ScenePresentationMode>
+  lastScenePresentationForTesting() const noexcept;
+  [[nodiscard]] bool
+  hasDiagnosticsOverlayResourcesForTesting() const noexcept;
+
   class Implementation;
   std::unique_ptr<Implementation> implementation_;
 };

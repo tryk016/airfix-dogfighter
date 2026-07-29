@@ -127,6 +127,20 @@ Windows applies the transaction on its SDL/render thread. iOS performs storage
 I/O on a serialized settings queue and commits the already validated candidate
 to Metal on the main thread before the first drawable that uses it.
 
+The D3D11 boundary exposes an optional allocation-free publication gate. It is
+called only after the candidate layout and complete replacement color/depth
+bundle have been prepared, and before the active bundle, diagnostics resources,
+or settings snapshot are changed. A later Windows durable store uses this gate
+to perform the persistence step. Gate rejection discards the prepared candidate
+and preserves the previous effective state. Once the gate accepts, publication
+contains only no-fail unbinding, resource exchange, resource release, and value
+assignment. Session-only launch and smoke changes omit the gate.
+
+Metal requires the same ordering but may not block the main thread on storage.
+Its backend therefore remains responsible for an equivalent prepared candidate
+whose identity and drawable extent can be revalidated before a no-fail main-
+thread commit.
+
 ### User interface boundary
 
 Persistence and runtime binding do not by themselves constitute the final
@@ -201,8 +215,10 @@ area, orientation, memory pressure, and target-allocation fallback on iPhone SE
 
 - [x] Add the portable snapshot, override, delta, validation, and versioned
   semantic-record mapping.
-- [ ] Replace independent backend setters with transactional complete-snapshot
-  application.
+- [x] Replace the independent D3D11 setters with transactional complete-
+  snapshot application and a pre-publication persistence gate.
+- [ ] Replace the independent Metal setters with an equivalent prepared
+  complete-snapshot transaction.
 - [ ] Add Windows private storage, launch-override precedence, recovery, and
   synthetic restart tests.
 - [ ] Add the equivalent iOS Application Support adapter and hosted build

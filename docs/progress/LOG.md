@@ -3507,3 +3507,34 @@ superseded evidence.
 - Platform persistence, transactional target preparation, and final settings
   UI remain later ADR-0014 slices. No original asset, private path, checksum,
   binary, or owner-derived capture is used.
+
+## 2026-07-29 - transactional D3D11 presentation snapshot
+
+- Replaced the three independent D3D11 presentation setters with one complete
+  `RenderPresentationSettings` transaction. A scale change prepares color,
+  RTV, SRV, depth, and DSV in a private candidate bundle before changing the
+  active renderer; exactly 100% publishes the direct-backbuffer state without
+  retaining an intermediate target.
+- Added an allocation-free publication gate after GPU preparation and before
+  any active mutation. It is the insertion point for the later durable Windows
+  save. Gate rejection, invalid settings, unavailable surface, and controlled
+  late target failure leave both the snapshot and all five old COM identities
+  unchanged; an accepted gate is followed only by no-fail publication work.
+- Scaled resize now retains the old bundle until the swapchain and candidate
+  targets are complete. A target-preparation failure records a pending extent,
+  renders with the previous complete surface when possible, and first retries
+  on the next frame. Repeated failures back off for 1, 2, 4, and up to 120
+  frames instead of entering a per-frame allocation loop; a new explicit
+  resize signal resets the schedule. Zero-extent suspension releases only
+  swapchain resources and retains the independent scaled bundle for restore.
+- Startup override failure reports only a stable category and continues with
+  the active safe snapshot. Smoke-test transition rejection remains fatal so
+  CI cannot hide a broken requested scale.
+- A native D3D11 runtime test covers 100 -> 50 -> 200 -> 100, 50% and 200%
+  resize, automatic resize retry, zero-extent suspend/restore, surface
+  unavailability, consecutive late allocation failures with a skipped backoff
+  frame, publication-gate rejection and retry, exact five-object identity,
+  real Original 4:3 viewport selection, diagnostics resource lifetime, and the
+  Enhanced policy snapshot. A clean MSVC 19.51/Ninja build passes all 100
+  Windows tests; the portable preset remains at 95/95. Hosted CI and the
+  equivalent Metal transaction remain pending.
