@@ -663,9 +663,17 @@
   extension children remain available. Ghidra and Rizin confirm deferred
   `(placedObjectReference, polygonIndex)` binding, first-use mesh caching, and
   reverse runtime root-list order. All 1,160 selected wrappers parse into
-  10,641 nodes and 16,212 polygons with zero owner/index mismatches. This is an
-  authenticated metadata milestone only; material binding, per-room placed
-  object publication, dynamic portals, and live transforms remain separate.
+  10,641 nodes and 16,212 polygons with zero owner/index mismatches.
+  `MissionPlacedDynamicBspAssembly` now authenticates the room catalogue and
+  placed scene, binds those polygons to physical triangles/material modes,
+  reproduces source-local first-use mesh caching and per-room prepend order,
+  converts unit-scale F050 world transforms into runtime coordinates, and
+  emits exact ranges consumed directly by the allocation-free combined line
+  query. The later cached-object no-relink branch is preserved as observed;
+  the selected corpus has no repeated serialized cache key, so that branch
+  remains a controlled-runtime-trace target. Mission ownership, composition
+  with live player/non-player frames, and dynamic sphere collision remain
+  separate.
 
 ## Confirmed
 
@@ -711,14 +719,14 @@
    controlled multi-room executable traces when the isolated runtime is ready.
 5. Keep BSP render culling disabled until its separate runtime semantics are
    proven against executable evidence.
-6. Convert the now semantically decoded placed-object `0x4101` trees into an
-   atomic material-bound, first-use mesh cache and native-order per-room object
-   publication; include dynamic portal metadata and live transforms only after
-   their complete ownership/order contract passes. Then extend beyond the
-   authenticated player and join `WpMGun` timing, event `0xE2`, motion, damage,
-   and ricochet contracts to the remaining projectile-level portal loop,
-   private type allocation/event dispatch, live muzzle transforms, and
-   tracer/effect adapters before wiring primary-fire intent into runtime.
+6. Install the material-bound placed `0x4101` assembly in the authenticated
+   mission snapshot, then compose its immutable native-order room lists with
+   the allocation-free live player publication without duplicating meshes or
+   weakening the global CPU budget. Extend beyond the authenticated player and
+   join `WpMGun` timing, event `0xE2`, motion, damage, and ricochet contracts to
+   the remaining projectile-level portal loop, private type allocation/event
+   dispatch, live muzzle transforms, and tracer/effect adapters before wiring
+   primary-fire intent into runtime.
 
 ## Open questions
 

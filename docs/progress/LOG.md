@@ -2702,3 +2702,44 @@ superseded evidence.
   wrapper suites, 12 Rizin normalization tests, public-boundary tests and the
   383-file scan, `actionlint`, and `git diff --check` pass. Exact-commit WSL
   and GitHub Actions remain publication gates.
+
+## 2026-07-28 - placed-object dynamic BSP assembly
+
+- `EV-20260728-022` / `EXP-20260728-039`: recovered the native room-list
+  publication around serialized `0x4101`. `CcRoom::LoadSceneCcf` builds and
+  caches the first physical mesh use, then forces an unlink/relink which puts
+  the object at the dynamic-list head. A later cache hit skips all nested data
+  and performs no relink, so the portable room publication preserves that
+  observed omission instead of inventing an instance.
+- A fresh automatic Rizin 0.9.1/rzpipe 0.6.2 report independently matches the
+  133-byte `CcObject::Link` boundary at RVA `0x000152B0` and its exact
+  `object + 0x15c`, `object + 0x114`, `*[room]` list-head stores. Ghidra
+  remains canonical for the `__thiscall` ABI, types, and encompassing loader
+  pseudocode.
+- Added `MissionPlacedDynamicBspAssembly`. It authenticates the ordered room
+  catalogue and placed scene, material-binds the decoded trees, reproduces
+  source-local first-use mesh caching plus native root/polygon/object prepend
+  order, converts unit-scale orthonormal F050 objects and local BSP geometry
+  into the runtime basis, and emits immutable meshes, exact room ranges, and
+  source provenance for the existing allocation-free combined line query.
+- Aggregate count/depth/geometry/retained-byte ceilings and typed failures
+  clear all publishable state atomically. Synthetic tests cover the native
+  cache quirk, material/provenance binding, per-room order, direct combined
+  collision, root fallback, a dynamic portal, reflected coordinates, empty
+  scenes, exact/one-under memory budgets, tampering, and malformed references.
+  Mission-snapshot ownership and composition with live player/non-player
+  frames remain later atomic integration boundaries.
+- Final review aligned the assembly's orthonormality threshold with the direct
+  dynamic-line consumer and added a regression for the previously admitted
+  gap plus end-to-end type-zero portal-range continuation. Fresh clean Release
+  and code-intelligence Ninja/GCC 15.2 builds each compile 253 steps and pass
+  78/78 tests; the generated database contains 161 portable entries. Clangd
+  22.1.8 reports zero code diagnostics in both new translation units (four
+  production findings are optional `ExtractFunction` feature probes). The
+  three RE wrapper suites, 12 Rizin normalization tests, public-boundary tests
+  and 387-file scan, 263-row catalogue validation with only the two
+  pre-existing missing references, `actionlint`, 11-file local-path scan, and
+  `git diff --check` pass. The exact code commit
+  `a531e663a5d4ffa87ccd459686b5d67fc39680c9` also compiles all 253 steps
+  with GCC 13.3 and passes 78/78 tests in a new isolated `Airfix-Dev` WSL
+  clone. GitHub Actions remains the final publication gate.

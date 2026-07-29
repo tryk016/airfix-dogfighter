@@ -89,6 +89,12 @@ skin's complete hierarchy for every present slot among up to three blueprints.
 publication masks, receiver fallback, source-local resource identity, room
 ownership, and `FreezeAll` static-BSP rebuilding. The portable source-aware
 plan/assembly now combines all contributors without treating BSP as geometry.
+`EV-20260728-022` closes the serialized placed-object dynamic-BSP publication
+slice: first physical mesh use owns the cached tree, the loader's forced
+unlink/relink prepends that builder object to its room list, and a later cache
+hit performs no relink. The portable material-bound assembly authenticates
+those source/room/object relations and emits native-order immutable ranges for
+the combined line query; live mission ownership remains separate.
 `EV-20260727-003` independently cross-checks the mission start pose: x/y/z
 radians, mode zero, exact Z-X-Y matrix construction, and absolute-world
 position/matrix semantics with separate room membership. The portable

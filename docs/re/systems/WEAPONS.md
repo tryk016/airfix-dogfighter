@@ -312,15 +312,26 @@ same verified CCF and actor-local visual used by the mission loader; its
 allocation-free frame adapter publishes the supplied player pose, object ID,
 active flag, and current room in exact hierarchy-instance order.
 
-A live coordinator must still consume those player frames, publish all other
-actors and dynamic portal objects in recovered room/list order, supply actor
-gates, repeat the separate projectile-level `followPortal` outcome when
-required, and dispatch callbacks. See
+Serialized placed-scene colliders now have a separate immutable boundary.
+`MissionPlacedDynamicBspAssembly` binds typed `0x4101` roots to physical mesh
+triangles/materials, reproduces first-use mesh caching and per-room object
+prepend order, converts unit-scale authored F050 world transforms, and emits
+flat ranges directly consumable by the combined portal-line query. It
+preserves the observed native quirk that a later cache-reusing `0x4101` object
+is not relinked into the room dynamic list. Mission-snapshot ownership and
+composition with live actor frames remain separate.
+
+A live coordinator must still consume player frames, compose them with the
+immutable placed ranges, publish other actors, supply actor gates, repeat the
+separate projectile-level `followPortal` outcome when required, and dispatch
+callbacks. See
 [EXP-20260728-034](../../experiments/EXP-20260728-034-projectile-collision-decision.md),
 [EXP-20260728-035](../../experiments/EXP-20260728-035-dynamic-bsp-line-adapter.md),
 [EXP-20260728-036](../../experiments/EXP-20260728-036-combined-line-portal-continuation.md),
 and
-[EXP-20260728-037](../../experiments/EXP-20260728-037-authenticated-player-collision-publication.md).
+[EXP-20260728-037](../../experiments/EXP-20260728-037-authenticated-player-collision-publication.md),
+plus
+[EXP-20260728-039](../../experiments/EXP-20260728-039-placed-dynamic-bsp-assembly.md).
 
 ## Actor damage and surface reaction
 
