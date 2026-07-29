@@ -27,10 +27,14 @@
   matched screenshots are specified. The first implementation slice now
   provides strongly typed domains, exact 100% target identity, Hor+, Original
   4:3 comparison math, safe-area/UI fitting, and input transforms. Both native
-  backends consume the 100% native Hor+ path. Windows direct D3D11 readbacks
-  verify 1080p, 1440p, 4K, and 32:9; owner-content images remain private.
-  Backend offscreen render scaling, settings/UI, diagnostics, modern visual
-  stages, and iOS runtime acceptance remain pending.
+  backends consume the same 100% direct path and now allocate private
+  color/depth scene targets plus a linear native-output presentation pass at
+  non-100% scales. Windows exposes validated 50-200% and Original 4:3 command
+  switches; Metal exposes the equivalent backend setting boundary. Windows
+  direct D3D11 readbacks verify 1080p, 1440p, 4K, and 32:9. A controlled
+  960x540 comparison uses 480x270 at 50% and 1920x1080 at 200%; owner-content
+  images remain private. Finished settings UI, diagnostics, modern visual
+  stages, and iOS runtime/device acceptance remain pending.
 - The native Windows x64 product foundation is implemented. A statically
   linked SDL3 shell owns the window and lifecycle events; a separate
   D3D11/DXGI backend compiles HLSL, uploads the same public scene used by Metal,
@@ -853,8 +857,8 @@
    collision transaction, and add tracer/effect adapters before wiring
    primary-fire intent into runtime.
 8. In parallel with gameplay reconstruction, extend the implemented ADR-0013
-   resolution/Hor+/UI/input foundation with backend 50-200% offscreen targets,
-   settings for Original 4:3 and safe FOV, HUD/effect integration, and the
+   resolution/Hor+/UI/input/offscreen-target foundation with finished settings
+   for render scale, Original 4:3 and safe FOV, HUD/effect integration, and the
    diagnostic overlay before lighting, materials, shadows, or post-processing.
 
 ## Open questions
@@ -867,6 +871,15 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The backend render-scale slice passes independent complete MSVC 19.51 and
+  MinGW GCC 15.2 Windows product rebuilds and all 94 tests in each build. Both
+  public D3D11 smoke modes render a visible frame; the added scaled mode
+  exercises a 50% offscreen color/depth target, Original 4:3 viewport, linear
+  presentation pass, and unchanged output backbuffer without private content.
+  Controlled owner-local 50% and 200% captures are distinct 960x540 outputs
+  and remain outside Git. Hosted Visual Studio, iPhoneOS, and iPhoneSimulator
+  results are recorded by the merge gate for this slice; physical-device Metal
+  acceptance remains pending.
 - The native-render-layout slice passes a clean 292-step GCC 15.2/Ninja build
   and all 90 portable tests. Full MSVC 19.51 and MinGW GCC 15.2 Windows product
   builds each pass 93/93 tests, including the data-less D3D11/XAudio2 smoke.

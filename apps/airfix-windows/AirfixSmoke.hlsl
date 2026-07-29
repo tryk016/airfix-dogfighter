@@ -35,6 +35,12 @@ struct GameplayRasterInput
     float farClipDistance : SV_ClipDistance0;
 };
 
+struct PresentationRasterInput
+{
+    float4 position : SV_POSITION;
+    float2 uv : TEXCOORD0;
+};
+
 SmokeRasterInput AirfixSmokeVS(SmokeVertexInput input)
 {
     SmokeRasterInput output;
@@ -84,6 +90,22 @@ GameplayRasterInput AirfixGameplayVS(SmokeVertexInput input)
     return output;
 }
 
+PresentationRasterInput AirfixPresentationVS(
+    uint vertexId : SV_VertexID)
+{
+    PresentationRasterInput output;
+    const float2 uv = float2(
+        (vertexId << 1U) & 2U,
+        vertexId & 2U);
+    output.position = float4(
+        uv.x * 2.0f - 1.0f,
+        1.0f - uv.y * 2.0f,
+        0.0f,
+        1.0f);
+    output.uv = uv;
+    return output;
+}
+
 Texture2D colorTexture : register(t0);
 SamplerState colorSampler : register(s0);
 
@@ -94,6 +116,11 @@ float4 AirfixSmokePS(SmokeRasterInput input) : SV_TARGET
 }
 
 float4 AirfixGameplayPS(GameplayRasterInput input) : SV_TARGET
+{
+    return colorTexture.Sample(colorSampler, input.uv);
+}
+
+float4 AirfixPresentationPS(PresentationRasterInput input) : SV_TARGET
 {
     return colorTexture.Sample(colorSampler, input.uv);
 }

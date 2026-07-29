@@ -309,6 +309,12 @@ int run(const int argumentCount, char *arguments[]) {
 
   airfix::runtime::AppSession session;
   airfix::windows::AirfixD3D11Renderer renderer{*window};
+  renderer.setRenderScalePercent(
+      static_cast<float>(options.renderScalePercent));
+  renderer.setScenePresentationMode(
+      options.originalFourByThreePresentation
+          ? airfix::render::ScenePresentationMode::originalFourByThree
+          : airfix::render::ScenePresentationMode::widescreenHorPlus);
   airfix::windows::AirfixXAudio2Backend audio;
   if (audio.outputState() ==
       airfix::windows::AirfixXAudio2OutputState::initializationFailed) {

@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
@@ -313,6 +314,29 @@ public:
     createSwapTargets();
   }
 
+  void setRenderScalePercent(const float renderScalePercent) {
+    if (!std::isfinite(renderScalePercent) ||
+        renderScalePercent <
+            airfix::render::native_render_policy::
+                minimumRenderScalePercent ||
+        renderScalePercent >
+            airfix::render::native_render_policy::
+                maximumRenderScalePercent) {
+      throw std::runtime_error(
+          "render scale must be finite and between 50 and 200 percent");
+    }
+    if (renderScalePercent_ == renderScalePercent) {
+      return;
+    }
+    renderScalePercent_ = renderScalePercent;
+    releaseScaledSceneTargets();
+  }
+
+  void setScenePresentationMode(
+      const airfix::render::ScenePresentationMode mode) noexcept {
+    scenePresentationMode_ = mode;
+  }
+
   void installLoadedMissionRoom(
       airfix::content::LoadedMissionWorldRoom &&room,
       const airfix::content::ContentRevision &expectedRevision) {
@@ -370,20 +394,13 @@ public:
 
     constexpr std::array<float, 4U> clearColor{0.035F, 0.055F, 0.085F, 1.0F};
     const bool gameplay = mission_ != nullptr;
-    context_->ClearRenderTargetView(renderTarget_.Get(), clearColor.data());
-    context_->ClearDepthStencilView(
-        depthView_.Get(), D3D11_CLEAR_DEPTH,
-        gameplay ? airfix::render::legacyReverseDepthClearValue : 1.0F, 0U);
-
-    ID3D11RenderTargetView *renderTarget = renderTarget_.Get();
-    context_->OMSetRenderTargets(1U, &renderTarget, depthView_.Get());
-    D3D11_VIEWPORT activeViewport = viewport_;
-    const airfix::render::NativeRenderLayout *gameplayLayout = nullptr;
     auto layoutConfig = airfix::render::NativeRenderLayoutConfig{
         .outputExtent = {
             static_cast<std::uint32_t>(width_),
             static_cast<std::uint32_t>(height_),
         },
+        .renderScalePercent = renderScalePercent_,
+        .scenePresentation = scenePresentationMode_,
     };
     if (gameplay) {
       const auto &cameraProjection = mission_->camera.pose().projection();
@@ -396,24 +413,51 @@ public:
     }
     const auto layout =
         airfix::render::buildNativeRenderLayout(layoutConfig);
-    if (gameplay) {
-      const auto expectedRenderTarget =
-          airfix::render::RenderTargetPixelExtent{
-              static_cast<std::uint32_t>(width_),
-              static_cast<std::uint32_t>(height_),
-          };
-      if (!layout.complete() ||
-          layout.layout->renderTargetExtent() != expectedRenderTarget) {
-        throw std::runtime_error(
-            "gameplay native render layout does not match the D3D11 target");
-      }
-      gameplayLayout = &*layout.layout;
-      const auto fitted =
-          gameplayLayout->sceneViewportInRenderTarget();
-      activeViewport = {
-          fitted.x, fitted.y, fitted.width, fitted.height, 0.0F, 1.0F,
-      };
+    if (!layout.complete()) {
+      throw std::runtime_error("native render layout is invalid");
     }
+    const auto renderExtent = layout.layout->renderTargetExtent();
+    if (renderExtent.width >
+            D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION ||
+        renderExtent.height >
+            D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION) {
+      throw std::runtime_error(
+          "scaled 3D target exceeds the D3D11 texture dimension limit");
+    }
+    const bool usesScaledSceneTarget =
+        renderExtent !=
+        airfix::render::RenderTargetPixelExtent{
+            static_cast<std::uint32_t>(width_),
+            static_cast<std::uint32_t>(height_),
+        };
+    if (usesScaledSceneTarget) {
+      ensureScaledSceneTargets(renderExtent);
+    }
+
+    context_->ClearRenderTargetView(renderTarget_.Get(), clearColor.data());
+    ID3D11RenderTargetView *sceneRenderTarget =
+        usesScaledSceneTarget
+        ? scaledSceneRenderTarget_.Get()
+        : renderTarget_.Get();
+    ID3D11DepthStencilView *sceneDepthView =
+        usesScaledSceneTarget
+        ? scaledSceneDepthView_.Get()
+        : depthView_.Get();
+    if (usesScaledSceneTarget) {
+      context_->ClearRenderTargetView(
+          sceneRenderTarget, clearColor.data());
+    }
+    context_->ClearDepthStencilView(
+        sceneDepthView, D3D11_CLEAR_DEPTH,
+        gameplay ? airfix::render::legacyReverseDepthClearValue : 1.0F, 0U);
+
+    context_->OMSetRenderTargets(
+        1U, &sceneRenderTarget, sceneDepthView);
+    const auto fitted =
+        layout.layout->sceneViewportInRenderTarget();
+    const D3D11_VIEWPORT activeViewport{
+        fitted.x, fitted.y, fitted.width, fitted.height, 0.0F, 1.0F,
+    };
     context_->RSSetViewports(1U, &activeViewport);
     context_->RSSetState(rasterizer_.Get());
     context_->OMSetDepthStencilState(
@@ -453,7 +497,7 @@ public:
       if (gameplay) {
         const GameplayUniforms uniforms = makeGameplayUniforms(
             model.instances[command.instanceIndex], mission_->camera,
-            *gameplayLayout);
+            *layout.layout);
         context_->UpdateSubresource(gameplayUniforms_.Get(), 0U, nullptr,
                                     &uniforms, 0U, 0U);
         ID3D11Buffer *constantBuffer = gameplayUniforms_.Get();
@@ -485,6 +529,10 @@ public:
       context_->DrawIndexed(command.indexCount, command.firstIndex, 0);
     }
 
+    if (usesScaledSceneTarget) {
+      presentScaledScene();
+    }
+
     std::optional<CapturedBackBuffer> captured;
     if (validateGpuOutput || captureOutput != nullptr) {
       captured = captureBackBuffer();
@@ -511,8 +559,21 @@ public:
   }
 
 private:
+  void releaseScaledSceneTargets() noexcept {
+    if (context_) {
+      ID3D11ShaderResourceView *nullView = nullptr;
+      context_->PSSetShaderResources(0U, 1U, &nullView);
+    }
+    scaledSceneShaderResource_.Reset();
+    scaledSceneRenderTarget_.Reset();
+    scaledSceneDepthView_.Reset();
+    scaledSceneColorTexture_.Reset();
+    scaledSceneExtent_ = {};
+  }
+
   void releaseSwapTargets() {
     context_->OMSetRenderTargets(0U, nullptr, nullptr);
+    releaseScaledSceneTargets();
     renderTarget_.Reset();
     depthView_.Reset();
     // ResizeBuffers requires every immediate-context reference to the old
@@ -591,6 +652,10 @@ private:
         compileShader("AirfixGameplayVS", "vs_5_0");
     const ComPtr<ID3DBlob> gameplayPixelBytecode =
         compileShader("AirfixGameplayPS", "ps_5_0");
+    const ComPtr<ID3DBlob> presentationVertexBytecode =
+        compileShader("AirfixPresentationVS", "vs_5_0");
+    const ComPtr<ID3DBlob> presentationPixelBytecode =
+        compileShader("AirfixPresentationPS", "ps_5_0");
 
     requireSuccess(
         device_->CreateVertexShader(smokeVertexBytecode->GetBufferPointer(),
@@ -612,6 +677,16 @@ private:
                        gameplayPixelBytecode->GetBufferSize(), nullptr,
                        gameplayPixelShader_.GetAddressOf()),
                    "ID3D11Device::CreatePixelShader(gameplay)");
+    requireSuccess(device_->CreateVertexShader(
+                       presentationVertexBytecode->GetBufferPointer(),
+                       presentationVertexBytecode->GetBufferSize(), nullptr,
+                       presentationVertexShader_.GetAddressOf()),
+                   "ID3D11Device::CreateVertexShader(presentation)");
+    requireSuccess(device_->CreatePixelShader(
+                       presentationPixelBytecode->GetBufferPointer(),
+                       presentationPixelBytecode->GetBufferSize(), nullptr,
+                       presentationPixelShader_.GetAddressOf()),
+                   "ID3D11Device::CreatePixelShader(presentation)");
 
     constexpr std::array<D3D11_INPUT_ELEMENT_DESC, 3U> inputElements{{
         {
@@ -674,6 +749,12 @@ private:
     requireSuccess(device_->CreateSamplerState(&samplerDescription,
                                                sampler_.GetAddressOf()),
                    "ID3D11Device::CreateSamplerState");
+    samplerDescription.Filter =
+        D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT;
+    requireSuccess(device_->CreateSamplerState(
+                       &samplerDescription,
+                       presentationSampler_.GetAddressOf()),
+                   "ID3D11Device::CreateSamplerState(presentation)");
 
     D3D11_RASTERIZER_DESC rasterizerDescription{};
     rasterizerDescription.FillMode = D3D11_FILL_SOLID;
@@ -697,6 +778,13 @@ private:
         device_->CreateDepthStencilState(&gameplayDepthDescription,
                                          gameplayDepthState_.GetAddressOf()),
         "ID3D11Device::CreateDepthStencilState(gameplay)");
+
+    D3D11_DEPTH_STENCIL_DESC presentationDepthDescription{};
+    presentationDepthDescription.DepthEnable = FALSE;
+    requireSuccess(device_->CreateDepthStencilState(
+                       &presentationDepthDescription,
+                       presentationDepthState_.GetAddressOf()),
+                   "ID3D11Device::CreateDepthStencilState(presentation)");
   }
 
   [[nodiscard]] std::vector<MeshResources>
@@ -897,6 +985,101 @@ private:
     fallbackTexture_ = createTexture(1U, 1U, scene_.fallbackRgba8.data());
   }
 
+  void ensureScaledSceneTargets(
+      const airfix::render::RenderTargetPixelExtent extent) {
+    if (scaledSceneExtent_ == extent &&
+        scaledSceneColorTexture_ &&
+        scaledSceneRenderTarget_ &&
+        scaledSceneShaderResource_ &&
+        scaledSceneDepthView_) {
+      return;
+    }
+
+    D3D11_TEXTURE2D_DESC colorDescription{};
+    colorDescription.Width = extent.width;
+    colorDescription.Height = extent.height;
+    colorDescription.MipLevels = 1U;
+    colorDescription.ArraySize = 1U;
+    colorDescription.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    colorDescription.SampleDesc = {1U, 0U};
+    colorDescription.Usage = D3D11_USAGE_DEFAULT;
+    colorDescription.BindFlags =
+        D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+
+    ComPtr<ID3D11Texture2D> colorTexture;
+    ComPtr<ID3D11RenderTargetView> colorTarget;
+    ComPtr<ID3D11ShaderResourceView> colorView;
+    requireSuccess(
+        device_->CreateTexture2D(
+            &colorDescription, nullptr, colorTexture.GetAddressOf()),
+        "ID3D11Device::CreateTexture2D(scaled scene color)");
+    requireSuccess(
+        device_->CreateRenderTargetView(
+            colorTexture.Get(), nullptr, colorTarget.GetAddressOf()),
+        "ID3D11Device::CreateRenderTargetView(scaled scene)");
+    requireSuccess(
+        device_->CreateShaderResourceView(
+            colorTexture.Get(), nullptr, colorView.GetAddressOf()),
+        "ID3D11Device::CreateShaderResourceView(scaled scene)");
+
+    D3D11_TEXTURE2D_DESC depthDescription{};
+    depthDescription.Width = extent.width;
+    depthDescription.Height = extent.height;
+    depthDescription.MipLevels = 1U;
+    depthDescription.ArraySize = 1U;
+    depthDescription.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    depthDescription.SampleDesc = {1U, 0U};
+    depthDescription.Usage = D3D11_USAGE_DEFAULT;
+    depthDescription.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+
+    ComPtr<ID3D11Texture2D> depthTexture;
+    ComPtr<ID3D11DepthStencilView> depthView;
+    requireSuccess(
+        device_->CreateTexture2D(
+            &depthDescription, nullptr, depthTexture.GetAddressOf()),
+        "ID3D11Device::CreateTexture2D(scaled scene depth)");
+    requireSuccess(
+        device_->CreateDepthStencilView(
+            depthTexture.Get(), nullptr, depthView.GetAddressOf()),
+        "ID3D11Device::CreateDepthStencilView(scaled scene)");
+
+    releaseScaledSceneTargets();
+    scaledSceneColorTexture_ = std::move(colorTexture);
+    scaledSceneRenderTarget_ = std::move(colorTarget);
+    scaledSceneShaderResource_ = std::move(colorView);
+    scaledSceneDepthView_ = std::move(depthView);
+    scaledSceneExtent_ = extent;
+  }
+
+  void presentScaledScene() {
+    if (!scaledSceneShaderResource_ || !renderTarget_) {
+      throw std::runtime_error(
+          "scaled scene presentation resources are unavailable");
+    }
+
+    context_->OMSetRenderTargets(0U, nullptr, nullptr);
+    ID3D11RenderTargetView *outputTarget = renderTarget_.Get();
+    context_->OMSetRenderTargets(1U, &outputTarget, nullptr);
+    context_->RSSetViewports(1U, &viewport_);
+    context_->RSSetState(rasterizer_.Get());
+    context_->OMSetDepthStencilState(presentationDepthState_.Get(), 0U);
+    context_->IASetInputLayout(nullptr);
+    context_->IASetPrimitiveTopology(
+        D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context_->VSSetShader(presentationVertexShader_.Get(), nullptr, 0U);
+    context_->PSSetShader(presentationPixelShader_.Get(), nullptr, 0U);
+
+    ID3D11SamplerState *sampler = presentationSampler_.Get();
+    context_->PSSetSamplers(0U, 1U, &sampler);
+    ID3D11ShaderResourceView *sceneView =
+        scaledSceneShaderResource_.Get();
+    context_->PSSetShaderResources(0U, 1U, &sceneView);
+    context_->Draw(3U, 0U);
+
+    ID3D11ShaderResourceView *nullView = nullptr;
+    context_->PSSetShaderResources(0U, 1U, &nullView);
+  }
+
   void createSwapTargets() {
     const auto [currentWidth, currentHeight] = pixelSize(*window_);
     if (currentWidth <= 0 || currentHeight <= 0) {
@@ -1077,21 +1260,35 @@ private:
   ComPtr<IDXGISwapChain> swapChain_;
   ComPtr<ID3D11RenderTargetView> renderTarget_;
   ComPtr<ID3D11DepthStencilView> depthView_;
+  ComPtr<ID3D11Texture2D> scaledSceneColorTexture_;
+  ComPtr<ID3D11RenderTargetView> scaledSceneRenderTarget_;
+  ComPtr<ID3D11ShaderResourceView> scaledSceneShaderResource_;
+  ComPtr<ID3D11DepthStencilView> scaledSceneDepthView_;
   ComPtr<ID3D11VertexShader> smokeVertexShader_;
   ComPtr<ID3D11PixelShader> smokePixelShader_;
   ComPtr<ID3D11VertexShader> gameplayVertexShader_;
   ComPtr<ID3D11PixelShader> gameplayPixelShader_;
+  ComPtr<ID3D11VertexShader> presentationVertexShader_;
+  ComPtr<ID3D11PixelShader> presentationPixelShader_;
   ComPtr<ID3D11InputLayout> inputLayout_;
   ComPtr<ID3D11Buffer> smokeUniforms_;
   ComPtr<ID3D11Buffer> gameplayUniforms_;
   ComPtr<ID3D11SamplerState> sampler_;
+  ComPtr<ID3D11SamplerState> presentationSampler_;
   ComPtr<ID3D11RasterizerState> rasterizer_;
   ComPtr<ID3D11DepthStencilState> smokeDepthState_;
   ComPtr<ID3D11DepthStencilState> gameplayDepthState_;
+  ComPtr<ID3D11DepthStencilState> presentationDepthState_;
   ComPtr<ID3D11ShaderResourceView> texture_;
   ComPtr<ID3D11ShaderResourceView> fallbackTexture_;
   std::vector<MeshResources> meshResources_;
   std::unique_ptr<MissionResources> mission_;
+  airfix::render::RenderTargetPixelExtent scaledSceneExtent_{};
+  float renderScalePercent_{
+      airfix::render::native_render_policy::
+          defaultRenderScalePercent};
+  airfix::render::ScenePresentationMode scenePresentationMode_{
+      airfix::render::ScenePresentationMode::widescreenHorPlus};
   D3D11_VIEWPORT viewport_{};
   int width_{};
   int height_{};
@@ -1103,6 +1300,16 @@ AirfixD3D11Renderer::AirfixD3D11Renderer(SDL_Window &window)
 AirfixD3D11Renderer::~AirfixD3D11Renderer() = default;
 
 void AirfixD3D11Renderer::resize() { implementation_->resize(); }
+
+void AirfixD3D11Renderer::setRenderScalePercent(
+    const float renderScalePercent) {
+  implementation_->setRenderScalePercent(renderScalePercent);
+}
+
+void AirfixD3D11Renderer::setScenePresentationMode(
+    const airfix::render::ScenePresentationMode mode) noexcept {
+  implementation_->setScenePresentationMode(mode);
+}
 
 void AirfixD3D11Renderer::installLoadedMissionRoom(
     airfix::content::LoadedMissionWorldRoom &&room,

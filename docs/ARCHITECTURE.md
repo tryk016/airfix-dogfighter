@@ -128,10 +128,13 @@ substitute for native rendering at 100%. See ADR-0013.
 The first implementation slice is shared `NativeRenderLayout`. It provides
 strongly typed domains, exact 100% target identity, Hor+ and Original 4:3
 policies, safe-area-aware UI fitting, and reversible UI/camera input
-transforms. D3D11 and Metal currently consume its direct-to-native-target 100%
-path. The 50-200% extent policy is already portable and tested, while the
-backend-specific offscreen targets and final resampling pass are deliberately
-still pending; no backend pretends that a non-100% scale is implemented.
+transforms. D3D11 and Metal render directly to the native output at 100%. At
+non-100% scale, each backend allocates a private color/depth scene target at the
+portable extent and performs a linear full-output presentation pass. The output
+target remains native-sized, so later UI can render sharply after scene
+presentation without inheriting the 3D render scale. Allocation and texture
+dimension limits fail closed rather than silently changing the requested
+scale.
 
 The portable front end owns camera, geometry, material, light, pass, draw, and
 diagnostic descriptions. D3D11/HLSL and Metal translate those descriptions

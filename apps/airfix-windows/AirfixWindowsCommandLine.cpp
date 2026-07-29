@@ -11,6 +11,8 @@ namespace {
 
 constexpr std::size_t maximumPrivatePathBytes = 4096U;
 constexpr std::uint32_t maximumCaptureDimension = 16384U;
+constexpr std::uint32_t minimumRenderScalePercent = 50U;
+constexpr std::uint32_t maximumRenderScalePercent = 200U;
 
 [[noreturn]] void invalidCommandLine() {
   throw std::runtime_error(std::string(airfixWindowsUsage()));
@@ -40,6 +42,20 @@ requireValue(const std::span<const std::string_view> arguments,
     invalidCommandLine();
   }
   return static_cast<std::uint32_t>(parsed);
+}
+
+[[nodiscard]] std::uint32_t
+parseRenderScalePercent(const std::string_view value) {
+  std::uint32_t parsed = 0U;
+  const auto *const first = value.data();
+  const auto *const last = first + value.size();
+  const auto result = std::from_chars(first, last, parsed, 10);
+  if (result.ec != std::errc{} || result.ptr != last ||
+      parsed < minimumRenderScalePercent ||
+      parsed > maximumRenderScalePercent) {
+    invalidCommandLine();
+  }
+  return parsed;
 }
 
 [[nodiscard]] AirfixWindowsCaptureSize
@@ -76,10 +92,6 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
   if (arguments.empty()) {
     return options;
   }
-  if (arguments.size() == 1U && arguments.front() == "--smoke-test") {
-    options.smokeTest = true;
-    return options;
-  }
 
   std::optional<std::string> setup;
   std::optional<std::string> level;
@@ -87,10 +99,30 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
   std::optional<std::uint32_t> startIndex;
   std::optional<std::filesystem::path> captureFrameOutput;
   std::optional<AirfixWindowsCaptureSize> captureSize;
+  std::optional<std::uint32_t> renderScalePercent;
+  bool originalFourByThreeSeen = false;
 
   for (std::size_t index = 0U; index < arguments.size(); ++index) {
     const auto option = arguments[index];
-    if (option == "--content-root" || option == "--validate-content-root") {
+    if (option == "--smoke-test") {
+      if (options.smokeTest) {
+        invalidCommandLine();
+      }
+      options.smokeTest = true;
+    } else if (option == "--render-scale") {
+      if (renderScalePercent.has_value()) {
+        invalidCommandLine();
+      }
+      renderScalePercent =
+          parseRenderScalePercent(requireValue(arguments, index));
+    } else if (option == "--original-4x3") {
+      if (originalFourByThreeSeen) {
+        invalidCommandLine();
+      }
+      originalFourByThreeSeen = true;
+      options.originalFourByThreePresentation = true;
+    } else if (option == "--content-root" ||
+               option == "--validate-content-root") {
       if (options.contentRoot.has_value()) {
         invalidCommandLine();
       }
@@ -141,7 +173,12 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
   const bool hasAnyMissionOption = setup.has_value() || level.has_value() ||
                                    playerObject.has_value() ||
                                    startIndex.has_value();
-  if (!options.contentRoot.has_value() ||
+  const bool hasContentSpecificOption =
+      hasAnyMissionOption || captureFrameOutput.has_value() ||
+      captureSize.has_value();
+  if ((options.smokeTest &&
+       (options.contentRoot.has_value() || hasContentSpecificOption)) ||
+      (!options.contentRoot.has_value() && hasContentSpecificOption) ||
       (hasAnyMissionOption && !hasMissionPair) ||
       (captureFrameOutput.has_value() &&
        (options.validateContentOnly || !hasMissionPair)) ||
@@ -158,6 +195,8 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
   }
   options.captureFrameOutput = std::move(captureFrameOutput);
   options.captureSize = captureSize;
+  options.renderScalePercent =
+      renderScalePercent.value_or(options.renderScalePercent);
   return options;
 }
 

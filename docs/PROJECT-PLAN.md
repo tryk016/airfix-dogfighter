@@ -368,12 +368,14 @@ This phase is split into ordered, independently shippable stages:
 Implementation checkpoint (2026-07-29): stages 1-2 have their portable
 foundation. Strongly typed resolution domains, exact 100% target identity,
 Hor+, Original 4:3 layout math, safe-area/UI fitting, input transforms, and the
-required aspect-ratio tests are implemented. D3D11 and Metal consume the 100%
-native Hor+ path, and Windows direct backbuffer captures verify 1080p, 1440p,
-4K, and 32:9. Remaining stage 1-2 work is backend offscreen render scaling,
-settings/UI exposure, the diagnostic overlay, complete HUD/effect integration,
-and iOS runtime/device acceptance. This checkpoint does not advance the
-lighting/material/post-processing stages.
+required aspect-ratio tests are implemented. D3D11 and Metal render directly
+to the native output at 100% and use backend-private offscreen color/depth
+targets plus linear presentation at non-100% scales. Windows direct backbuffer
+captures verify 1080p, 1440p, 4K, and 32:9, and a controlled 50%/200% trial
+verifies that output and 3D raster extents vary independently. Remaining stage
+1-2 work is finished settings UI, the diagnostic overlay, complete HUD/effect
+integration, and iOS runtime/device acceptance. This checkpoint does not
+advance the lighting/material/post-processing stages.
 
 `Classic` and `Enhanced` are visual-intent profiles independent of the quality
 tier. Classic renders faithfully at the chosen high resolution; Enhanced adds

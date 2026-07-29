@@ -177,4 +177,13 @@ if(AIRFIX_BUILD_TESTS)
     set_tests_properties(airfix_windows_product_smoke_tests PROPERTIES
         TIMEOUT 30
     )
+    add_test(NAME airfix_windows_scaled_product_smoke_tests
+        COMMAND airfix_windows
+            --smoke-test
+            --render-scale 50
+            --original-4x3)
+    set_tests_properties(
+        airfix_windows_scaled_product_smoke_tests PROPERTIES
+        TIMEOUT 30
+    )
 endif()

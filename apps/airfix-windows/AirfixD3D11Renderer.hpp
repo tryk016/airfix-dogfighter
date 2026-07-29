@@ -1,6 +1,7 @@
 #pragma once
 
 #include "airfix/content/MissionWorldRoomLoader.hpp"
+#include "airfix/render/NativeRenderLayout.hpp"
 
 #include <filesystem>
 #include <memory>
@@ -20,6 +21,12 @@ public:
   AirfixD3D11Renderer &operator=(AirfixD3D11Renderer &&) = delete;
 
   void resize();
+
+  // Applies to the complete 3D scene while leaving the swapchain/output
+  // resolution unchanged. Invalid values are rejected before publication.
+  void setRenderScalePercent(float renderScalePercent);
+  void setScenePresentationMode(
+      airfix::render::ScenePresentationMode mode) noexcept;
 
   // Builds every private GPU resource before replacing the currently visible
   // scene. A failure leaves the public diagnostic scene installed.
