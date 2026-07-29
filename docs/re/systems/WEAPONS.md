@@ -330,9 +330,11 @@ owners as one segmented logical index space, so the combined portal query
 copies neither mesh records nor nested arenas.
 
 A live producer must still provide changing player pose/room/ID/active state,
-publish other actors, supply actor gates, and dispatch callbacks. The separate
-projectile-level `followPortal` repetition is now a bounded generic coordinator
-whose query callback remains unwired. See
+publish other actors, implement the live actor resolver, and dispatch
+callbacks. The separate projectile-level `followPortal` repetition is a
+bounded generic coordinator. Its authenticated adapter now consumes the
+published mission trace, maps signed room IDs and exact collision materials,
+and accepts actor gates only through an explicit callback. See
 [EXP-20260728-034](../../experiments/EXP-20260728-034-projectile-collision-decision.md),
 [EXP-20260728-035](../../experiments/EXP-20260728-035-dynamic-bsp-line-adapter.md),
 [EXP-20260728-036](../../experiments/EXP-20260728-036-combined-line-portal-continuation.md),
@@ -345,7 +347,9 @@ and
 Runtime ownership is recorded in
 [EXP-20260729-041](../../experiments/EXP-20260729-041-mission-runtime-dynamic-collision-ownership.md).
 The repeated projectile query is recorded in
-[EXP-20260729-042](../../experiments/EXP-20260729-042-projectile-collision-portal-loop.md).
+[EXP-20260729-042](../../experiments/EXP-20260729-042-projectile-collision-portal-loop.md);
+its runtime adapter is recorded in
+[EXP-20260729-043](../../experiments/EXP-20260729-043-projectile-runtime-query-adapter.md).
 
 ## Actor damage and surface reaction
 
@@ -409,20 +413,21 @@ private allocation. A later allocation failure must not roll that state back.
 The helpers accept seconds because the owning scheduler boundary already
 performs the recovered millisecond conversion. They reject non-finite or unsafe
 consumed inputs instead of reproducing x87 unordered behavior or invalid
-attachment memory. They remain unwired: an eventual runtime adapter must
-resolve private types and authored muzzle transforms, merge room BSP and
-dynamic actor geometry into the implemented bounded automatic-portal query,
-repeat any later projectile-level portal outcome, dispatch events, and honor
-allocation failure without inventing a projectile or effect.
+attachment memory. The retained mission query is now wired through the bounded
+automatic and projectile-level portal paths. The remaining live transaction
+must resolve private types and authored muzzle transforms, publish other actor
+geometry/state, implement the actor resolver and creator guard, dispatch
+terminal events, and honor allocation failure without inventing a projectile
+or effect.
 
 ## Remaining work
 
 - Consume the prepared-shot transaction through private type allocation and
   event dispatch without rolling back fire state on allocation failure.
 - Consume the implemented player collider frame, extend the same authenticated
-  publication to other live actors and dynamic portal objects, then bind the
-  runtime trace, material values, actor gates, creator guard, and callbacks to
-  the implemented projectile-level portal coordinator.
+  publication to other live actors and dynamic portal objects, then provide
+  the live actor resolver, creator guard, and terminal callbacks around the
+  implemented runtime projectile query.
 - Recreate the optional `mguntracer` and `FxRicochet` visual/effect adapters.
 - Trace sample/effect commands associated with a shot.
 - Recover secondary weapon selection and each secondary projectile family.

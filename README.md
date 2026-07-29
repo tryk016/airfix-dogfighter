@@ -60,6 +60,9 @@ Implemented foundations include:
 - a bounded, allocation-free projectile collision coordinator that repeats the
   complete caller-supplied query across projectile-level portals and fails
   closed on malformed results or cycles;
+- an authenticated, allocation-free adapter from the published mission
+  collision frame to that coordinator, including room-ID, material and
+  callback-supplied live actor gates;
 - validated, allocation-free reconstructions of the legacy world-to-camera
   point transform and camera-space screen projection, including the recovered
   reverse-depth scalar, four depth presets, gameplay camera preset selection,

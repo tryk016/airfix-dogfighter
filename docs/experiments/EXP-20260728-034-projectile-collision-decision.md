@@ -134,14 +134,14 @@ actor/surface callbacks.
 The generic coordinator in
 [EXP-20260729-042](EXP-20260729-042-projectile-collision-portal-loop.md)
 now repeats the decision after projectile-level portal outcomes with a bounded
-budget. Its callback must still:
+budget. The authenticated runtime adapter in
+[EXP-20260729-043](EXP-20260729-043-projectile-runtime-query-adapter.md)
+now supplies the combined trace, room mapping, material value, and a typed
+seam for live actor gates. A higher-level live actor transaction must still:
 
-- merge retained static BSP with live dynamic-object BSP through one
-  strict-nearest query;
-- supply actor object identity, lookup state, and all three native actor
-  gates; and
-- let the live adapter dispatch actor/projectile callbacks and effects while
-  bracketing the complete loop with the creator collision guard.
+- publish other changing actor colliders and implement the actor resolver; and
+- dispatch actor/projectile callbacks and effects while bracketing the complete
+  loop with the creator collision guard.
 
 The portable transition rejects non-finite segments, non-finite or
 out-of-segment fractions, zero/non-finite contact normals, zero actor object

@@ -2837,3 +2837,29 @@ superseded evidence.
   pass. Exact commit `ba5b2ec` compiles all 259 steps with GCC 13.3 and passes
   80/80 tests in a new isolated `Airfix-Dev` WSL clone. GitHub Actions remains
   the publication gate.
+
+## 2026-07-29 - projectile runtime query adapter
+
+- `EXP-20260729-043` composes previously confirmed room-ID, `0x2152`
+  material, combined portal-line, and projectile decision contracts without a
+  new binary assumption.
+- Added a content/runtime integration adapter that maps ownerless static and
+  owner-backed dynamic hits, preserves raw material bits as the native signed
+  value, and converts authenticated portal world indices back to `CcRoom` IDs.
+- Native actor order is explicit: material `8` and client gates do not invoke
+  the live resolver; only the server path accepts resolved, lookup-miss, or
+  rejected actor states. Missing or malformed live state fails closed.
+- Focused tests cover all mapping states plus an actual two-room runtime frame:
+  a hidden type-zero placed portal advances the projectile query into legacy
+  room `1`, where a solid placed surface terminates it. 4,096 complete
+  two-query runtime loops observe zero allocations.
+- A fresh Windows GCC 15.2 Release build compiles 262 steps; it and the
+  regenerated code-intelligence build pass 81/81 tests. The compilation
+  database has 167 portable entries; clangd 22.1.8 reports zero errors in the
+  adapter and test.
+  Twelve Rizin normalization tests, the synthetic and 400-file public-boundary
+  scans, the 263-row unique function catalogue with only its two known missing
+  references, `actionlint`, 14-file local-path scan, and `git diff --check`
+  pass. Exact commit `c1b4d15` compiles all 262 steps with GCC 13.3 and passes
+  81/81 tests in a new isolated `Airfix-Dev` WSL clone. GitHub Actions remains
+  the publication gate.

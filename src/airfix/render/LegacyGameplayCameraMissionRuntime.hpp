@@ -187,6 +187,10 @@ class LegacyGameplayCameraMissionRuntime final {
         return dynamicRoomRanges_.size();
     }
 
+    [[nodiscard]] std::size_t worldRoomCount() const noexcept {
+        return arena_.rooms.size();
+    }
+
     [[nodiscard]] std::size_t additionalRetainedBytes() const noexcept {
         return additionalRetainedBytes_;
     }
