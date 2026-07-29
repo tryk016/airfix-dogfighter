@@ -38,6 +38,28 @@ constexpr std::uint64_t maximumFrameNanoseconds =
     inputStepNanoseconds * 8ULL;
 constexpr airfix::audio::AudioClipId smokeAudioClip{1U};
 
+[[nodiscard]] constexpr std::string_view renderSettingsIssueCategory(
+    const airfix::windows::RenderPresentationSettingsApplyIssueKind
+        issue) noexcept {
+  using Issue =
+      airfix::windows::RenderPresentationSettingsApplyIssueKind;
+  switch (issue) {
+  case Issue::invalidSettings:
+    return "invalid-settings";
+  case Issue::surfaceUnavailable:
+    return "surface-unavailable";
+  case Issue::invalidLayout:
+    return "invalid-layout";
+  case Issue::unsupportedTargetExtent:
+    return "unsupported-target-extent";
+  case Issue::targetPreparationFailed:
+    return "target-preparation-failed";
+  case Issue::publicationGateRejected:
+    return "publication-gate-rejected";
+  }
+  return "unknown";
+}
+
 [[nodiscard]] airfix::render::ConvertedNodeTransform actorWorldFrom(
     const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   const auto vectorAt = [](const std::array<float, 3U> &value) {
@@ -333,13 +355,24 @@ int run(const int argumentCount, char *arguments[]) {
 
   airfix::runtime::AppSession session;
   airfix::windows::AirfixD3D11Renderer renderer{*window};
-  renderer.setRenderScalePercent(
-      static_cast<float>(options.renderScalePercent));
-  renderer.setScenePresentationMode(
-      options.originalFourByThreePresentation
-          ? airfix::render::ScenePresentationMode::originalFourByThree
-          : airfix::render::ScenePresentationMode::widescreenHorPlus);
-  renderer.setDiagnosticsOverlayEnabled(options.renderDiagnostics);
+  const airfix::render::RenderPresentationSettings startupSettings{
+      .renderScalePercent =
+          static_cast<float>(options.renderScalePercent),
+      .scenePresentation =
+          options.originalFourByThreePresentation
+              ? airfix::render::ScenePresentationMode::originalFourByThree
+              : airfix::render::ScenePresentationMode::widescreenHorPlus,
+      .visualProfile = airfix::render::VisualProfile::classic,
+      .diagnosticsOverlayEnabled = options.renderDiagnostics,
+  };
+  const auto startupSettingsResult =
+      renderer.applyRenderPresentationSettings(startupSettings);
+  if (!startupSettingsResult.accepted()) {
+    std::cerr
+        << "Windows render settings override rejected ("
+        << renderSettingsIssueCategory(*startupSettingsResult.issue)
+        << "); continuing with the active snapshot\n";
+  }
   airfix::windows::AirfixXAudio2Backend audio;
   if (audio.outputState() ==
       airfix::windows::AirfixXAudio2OutputState::initializationFailed) {
@@ -405,6 +438,41 @@ int run(const int argumentCount, char *arguments[]) {
       throw std::runtime_error(
           "D3D11 smoke frame did not publish diagnostics");
     }
+
+    auto transitionSettings = renderer.renderPresentationSettings();
+    for (const float scale :
+         std::array{100.0F, 50.0F, 200.0F, 100.0F}) {
+      transitionSettings.renderScalePercent = scale;
+      if (!renderer.applyRenderPresentationSettings(transitionSettings)
+               .accepted()) {
+        throw std::runtime_error(
+            "D3D11 smoke settings transition was rejected");
+      }
+      if (!renderer.renderFrame(true)) {
+        throw std::runtime_error(
+            "D3D11 smoke frame failed during a settings transition");
+      }
+      const auto transitionDiagnostics = renderer.frameDiagnostics();
+      if (!transitionDiagnostics.has_value()) {
+        throw std::runtime_error(
+            "D3D11 settings transition published no diagnostics");
+      }
+      const auto expectedLayout =
+          airfix::render::buildNativeRenderLayout({
+              .outputExtent = transitionDiagnostics->outputExtent,
+              .renderScalePercent = scale,
+              .scenePresentation =
+                  transitionSettings.scenePresentation,
+          });
+      if (!expectedLayout.complete() ||
+          transitionDiagnostics->renderScalePercent != scale ||
+          transitionDiagnostics->renderTargetExtent !=
+              expectedLayout.layout->renderTargetExtent()) {
+        throw std::runtime_error(
+            "D3D11 settings transition used the wrong render target");
+      }
+    }
+
     renderer.resize();
     if (!renderer.renderFrame(true)) {
       throw std::runtime_error(

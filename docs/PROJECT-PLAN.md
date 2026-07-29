@@ -384,9 +384,13 @@ lighting/material/post-processing stages.
 ADR-0014 now supplies the first finished settings foundation: one validated
 portable snapshot for render scale, Hor+/Original 4:3, diagnostics, and the
 Classic/Enhanced selector; sparse launch/UI overrides; deterministic delta
-classification; and a versioned storage-neutral record. Platform persistence,
-transactional GPU-resource application, and final settings UI remain the next
-ordered slices.
+classification; and a versioned storage-neutral record. D3D11 now consumes the
+complete snapshot transactionally: it prepares a complete replacement target
+bundle, permits a durable-save gate before publication, and retains the exact
+previous snapshot and resources after validation, surface, allocation, resize,
+or gate rejection. The equivalent prepared Metal transaction is next, followed
+by platform persistence, sparse launch-override binding, and the final settings
+UI.
 
 `Classic` and `Enhanced` are visual-intent profiles independent of the quality
 tier. Classic renders faithfully at the chosen high resolution; Enhanced adds
