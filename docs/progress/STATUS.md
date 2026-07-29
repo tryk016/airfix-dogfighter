@@ -874,8 +874,9 @@ These questions do not block static analysis or the archive work.
   validation is exactly 3840x2160; the original installation and owner data
   remained unchanged and outside Git. The 459-file public-boundary scan,
   `actionlint`, changed-document link and local-path checks, and
-  `git diff --check` pass. Hosted Visual Studio, portable, clangd, iPhoneOS,
-  and iPhoneSimulator gates remain required before merge.
+  `git diff --check` pass. GitHub Actions runs `30470411401` and `30470413579`
+  pass all seven hosted Visual Studio product, Windows/Ubuntu/macOS portable,
+  clangd, iPhoneOS, and iPhoneSimulator gates.
 - The authenticated aircraft-audio slice passes a fresh 289-step GCC 15.2
   build and all 89 portable tests. A fresh native MSVC 19.51/Ninja product
   build compiles 548 steps and passes 91/91 tests, including the real hidden

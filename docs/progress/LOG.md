@@ -3325,4 +3325,6 @@ superseded evidence.
   19.51 and MinGW GCC 15.2 Windows product builds independently pass 93/93
   tests, including native D3D11/XAudio2 smoke. The 459-file public-boundary
   scan, `actionlint`, changed-document link and local-path checks, and
-  `git diff --check` pass. Hosted platform builds remain the merge gate.
+  `git diff --check` pass. GitHub Actions runs `30470411401` and `30470413579`
+  pass all seven hosted Visual Studio product, Windows/Ubuntu/macOS portable,
+  clangd, iPhoneOS, and iPhoneSimulator gates.

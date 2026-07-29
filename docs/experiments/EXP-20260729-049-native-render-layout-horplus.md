@@ -53,9 +53,9 @@ while satisfying the exact 4K-at-100% requirement and replacing the temporary
 ## Confidence
 
 High for the portable mathematics, exact 100% identity, D3D11 target sizes, and
-Windows Hor+ behavior. Medium for Metal integration until hosted iPhoneOS and
-iPhoneSimulator builds pass. Physical-device iOS rendering, safe-area
-interaction, and performance remain untested.
+Windows Hor+ behavior. High for the Metal compilation boundary after hosted
+iPhoneOS and iPhoneSimulator builds passed. Physical-device iOS rendering,
+safe-area interaction, and performance remain untested.
 
 ## Limits and next work
 
