@@ -68,6 +68,19 @@ static_assert(noexcept(
             const LegacyGameplayCameraStepCoordinatorInput&>())));
 static_assert(noexcept(
     std::declval<LegacyGameplayCameraMissionRuntime&>().tryAcquire()));
+static_assert(noexcept(
+    std::declval<LegacyGameplayCameraMissionRuntime&>()
+        .tryPublishDynamicCollisionFrame(
+            std::declval<const ConvertedNodeTransform&>(),
+            0U,
+            false,
+            0U)));
+static_assert(noexcept(
+    std::declval<const LegacyGameplayCameraMissionRuntime&>()
+        .tracePublishedDynamicCollisionPortalLine(
+            0U,
+            std::declval<const Vec3&>(),
+            std::declval<const Vec3&>())));
 
 void require(const bool condition, const std::string& message) {
     if (!condition) {
@@ -81,6 +94,103 @@ void require(const bool condition, const std::string& message) {
     result.rooms.resize(1U);
     result.polygons.resize(polygonCount);
     return result;
+}
+
+[[nodiscard]] ConvertedMeshGeometry triangleGeometry(
+    const std::uint32_t reference,
+    const std::uint32_t materialReference) {
+    ConvertedMeshGeometry geometry;
+    geometry.reference = reference;
+    geometry.vertices = {
+        {{-2.0F, -2.0F, 0.0F}},
+        {{2.0F, -2.0F, 0.0F}},
+        {{0.0F, 2.0F, 0.0F}},
+    };
+    geometry.triangles = {
+        {
+            .vertexIndices = {0U, 1U, 2U},
+            .materialReference = materialReference,
+        },
+    };
+    return geometry;
+}
+
+[[nodiscard]] MissionPlacedDynamicBspAssembly placedCollision() {
+    MissionPlacedDynamicBspAssembly placed;
+    placed.meshes.push_back(
+        buildLegacyDynamicBsp(triangleGeometry(10U, 100U)));
+    require(placed.meshes[0].complete(), "placed mesh fixture failed");
+    placed.meshProvenance.push_back({
+        .sourceIndex = 0U,
+        .physicalMeshIndex = 1U,
+        .firstPlacedNodeIndex = 2U,
+        .sourceMeshReference = 10U,
+    });
+    placed.objects.push_back({
+        .meshIndex = 0U,
+        .actorObjectId = 0U,
+        .active = true,
+        .objectLocalToRuntime = {},
+        .runtimeTranslation = {0.0F, 0.0F, 2.0F},
+        .portalType = -1,
+        .portalWorldRoomIndex = std::nullopt,
+        .portalObjectVisible = false,
+    });
+    placed.objectProvenance.push_back({
+        .sourceIndex = 0U,
+        .placedNodeIndex = 2U,
+        .physicalMeshIndex = 1U,
+        .worldRoomIndex = 0U,
+        .sourceNodeReference = 20U,
+    });
+    placed.roomObjectRanges.push_back({
+        .firstObjectIndex = 0U,
+        .objectCount = 1U,
+    });
+    placed.retainedPayloadBytes =
+        sizeof(LegacyDynamicBspMesh) +
+        sizeof(MissionPlacedDynamicBspMeshProvenance) +
+        sizeof(LegacyDynamicBspLineObject) +
+        sizeof(MissionPlacedDynamicBspObjectProvenance) +
+        sizeof(LegacyDynamicBspRoomObjectRange) +
+        placed.meshes[0].retainedPayloadBytes;
+    require(placed.complete(), "placed collision fixture failed");
+    return placed;
+}
+
+[[nodiscard]] PlayerActorCollisionAssembly playerCollision() {
+    PlayerActorCollisionAssembly player;
+    player.meshes.push_back(
+        buildLegacyDynamicBsp(triangleGeometry(30U, 300U)));
+    require(player.meshes[0].complete(), "player mesh fixture failed");
+    const PlayerActorVisualProvenance actor{
+        .legacySkinSlot = 0U,
+        .blueprintIndex = 3U,
+        .blueprintReference = 40U,
+        .physicalMeshIndex = 4U,
+    };
+    player.meshProvenance.push_back({
+        .actor = actor,
+        .collisionMeshIndex = 0U,
+        .sourceMeshReference = 30U,
+    });
+    player.instances.push_back({
+        .collisionMeshIndex = 0U,
+        .actor = actor,
+        .actorLocal =
+            {
+                .linear = {},
+                .translation = {},
+                .rawScalar = 1.0F,
+            },
+    });
+    player.retainedPayloadBytes =
+        sizeof(LegacyDynamicBspMesh) +
+        sizeof(PlayerActorCollisionMeshProvenance) +
+        sizeof(PlayerActorCollisionInstance) +
+        player.meshes[0].retainedPayloadBytes;
+    require(player.complete(), "player collision fixture failed");
+    return player;
 }
 
 [[nodiscard]] LegacyGameplayCameraStepCoordinatorInitializeInput
@@ -117,6 +227,22 @@ buildRuntime() {
         std::move(missionArena), {}, initializeInput());
 }
 
+[[nodiscard]] LegacyGameplayCameraMissionRuntimeBuildResult
+buildDynamicRuntime(
+    const LegacyGameplayCameraMissionRuntimeLimits& limits = {}) {
+    auto missionArena = arena();
+    auto placed = placedCollision();
+    std::optional<PlayerActorCollisionAssembly> player{
+        playerCollision()};
+    return LegacyGameplayCameraMissionRuntime::create(
+        std::move(missionArena),
+        std::move(placed),
+        std::move(player),
+        {},
+        initializeInput(),
+        limits);
+}
+
 void requireBuildIssue(
     const LegacyGameplayCameraMissionRuntimeBuildResult& result,
     const LegacyGameplayCameraMissionRuntimeBuildIssueKind kind,
@@ -138,6 +264,10 @@ void testCreationOwnsBootstrapArenaAndExactWorkspaces() {
         built.runtime->candidateCapacity() == originalPolygonCount &&
             built.runtime->constraintPlaneCapacity() ==
                 originalPolygonCount &&
+            !built.runtime->dynamicCollisionAvailable() &&
+            !built.runtime->dynamicCollisionFramePublished() &&
+            built.runtime->dynamicObjectCapacity() == 0U &&
+            built.runtime->dynamicRoomRangeCapacity() == 0U &&
             built.runtime->additionalRetainedBytes() ==
                 built.additionalRetainedBytes &&
             built.additionalRetainedBytes ==
@@ -157,6 +287,126 @@ void testCreationOwnsBootstrapArenaAndExactWorkspaces() {
             built.runtime->currentMode() ==
                 LegacyGameplayCameraMode::camera0,
         "mission runtime bootstrap was incoherent");
+}
+
+void testDynamicCollisionOwnershipBuffersAndTrace() {
+    auto built = buildDynamicRuntime();
+    require(built.complete(), "dynamic mission runtime creation failed");
+    require(
+        built.runtime->dynamicCollisionAvailable() &&
+            !built.runtime->dynamicCollisionFramePublished() &&
+            built.runtime->dynamicObjectCapacity() == 2U &&
+            built.runtime->dynamicRoomRangeCapacity() == 1U &&
+            built.additionalRetainedBytes ==
+                LegacyGameplayCameraPacketExchange::retainedBytes() +
+                    2U * sizeof(LegacyDynamicBspLineObject) +
+                    sizeof(LegacyDynamicBspRoomObjectRange),
+        "dynamic frame ownership or exact retained bytes diverged");
+    require(
+        !built.runtime->currentDynamicCollisionFrame().has_value() &&
+            built.runtime
+                    ->tracePublishedDynamicCollisionPortalLine(
+                        0U,
+                        {0.0F, 0.0F, 0.0F},
+                        {0.0F, 0.0F, 4.0F})
+                    .status ==
+                MissionWorldRuntimeCombinedLineTraceStatus::invalidInput,
+        "unpublished dynamic frame became observable");
+
+    const ConvertedNodeTransform playerWorld{
+        .linear = {},
+        .translation = {0.0F, 0.0F, 2.0F},
+        .rawScalar = 1.0F,
+    };
+    const auto published =
+        built.runtime->tryPublishDynamicCollisionFrame(
+            playerWorld, 123U, true, 0U);
+    const auto frame =
+        built.runtime->currentDynamicCollisionFrame();
+    require(
+        published.published() &&
+            built.runtime->dynamicCollisionFramePublished() &&
+            frame.has_value() &&
+            frame->meshes.primary.size() == 1U &&
+            frame->meshes.secondary.size() == 1U &&
+            frame->objects.size() == 2U &&
+            frame->objects[0].actorObjectId == 123U &&
+            frame->objects[1].actorObjectId == 0U &&
+            frame->roomObjectRanges.size() == 1U &&
+            frame->roomObjectRanges[0] ==
+                LegacyDynamicBspRoomObjectRange{0U, 2U},
+        "owned dynamic collision frame was incomplete");
+
+    const auto traced =
+        built.runtime->tracePublishedDynamicCollisionPortalLine(
+            0U,
+            {0.0F, 0.0F, 0.0F},
+            {0.0F, 0.0F, 4.0F});
+    require(
+        traced.status ==
+                MissionWorldRuntimeCombinedLineTraceStatus::hit &&
+            traced.hit.has_value() &&
+            traced.hit->dynamicObjectIndex ==
+                std::optional<std::size_t>{0U} &&
+            traced.hit->dynamicMeshIndex ==
+                std::optional<std::size_t>{1U} &&
+            traced.hit->actorObjectId == 123U &&
+            traced.hit->sourceMaterialReference ==
+                std::optional<std::uint32_t>{300U},
+        "runtime-owned player did not win native-order tie");
+
+    auto invalidWorld = playerWorld;
+    invalidWorld.translation.x =
+        std::numeric_limits<float>::quiet_NaN();
+    const auto rejected =
+        built.runtime->tryPublishDynamicCollisionFrame(
+            invalidWorld, 999U, false, 0U);
+    const auto retained =
+        built.runtime->currentDynamicCollisionFrame();
+    require(
+        rejected.status ==
+                MissionWorldDynamicCollisionPublicationStatus::
+                    invalidTransform &&
+            built.runtime->dynamicCollisionFramePublished() &&
+            retained.has_value() &&
+            retained->objects[0].actorObjectId == 123U &&
+            retained->objects[0].active,
+        "failed republish changed the last complete dynamic frame");
+}
+
+void testDynamicCollisionWithoutPlayerPublishesPlacedOnly() {
+    auto missionArena = arena();
+    auto placed = placedCollision();
+    std::optional<PlayerActorCollisionAssembly> noPlayer;
+    auto built = LegacyGameplayCameraMissionRuntime::create(
+        std::move(missionArena),
+        std::move(placed),
+        std::move(noPlayer),
+        {},
+        initializeInput());
+    require(
+        built.complete() &&
+            built.runtime->dynamicCollisionAvailable() &&
+            built.runtime->dynamicObjectCapacity() == 1U &&
+            built.runtime->dynamicRoomRangeCapacity() == 1U,
+        "no-player dynamic runtime ownership failed");
+
+    const auto published =
+        built.runtime->tryPublishDynamicCollisionFrame(
+            {},
+            999U,
+            true,
+            std::numeric_limits<std::size_t>::max());
+    const auto frame =
+        built.runtime->currentDynamicCollisionFrame();
+    require(
+        published.published() && frame.has_value() &&
+            frame->meshes.secondary.empty() &&
+            frame->objects.size() == 1U &&
+            frame->objects[0].actorObjectId == 0U &&
+            frame->roomObjectRanges[0] ==
+                LegacyDynamicBspRoomObjectRange{0U, 1U},
+        "no-player runtime did not publish placed collision alone");
 }
 
 void testInvalidOwnershipInputsFailBeforePublication() {
@@ -188,6 +438,74 @@ void testInvalidOwnershipInputsFailBeforePublication() {
         LegacyGameplayCameraMissionRuntimeBuildIssueKind::
             initialWorldRoomOutOfRange,
         "out-of-range initial room was accepted");
+
+    {
+        auto dynamicArena = arena();
+        auto placed = placedCollision();
+        placed.issues.push_back({});
+        std::optional<PlayerActorCollisionAssembly> player{
+            playerCollision()};
+        auto invalidPlaced =
+            LegacyGameplayCameraMissionRuntime::create(
+                std::move(dynamicArena),
+                std::move(placed),
+                std::move(player),
+                {},
+                initializeInput());
+        requireBuildIssue(
+            invalidPlaced,
+            LegacyGameplayCameraMissionRuntimeBuildIssueKind::
+                invalidPlacedCollision,
+            "invalid placed collision was accepted");
+    }
+
+    {
+        auto dynamicArena = arena();
+        auto placed = placedCollision();
+        placed.roomObjectRanges.push_back({
+            .firstObjectIndex = 1U,
+            .objectCount = 0U,
+        });
+        placed.retainedPayloadBytes +=
+            sizeof(LegacyDynamicBspRoomObjectRange);
+        require(
+            placed.complete(),
+            "room-count mismatch fixture is internally invalid");
+        std::optional<PlayerActorCollisionAssembly> player{
+            playerCollision()};
+        auto wrongRoomCount =
+            LegacyGameplayCameraMissionRuntime::create(
+                std::move(dynamicArena),
+                std::move(placed),
+                std::move(player),
+                {},
+                initializeInput());
+        requireBuildIssue(
+            wrongRoomCount,
+            LegacyGameplayCameraMissionRuntimeBuildIssueKind::
+                placedCollisionRoomCountMismatch,
+            "placed collision room mismatch was accepted");
+    }
+
+    {
+        auto dynamicArena = arena();
+        auto placed = placedCollision();
+        std::optional<PlayerActorCollisionAssembly> player{
+            playerCollision()};
+        player->issues.push_back({});
+        auto invalidPlayer =
+            LegacyGameplayCameraMissionRuntime::create(
+                std::move(dynamicArena),
+                std::move(placed),
+                std::move(player),
+                {},
+                initializeInput());
+        requireBuildIssue(
+            invalidPlayer,
+            LegacyGameplayCameraMissionRuntimeBuildIssueKind::
+                invalidPlayerCollision,
+            "invalid player collision was accepted");
+    }
 }
 
 void testWorkspaceAndRetainedLimitsFailClosed() {
@@ -230,6 +548,36 @@ void testWorkspaceAndRetainedLimitsFailClosed() {
         LegacyGameplayCameraMissionRuntimeBuildIssueKind::
             retainedByteLimitExceeded,
         "retained-byte limit was ignored");
+
+    LegacyGameplayCameraMissionRuntimeLimits objectLimits;
+    objectLimits.maximumDynamicObjects = 1U;
+    auto objects = buildDynamicRuntime(objectLimits);
+    requireBuildIssue(
+        objects,
+        LegacyGameplayCameraMissionRuntimeBuildIssueKind::
+            dynamicObjectLimitExceeded,
+        "dynamic-object limit was ignored");
+
+    LegacyGameplayCameraMissionRuntimeLimits roomLimits;
+    roomLimits.maximumDynamicRoomRanges = 0U;
+    auto rooms = buildDynamicRuntime(roomLimits);
+    requireBuildIssue(
+        rooms,
+        LegacyGameplayCameraMissionRuntimeBuildIssueKind::
+            dynamicRoomRangeLimitExceeded,
+        "dynamic-room limit was ignored");
+
+    LegacyGameplayCameraMissionRuntimeLimits dynamicByteLimits;
+    dynamicByteLimits.maximumAdditionalRetainedBytes =
+        LegacyGameplayCameraPacketExchange::retainedBytes() +
+        2U * sizeof(LegacyDynamicBspLineObject) +
+        sizeof(LegacyDynamicBspRoomObjectRange) - 1U;
+    auto dynamicBytes = buildDynamicRuntime(dynamicByteLimits);
+    requireBuildIssue(
+        dynamicBytes,
+        LegacyGameplayCameraMissionRuntimeBuildIssueKind::
+            retainedByteLimitExceeded,
+        "dynamic-frame retained-byte limit was ignored");
 }
 
 void testAdvancePublishesCompletePacketsAndInputMode() {
@@ -349,8 +697,13 @@ void testWeakEndpointAndLeaseRemainLifetimeSafe() {
 }
 
 void testSteadyStateDoesNotAllocate() {
-    auto built = buildRuntime();
+    auto built = buildDynamicRuntime();
     require(built.complete(), "allocation fixture creation failed");
+    const ConvertedNodeTransform playerWorld{
+        .linear = {},
+        .translation = {0.0F, 0.0F, 2.0F},
+        .rawScalar = 1.0F,
+    };
 
     allocationCount.store(0U, std::memory_order_relaxed);
     countAllocations.store(true, std::memory_order_relaxed);
@@ -358,9 +711,22 @@ void testSteadyStateDoesNotAllocate() {
     for (std::uint64_t step = 1U; step <= 4'096U; ++step) {
         const auto advanced = built.runtime->tryAdvance(input(step));
         auto lease = built.runtime->tryAcquire();
+        const auto collision =
+            built.runtime->tryPublishDynamicCollisionFrame(
+                playerWorld, 123U, true, 0U);
+        const auto traced =
+            built.runtime->tracePublishedDynamicCollisionPortalLine(
+                0U,
+                {0.0F, 0.0F, 0.0F},
+                {0.0F, 0.0F, 4.0F});
         complete = complete && advanced.published() &&
             lease.has_value() && lease->simulationStep() == step &&
-            lease->cameraPublicationGeneration() == step + 1U;
+            lease->cameraPublicationGeneration() == step + 1U &&
+            collision.published() &&
+            traced.status ==
+                MissionWorldRuntimeCombinedLineTraceStatus::hit &&
+            traced.hit.has_value() &&
+            traced.hit->actorObjectId == 123U;
     }
     countAllocations.store(false, std::memory_order_relaxed);
 
@@ -375,6 +741,8 @@ void testSteadyStateDoesNotAllocate() {
 int main() {
     try {
         testCreationOwnsBootstrapArenaAndExactWorkspaces();
+        testDynamicCollisionOwnershipBuffersAndTrace();
+        testDynamicCollisionWithoutPlayerPublishesPlacedOnly();
         testInvalidOwnershipInputsFailBeforePublication();
         testWorkspaceAndRetainedLimitsFailClosed();
         testAdvancePublishesCompletePacketsAndInputMode();

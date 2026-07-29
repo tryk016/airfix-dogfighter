@@ -470,20 +470,23 @@ steps and camera generations must increase but may skip after a legitimate
 busy result.
 
 `src/airfix/render/LegacyGameplayCameraMissionRuntime.cpp` now owns the
-authenticated arena by move, a copy of the runtime basis, exact-size
-candidate/constraint workspaces, the coordinator, and that exchange. Metal
-mission snapshots account the additional workspace/exchange bytes, validate
-camera0 through the runtime's first lease, and retain a lease through command
-encoding. A weak iOS producer endpoint expires with mission replacement; a
-temporary strong lock remains safe because it borrows no arena or basis from
-the Objective-C room envelope. The endpoint is not advanced until all
-AirCraft inputs are evidence-backed.
+authenticated arena, immutable placed/player dynamic BSP assets, a copy of the
+runtime basis, exact-size candidate/constraint and flat dynamic-line
+workspaces, the coordinator, and that exchange. Metal mission snapshots
+account the additional workspace/exchange bytes, validate camera0 through the
+runtime's first lease, and retain a lease through command encoding. A weak iOS
+producer endpoint expires with mission replacement; a temporary strong lock
+borrows no static or dynamic collision data from the Objective-C room
+envelope. The endpoint is not advanced and no player collision frame is
+published until all live AirCraft inputs are evidence-backed.
 
 The exact next solver boundary is recorded in
 [EXP-20260728-014](../../experiments/EXP-20260728-014-camera-sphere-contact-recovery.md).
 It fixes static sphere traversal order, the sphere-versus-triangle entry, the
 material deletion rule, best-penetration fields, and the constraint loop while
-keeping dynamic-object BSP separate.
+keeping dynamic-object **sphere** collision separate. Runtime-owned placed and
+player **line** collision is documented in
+[EXP-20260729-041](../../experiments/EXP-20260729-041-mission-runtime-dynamic-collision-ownership.md).
 
 The bounded constraint stage is implemented and documented in
 [EXP-20260728-015](../../experiments/EXP-20260728-015-camera-constraint-solver.md).

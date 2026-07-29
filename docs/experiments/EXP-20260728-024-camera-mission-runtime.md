@@ -4,9 +4,9 @@
 
 **Scenario:** `SCN-CAMERA-001`
 
-**Status:** mission-lifetime ownership, bounded workspaces, weak iOS producer
-endpoint, and Metal consumption implemented; live AirCraft producer inputs
-remain gated
+**Status:** mission-lifetime camera plus placed/player line-collision
+ownership, bounded workspaces, weak iOS producer endpoint, and Metal
+consumption implemented; live AirCraft producer inputs remain gated
 
 ## Question
 
@@ -21,24 +21,28 @@ simulation endpoint to access a replacement mission?
 owner for:
 
 - the authenticated `MissionWorldSpatialArena`;
+- authenticated immutable placed and optional player dynamic BSP assemblies;
 - the mission runtime basis;
 - one sphere-candidate record per retained polygon;
 - one constraint-plane slot per retained polygon;
+- exact-size reusable dynamic-object and room-range buffers;
 - the producer-side `LegacyGameplayCameraStepCoordinator`; and
 - the two-slot `LegacyGameplayCameraPacketExchange`.
 
 Metal preparation first validates the complete `LoadedMissionWorldRoom`. It
-then moves the arena into the runtime and finally moves the remaining room
-payload into the render snapshot. No arena vector is copied. The loader had
-already charged the arena payload to the room's published CPU accounting, so
-the runtime reports only its additional logical bytes: both workspaces and the
-packet exchange.
+then moves the arena and immutable dynamic assets into the runtime and finally
+moves the remaining room payload into the render snapshot. No arena or
+collider vector is copied. The loader had already charged those assets to the
+room's published CPU accounting, so the runtime reports only its additional
+logical bytes: both camera workspaces, both flat dynamic-frame buffers, and
+the packet exchange.
 
 The portable default admits at most 2,000,000 candidate records, 2,000,000
-constraint planes, and 128 MiB of additional storage. The iOS preparation path
-tightens the byte limit to the exact remainder of its existing 128 MiB private
-CPU-packed budget after model and actor-pose admission. Checked multiplication
-and addition run before either workspace is allocated.
+constraint planes, 65,536 dynamic objects, 65,536 dynamic room ranges, and
+128 MiB of additional storage. The iOS preparation path tightens the byte
+limit to the exact remainder of its existing 128 MiB private CPU-packed budget
+after model and actor-pose admission. Checked multiplication and addition run
+before any workspace is allocated.
 
 The source-to-runtime basis is preflighted with the same finite,
 orthonormal-axis, positive uniform-scale, inverse, and `1e-5` tolerance
@@ -55,6 +59,7 @@ coordinator, constructs the exchange from that complete packet, and reacquires
 generation one as a consistency check. After handoff:
 
 - one simulation producer may call `tryAdvance`;
+- that producer may publish and trace the current placed/player line frame;
 - one Metal consumer may call `tryAcquire`;
 - both operations are bounded, `noexcept`, and allocation-free;
 - coordinator failure never reaches the exchange; and
@@ -118,20 +123,23 @@ Synthetic portable tests cover:
 - 4,096 successful advance/acquire cycles with zero counted steady-state
   allocations.
 
-A local Release Ninja/GCC 15.2 build passes all 68 portable tests. The
-regenerated code-intelligence build compiles the new target, and clangd 22
-reports zero errors in the runtime and its test. Objective-C++ ownership and
-both unsigned iOS variants remain mandatory gates in the repository's Apple CI
-matrix. No original game content is required.
+The current Release and regenerated code-intelligence builds pass all 79
+portable tests. Clangd 22 reports zero errors in the runtime and its test.
+The dynamic-ownership additions have their detailed validation in
+`EXP-20260729-041`. Objective-C++ ownership and both unsigned iOS variants
+remain mandatory gates in the repository's Apple CI matrix. No original game
+content is required.
 
 ## Result
 
 The ownership and replacement boundary is complete. The next camera task is no
-longer infrastructure: it is to feed the existing weak endpoint from a
-recovered live aircraft runtime, using the confirmed seconds-based scheduler
-delta without resampling the input pump. Dynamic-object BSP, transparent
-collision portals, runtime traces, and physical-device acceptance remain
-separate parity work.
+longer ownership infrastructure: it is to feed the existing weak endpoint from
+a recovered live aircraft runtime, using the confirmed seconds-based scheduler
+delta without resampling the input pump. Placed/player line ownership is
+completed by
+[EXP-20260729-041](EXP-20260729-041-mission-runtime-dynamic-collision-ownership.md);
+non-player live actors, dynamic-object sphere collision, runtime traces, and
+physical-device acceptance remain separate parity work.
 
 ## Confidence
 
@@ -149,4 +157,5 @@ available.
 - [Gameplay-camera packet exchange](EXP-20260728-022-camera-packet-exchange.md)
 - [Camera refresh time contract](EXP-20260728-023-camera-refresh-time-contract.md)
 - [AirCraft input contract](EXP-20260728-025-camera-aircraft-input-contract.md)
+- [Mission-runtime dynamic collision](EXP-20260729-041-mission-runtime-dynamic-collision-ownership.md)
 - [Camera and projection contract](../re/systems/CAMERA-PROJECTION.md)

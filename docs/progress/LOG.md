@@ -2779,3 +2779,32 @@ superseded evidence.
 - The exact committed tree `457ed6b` compiles all 256 steps with GCC 13.3 and
   passes 79/79 tests in a new isolated `Airfix-Dev` WSL clone. GitHub Actions
   remains the final publication gate.
+
+## 2026-07-29 - mission-runtime dynamic-collision ownership
+
+- PR #32 merged the authenticated mission placed/player composition as
+  `c6f008c`; the exact `main` commit passed Ubuntu, Windows, ARM64 macOS,
+  clangd/code-intelligence, `iphoneos`, and `iphonesimulator` Actions jobs.
+- `EXP-20260729-041` extends the existing non-moving mission runtime to take
+  ownership of the authenticated static arena, placed collision assembly, and
+  optional player collision assembly during the native iOS handoff. Mesh
+  records, nested BSP arenas, and provenance vectors are moved, not copied.
+- The runtime preallocates exactly one reusable object record per placed
+  object/player instance and one room range per retained world room. Checked
+  object, room, multiplication, addition, and total-byte limits run before
+  allocation; only these flat buffers are added to the runtime's existing
+  workspace/exchange byte ledger because the loader already admitted the
+  immutable assets.
+- Producer-only `noexcept` methods publish into those stable buffers and
+  portal-trace the last complete frame against the runtime-owned static arena.
+  No bootstrap player state is invented. The first failure exposes no frame,
+  while a failed republish preserves the previous complete publication.
+- Tests cover legacy camera-only construction, dynamic ownership, exact and
+  one-under limits, malformed assets/cardinality, native-order tie tracing,
+  failed-republish retention, and 4,096 combined camera/publication/trace
+  cycles with zero observed steady-state allocations.
+- A fresh 256-step Release build and regenerated Debug/code-intelligence build
+  pass 79/79 tests. Clangd 22.1.8 reports zero diagnostics in the changed
+  runtime and test. Exact commit `40a6808` compiles all 256 steps with GCC 13.3
+  and passes 79/79 tests in a new isolated `Airfix-Dev` WSL clone. GitHub
+  Actions remains the publication gate for this slice.
