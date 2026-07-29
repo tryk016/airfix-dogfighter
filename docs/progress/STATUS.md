@@ -765,8 +765,10 @@ These questions do not block static analysis or the archive work.
   zero errors in the adapter and its test. Twelve Rizin/public-boundary Python
   tests, the 400-file public scan, 263-row unique function catalogue with no
   bad source paths and only its two known missing references, `actionlint`,
-  14-file changed-scope local-path scan, and `git diff --check` pass.
-  Exact-commit WSL and GitHub Actions remain the publication gates.
+  14-file changed-scope local-path scan, and `git diff --check` pass. Exact
+  commit `c1b4d15` compiles all 262 steps with GCC 13.3 and passes 81/81 tests
+  in a new isolated `Airfix-Dev` WSL clone. GitHub Actions remains the
+  publication gate.
 
 ## Blockers
 

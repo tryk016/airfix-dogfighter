@@ -113,8 +113,10 @@ The regenerated compilation database contains 167 portable entries, and
 clangd 22.1.8 reports zero errors in both the adapter and test. Twelve Rizin
 normalization tests, the synthetic and 400-file public-boundary scans, the
 263-row unique function catalogue, `actionlint`, 14-file changed-scope
-local-path scan, and `git diff --check` also pass. Exact-commit WSL and GitHub
-Actions remain publication gates for this slice.
+local-path scan, and `git diff --check` also pass. Exact commit `c1b4d15`
+compiles all 262 steps with GCC 13.3 and passes 81/81 tests in a new isolated
+`Airfix-Dev` WSL clone. GitHub Actions remains the publication gate for this
+slice.
 
 ## Remaining boundary
 
