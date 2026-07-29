@@ -330,8 +330,9 @@ owners as one segmented logical index space, so the combined portal query
 copies neither mesh records nor nested arenas.
 
 A live producer must still provide changing player pose/room/ID/active state,
-publish other actors, supply actor gates, repeat the separate projectile-level
-`followPortal` outcome when required, and dispatch callbacks. See
+publish other actors, supply actor gates, and dispatch callbacks. The separate
+projectile-level `followPortal` repetition is now a bounded generic coordinator
+whose query callback remains unwired. See
 [EXP-20260728-034](../../experiments/EXP-20260728-034-projectile-collision-decision.md),
 [EXP-20260728-035](../../experiments/EXP-20260728-035-dynamic-bsp-line-adapter.md),
 [EXP-20260728-036](../../experiments/EXP-20260728-036-combined-line-portal-continuation.md),
@@ -343,6 +344,8 @@ and
 [EXP-20260729-040](../../experiments/EXP-20260729-040-mission-dynamic-collision-composition.md).
 Runtime ownership is recorded in
 [EXP-20260729-041](../../experiments/EXP-20260729-041-mission-runtime-dynamic-collision-ownership.md).
+The repeated projectile query is recorded in
+[EXP-20260729-042](../../experiments/EXP-20260729-042-projectile-collision-portal-loop.md).
 
 ## Actor damage and surface reaction
 
@@ -417,8 +420,9 @@ allocation failure without inventing a projectile or effect.
 - Consume the prepared-shot transaction through private type allocation and
   event dispatch without rolling back fire state on allocation failure.
 - Consume the implemented player collider frame, extend the same authenticated
-  publication to other live actors and dynamic portal objects, then compose
-  the remaining projectile-level portal/actor decision loop.
+  publication to other live actors and dynamic portal objects, then bind the
+  runtime trace, material values, actor gates, creator guard, and callbacks to
+  the implemented projectile-level portal coordinator.
 - Recreate the optional `mguntracer` and `FxRicochet` visual/effect adapters.
 - Trace sample/effect commands associated with a shot.
 - Recover secondary weapon selection and each secondary projectile family.

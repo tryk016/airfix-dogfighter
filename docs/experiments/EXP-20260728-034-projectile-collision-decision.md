@@ -7,7 +7,7 @@
 **Scenario:** `SCN-WEAPON-001`
 
 **Status:** deterministic `NfProjectile::DetectCollisions` decision layer
-implemented; live combined static/dynamic iterator remains separate
+implemented; bounded repeated-query coordination completed separately
 
 ## Question
 
@@ -131,14 +131,17 @@ addition order with binary64 products as a deterministic proxy for the native
 unspilled x87 sum. It composes directly with the existing machine-gun
 actor/surface callbacks.
 
-The caller must still:
+The generic coordinator in
+[EXP-20260729-042](EXP-20260729-042-projectile-collision-portal-loop.md)
+now repeats the decision after projectile-level portal outcomes with a bounded
+budget. Its callback must still:
 
 - merge retained static BSP with live dynamic-object BSP through one
   strict-nearest query;
 - supply actor object identity, lookup state, and all three native actor
-  gates;
-- repeat after a portal continuation with a bounded traversal budget; and
-- dispatch actor/projectile callbacks and effects.
+  gates; and
+- let the live adapter dispatch actor/projectile callbacks and effects while
+  bracketing the complete loop with the creator collision guard.
 
 The portable transition rejects non-finite segments, non-finite or
 out-of-segment fractions, zero/non-finite contact normals, zero actor object
@@ -167,5 +170,5 @@ Confidence is **3/3** for the native decision order, constants, actor gates,
 position swaps, and the pure outcome transition.
 
 Confidence is **2/3** for bitwise interpolation/normalization and complete
-`PhLine` runtime parity until x87 comparisons, moving-object BSP state, bounded
-portal recursion, and controlled executable traces are available.
+`PhLine` runtime parity until x87 comparisons, moving-object BSP state, and
+controlled executable traces are available.

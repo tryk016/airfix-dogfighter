@@ -652,9 +652,13 @@
   fraction. A second bounded allocation-free adapter now consumes flat
   per-room object ranges, follows automatic visible type-zero portals, replaces
   portal provenance with the later hit, composes whole-segment fractions, and
-  fails typed on malformed ranges, out-of-segment hits, or cycles. Private
-  allocation/event dispatch, live muzzle transforms, non-player actor and
-  dynamic-portal publication, the separate projectile-level follow-portal loop,
+  fails typed on malformed ranges, out-of-segment hits, or cycles. A separate
+  generic simulation coordinator now repeats the complete query after a
+  projectile-level type-zero portal, preserves the full endpoint, returns all
+  existing terminal decisions, and fails closed on query/decision errors or
+  bounded cycles without allocation. Private allocation/event dispatch, live
+  muzzle transforms, non-player actor and dynamic-portal publication, runtime
+  query/material/actor binding, creator-guard and callback dispatch,
   tracer/effect realization, secondary weapon families, dynamic camera-sphere
   contacts, runtime traces, and integration remain pending.
   The authenticated player CCF now also produces bounded immutable per-mesh
@@ -731,11 +735,11 @@
 5. Keep BSP render culling disabled until its separate runtime semantics are
    proven against executable evidence.
 6. Extend the runtime-owned placed/player dynamic-collision frame to other
-   live actors and feed it from the recovered changing actor producer. Then
-   join `WpMGun` timing, event `0xE2`, motion, damage, and ricochet contracts to
-   the remaining projectile-level portal loop, private type allocation/event
-   dispatch, live muzzle transforms, and tracer/effect adapters before wiring
-   primary-fire intent into runtime.
+   live actors and feed it from the recovered changing actor producer. Bind
+   world-room/material/actor resolution plus the creator guard and terminal
+   callbacks to the implemented projectile portal coordinator, then join
+   private type allocation/event dispatch, live muzzle transforms, and
+   tracer/effect adapters before wiring primary-fire intent into runtime.
 
 ## Open questions
 
@@ -751,16 +755,14 @@ These questions do not block static analysis or the archive work.
 - Merged mission-collision composition commit `c6f008c` passes the exact-main
   Ubuntu, Windows, ARM64 macOS, clangd/code-intelligence, `iphoneos`, and
   `iphonesimulator` Actions jobs.
-- The current mission-runtime ownership slice passes a clean 256-step Release
-  build and 79/79 Release and Debug/code-intelligence tests. Its compilation
-  database has 163 portable entries, and clangd 22.1.8 reports zero diagnostics
-  in the runtime and test.
-  Twelve Rizin/public-boundary Python tests, the 392-file public scan,
-  263-row/unique function catalogue with no bad source paths and only its two
-  known missing references, `actionlint`, changed-scope local-path scan, and
-  `git diff --check` pass. Exact commit `40a6808` compiles all 256 steps with
-  GCC 13.3 and passes 79/79 tests in a new isolated `Airfix-Dev` WSL clone.
-  GitHub Actions remains the publication gate.
+- The current projectile portal-loop slice passes a fresh 259-step Windows
+  GCC 15.2 Release build and 80/80 tests. Its compilation database has 165
+  portable entries, and clangd 22.1.8 reports zero errors in the coordinator
+  and its test. Twelve Rizin/public-boundary Python tests, the 396-file public
+  scan, 263-row unique function catalogue with no bad source paths and only
+  its two known missing references, `actionlint`, 13-file changed-scope
+  local-path scan, and `git diff --check` pass. Exact-commit WSL and GitHub
+  Actions remain the publication gates.
 
 ## Blockers
 
