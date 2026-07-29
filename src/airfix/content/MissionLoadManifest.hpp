@@ -18,9 +18,9 @@ namespace airfix::content {
 struct MissionLoadManifestRequest {
     std::string levelLogicalPath;
     std::string setupLogicalPath;
-    // Optional exact logical path of an authenticated OBJE definition. The
-    // model CCF, texture root, and blueprint selector are derived exclusively
-    // from that definition.
+    // Optional exact logical path of an authenticated MODL-root player visual
+    // definition. The model CCF, texture root, and blueprint selector are
+    // derived exclusively from that definition.
     std::optional<std::string> playerObjectLogicalPath;
 };
 
@@ -40,7 +40,7 @@ struct MissionLoadManifestLimits {
     std::size_t maximumPlayerObjectDefinitionSourceBytes{
         64U * 1024U * 1024U};
     // Includes setup, Level, World, unique placed-object definitions, and the
-    // optional player OBJE allocation footprint.
+    // optional player MODL-root definition allocation footprint.
     std::uint64_t maximumTotalDefinitionSourceBytes{
         512U * 1024U * 1024U};
     std::size_t maximumCcfSourceBytes{256U * 1024U * 1024U};
@@ -329,9 +329,10 @@ struct MissionLoadManifestResult {
 
 // Authenticates the explicit setup/Level pair, the mission dependency graph,
 // and planned CCF source identities. Setup AFS, Level, World, and each unique
-// Level OBJE definition and optional explicit player OBJE are read through
-// session's already-authenticated handle. Player model identity, texture root,
-// and blueprint selector are derived only from that OBJE. Setup parsing
+// Level OBJE definitions and the optional explicit player MODL-root definition
+// are read through the session's already-authenticated handle. Player model
+// identity, texture root, and blueprint selector are derived only from that
+// player definition. Setup parsing
 // recognizes only bounded AddStartPos calls and never executes script. CCF/GTI
 // payloads are never read here. Level MODL references are resolved as metadata
 // but are neither parsed nor promoted to mission-root CCF loads. The optional

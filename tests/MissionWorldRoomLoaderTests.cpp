@@ -187,7 +187,7 @@ struct FixtureOptions {
         kPlayerBlueprintSelector);
     Bytes bytes;
     airfix::testing::legacy_detail::appendU32(
-        bytes, airfix::assets::kAfObjectRoot);
+        bytes, airfix::assets::kAfModelRoot);
     airfix::testing::legacy_detail::appendU32(
         bytes, static_cast<std::uint32_t>(chunks.size()));
     airfix::testing::legacy_detail::appendBytes(bytes, chunks);

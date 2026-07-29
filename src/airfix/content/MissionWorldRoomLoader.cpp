@@ -1202,7 +1202,7 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             playerCcf =
                 &cachedCcfs[*playerVisualCcfCacheIndex].metadata;
             playerObjectDefinition = assets::ObjectDefinition{
-                .kind = assets::ObjectDefinitionKind::object,
+                .kind = assets::ObjectDefinitionKind::model,
                 .type = std::nullopt,
                 .category = std::nullopt,
                 .name = std::nullopt,
