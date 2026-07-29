@@ -2834,4 +2834,6 @@ superseded evidence.
   normalization tests, the synthetic and 396-file public-boundary scans, the
   263-row unique function catalogue with only its two known missing
   references, `actionlint`, 13-file local-path scan, and `git diff --check`
-  pass. Exact-commit WSL and GitHub Actions remain publication gates.
+  pass. Exact commit `ba5b2ec` compiles all 259 steps with GCC 13.3 and passes
+  80/80 tests in a new isolated `Airfix-Dev` WSL clone. GitHub Actions remains
+  the publication gate.
