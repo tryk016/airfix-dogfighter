@@ -666,10 +666,17 @@
   actor/self damage and deactivation rules, and returns bounded surface or
   ricochet command data. The published runtime wrapper joins that reducer to
   both actor and portal/surface paths while rejecting flight/query mismatch.
+  A higher allocation-free transaction now resolves the creator UID, invokes
+  the recovered `DisableBsp`, brackets the complete query/portal/terminal
+  path, and invokes `EnableBsp` only when BSP was previously enabled. Missing
+  or already-disabled creators preserve the native no-enable path; rejected
+  disable prevents tracing and rejected enable suppresses terminal
+  commit/command data.
   Private allocation and live event/effect dispatch, live muzzle transforms,
-  non-player actor and dynamic-portal publication/resolution, creator-guard
-  bracketing, tracer/effect realization, secondary weapon families, dynamic
-  camera-sphere contacts, runtime traces, and integration remain pending.
+  non-player actor and dynamic-portal publication/resolution, concrete creator
+  BSP callbacks, tracer/effect realization, secondary weapon families,
+  dynamic camera-sphere contacts, runtime traces, and integration remain
+  pending.
   The authenticated player CCF now also produces bounded immutable per-mesh
   colliders and ordered actor-local instances inside the atomic mission load.
   A two-pass `noexcept` frame adapter publishes a supplied live player
@@ -747,11 +754,11 @@
    proven against executable evidence.
 6. Feed the runtime-owned player collider and concrete resolver from the
    recovered changing actor producer. Extend the same generation-matched
-   publication/resolution to other live actors, then add the creator guard
-   around the implemented runtime projectile query. Dispatch the already
-   reduced terminal damage/surface commands through live actors/effects. Join
-   private type allocation/event dispatch, live muzzle transforms, and
-   tracer/effect adapters before wiring primary-fire intent into runtime.
+   publication/resolution to other live actors, then connect the implemented
+   creator BSP guard callbacks and already reduced terminal damage/surface
+   commands to private live actors/effects. Join private type allocation/event
+   dispatch, live muzzle transforms, and tracer/effect adapters before wiring
+   primary-fire intent into runtime.
 
 ## Open questions
 
@@ -767,18 +774,18 @@ These questions do not block static analysis or the archive work.
 - Merged projectile runtime-query adapter commit `c013135` passes the
   exact-main Ubuntu, Windows, ARM64 macOS, clangd/code-intelligence,
   `iphoneos`, and `iphonesimulator` Actions jobs.
-- The current terminal projectile commit passes a fresh 265-step Windows
-  GCC 15.2 Release build and the regenerated code-intelligence build plus
-  82/82 tests in both. Its compilation database has 169 portable entries and
-  no Apple-only source; clangd 22.1.8 reports zero errors in all five changed
-  production/test translation units when allowed to query the trusted local
-  GCC driver. The Ghidra, working-copy, and Rizin wrapper suites, twelve Rizin
-  normalization tests, synthetic public-boundary tests and the 405-file public
-  scan, the 263-row unique function catalogue with no bad source paths and
-  only its two known missing references, `actionlint`, 19-file local-path
-  scan, and `git diff --check` pass. Exact commit `b355415` compiles all 265
-  steps with GCC 13.3 and passes 82/82 tests in 44.80 seconds in a new isolated
-  `Airfix-Dev` WSL clone. GitHub Actions remains the publication gate.
+- The current creator BSP guard slice passes a fresh 265-step Windows GCC 15.2
+  Release build and the regenerated code-intelligence build plus 82/82 tests
+  in both. Its compilation database has 169 portable entries and no Apple-only
+  source; clangd 22.1.8 reports zero errors in the adapter, collision-loop, and
+  focused test translation units when allowed to query the trusted local GCC
+  driver. The Ghidra, working-copy, and Rizin wrapper suites, twelve Rizin
+  normalization tests, synthetic public-boundary tests and the 406-file public
+  scan, the 265-row unique function catalogue with no bad source paths and
+  only its two known missing references, `actionlint`, the 16-file local-path
+  scan, and `git diff --check` pass. Exact commit `71eaca1` compiles all 265
+  steps with GCC 13.3 and passes 82/82 tests in 27.15 seconds in a fresh
+  isolated `Airfix-Dev` WSL clone. GitHub Actions remains the publication gate.
 
 ## Blockers
 

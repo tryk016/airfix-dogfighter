@@ -122,6 +122,80 @@ struct ActorQueryState final {
     return state.result;
 }
 
+struct CreatorBspGuardState final {
+    LegacyProjectileCreatorBspDisableResult disableResult;
+    LegacyProjectileCreatorBspEnableStatus enableResult{
+        LegacyProjectileCreatorBspEnableStatus::completed};
+    LegacyProjectileLiveActorQueryResult actorResult{
+        .status = LegacyProjectileLiveActorQueryStatus::resolved,
+        .projectileActorCollisionsEnabled = true,
+        .actorAcceptsProjectileCollision = true,
+        .actorActive = true,
+    };
+    std::size_t disableCallCount{};
+    std::size_t enableCallCount{};
+    std::size_t actorQueryCallCount{};
+    std::size_t sequence{};
+    std::size_t disableOrder{};
+    std::size_t actorQueryOrder{};
+    std::size_t enableOrder{};
+    std::uint32_t lastCreatorUid{};
+    std::uint32_t lastActorObjectId{};
+    void* enabledActorHandle{};
+    bool bspDisabled{};
+    bool actorQueryObservedDisabled{};
+};
+
+[[nodiscard]] LegacyProjectileCreatorBspDisableResult disableCreatorBsp(
+    void* const context,
+    const std::uint32_t creatorUid) noexcept {
+    auto& state = *static_cast<CreatorBspGuardState*>(context);
+    ++state.disableCallCount;
+    state.disableOrder = ++state.sequence;
+    state.lastCreatorUid = creatorUid;
+    if (state.disableResult.status ==
+        LegacyProjectileCreatorBspDisableStatus::completed) {
+        state.bspDisabled = true;
+    }
+    return state.disableResult;
+}
+
+[[nodiscard]] LegacyProjectileCreatorBspEnableStatus enableCreatorBsp(
+    void* const context,
+    void* const actorHandle) noexcept {
+    auto& state = *static_cast<CreatorBspGuardState*>(context);
+    ++state.enableCallCount;
+    state.enableOrder = ++state.sequence;
+    state.enabledActorHandle = actorHandle;
+    if (state.enableResult ==
+        LegacyProjectileCreatorBspEnableStatus::completed) {
+        state.bspDisabled = false;
+    }
+    return state.enableResult;
+}
+
+[[nodiscard]] LegacyProjectileLiveActorQueryResult
+queryActorWhileCreatorBspDisabled(
+    void* const context,
+    const std::uint32_t actorObjectId) noexcept {
+    auto& state = *static_cast<CreatorBspGuardState*>(context);
+    ++state.actorQueryCallCount;
+    state.actorQueryOrder = ++state.sequence;
+    state.lastActorObjectId = actorObjectId;
+    state.actorQueryObservedDisabled =
+        state.actorQueryObservedDisabled || state.bspDisabled;
+    return state.actorResult;
+}
+
+[[nodiscard]] LegacyProjectileCreatorBspGuard creatorBspGuard(
+    CreatorBspGuardState& state) noexcept {
+    return {
+        .disableBsp = disableCreatorBsp,
+        .enableBsp = enableCreatorBsp,
+        .context = &state,
+    };
+}
+
 void testNoHitAndStaticMapping() {
     const auto rooms = catalog();
     const auto noHit = legacyProjectileQueryResultFromRuntimeTrace(
@@ -819,6 +893,381 @@ void testPublishedPlayerActorResolverAndNoAllocations() {
         "inactive published player state diverged from geometry");
 }
 
+void testCreatorBspGuardTransactionAndNoAllocations() {
+    auto built = buildPlayerRuntime();
+    require(built.complete(), "guard player runtime creation failed");
+    const auto published =
+        built.runtime->tryPublishDynamicCollisionFrame(
+            {
+                .linear = {},
+                .translation = {0.0F, 0.0F, 2.0F},
+                .rawScalar = 1.0F,
+            },
+            {
+                .objectId = 91U,
+                .active = true,
+                .projectileActorCollisionsEnabled = true,
+                .actorAcceptsProjectileCollision = true,
+            },
+            0U);
+    require(published.published(), "guard player publication failed");
+
+    const auto rooms = catalog();
+    const LegacyProjectileCollisionQueryInput input{
+        .segmentStart = {0.0F, 0.0F, 0.0F},
+        .segmentEnd = {0.0F, 0.0F, 4.0F},
+        .roomId = 0,
+    };
+    const auto ammo = legacyMachineGunAmmoProfile(0U);
+    require(ammo.has_value(), "guard profile fixture missing");
+    const LegacyMachineGunProjectileState projectile{
+        .position = input.segmentEnd,
+        .velocity = {0.0F, 0.0F, 20.0F},
+        .ageSeconds = 1.0F,
+        .roomId = input.roomId,
+        .creatorUid = 7U,
+        .targetUid = 0U,
+        .active = true,
+        .waterContacted = false,
+    };
+
+    CreatorBspGuardState restored;
+    restored.disableResult = {
+        .status =
+            LegacyProjectileCreatorBspDisableStatus::completed,
+        .actorHandle = &restored,
+        .bspWasEnabled = true,
+    };
+    auto guard = creatorBspGuard(restored);
+    const auto restoredTransaction =
+        resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
+            rooms,
+            *built.runtime,
+            projectile,
+            *ammo,
+            input,
+            true,
+            queryActorWhileCreatorBspDisabled,
+            &restored,
+            guard);
+    require(
+        restoredTransaction.committed() &&
+            restoredTransaction.creatorBspGuard ==
+                LegacyProjectileCreatorBspGuardStatus::restored &&
+            restoredTransaction.collision.queryCount == 1U &&
+            restoredTransaction.commit->damage.has_value() &&
+            restored.disableCallCount == 1U &&
+            restored.actorQueryCallCount == 1U &&
+            restored.enableCallCount == 1U &&
+            restored.disableOrder < restored.actorQueryOrder &&
+            restored.actorQueryOrder < restored.enableOrder &&
+            restored.lastCreatorUid == 7U &&
+            restored.lastActorObjectId == 91U &&
+            restored.actorQueryObservedDisabled &&
+            restored.enabledActorHandle == &restored &&
+            !restored.bspDisabled,
+        "creator BSP guard did not bracket the actor transaction");
+
+    CreatorBspGuardState alreadyDisabled;
+    alreadyDisabled.disableResult = {
+        .status =
+            LegacyProjectileCreatorBspDisableStatus::completed,
+        .actorHandle = nullptr,
+        .bspWasEnabled = false,
+    };
+    guard = creatorBspGuard(alreadyDisabled);
+    const auto alreadyDisabledTransaction =
+        resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
+            rooms,
+            *built.runtime,
+            projectile,
+            *ammo,
+            input,
+            true,
+            queryActorWhileCreatorBspDisabled,
+            &alreadyDisabled,
+            guard);
+    require(
+        alreadyDisabledTransaction.committed() &&
+            alreadyDisabledTransaction.creatorBspGuard ==
+                LegacyProjectileCreatorBspGuardStatus::alreadyDisabled &&
+            alreadyDisabled.disableCallCount == 1U &&
+            alreadyDisabled.actorQueryCallCount == 1U &&
+            alreadyDisabled.enableCallCount == 0U &&
+            alreadyDisabled.actorQueryObservedDisabled &&
+            alreadyDisabled.bspDisabled,
+        "previously disabled creator BSP was incorrectly enabled");
+
+    CreatorBspGuardState creatorNotFound;
+    creatorNotFound.disableResult = {
+        .status =
+            LegacyProjectileCreatorBspDisableStatus::actorNotFound,
+    };
+    guard = creatorBspGuard(creatorNotFound);
+    const auto missingCreatorTransaction =
+        resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
+            rooms,
+            *built.runtime,
+            projectile,
+            *ammo,
+            input,
+            true,
+            queryActorWhileCreatorBspDisabled,
+            &creatorNotFound,
+            guard);
+    require(
+        missingCreatorTransaction.committed() &&
+            missingCreatorTransaction.creatorBspGuard ==
+                LegacyProjectileCreatorBspGuardStatus::actorNotFound &&
+            creatorNotFound.disableCallCount == 1U &&
+            creatorNotFound.actorQueryCallCount == 1U &&
+            creatorNotFound.enableCallCount == 0U &&
+            !creatorNotFound.actorQueryObservedDisabled,
+        "missing creator did not follow the native unguarded query path");
+
+    CreatorBspGuardState disableRejected;
+    disableRejected.disableResult = {
+        .status =
+            LegacyProjectileCreatorBspDisableStatus::rejected,
+    };
+    guard = creatorBspGuard(disableRejected);
+    const auto rejectedDisableTransaction =
+        resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
+            rooms,
+            *built.runtime,
+            projectile,
+            *ammo,
+            input,
+            true,
+            queryActorWhileCreatorBspDisabled,
+            &disableRejected,
+            guard);
+    require(
+        !rejectedDisableTransaction.committed() &&
+            rejectedDisableTransaction.creatorBspGuard ==
+                LegacyProjectileCreatorBspGuardStatus::disableRejected &&
+            rejectedDisableTransaction.collision.status ==
+                LegacyProjectileCollisionLoopStatus::invalidInput &&
+            rejectedDisableTransaction.collision.queryCount == 0U &&
+            !rejectedDisableTransaction.commit.has_value() &&
+            disableRejected.disableCallCount == 1U &&
+            disableRejected.actorQueryCallCount == 0U &&
+            disableRejected.enableCallCount == 0U,
+        "rejected creator BSP disable reached the query");
+
+    const LegacyProjectileCreatorBspGuard missingCallbacks;
+    const auto missingCallbackTransaction =
+        resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
+            rooms,
+            *built.runtime,
+            projectile,
+            *ammo,
+            input,
+            true,
+            queryActorWhileCreatorBspDisabled,
+            &disableRejected,
+            missingCallbacks);
+    require(
+        !missingCallbackTransaction.committed() &&
+            missingCallbackTransaction.creatorBspGuard ==
+                LegacyProjectileCreatorBspGuardStatus::disableRejected &&
+            missingCallbackTransaction.collision.queryCount == 0U &&
+            disableRejected.disableCallCount == 1U &&
+            disableRejected.actorQueryCallCount == 0U &&
+            disableRejected.enableCallCount == 0U,
+        "missing creator BSP callbacks reached the query");
+
+    CreatorBspGuardState malformedMissingCreator;
+    malformedMissingCreator.disableResult = {
+        .status =
+            LegacyProjectileCreatorBspDisableStatus::actorNotFound,
+        .actorHandle = &malformedMissingCreator,
+        .bspWasEnabled = false,
+    };
+    guard = creatorBspGuard(malformedMissingCreator);
+    const auto malformedDisableTransaction =
+        resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
+            rooms,
+            *built.runtime,
+            projectile,
+            *ammo,
+            input,
+            true,
+            queryActorWhileCreatorBspDisabled,
+            &malformedMissingCreator,
+            guard);
+    require(
+        !malformedDisableTransaction.committed() &&
+            malformedDisableTransaction.creatorBspGuard ==
+                LegacyProjectileCreatorBspGuardStatus::disableRejected &&
+            malformedMissingCreator.actorQueryCallCount == 0U &&
+            malformedMissingCreator.enableCallCount == 0U,
+        "malformed missing-creator result crossed the guard");
+
+    CreatorBspGuardState missingRestoreHandle;
+    missingRestoreHandle.disableResult = {
+        .status =
+            LegacyProjectileCreatorBspDisableStatus::completed,
+        .actorHandle = nullptr,
+        .bspWasEnabled = true,
+    };
+    guard = creatorBspGuard(missingRestoreHandle);
+    const auto missingHandleTransaction =
+        resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
+            rooms,
+            *built.runtime,
+            projectile,
+            *ammo,
+            input,
+            true,
+            queryActorWhileCreatorBspDisabled,
+            &missingRestoreHandle,
+            guard);
+    require(
+        !missingHandleTransaction.committed() &&
+            missingHandleTransaction.creatorBspGuard ==
+                LegacyProjectileCreatorBspGuardStatus::disableRejected &&
+            missingRestoreHandle.disableCallCount == 1U &&
+            missingRestoreHandle.actorQueryCallCount == 0U &&
+            missingRestoreHandle.enableCallCount == 0U,
+        "missing creator restore handle crossed the guard");
+
+    CreatorBspGuardState enableRejected;
+    enableRejected.disableResult = {
+        .status =
+            LegacyProjectileCreatorBspDisableStatus::completed,
+        .actorHandle = &enableRejected,
+        .bspWasEnabled = true,
+    };
+    enableRejected.enableResult =
+        LegacyProjectileCreatorBspEnableStatus::rejected;
+    guard = creatorBspGuard(enableRejected);
+    const auto rejectedEnableTransaction =
+        resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
+            rooms,
+            *built.runtime,
+            projectile,
+            *ammo,
+            input,
+            true,
+            queryActorWhileCreatorBspDisabled,
+            &enableRejected,
+            guard);
+    require(
+        !rejectedEnableTransaction.committed() &&
+            rejectedEnableTransaction.creatorBspGuard ==
+                LegacyProjectileCreatorBspGuardStatus::enableRejected &&
+            rejectedEnableTransaction.collision.completed() &&
+            rejectedEnableTransaction.collision.queryCount == 1U &&
+            !rejectedEnableTransaction.commit.has_value() &&
+            enableRejected.disableCallCount == 1U &&
+            enableRejected.actorQueryCallCount == 1U &&
+            enableRejected.enableCallCount == 1U &&
+            enableRejected.bspDisabled,
+        "failed creator BSP restoration exposed terminal commands");
+
+    CreatorBspGuardState zeroCreatorGuard;
+    zeroCreatorGuard.disableResult = {
+        .status =
+            LegacyProjectileCreatorBspDisableStatus::rejected,
+    };
+    guard = creatorBspGuard(zeroCreatorGuard);
+    auto zeroCreatorProjectile = projectile;
+    zeroCreatorProjectile.creatorUid = 0U;
+    const auto zeroCreatorTransaction =
+        resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
+            rooms,
+            *built.runtime,
+            zeroCreatorProjectile,
+            *ammo,
+            input,
+            true,
+            queryActorWhileCreatorBspDisabled,
+            &zeroCreatorGuard,
+            guard);
+    require(
+        zeroCreatorTransaction.committed() &&
+            zeroCreatorTransaction.creatorBspGuard ==
+                LegacyProjectileCreatorBspGuardStatus::noCreatorUid &&
+            zeroCreatorTransaction.commit->state.active &&
+            !zeroCreatorTransaction.commit->damage.has_value() &&
+            zeroCreatorGuard.disableCallCount == 0U &&
+            zeroCreatorGuard.actorQueryCallCount == 1U &&
+            zeroCreatorGuard.enableCallCount == 0U,
+        "zero creator UID invoked BSP guard callbacks");
+
+    CreatorBspGuardState invalidInputGuard;
+    invalidInputGuard.disableResult = {
+        .status =
+            LegacyProjectileCreatorBspDisableStatus::completed,
+        .actorHandle = &invalidInputGuard,
+        .bspWasEnabled = true,
+    };
+    guard = creatorBspGuard(invalidInputGuard);
+    auto mismatchedProjectile = projectile;
+    mismatchedProjectile.position.z = 3.0F;
+    const auto invalidTransaction =
+        resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
+            rooms,
+            *built.runtime,
+            mismatchedProjectile,
+            *ammo,
+            input,
+            true,
+            queryActorWhileCreatorBspDisabled,
+            &invalidInputGuard,
+            guard);
+    require(
+        !invalidTransaction.committed() &&
+            invalidTransaction.creatorBspGuard ==
+                LegacyProjectileCreatorBspGuardStatus::notEntered &&
+            invalidInputGuard.disableCallCount == 0U &&
+            invalidInputGuard.actorQueryCallCount == 0U &&
+            invalidInputGuard.enableCallCount == 0U,
+        "invalid state/query join touched the live creator");
+
+    CreatorBspGuardState steadyState;
+    steadyState.disableResult = {
+        .status =
+            LegacyProjectileCreatorBspDisableStatus::completed,
+        .actorHandle = &steadyState,
+        .bspWasEnabled = true,
+    };
+    guard = creatorBspGuard(steadyState);
+    bool complete = true;
+    allocationCount.store(0U, std::memory_order_relaxed);
+    countAllocations.store(true, std::memory_order_relaxed);
+    for (std::size_t index = 0U; index < 4'096U; ++index) {
+        const auto repeated =
+            resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
+                rooms,
+                *built.runtime,
+                projectile,
+                *ammo,
+                input,
+                true,
+                queryActorWhileCreatorBspDisabled,
+                &steadyState,
+                guard);
+        complete = complete && repeated.committed() &&
+            repeated.creatorBspGuard ==
+                LegacyProjectileCreatorBspGuardStatus::restored &&
+            repeated.collision.queryCount == 1U &&
+            repeated.commit->damage.has_value() &&
+            !steadyState.bspDisabled;
+    }
+    countAllocations.store(false, std::memory_order_relaxed);
+    require(complete, "steady-state creator BSP guard failed");
+    require(
+        steadyState.disableCallCount == 4'096U &&
+            steadyState.actorQueryCallCount == 4'096U &&
+            steadyState.enableCallCount == 4'096U,
+        "steady-state creator BSP guard call counts diverged");
+    require(
+        allocationCount.load(std::memory_order_relaxed) == 0U,
+        "steady-state creator BSP guard allocated");
+}
+
 void testPublishedRuntimePortalLoopAndNoAllocations() {
     auto built = buildPortalRuntime();
     require(built.complete(), "portal runtime creation failed");
@@ -903,6 +1352,35 @@ void testPublishedRuntimePortalLoopAndNoAllocations() {
             transaction.commit->surface->ricochet->material == 4 &&
             transaction.commit->surface->ricochet->roomId == 1,
         "published portal/surface terminal transaction mismatch");
+
+    CreatorBspGuardState portalGuard;
+    portalGuard.disableResult = {
+        .status =
+            LegacyProjectileCreatorBspDisableStatus::completed,
+        .actorHandle = &portalGuard,
+        .bspWasEnabled = true,
+    };
+    const auto guardedPortal =
+        resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
+            rooms,
+            *built.runtime,
+            projectile,
+            *ammo,
+            input,
+            true,
+            creatorBspGuard(portalGuard));
+    require(
+        guardedPortal.committed() &&
+            guardedPortal.creatorBspGuard ==
+                LegacyProjectileCreatorBspGuardStatus::restored &&
+            guardedPortal.collision.queryCount == 2U &&
+            guardedPortal.collision.portalTransitionCount == 1U &&
+            portalGuard.disableCallCount == 1U &&
+            portalGuard.enableCallCount == 1U &&
+            portalGuard.disableOrder < portalGuard.enableOrder &&
+            portalGuard.actorQueryCallCount == 0U &&
+            !portalGuard.bspDisabled,
+        "one creator BSP guard did not bracket the complete portal loop");
 
     bool complete = true;
     allocationCount.store(0U, std::memory_order_relaxed);
@@ -1022,6 +1500,20 @@ int main() {
             std::declval<
                 const LegacyProjectileCollisionQueryInput&>(),
             true)));
+    static_assert(noexcept(
+        resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
+            std::declval<const MissionWorldRoomCatalog&>(),
+            std::declval<
+                const LegacyGameplayCameraMissionRuntime&>(),
+            std::declval<
+                const LegacyMachineGunProjectileState&>(),
+            std::declval<
+                const LegacyMachineGunAmmoProfile&>(),
+            std::declval<
+                const LegacyProjectileCollisionQueryInput&>(),
+            true,
+            std::declval<
+                const LegacyProjectileCreatorBspGuard&>())));
 
     testNoHitAndStaticMapping();
     testMaterialAndClientActorOrder();
@@ -1029,6 +1521,7 @@ int main() {
     testPortalAndSignedMaterialMapping();
     testMalformedRuntimeResultsFailClosed();
     testPublishedPlayerActorResolverAndNoAllocations();
+    testCreatorBspGuardTransactionAndNoAllocations();
     testPublishedRuntimePortalLoopAndNoAllocations();
 
     std::cout

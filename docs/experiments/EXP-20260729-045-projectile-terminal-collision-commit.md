@@ -29,9 +29,11 @@ normal, material, resolved actor identity, and material-15 water flag.
   deactivates, interpolates material `15`, and may create `FxRicochet` with the
   five recovered ordered parameters.
 
-The creator collision guard brackets the complete shared query. Its paired
-entry/exit calls are confirmed, but their base-class semantic names are not.
-This slice deliberately does not guess those names or simulate the guard.
+The creator collision guard brackets the complete shared query and these
+callbacks. The later vtable/export join in
+[EXP-20260729-046](EXP-20260729-046-projectile-creator-bsp-guard.md)
+identifies the pair as `DisableBsp` and conditional `EnableBsp`, with the first
+returning the prior enabled state.
 
 ## Portable commit
 
@@ -80,6 +82,13 @@ terminal commit is possible. Successful results carry the new projectile state
 plus at most one damage or surface result. No private actor event, effect
 allocation, sound, tracer, or renderer action occurs.
 
+`resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard` now
+places that complete query/reducer path between the live creator's
+`DisableBsp` and conditional `EnableBsp` callbacks. It preserves a missing or
+already-disabled creator without enabling it, rejects before tracing when
+disable fails, and suppresses the optional commit/commands when enable
+restoration fails.
+
 ## Validation
 
 Synthetic reducer tests cover:
@@ -115,9 +124,9 @@ the publication gate.
 
 The project still needs:
 
-- creator collision-guard entry/exit around the complete live query;
 - changing primary-player and authenticated non-player producers;
-- live consumption of damage and surface/effect command data;
+- concrete creator BSP calls and live consumption of damage and surface/effect
+  command data through the implemented callback seams;
 - private projectile allocation and event `0xE2` dispatch;
 - authored live muzzle transforms and tracer/effect realization; and
 - controlled executable traces for final runtime comparison.
@@ -129,7 +138,7 @@ interpolation, material-15 water update, and bounded command values because
 they compose already cross-checked Ghidra/Rizin contracts.
 
 Confidence remains **2/3** for complete live collision behavior until the
-creator guard, changing actors, private dispatch, and controlled traces exist.
+changing actors, private dispatch adapters, and controlled traces exist.
 
 ## Related material
 
@@ -138,3 +147,4 @@ creator guard, changing actors, private dispatch, and controlled traces exist.
 - [Projectile collision portal loop](EXP-20260729-042-projectile-collision-portal-loop.md)
 - [Projectile runtime query adapter](EXP-20260729-043-projectile-runtime-query-adapter.md)
 - [Projectile primary-player resolver](EXP-20260729-044-projectile-player-actor-resolver.md)
+- [Projectile creator BSP guard](EXP-20260729-046-projectile-creator-bsp-guard.md)

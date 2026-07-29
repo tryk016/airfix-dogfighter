@@ -397,4 +397,139 @@ resolvePublishedLegacyMachineGunProjectileCollision(
         options);
 }
 
+LegacyPublishedMachineGunProjectileCollisionResult
+resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
+    const assets::MissionWorldRoomCatalog& catalog,
+    const render::LegacyGameplayCameraMissionRuntime& runtime,
+    const simulation::LegacyMachineGunProjectileState& current,
+    const simulation::LegacyMachineGunAmmoProfile& profile,
+    const LegacyProjectileCollisionQueryInput& input,
+    const bool projectileIsServer,
+    const LegacyProjectileLiveActorQuery actorQuery,
+    void* const actorQueryContext,
+    const LegacyProjectileCreatorBspGuard& creatorBspGuard,
+    const LegacyPublishedProjectileCollisionOptions& options) noexcept {
+    LegacyPublishedMachineGunProjectileCollisionResult result;
+    result.creatorBspGuard =
+        LegacyProjectileCreatorBspGuardStatus::notEntered;
+
+    // Do not touch a live actor when the state/query join already fails the
+    // same local precondition as the unguarded transaction.
+    if (current.position != input.segmentEnd ||
+        current.roomId != input.roomId) {
+        return result;
+    }
+
+    if (current.creatorUid == 0U) {
+        result = resolvePublishedLegacyMachineGunProjectileCollision(
+            catalog,
+            runtime,
+            current,
+            profile,
+            input,
+            projectileIsServer,
+            actorQuery,
+            actorQueryContext,
+            options);
+        result.creatorBspGuard =
+            LegacyProjectileCreatorBspGuardStatus::noCreatorUid;
+        return result;
+    }
+
+    if (creatorBspGuard.disableBsp == nullptr ||
+        creatorBspGuard.enableBsp == nullptr) {
+        result.creatorBspGuard =
+            LegacyProjectileCreatorBspGuardStatus::disableRejected;
+        return result;
+    }
+
+    const auto disabled = creatorBspGuard.disableBsp(
+        creatorBspGuard.context, current.creatorUid);
+    if (disabled.status ==
+        LegacyProjectileCreatorBspDisableStatus::actorNotFound) {
+        if (disabled.actorHandle != nullptr ||
+            disabled.bspWasEnabled) {
+            result.creatorBspGuard =
+                LegacyProjectileCreatorBspGuardStatus::disableRejected;
+            return result;
+        }
+        result = resolvePublishedLegacyMachineGunProjectileCollision(
+            catalog,
+            runtime,
+            current,
+            profile,
+            input,
+            projectileIsServer,
+            actorQuery,
+            actorQueryContext,
+            options);
+        result.creatorBspGuard =
+            LegacyProjectileCreatorBspGuardStatus::actorNotFound;
+        return result;
+    }
+    if (disabled.status !=
+            LegacyProjectileCreatorBspDisableStatus::completed ||
+        (disabled.bspWasEnabled &&
+         disabled.actorHandle == nullptr)) {
+        result.creatorBspGuard =
+            LegacyProjectileCreatorBspGuardStatus::disableRejected;
+        return result;
+    }
+
+    result = resolvePublishedLegacyMachineGunProjectileCollision(
+        catalog,
+        runtime,
+        current,
+        profile,
+        input,
+        projectileIsServer,
+        actorQuery,
+        actorQueryContext,
+        options);
+    if (!disabled.bspWasEnabled) {
+        result.creatorBspGuard =
+            LegacyProjectileCreatorBspGuardStatus::alreadyDisabled;
+        return result;
+    }
+
+    const auto enabled = creatorBspGuard.enableBsp(
+        creatorBspGuard.context, disabled.actorHandle);
+    if (enabled != LegacyProjectileCreatorBspEnableStatus::completed) {
+        result.creatorBspGuard =
+            LegacyProjectileCreatorBspGuardStatus::enableRejected;
+        result.commit.reset();
+        return result;
+    }
+    result.creatorBspGuard =
+        LegacyProjectileCreatorBspGuardStatus::restored;
+    return result;
+}
+
+LegacyPublishedMachineGunProjectileCollisionResult
+resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
+    const assets::MissionWorldRoomCatalog& catalog,
+    const render::LegacyGameplayCameraMissionRuntime& runtime,
+    const simulation::LegacyMachineGunProjectileState& current,
+    const simulation::LegacyMachineGunAmmoProfile& profile,
+    const LegacyProjectileCollisionQueryInput& input,
+    const bool projectileIsServer,
+    const LegacyProjectileCreatorBspGuard& creatorBspGuard,
+    const LegacyPublishedProjectileCollisionOptions& options) noexcept {
+    PublishedPlayerActorQueryContext actorContext{
+        .runtime = &runtime,
+    };
+    return
+        resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
+            catalog,
+            runtime,
+            current,
+            profile,
+            input,
+            projectileIsServer,
+            queryPublishedPlayerActor,
+            &actorContext,
+            creatorBspGuard,
+            options);
+}
+
 } // namespace airfix::content

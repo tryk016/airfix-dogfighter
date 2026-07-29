@@ -28,6 +28,54 @@ using LegacyProjectileLiveActorQuery =
         void* context,
         std::uint32_t actorObjectId) noexcept;
 
+enum class LegacyProjectileCreatorBspDisableStatus : std::uint8_t {
+    actorNotFound,
+    completed,
+    rejected,
+};
+
+struct LegacyProjectileCreatorBspDisableResult final {
+    LegacyProjectileCreatorBspDisableStatus status{
+        LegacyProjectileCreatorBspDisableStatus::rejected};
+    // Opaque stable identity for the synchronously retained live actor. It is
+    // returned to enableBsp only when DisableBsp reported a previously enabled
+    // BSP. The callback owns the handle and must keep it valid for the call.
+    void* actorHandle{};
+    bool bspWasEnabled{};
+};
+
+using LegacyProjectileCreatorBspDisable =
+    LegacyProjectileCreatorBspDisableResult (*)(
+        void* context,
+        std::uint32_t creatorUid) noexcept;
+
+enum class LegacyProjectileCreatorBspEnableStatus : std::uint8_t {
+    completed,
+    rejected,
+};
+
+using LegacyProjectileCreatorBspEnable =
+    LegacyProjectileCreatorBspEnableStatus (*)(
+        void* context,
+        void* actorHandle) noexcept;
+
+struct LegacyProjectileCreatorBspGuard final {
+    LegacyProjectileCreatorBspDisable disableBsp{};
+    LegacyProjectileCreatorBspEnable enableBsp{};
+    void* context{};
+};
+
+enum class LegacyProjectileCreatorBspGuardStatus : std::uint8_t {
+    notRequested,
+    notEntered,
+    noCreatorUid,
+    actorNotFound,
+    alreadyDisabled,
+    restored,
+    disableRejected,
+    enableRejected,
+};
+
 struct LegacyPublishedProjectileCollisionOptions final {
     render::MissionWorldRuntimeCombinedPortalLineTraceOptions lineTrace{};
     simulation::LegacyProjectileCollisionLoopOptions collisionLoop{};
@@ -38,11 +86,15 @@ struct LegacyPublishedMachineGunProjectileCollisionResult final {
     std::optional<
         simulation::LegacyMachineGunProjectileCollisionCommitResult>
         commit;
+    LegacyProjectileCreatorBspGuardStatus creatorBspGuard{
+        LegacyProjectileCreatorBspGuardStatus::notRequested};
 
     [[nodiscard]] constexpr bool committed() const noexcept {
         return collision.completed() &&
             commit.has_value() &&
-            commit->committed();
+            commit->committed() &&
+            creatorBspGuard !=
+                LegacyProjectileCreatorBspGuardStatus::enableRejected;
     }
 };
 
@@ -72,8 +124,8 @@ legacyProjectileQueryResultFromRuntimeTrace(
 // Executes the implemented projectile-level portal loop against the most
 // recently published mission dynamic-collision frame. The catalog must be the
 // authenticated catalog parallel to the runtime-owned arena. Creator collision
-// guards and terminal actor/surface callbacks remain a higher-level live-actor
-// transaction and are intentionally not dispatched here.
+// BSP control and terminal actor/surface reduction remain higher-level
+// transactions and are intentionally not dispatched by this loop-only API.
 [[nodiscard]] simulation::LegacyProjectileCollisionLoopResult
 resolvePublishedLegacyProjectileCollisionLoop(
     const assets::MissionWorldRoomCatalog& catalog,
@@ -123,6 +175,42 @@ resolvePublishedLegacyMachineGunProjectileCollision(
     const simulation::LegacyMachineGunAmmoProfile& profile,
     const simulation::LegacyProjectileCollisionQueryInput& input,
     bool projectileIsServer,
+    const LegacyPublishedProjectileCollisionOptions& options = {}) noexcept;
+
+// Mirrors NfProjectile::DetectCollisions' creator BSP transaction. The live
+// adapter resolves current.creatorUid and invokes DisableBsp once before the
+// complete query/portal/terminal-reduction sequence. EnableBsp receives the
+// same opaque actor handle exactly once afterwards only when DisableBsp
+// reported that BSP had previously been enabled.
+//
+// A missing creator is a valid native path. A rejected or malformed disable
+// result prevents the query. Enable rejection clears terminal commit/command
+// data so callers cannot apply it after restoration failed.
+[[nodiscard]] LegacyPublishedMachineGunProjectileCollisionResult
+resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
+    const assets::MissionWorldRoomCatalog& catalog,
+    const render::LegacyGameplayCameraMissionRuntime& runtime,
+    const simulation::LegacyMachineGunProjectileState& current,
+    const simulation::LegacyMachineGunAmmoProfile& profile,
+    const simulation::LegacyProjectileCollisionQueryInput& input,
+    bool projectileIsServer,
+    LegacyProjectileLiveActorQuery actorQuery,
+    void* actorQueryContext,
+    const LegacyProjectileCreatorBspGuard& creatorBspGuard,
+    const LegacyPublishedProjectileCollisionOptions& options = {}) noexcept;
+
+// Primary-player actor-query convenience overload. Creator BSP control still
+// comes from the explicit live-actor guard because the immutable published
+// collision frame cannot safely expose mutable actor methods.
+[[nodiscard]] LegacyPublishedMachineGunProjectileCollisionResult
+resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
+    const assets::MissionWorldRoomCatalog& catalog,
+    const render::LegacyGameplayCameraMissionRuntime& runtime,
+    const simulation::LegacyMachineGunProjectileState& current,
+    const simulation::LegacyMachineGunAmmoProfile& profile,
+    const simulation::LegacyProjectileCollisionQueryInput& input,
+    bool projectileIsServer,
+    const LegacyProjectileCreatorBspGuard& creatorBspGuard,
     const LegacyPublishedProjectileCollisionOptions& options = {}) noexcept;
 
 } // namespace airfix::content

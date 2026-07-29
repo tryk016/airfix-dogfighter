@@ -95,9 +95,12 @@ shared layer swaps the full endpoint into the current position, sets the
 projectile water flag, and lets the subclass surface callback perform the
 fraction interpolation. Other surfaces interpolate before the callback.
 
-The creator collision guard is exited on every terminal path. Its virtual
-method meanings remain unnamed because the call pairing is known but the
-base-class semantic names are not.
+The creator collision guard is exited on every terminal path. The later
+vtable/export join in
+[EXP-20260729-046](EXP-20260729-046-projectile-creator-bsp-guard.md)
+resolves the calls as `DisableBsp` at slot `+0x3C` and `EnableBsp` at slot
+`+0x38`. The saved boolean is the prior enabled state, so the latter runs only
+when the creator BSP was enabled before the query.
 
 ## Tool comparison
 
@@ -141,11 +144,14 @@ seam for live actor gates. The primary player's gates are resolved from the
 same complete runtime generation as its collider. The terminal reducer in
 [EXP-20260729-045](EXP-20260729-045-projectile-terminal-collision-commit.md)
 now commits machine-gun state and bounded damage/surface command data. A
-higher-level live actor transaction must still:
+higher-level live actor transaction now has the complete creator BSP
+bracketing contract from
+[EXP-20260729-046](EXP-20260729-046-projectile-creator-bsp-guard.md), but must
+still:
 
 - publish other changing actor colliders and resolve those actors; and
-- consume those commands through live actors/effects while bracketing the
-  complete loop with the creator collision guard.
+- invoke the private actor methods and consume those commands through live
+  actors/effects.
 
 The portable transition rejects non-finite segments, non-finite or
 out-of-segment fractions, zero/non-finite contact normals, zero actor object
