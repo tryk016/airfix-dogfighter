@@ -186,15 +186,15 @@ bool DesktopInputBridge::disconnectController() noexcept {
 
 void DesktopInputBridge::focusLost() noexcept {
   focused_ = false;
-  pendingMouseX_ = q15Zero;
-  pendingMouseY_ = q15Zero;
-  mousePulseActive_ = false;
-  clearControllerState();
-  router_.lifecycleReset();
+  resetForGameplayBoundary();
 }
 
 void DesktopInputBridge::focusGained() noexcept {
   focused_ = true;
+  resetForGameplayBoundary();
+}
+
+void DesktopInputBridge::resetForGameplayBoundary() noexcept {
   pendingMouseX_ = q15Zero;
   pendingMouseY_ = q15Zero;
   mousePulseActive_ = false;

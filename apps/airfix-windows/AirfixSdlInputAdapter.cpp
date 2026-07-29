@@ -317,6 +317,11 @@ bool AirfixSdlInputAdapter::focusGained() noexcept {
   return gamepad_ == nullptr || restartControllerGeneration();
 }
 
+bool AirfixSdlInputAdapter::resetForGameplayBoundary() noexcept {
+  bridge_.resetForGameplayBoundary();
+  return gamepad_ == nullptr || restartControllerGeneration();
+}
+
 bool AirfixSdlInputAdapter::controllerConnected() const noexcept {
   return gamepad_ != nullptr && bridge_.controllerConnected();
 }

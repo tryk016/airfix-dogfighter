@@ -52,6 +52,9 @@ public:
 
   void focusLost() noexcept;
   void focusGained() noexcept;
+  // Clears every source at a gameplay transaction boundary without changing
+  // focus. Held controls must return to neutral before they can act again.
+  void resetForGameplayBoundary() noexcept;
   void setContext(InputContext context) noexcept;
 
   [[nodiscard]] DesktopInputTick tick(std::uint64_t simulationTick) noexcept;

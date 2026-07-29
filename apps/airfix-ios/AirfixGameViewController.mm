@@ -15,8 +15,8 @@
 #include "airfix/render/LegacyGameplayCameraMissionRuntime.hpp"
 #include "airfix/render/PlayerActorPoseRuntime.hpp"
 #include "airfix/runtime/AppSession.hpp"
+#include "airfix/runtime/PlayerAircraftPresentationCoordinator.hpp"
 #include "airfix/simulation/LegacyAircraftAudioCoordinator.hpp"
-#include "airfix/simulation/PlayerAircraftSimulation.hpp"
 #include "airfix/simulation/PlayerSpawnPose.hpp"
 
 #include <array>
@@ -89,7 +89,8 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
 @interface AirfixGameViewController ()
     <AirfixContentCoordinatorDelegate, AirfixIOSInputCoordinatorDelegate> {
     airfix::runtime::AppSession _session;
-    airfix::simulation::PlayerAircraftState _playerAircraftState;
+    airfix::runtime::PlayerAircraftPresentationCoordinator
+        _playerAircraftPresentation;
     std::optional<airfix::simulation::PlayerSpawnPose> _playerSpawnPose;
     AirfixPlayerActorPoseRuntimeEndpoint _playerActorPoseRuntime;
     AirfixGameplayCameraMissionRuntimeEndpoint _gameplayCameraRuntime;
@@ -286,34 +287,16 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
                 return;
             }
 
-            const auto advanced = airfix::simulation::advance(
-                strongSelf->_playerAircraftState, frame);
-            bool acceptAdvancedState = advanced.accepted();
-            if (acceptAdvancedState &&
-                strongSelf->_playerActorPoseRuntime.has_value()) {
-                auto poseRuntime =
-                    strongSelf->_playerActorPoseRuntime->lock();
-                if (poseRuntime == nullptr ||
-                    !strongSelf->_playerSpawnPose.has_value()) {
-                    acceptAdvancedState = false;
+            if (strongSelf->_playerSpawnPose.has_value()) {
+                const auto advanced =
+                    strongSelf->_playerAircraftPresentation.tryAdvance(
+                        frame,
+                        actorWorldFrom(
+                            *strongSelf->_playerSpawnPose),
+                        strongSelf->_playerActorPoseRuntime);
+                if (advanced.accepted()) {
+                    return;
                 }
-                else {
-                    const auto poseResult = poseRuntime->tryPublish(
-                        actorWorldFrom(*strongSelf->_playerSpawnPose),
-                        advanced.state.completedSteps);
-                    acceptAdvancedState =
-                        poseResult.result ==
-                            airfix::render::
-                                PlayerActorPoseRuntimePublishResult::
-                                    published ||
-                        poseResult.result ==
-                            airfix::render::
-                                PlayerActorPoseRuntimePublishResult::busy;
-                }
-            }
-            if (acceptAdvancedState) {
-                strongSelf->_playerAircraftState = advanced.state;
-                return;
             }
 
             // A rejected deterministic transition, an expired actor endpoint,
@@ -735,7 +718,9 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
             strongSelf->_gameplayCameraRuntime =
                 gameplayCameraRuntime;
             strongSelf->_playerSpawnPose = *playerSpawnPose;
-            strongSelf->_playerAircraftState = {};
+            strongSelf->_playerAircraftPresentation =
+                airfix::runtime::
+                    PlayerAircraftPresentationCoordinator{};
             strongSelf->_playerAircraftAudioBindings =
                 *aircraftAudioBindings;
 
@@ -895,9 +880,9 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     NSString* controller = diagnostics.isControllerConnected
         ? @"connected"
         : @"none";
-    const auto& simulation = _playerAircraftState;
+    const auto& simulation = _playerAircraftPresentation.state();
     const std::uint64_t simulationHash =
-        airfix::simulation::canonicalHash(simulation);
+        _playerAircraftPresentation.stateHash();
     NSString* simulationStatus =
         self.simulationPipelineReady ? @"ok" : @"failed";
     self.inputDiagnosticsLabel.text = [NSString stringWithFormat:

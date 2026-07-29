@@ -53,6 +53,7 @@ public:
 
   void focusLost() noexcept;
   [[nodiscard]] bool focusGained() noexcept;
+  [[nodiscard]] bool resetForGameplayBoundary() noexcept;
 
   [[nodiscard]] bool controllerConnected() const noexcept;
   [[nodiscard]] const char *controllerName() const noexcept;

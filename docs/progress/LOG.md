@@ -3383,3 +3383,33 @@ superseded evidence.
   `30476641501` pass all seven hosted clangd, Windows, Ubuntu, macOS,
   iPhoneOS, and iPhoneSimulator gates. Physical-device timing accuracy remains
   pending.
+
+## 2026-07-29 - deterministic Windows input-consumer parity
+
+- Added a portable `PlayerAircraftPresentationCoordinator`. It evaluates one
+  immutable `InputFrame`, publishes the matching actor pose when an endpoint
+  exists, and commits `PlayerAircraftState` only after a successful or
+  temporarily busy publication. Simulation rejection, an expired weak
+  endpoint, or any non-busy pose failure leaves the last state/hash unchanged
+  and makes the coordinator terminal.
+- The iOS controller now uses the coordinator instead of duplicating the
+  simulation/pose transaction. Synthetic tests exercise headless Windows
+  staging, successful publication, real two-slot busy/recovery, expired
+  ownership, typed pose rejection, and invalid simulation input.
+- An authenticated Windows mission now becomes `ready` but remains explicitly
+  paused until pause/menu is pressed. Eligible SDL3 frames are consumed exactly
+  once; pause, focus regain, and controller replacement never auto-resume.
+  Gameplay-boundary resets clear keyboard, mouse, and controller state and
+  require fresh neutral input. Catch-up is capped at eight 60 Hz frames, matching
+  the iOS pump policy.
+- This milestone records changing input intentions and canonical hashes only.
+  It does not claim movement: Windows continues to render the authenticated
+  spawn transform until a trace-driven 12 ms producer exists. The Metal-local
+  pose-runtime planner must be extracted before D3D11 consumes dynamic pose
+  leases.
+- A clean GCC 15.2 portable build passes 92/92 tests. A clean native MSVC
+  19.51/Ninja Windows build passes 96/96 tests, including both D3D11 product
+  smoke paths. The Visual Studio generator itself was not used locally because
+  the Codex host exposed duplicate `Path`/`PATH` entries to MSBuild; the
+  official VS environment and identical MSVC toolchain compiled the complete
+  product successfully.

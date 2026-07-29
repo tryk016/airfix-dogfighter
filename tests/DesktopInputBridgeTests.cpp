@@ -235,6 +235,32 @@ void testUnfocusedControllerEventsAreIgnored() {
           "unfocused controller event leaked into the frame");
 }
 
+void testGameplayBoundaryRequiresFreshNeutralInput() {
+  using namespace airfix::input::controls;
+
+  DesktopInputBridge bridge;
+  require(bridge.key(keyboard::space, true),
+          "pre-boundary fire press failed");
+  require(tick(bridge, 1U).held(DigitalAction::combatPrimaryFire),
+          "pre-boundary fire was not held");
+
+  bridge.resetForGameplayBoundary();
+  require(!tick(bridge, 2U).held(DigitalAction::combatPrimaryFire),
+          "gameplay boundary retained a held action");
+  require(bridge.key(keyboard::space, true),
+          "held-on-boundary fire event failed");
+  require(!tick(bridge, 3U).held(DigitalAction::combatPrimaryFire),
+          "held-on-boundary input bypassed the neutral gate");
+  require(bridge.key(keyboard::space, false),
+          "post-boundary fire release failed");
+  (void)tick(bridge, 4U);
+  (void)tick(bridge, 5U);
+  require(bridge.key(keyboard::space, true),
+          "fresh post-boundary fire press failed");
+  require(tick(bridge, 6U).held(DigitalAction::combatPrimaryFire),
+          "input did not recover after boundary neutralization");
+}
+
 void testKeyboardAndMouseDeviceRemoval() {
   using namespace airfix::input::controls;
 
@@ -276,6 +302,7 @@ int main() {
     testControllerReplacementRequiresNeutral();
     testLifecycleNeutralization();
     testUnfocusedControllerEventsAreIgnored();
+    testGameplayBoundaryRequiresFreshNeutralInput();
     testKeyboardAndMouseDeviceRemoval();
     testInvalidControllerInputFailsClosed();
   } catch (const std::exception &error) {

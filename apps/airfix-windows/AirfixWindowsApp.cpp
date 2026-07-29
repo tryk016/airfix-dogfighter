@@ -10,7 +10,9 @@
 #include "airfix/content/VerifiedContentSession.hpp"
 #include "airfix/package/AfPackRecovery.hpp"
 #include "airfix/runtime/AppSession.hpp"
+#include "airfix/runtime/PlayerAircraftPresentationCoordinator.hpp"
 #include "airfix/simulation/LegacyAircraftAudioCoordinator.hpp"
+#include "airfix/simulation/PlayerSpawnPose.hpp"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -32,8 +34,29 @@
 namespace {
 
 constexpr std::uint64_t inputStepNanoseconds = 1'000'000'000ULL / 60ULL;
-constexpr std::uint64_t maximumFrameNanoseconds = 250'000'000ULL;
+constexpr std::uint64_t maximumFrameNanoseconds =
+    inputStepNanoseconds * 8ULL;
 constexpr airfix::audio::AudioClipId smokeAudioClip{1U};
+
+[[nodiscard]] airfix::render::ConvertedNodeTransform actorWorldFrom(
+    const airfix::simulation::PlayerSpawnPose &pose) noexcept {
+  const auto vectorAt = [](const std::array<float, 3U> &value) {
+    return airfix::render::Vec3{value[0], value[1], value[2]};
+  };
+  return {
+      .linear =
+          {
+              .columns =
+                  {
+                      vectorAt(pose.runtimeWorldRotationColumns[0]),
+                      vectorAt(pose.runtimeWorldRotationColumns[1]),
+                      vectorAt(pose.runtimeWorldRotationColumns[2]),
+                  },
+          },
+      .translation = vectorAt(pose.runtimeWorldPosition),
+      .rawScalar = 1.0F,
+  };
+}
 
 [[nodiscard]] std::array<std::int16_t, 480U> makeSmokeAudio() noexcept {
   return {};
@@ -324,11 +347,13 @@ int run(const int argumentCount, char *arguments[]) {
   }
 
   std::optional<LoadedPrivateContent> privateContent;
+  std::optional<airfix::simulation::PlayerSpawnPose> playerSpawnPose;
   if (options.contentRoot.has_value()) {
     privateContent.emplace(
         loadPrivateContent(*options.contentRoot, options.mission, audio));
   }
   if (privateContent.has_value() && privateContent->missionRoom.has_value()) {
+    playerSpawnPose = privateContent->missionRoom->playerSpawnPose;
     renderer.installLoadedMissionRoom(std::move(*privateContent->missionRoom),
                                       privateContent->revision);
     privateContent->missionRoom.reset();
@@ -337,9 +362,7 @@ int run(const int argumentCount, char *arguments[]) {
           "authenticated Windows mission was not published");
     }
   }
-  if (privateContent.has_value()) {
-    audio.setActive(true);
-  }
+  audio.setActive(false);
   if (options.captureFrameOutput.has_value()) {
     renderer.captureFrameToBmp(*options.captureFrameOutput);
     std::cout << "Authenticated private D3D11 mission frame captured\n";
@@ -392,7 +415,19 @@ int run(const int argumentCount, char *arguments[]) {
     throw std::runtime_error(SDL_GetError());
   }
 
+  if (renderer.missionWorldRoomInstalled() &&
+      playerSpawnPose.has_value()) {
+    // Windows currently commits the authenticated room, audio clips, and
+    // frozen spawn pose as one startup transaction. Dynamic pose/camera
+    // publication remains a later trace-driven milestone.
+    session.setContentState(airfix::runtime::ContentState::ready);
+  }
   airfix::windows::AirfixSdlInputAdapter input;
+  airfix::runtime::PlayerAircraftPresentationCoordinator
+      playerAircraftPresentation;
+  bool simulationPipelineReady = true;
+  bool windowFocused =
+      (SDL_GetWindowFlags(window.get()) & SDL_WINDOW_INPUT_FOCUS) != 0U;
   std::uint64_t inputTick = 0U;
   std::uint64_t inputAccumulator = 0U;
   std::uint64_t previousTime = SDL_GetTicksNS();
@@ -408,6 +443,11 @@ int run(const int argumentCount, char *arguments[]) {
         session.noteInputActivity();
       }
       if (inputResult.controllerDisconnected) {
+        if (!input.resetForGameplayBoundary()) {
+          throw std::runtime_error(
+              "SDL3 input reset failed after controller disconnect");
+        }
+        audio.setActive(false);
         session.pause();
       }
 
@@ -419,6 +459,7 @@ int run(const int argumentCount, char *arguments[]) {
         renderer.resize();
         break;
       case SDL_EVENT_WINDOW_FOCUS_LOST:
+        windowFocused = false;
         input.focusLost();
         audio.setActive(false);
         session.enterInactive();
@@ -429,8 +470,9 @@ int run(const int argumentCount, char *arguments[]) {
               "SDL3 controller state failed after focus regain");
         }
         (void)audio.recover();
-        audio.setActive(true);
+        audio.setActive(false);
         session.enterForeground();
+        windowFocused = true;
         break;
       default:
         break;
@@ -451,6 +493,48 @@ int run(const int argumentCount, char *arguments[]) {
       if (!inputFrame.accepted) {
         throw std::runtime_error("SDL3 input frame generation failed");
       }
+      if (inputFrame.frame.pressed(
+              airfix::input::DigitalAction::globalPause)) {
+        if (!input.resetForGameplayBoundary()) {
+          throw std::runtime_error(
+              "SDL3 input reset failed at a gameplay boundary");
+        }
+        if (session.simulationRunning()) {
+          audio.setActive(false);
+          session.pause();
+        } else {
+          const bool mayResume =
+              session.lifecycleState() ==
+                  airfix::runtime::LifecycleState::foregroundPaused &&
+              windowFocused &&
+              simulationPipelineReady &&
+              playerAircraftPresentation.healthy() &&
+              renderer.missionWorldRoomInstalled() &&
+              playerSpawnPose.has_value();
+          const bool resumed = mayResume && session.resume();
+          audio.setActive(resumed);
+        }
+        inputAccumulator -= inputStepNanoseconds;
+        continue;
+      }
+      if (session.simulationRunning()) {
+        const auto advanced =
+            playerAircraftPresentation.tryAdvance(
+                inputFrame.frame,
+                actorWorldFrom(*playerSpawnPose));
+        if (!advanced.accepted()) {
+          simulationPipelineReady = false;
+          if (!input.resetForGameplayBoundary()) {
+            throw std::runtime_error(
+                "SDL3 input reset failed after simulation halt");
+          }
+          audio.setActive(false);
+          session.pause();
+          std::cerr
+              << "Windows deterministic input consumer halted after "
+                 "an invalid state transition\n";
+        }
+      }
       inputAccumulator -= inputStepNanoseconds;
     }
 
@@ -458,6 +542,10 @@ int run(const int argumentCount, char *arguments[]) {
     SDL_Delay(1U);
   }
 
+  std::cout << "Windows player input state: "
+            << playerAircraftPresentation.state().completedSteps
+            << " steps, hash "
+            << playerAircraftPresentation.stateHash() << '\n';
   return 0;
 }
 
