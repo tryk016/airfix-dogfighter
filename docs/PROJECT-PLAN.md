@@ -381,6 +381,13 @@ labelled GPU-memory fields; D3D11 uses non-blocking timestamp queries and Metal
 uses completed-command-buffer timing. This checkpoint does not advance the
 lighting/material/post-processing stages.
 
+ADR-0014 now supplies the first finished settings foundation: one validated
+portable snapshot for render scale, Hor+/Original 4:3, diagnostics, and the
+Classic/Enhanced selector; sparse launch/UI overrides; deterministic delta
+classification; and a versioned storage-neutral record. Platform persistence,
+transactional GPU-resource application, and final settings UI remain the next
+ordered slices.
+
 `Classic` and `Enhanced` are visual-intent profiles independent of the quality
 tier. Classic renders faithfully at the chosen high resolution; Enhanced adds
 the modern lighting/material/effect path. Neither may change simulation state.

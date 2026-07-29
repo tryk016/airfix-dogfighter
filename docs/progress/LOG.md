@@ -3483,3 +3483,27 @@ superseded evidence.
 - Clean GCC 15.2 and MSVC 19.51 portable builds each pass 94/94 tests. A clean
   native MSVC Windows product build passes 98/98 tests, including both D3D11
   product smoke paths.
+
+## 2026-07-29 - portable render-presentation settings contract
+
+- Accepted ADR-0014 and added one allocation-free C++20 settings snapshot for
+  render scale, Hor+/Original 4:3, diagnostics, and the Classic/Enhanced
+  policy selector. Enhanced is explicitly not evidence that its lighting,
+  material, or post-processing stages are implemented.
+- Sparse overrides build and validate a complete candidate; invalid scale,
+  non-finite input, or forged presentation/profile enums leave the complete
+  base snapshot unchanged. A deterministic delta separately identifies scaled
+  target, layout, overlay, and profile work.
+- Added a versioned storage-neutral semantic record mapping. Conversion in
+  either direction rejects unsupported schemas, invalid raw Boolean/enum
+  values, and invalid scale without exposing a partial snapshot or treating
+  raw object layout as a file format.
+- Synthetic tests cover exact defaults and boundaries, NaN/infinity, atomic
+  rejection, partial overrides, record round-trips, future schemas, delta
+  classification and layout orthogonality. The value operations are `noexcept`
+  and use no dynamically owning members. A clean GCC 15.2 build compiles all
+  307 steps and the
+  complete portable suite passes 95/95; the public boundary checks 480 files.
+- Platform persistence, transactional target preparation, and final settings
+  UI remain later ADR-0014 slices. No original asset, private path, checksum,
+  binary, or owner-derived capture is used.

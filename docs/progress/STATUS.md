@@ -41,6 +41,14 @@
   modern visual stages, and iOS runtime/device acceptance remain pending.
   Hosted iPhoneOS and iPhoneSimulator builds compile the complete Metal path;
   only physical-device visual/timing acceptance remains for this slice.
+- ADR-0014 defines one cross-platform render-presentation settings transaction.
+  Its portable C++20 foundation is implemented: render scale, Hor+/Original
+  4:3, diagnostics, and the Classic/Enhanced selector form one validated
+  snapshot; sparse overrides reject atomically; a deterministic delta
+  identifies target/layout/overlay/profile work; and a versioned semantic
+  record fails closed on future schemas or malformed values. Enhanced remains
+  a selector only, not a claim that modern passes exist. Native persistence,
+  prepared-resource commit, and the final settings UI remain pending.
 - The native Windows x64 product foundation is implemented. A statically
   linked SDL3 shell owns the window and lifecycle events; a separate
   D3D11/DXGI backend compiles HLSL, uploads the same public scene used by Metal,
