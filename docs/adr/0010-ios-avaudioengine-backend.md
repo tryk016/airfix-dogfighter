@@ -111,8 +111,8 @@ contracts remain under `src/airfix/audio`.
 
 ## Follow-up
 
-1. Bind verified owner-local sound samples and loop metadata to portable clip
-   and voice IDs.
+1. Keep the ADR-0011 authenticated owner-local clip binding transaction aligned
+   with future sound families.
 2. Feed reconstructed aircraft audio commands from the live 12 ms producer.
 3. Add listener/emitter position and bounded voice-priority contracts after
    static/runtime evidence proves their semantics.

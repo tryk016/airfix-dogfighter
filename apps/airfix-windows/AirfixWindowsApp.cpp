@@ -3,6 +3,9 @@
 #include "AirfixXAudio2Backend.hpp"
 
 #include "airfix/audio/AudioCommand.hpp"
+#include "airfix/content/LegacyAircraftAudioClipSet.hpp"
+#include "airfix/content/VerifiedContentSession.hpp"
+#include "airfix/package/AfPackRecovery.hpp"
 #include "airfix/runtime/AppSession.hpp"
 #include "airfix/simulation/LegacyAircraftAudioCoordinator.hpp"
 
@@ -13,10 +16,13 @@
 #include <array>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 
 namespace {
@@ -57,7 +63,6 @@ makeSmokeAudioBindings() noexcept {
           .sound = LegacyAircraftEngineSound::engineStart,
           .clip = smokeAudioClip,
           .voice = airfix::audio::AudioVoiceId{4U},
-          .looping = true,
       },
       LegacyAircraftAudioBinding{
           .sound = LegacyAircraftEngineSound::engineStop,
@@ -159,18 +164,81 @@ struct SdlWindowDeleter {
 
 using SdlWindow = std::unique_ptr<SDL_Window, SdlWindowDeleter>;
 
-[[nodiscard]] bool isSmokeTest(const int argumentCount, char *arguments[]) {
+struct CommandLineOptions final {
+  bool smokeTest{};
+  bool validateContentOnly{};
+  std::optional<std::filesystem::path> contentRoot;
+};
+
+[[nodiscard]] CommandLineOptions parseCommandLine(const int argumentCount,
+                                                  char *arguments[]) {
   if (argumentCount == 1) {
-    return false;
+    return {};
   }
   if (argumentCount == 2 && std::string_view(arguments[1]) == "--smoke-test") {
-    return true;
+    return {
+        .smokeTest = true,
+        .validateContentOnly = false,
+        .contentRoot = std::nullopt,
+    };
   }
-  throw std::runtime_error("usage: AirfixDogfighter.exe [--smoke-test]");
+  if (argumentCount == 3 && !std::string_view(arguments[2]).empty() &&
+      (std::string_view(arguments[1]) == "--content-root" ||
+       std::string_view(arguments[1]) == "--validate-content-root")) {
+    return {
+        .smokeTest = false,
+        .validateContentOnly =
+            std::string_view(arguments[1]) == "--validate-content-root",
+        .contentRoot = std::filesystem::path(arguments[2]),
+    };
+  }
+  throw std::runtime_error(
+      "usage: AirfixDogfighter.exe [--smoke-test | --content-root <path> | "
+      "--validate-content-root <path>]");
+}
+
+[[nodiscard]] airfix::simulation::LegacyAircraftAudioBindings
+loadPrivateAircraftAudio(const std::filesystem::path &contentRoot,
+                         airfix::windows::AirfixXAudio2Backend &audio) {
+  auto inspection = airfix::afpack::inspectActiveContent(contentRoot);
+  if (inspection.status() != airfix::afpack::ActiveContentStatus::ready) {
+    throw std::runtime_error(
+        "the private Windows content root has no authenticated active AFPACK");
+  }
+  auto session = airfix::content::VerifiedContentSession::adopt(
+      std::move(inspection).takeReadyLease());
+  auto result = airfix::content::loadLegacyAircraftAudioClips(session);
+  if (!result.success() || !result.clips.has_value() ||
+      !result.clips->belongsTo(session)) {
+    throw std::runtime_error(
+        "authenticated aircraft audio could not be loaded");
+  }
+
+  for (const auto &clip : result.clips->clipViews()) {
+    if (audio.registerPcm16Clip(clip) !=
+        airfix::windows::AirfixAudioClipRegistrationResult::registered) {
+      throw std::runtime_error("XAudio2 rejected authenticated aircraft PCM");
+    }
+  }
+
+  constexpr std::array<airfix::audio::AudioVoiceId, 6U> voices{{
+      {1U},
+      {2U},
+      {3U},
+      {4U},
+      {5U},
+      {6U},
+  }};
+  const auto bindings = result.clips->bindings(voices);
+  if (!bindings.has_value()) {
+    throw std::runtime_error(
+        "authenticated aircraft audio bindings are invalid");
+  }
+  return *bindings;
 }
 
 int run(const int argumentCount, char *arguments[]) {
-  const bool smokeTest = isSmokeTest(argumentCount, arguments);
+  const CommandLineOptions options = parseCommandLine(argumentCount, arguments);
 
   if (!SDL_SetAppMetadata("Airfix Dogfighter Reconstruction", "0.1.0",
                           "com.tryk016.airfixdogfighter")) {
@@ -185,7 +253,9 @@ int run(const int argumentCount, char *arguments[]) {
   } quitGuard;
 
   SDL_WindowFlags flags = SDL_WINDOW_HIGH_PIXEL_DENSITY;
-  flags |= smokeTest ? SDL_WINDOW_HIDDEN : SDL_WINDOW_RESIZABLE;
+  flags |= options.smokeTest || options.validateContentOnly
+               ? SDL_WINDOW_HIDDEN
+               : SDL_WINDOW_RESIZABLE;
   SdlWindow window{
       SDL_CreateWindow("Airfix Dogfighter Reconstruction", 960, 540, flags)};
   if (!window) {
@@ -200,7 +270,21 @@ int run(const int argumentCount, char *arguments[]) {
     throw std::runtime_error("XAudio2 2.9 initialization failed");
   }
 
-  if (smokeTest) {
+  std::optional<airfix::simulation::LegacyAircraftAudioBindings>
+      privateAircraftAudioBindings;
+  if (options.contentRoot.has_value()) {
+    privateAircraftAudioBindings =
+        loadPrivateAircraftAudio(*options.contentRoot, audio);
+  }
+  if (privateAircraftAudioBindings.has_value()) {
+    audio.setActive(true);
+  }
+  if (options.validateContentOnly) {
+    std::cout << "Authenticated private aircraft audio validation passed\n";
+    return 0;
+  }
+
+  if (options.smokeTest) {
     if (!renderer.renderFrame(true)) {
       throw std::runtime_error(
           "D3D11 smoke frame contains no rendered geometry");

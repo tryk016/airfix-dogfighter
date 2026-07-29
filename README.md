@@ -21,7 +21,9 @@ switchable and testable.
 > exercises shared synthetic draw commands through HLSL and bounded synthetic
 > PCM through the reconstructed AirCraft audio coordinator and XAudio2 2.9.
 > The iOS shell now consumes the same audio contract through AVAudioEngine and
-> enforces explicit-resume interruption and route-loss handling.
+> enforces explicit-resume interruption and route-loss handling. Both products
+> can now bind the six recovered aircraft roles to PCM decoded from one
+> authenticated, owner-local AFPACK transaction.
 > Neither target is **yet a complete playable release**.
 
 **Lawfully owned original game data is required for private use and is not
@@ -68,6 +70,10 @@ Implemented foundations include:
 - bounded UDSP, CCF, GTI, and related legacy-format parsing;
 - a private AFPACK container, strict validation, atomic installation, recovery,
   rollback, and authenticated content sessions;
+- a bounded RIFF/WAVE PCM16 parser plus an atomic owner-local aircraft clip
+  loader that resolves exact entries only through an authenticated content
+  session, validates the four continuous sampler loops, keeps start/stop as
+  one-shots, and publishes no partial bindings;
 - aggregate mission-room assembly, texture preparation, draw validation, and
   two-phase Metal publication;
 - a deterministic semantic input core with native touch and Apple Game
@@ -131,7 +137,7 @@ for every runtime room. The actor still remains at its authenticated spawn
 transform until the recovered movement law supplies a changing world pose.
 Dynamic-object sphere collision for the camera, live event-5 camera production
 from complete AirCraft state, full gameplay simulation, campaign flow,
-live aircraft audio inputs and private clip binding, iOS playback, finished
+live aircraft audio inputs, audible parity, finished
 menus, complete Windows input/content integration,
 physical-device rendering, and visual acceptance remain future milestones.
 
@@ -211,6 +217,25 @@ five-call AirCraft audio cadence through engine start, running, shutdown,
 destroyed dive, and recovery; a runner without an output endpoint remains
 supported. This is a platform-shell milestone, not yet a playable build.
 
+### Private content for local Windows validation
+
+The tools can build and atomically install an owner-private AFPACK without
+placing original data in the repository:
+
+```powershell
+afpack-create --source <owned-installation-copy> --language English --output <private-package.afpack>
+afpack-install --source <private-package.afpack> --content-root <private-content-root> --transaction <uuid>
+AirfixDogfighter.exe --validate-content-root <private-content-root>
+AirfixDogfighter.exe --content-root <private-content-root>
+```
+
+All placeholders must point outside the repository. The validation mode opens a
+hidden window, authenticates the AFAC-selected package, decodes and checks the
+six aircraft samples, registers them with XAudio2, and exits. Normal startup
+keeps the registered private clips available for the reconstructed runtime.
+Loose WAV files and the original installation directory are not accepted by
+the application.
+
 ## Architecture
 
 The portable core owns parsing, content identity, game state, physics, semantic
@@ -243,6 +268,7 @@ Read the [architecture](docs/ARCHITECTURE.md), the
 [Windows x64 product decision](docs/adr/0007-windows-x64-parallel-target.md),
 the [Windows platform stack decision](docs/adr/0008-windows-rendering-and-platform-stack.md),
 the [Windows audio decision](docs/adr/0009-windows-xaudio2-audio-backend.md),
+the [authenticated aircraft-audio decision](docs/adr/0011-authenticated-owner-local-aircraft-audio.md),
 the [audio-system contract](docs/systems/AUDIO.md),
 and the [reverse-engineering workflow](docs/RE-WORKFLOW.md) for the detailed
 contracts.

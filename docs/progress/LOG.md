@@ -3163,3 +3163,43 @@ superseded evidence.
   compiles and verifies data-less ARM64 `iphoneos` and `iphonesimulator`
   bundles with the iOS 16.4 deployment target. Audible output and the route/
   interruption matrix remain physical-device acceptance work.
+
+## 2026-07-29 - authenticated owner-local aircraft audio binding
+
+- ADR-0011 binds the six recovered aircraft roles directly to exact logical
+  entries in the nested `Resource.up` owned by one unchanged authenticated
+  content session. Loose WAV files, original-installation paths, and converted
+  caches are not accepted by either product.
+- Added a bounded portable RIFF/WAVE parser for integer PCM16 mono/stereo
+  sources at 8–192 kHz. It validates RIFF and chunk framing, format arithmetic,
+  data alignment, sampler-loop structure, independent size/count ceilings, and
+  preserves typed parse errors with exact offsets.
+- Added an atomic clip-set loader with per-source, aggregate transient, and
+  published-PCM budgets. It resolves all six exact roles before reading,
+  requires the observed full-buffer infinite loops for the four continuous
+  layers, keeps start/stop as one-shots, binds publication to both revision and
+  opaque authenticated-stream identity, and publishes either all clips or
+  none.
+- Added `afpack-install` as a portable command-line entry to the existing
+  durable installer. Windows can open an explicit private content root,
+  authenticate its AFAC-selected AFPACK, register all six clips with XAudio2,
+  and perform a hidden validation run. The public smoke path stays synthetic
+  and data-less.
+- The iOS content worker loads audio from the same verified mission session and
+  moves it through the opaque mission snapshot. Main prepares and fills a
+  replacement AVAudioEngine backend before consuming the ticket, then commits
+  renderer, backend, bindings, and mission state by ownership swaps. Failure or
+  staleness leaves the previous committed mission untouched.
+- Synthetic tests cover valid loading, missing/ambiguous entries, malformed
+  WAVE data, loop evidence, every memory budget, cancellation, callback
+  failure, session replacement, moved-from sessions, and invalid voice IDs.
+  A complete owner-local AFPACK was also created, atomically installed, and
+  accepted by the Windows hidden validation path outside Git; the temporary
+  validation tree was removed and the original installation remained
+  unchanged.
+- A fresh 289-step GCC 15.2/Ninja build passes all 89 portable tests. A fresh
+  548-step MSVC 19.51/Ninja build and the independent MinGW product build each
+  pass all 91 tests, including native D3D11/XAudio2 smoke. The synthetic and
+  449-file public-boundary scans, `actionlint`, changed-source clang-format,
+  changed-scope local-path scan, and `git diff --check` pass. Hosted Xcode and
+  Visual Studio generator validation remain the publication gates.

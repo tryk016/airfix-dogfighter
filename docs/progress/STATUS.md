@@ -30,10 +30,11 @@
   portable command/PCM16 contract, owns copied clips, pauses with focus,
   recovers outside its callback, and accepts commands safely without an output
   endpoint. The shared AirCraft audio coordinator now preserves the recovered
-  phase-transition/destroyed-dive/modulation order and maps explicit private
-  clip/voice bindings into this backend; the product smoke executes the whole
-  synthetic state sequence. It remains a data-less product shell, not a
-  playable build.
+  phase-transition/destroyed-dive/modulation order. Windows can authenticate an
+  owner-local AFPACK root, decode the six recovered PCM16 samples through the
+  same retained content session, register the complete clip set, and derive
+  explicit role/voice bindings; the public product smoke remains synthetic and
+  data-less. It is not yet a playable build.
 - The native iOS audio adapter consumes the same monotonic command batches.
   It converts bounded PCM16 registrations once into AVAudioEngine's standard
   deinterleaved Float32 representation, uses one player/varispeed graph per
@@ -41,8 +42,11 @@
   completion callbacks through voice generations. Ambient-session activation
   occurs only after deliberate gameplay resume. Pause/background paths
   deactivate it; interruption, route loss, and media-service reset force
-  gameplay pause and never auto-resume. Owner-local sample binding and
-  physical-device audible/route acceptance remain pending.
+  gameplay pause and never auto-resume. Mission preparation now carries the six
+  authenticated owner-local samples through the opaque snapshot, registers all
+  of them in a replacement backend, and commits renderer, backend, bindings,
+  and ticket atomically. Live aircraft scheduling and physical-device audible/
+  route acceptance remain pending.
 - Cross-platform input/control/haptics system specified; semantic input
   architecture recorded in ADR-0002.
 - Local Git repository initialized on branch `main`; planning baseline committed
@@ -786,13 +790,11 @@
 
 ## Next
 
-1. Bind authenticated owner-local samples and verified loop metadata to the
-   shared reconstructed audio roles on both products. Extend the implemented
-   native Windows x64 renderer/input/audio shell with owner-local authenticated
-   content, persistent remapping/calibration profiles and controller glyphs;
-   replace the public smoke scene and synthetic audio clip with shared
-   reconstructed world/audio commands and validated private bindings without
-   weakening either data-less CI path.
+1. Feed the committed authenticated aircraft-audio bindings from the live
+   12 ms producer on both products. Extend the native Windows x64 product with
+   authenticated mission/world loading, persistent remapping/calibration
+   profiles, and controller glyphs; replace the public smoke scene with shared
+   reconstructed world commands without weakening either data-less CI path.
 2. Obtain controlled runtime traces for free flight and the ground, inverted,
    water, collision, engine-transition, and too-high branches; establish
    x87-versus-portable numeric tolerances and deterministic replacement PRNG
@@ -834,6 +836,15 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The authenticated aircraft-audio slice passes a fresh 289-step GCC 15.2
+  build and all 89 portable tests. A fresh native MSVC 19.51/Ninja product
+  build compiles 548 steps and passes 91/91 tests, including the real hidden
+  D3D11/XAudio2 smoke; the existing MinGW product build independently passes
+  the same 91/91 suite. Synthetic public-boundary tests and the 449-file scan,
+  `actionlint`, changed-source clang-format, changed-scope local-path scanning,
+  and `git diff --check` pass. A complete owner-local AFPACK also passes the
+  hidden authenticated load/register path outside Git. Xcode/iOS and hosted
+  Visual Studio generator validation remain the publication gates.
 - The native iOS audio slice passes a fresh 281-step MinGW GCC 15.2 Release
   build and all 87 portable tests. Xcode 26.6 compiles both ARM64 `iphoneos`
   and `iphonesimulator` data-less bundles with deployment target 16.4 after
