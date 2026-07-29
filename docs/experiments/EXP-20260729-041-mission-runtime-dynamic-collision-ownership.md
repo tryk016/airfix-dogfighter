@@ -105,8 +105,9 @@ Synthetic tests cover:
 
 A fresh 256-step Release build and regenerated Debug/code-intelligence build
 pass 79/79 tests. Clangd 22.1.8 reports zero diagnostics in the runtime and its
-test. WSL and both GitHub Actions workflows remain publication gates for this
-slice.
+test. Exact commit `40a6808` also compiles all 256 steps with GCC 13.3 and
+passes 79/79 tests in a new isolated `Airfix-Dev` WSL clone. Both GitHub
+Actions workflows remain publication gates for this slice.
 
 ## Remaining boundary
 

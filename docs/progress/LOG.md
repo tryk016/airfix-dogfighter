@@ -2805,5 +2805,6 @@ superseded evidence.
   cycles with zero observed steady-state allocations.
 - A fresh 256-step Release build and regenerated Debug/code-intelligence build
   pass 79/79 tests. Clangd 22.1.8 reports zero diagnostics in the changed
-  runtime and test. Isolated WSL and GitHub Actions remain publication gates
-  for this slice.
+  runtime and test. Exact commit `40a6808` compiles all 256 steps with GCC 13.3
+  and passes 79/79 tests in a new isolated `Airfix-Dev` WSL clone. GitHub
+  Actions remains the publication gate for this slice.

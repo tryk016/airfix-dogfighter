@@ -758,8 +758,9 @@ These questions do not block static analysis or the archive work.
   Twelve Rizin/public-boundary Python tests, the 392-file public scan,
   263-row/unique function catalogue with no bad source paths and only its two
   known missing references, `actionlint`, changed-scope local-path scan, and
-  `git diff --check` pass. Clean exact-commit WSL and GitHub Actions remain the
-  publication gates.
+  `git diff --check` pass. Exact commit `40a6808` compiles all 256 steps with
+  GCC 13.3 and passes 79/79 tests in a new isolated `Airfix-Dev` WSL clone.
+  GitHub Actions remains the publication gate.
 
 ## Blockers
 
