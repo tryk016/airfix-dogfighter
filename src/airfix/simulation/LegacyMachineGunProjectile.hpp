@@ -170,11 +170,11 @@ struct LegacyProjectileCollisionDecision final {
 };
 
 // Reconstructs the deterministic decision layer of
-// NfProjectile::DetectCollisions for one nearest PhLine result. The caller
-// still owns the combined static/dynamic spatial query and repeats it after
-// followPortal. Portable input rejects non-finite/out-of-segment hits and
-// incomplete owner-backed material/portal metadata instead of reproducing
-// unsafe native dereferences.
+// NfProjectile::DetectCollisions for one nearest PhLine result. The generic
+// LegacyProjectileCollisionLoop repeats a caller-supplied combined
+// static/dynamic query after followPortal. Portable input rejects
+// non-finite/out-of-segment hits and incomplete owner-backed material/portal
+// metadata instead of reproducing unsafe native dereferences.
 [[nodiscard]] std::optional<LegacyProjectileCollisionDecision>
 legacyProjectileCollisionDecision(
     const LegacyProjectileCollisionStepInput& input) noexcept;

@@ -57,6 +57,9 @@ Implemented foundations include:
 - authenticated immutable dynamic BSP assets for mission-placed objects and
   the player, with exact CPU budgeting and an allocation-free native-order
   frame that traces both disjoint mesh owners without copying geometry;
+- a bounded, allocation-free projectile collision coordinator that repeats the
+  complete caller-supplied query across projectile-level portals and fails
+  closed on malformed results or cycles;
 - validated, allocation-free reconstructions of the legacy world-to-camera
   point transform and camera-space screen projection, including the recovered
   reverse-depth scalar, four depth presets, gameplay camera preset selection,

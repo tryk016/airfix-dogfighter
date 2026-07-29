@@ -2808,3 +2808,32 @@ superseded evidence.
   runtime and test. Exact commit `40a6808` compiles all 256 steps with GCC 13.3
   and passes 79/79 tests in a new isolated `Airfix-Dev` WSL clone. GitHub
   Actions remains the publication gate for this slice.
+
+## 2026-07-29 - projectile collision portal loop
+
+- `EXP-20260729-042` refreshes canonical Ghidra 12.1.2 decompilation and
+  instructions for `NfProjectile::DetectCollisions` at RVA `0x00035EF0`.
+  A fresh automatic Rizin 0.9.1/rzpipe 0.6.2 report independently matches its
+  exact `[0x10035EF0, 0x10036353)` boundary, repeated query call, back edge,
+  and shared terminal path.
+- Added a renderer-independent, allocation-free `noexcept` coordinator around
+  the existing single-hit decision. It preserves the full endpoint while a
+  type-zero projectile portal advances the start and signed room ID, then
+  returns the first terminal no-hit, material, actor-gate, actor-contact, or
+  surface decision.
+- Callback rejection, inconsistent result states, unsafe hit metadata, and
+  cycles fail with typed statuses and no terminal decision. The default
+  transition budget is 64 and the portable hard maximum is 256; query and
+  completed-transition counts remain available for diagnostics.
+- Focused tests cover two-portal geometry, endpoint/room propagation,
+  material and actor terminals, malformed callback states, zero/one-transition
+  budgets, and 4,096 two-query cycles with zero observed allocations.
+- A fresh Windows GCC 15.2 Release configuration compiles all 259 steps and
+  passes 80/80 tests. Its compilation database has 165 portable entries;
+  clangd 22.1.8 reports zero errors in the coordinator and test. Twelve Rizin
+  normalization tests, the synthetic and 396-file public-boundary scans, the
+  263-row unique function catalogue with only its two known missing
+  references, `actionlint`, 13-file local-path scan, and `git diff --check`
+  pass. Exact commit `ba5b2ec` compiles all 259 steps with GCC 13.3 and passes
+  80/80 tests in a new isolated `Airfix-Dev` WSL clone. GitHub Actions remains
+  the publication gate.
