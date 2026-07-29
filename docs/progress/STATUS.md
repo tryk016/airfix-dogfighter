@@ -572,8 +572,9 @@
   matrix reset paths establish unit scale and inverse-square, allowing one
   acquired generation and vehicle anchor to build an immutable look-at,
   world-to-view, and scalar gameplay projection snapshot without guessed SRT
-  state. Dynamic-object and transparent collision-portal paths plus the Metal
-  state remain unimplemented. The private mission-room Metal path now consumes
+  state. Placed/player dynamic line collision and transparent line portals are
+  now runtime-owned; dynamic-object sphere collision plus the Metal state
+  remain unimplemented. The private mission-room Metal path now consumes
   the immutable pose through a tested homogeneous clip packet, recovered
   reverse depth, explicit far clip, and parity-first 640x480 viewport. Until
   the simulation publishes changing event-5 generations, it starts at an
@@ -590,9 +591,12 @@
   `NfActor` health and the `AfVehicle` inactive latch. A fixed
   mission-lifetime SPSC exchange transports only complete
   owning clip packets, and Metal retains one lease through encoding. A new
-  non-moving mission runtime now owns the arena by move, runtime basis,
-  exact-size collision workspaces, coordinator, and exchange under checked
-  portable and iOS memory ceilings. The atomic room transaction publishes a
+  non-moving mission runtime now owns the arena, immutable placed/player
+  colliders, exact-size camera workspaces and dynamic-line buffers,
+  coordinator, and exchange under checked portable and iOS memory ceilings.
+  It republishes and portal-traces only a complete producer-supplied
+  placed/player frame; a failed republish retains the prior frame. The atomic
+  room transaction publishes a
   weak producer endpoint that expires safely on mission replacement. The
   endpoint remains deliberately inactive and the exchange contains only the
   explicit bootstrap until complete recovered aircraft inputs exist.
@@ -676,8 +680,11 @@
   CPU budget, and validates its room/source provenance at publication.
   A two-owner mesh view plus a two-pass frame adapter compose the live player
   ahead of each room's unchanged placed list without copying geometry,
-  allocation, or partial output. Other live actors, gameplay buffer ownership,
-  controlled traces, and dynamic sphere collision remain separate.
+  allocation, or partial output. The mission-lifetime runtime now owns those
+  immutable assets and exact flat buffers, exposes the last complete frame,
+  and traces it against its owned static arena without allocation. Other live
+  actors, a real changing producer, controlled traces, and dynamic sphere
+  collision remain separate.
 
 ## Confirmed
 
@@ -723,12 +730,12 @@
    controlled multi-room executable traces when the isolated runtime is ready.
 5. Keep BSP render culling disabled until its separate runtime semantics are
    proven against executable evidence.
-6. Extend the composed authenticated placed/player dynamic-collision frame to
-   other live actors and give the mission runtime ownership of its preallocated
-   frame buffers. Then join `WpMGun` timing, event `0xE2`, motion, damage, and
-   ricochet contracts to the remaining projectile-level portal loop, private
-   type allocation/event dispatch, live muzzle transforms, and tracer/effect
-   adapters before wiring primary-fire intent into runtime.
+6. Extend the runtime-owned placed/player dynamic-collision frame to other
+   live actors and feed it from the recovered changing actor producer. Then
+   join `WpMGun` timing, event `0xE2`, motion, damage, and ricochet contracts to
+   the remaining projectile-level portal loop, private type allocation/event
+   dispatch, live muzzle transforms, and tracer/effect adapters before wiring
+   primary-fire intent into runtime.
 
 ## Open questions
 
@@ -741,18 +748,18 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
-- A fresh clean Release Ninja/GCC 15.2 build compiles all 256 steps; both
-  Release and regenerated Debug/code-intelligence builds pass 79/79 tests.
-  The compilation database contains 163 portable entries. Clangd 22.1.8
-  reports zero code diagnostics in the new frame, test, loader, and
-  publication units; its seven failures in the large existing tracer are
-  optional `ExtractFunction` feature probes. The three RE wrapper suites,
-  12 Rizin/public-boundary Python tests, public-boundary check and 391-file
-  scan, 263-row catalogue validation with only the two pre-existing missing
-  references, `actionlint`, 22-file changed-scope local-path scan, and
-  `git diff --check` pass. The exact committed tree `457ed6b` also compiles all
-  256 steps with GCC 13.3 and passes 79/79 tests in a new isolated
-  `Airfix-Dev` WSL clone. GitHub Actions remains the final publication gate.
+- Merged mission-collision composition commit `c6f008c` passes the exact-main
+  Ubuntu, Windows, ARM64 macOS, clangd/code-intelligence, `iphoneos`, and
+  `iphonesimulator` Actions jobs.
+- The current mission-runtime ownership slice passes a clean 256-step Release
+  build and 79/79 Release and Debug/code-intelligence tests. Its compilation
+  database has 163 portable entries, and clangd 22.1.8 reports zero diagnostics
+  in the runtime and test.
+  Twelve Rizin/public-boundary Python tests, the 392-file public scan,
+  263-row/unique function catalogue with no bad source paths and only its two
+  known missing references, `actionlint`, changed-scope local-path scan, and
+  `git diff --check` pass. Clean exact-commit WSL and GitHub Actions remain the
+  publication gates.
 
 ## Blockers
 

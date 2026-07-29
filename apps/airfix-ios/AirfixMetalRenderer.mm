@@ -2111,6 +2111,8 @@ bool preflightPrivateRoom(
         auto cameraRuntimeBuild =
             airfix::render::LegacyGameplayCameraMissionRuntime::create(
                 std::move(room.spatialArena),
+                std::move(room.placedDynamicCollision),
+                std::move(room.playerActorCollision),
                 room.runtimeBasis,
                 cameraInitializeInput,
                 cameraRuntimeLimits);
@@ -2122,6 +2124,10 @@ bool preflightPrivateRoom(
                 switch (cameraRuntimeBuild.issue->kind) {
                 case Issue::candidateRecordLimitExceeded:
                 case Issue::constraintPlaneLimitExceeded:
+                case Issue::dynamicMeshCountOverflow:
+                case Issue::dynamicObjectCountOverflow:
+                case Issue::dynamicObjectLimitExceeded:
+                case Issue::dynamicRoomRangeLimitExceeded:
                 case Issue::retainedByteSizeOverflow:
                 case Issue::retainedByteLimitExceeded:
                 case Issue::allocationFailure:
@@ -2130,6 +2136,9 @@ bool preflightPrivateRoom(
                 case Issue::incompleteArena:
                 case Issue::invalidBasis:
                 case Issue::initialWorldRoomOutOfRange:
+                case Issue::invalidPlacedCollision:
+                case Issue::placedCollisionRoomCountMismatch:
+                case Issue::invalidPlayerCollision:
                 case Issue::coordinatorInitializationFailed:
                 case Issue::exchangeInitializationFailed:
                     break;

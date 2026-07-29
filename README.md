@@ -77,9 +77,10 @@ Implemented foundations include:
 - a bounded, allocation-free SPSC exchange that publishes only complete
   gameplay-camera packets and lets Metal retain one coherent camera generation
   through command encoding;
-- a preallocated mission-lifetime camera runtime that owns the retained BSP,
-  basis, collision workspaces, coordinator, and packet exchange, plus a weak
-  iOS producer endpoint that expires safely when the mission is replaced.
+- a preallocated mission-lifetime runtime that owns the retained static arena,
+  immutable placed/player colliders, exact reusable dynamic-line buffers,
+  camera workspaces, coordinator, and packet exchange, plus a weak iOS
+  producer endpoint that expires safely when the mission is replaced.
 
 The portable authenticated load now produces one validated room-and-player
 draw model plus mission-lifetime static and placed/player dynamic BSP assets

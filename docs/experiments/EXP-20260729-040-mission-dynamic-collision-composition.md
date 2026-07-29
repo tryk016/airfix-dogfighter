@@ -124,6 +124,8 @@ and passes 79/79 tests in a new isolated `Airfix-Dev` WSL clone.
 ## Remaining boundary
 
 This slice composes the authenticated player and mission-placed objects for
-line collision. Publication of other live actors, dynamic-object sphere
-collision for camera movement, gameplay ownership of the caller buffers, and
-controlled executable traces remain separate work.
+line collision. Mission-lifetime ownership of its exact caller buffers is
+completed by
+[EXP-20260729-041](EXP-20260729-041-mission-runtime-dynamic-collision-ownership.md).
+Publication of other live actors, dynamic-object sphere collision for camera
+movement, and controlled executable traces remain separate work.

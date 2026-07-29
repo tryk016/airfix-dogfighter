@@ -99,9 +99,13 @@ namespace {
 }
 
 [[nodiscard]] std::optional<std::size_t> additionalRetainedBytesFor(
-    const std::size_t polygonCount) noexcept {
+    const std::size_t polygonCount,
+    const std::size_t dynamicObjectCount,
+    const std::size_t dynamicRoomRangeCount) noexcept {
     std::size_t candidateBytes = 0U;
     std::size_t constraintBytes = 0U;
+    std::size_t dynamicObjectBytes = 0U;
+    std::size_t dynamicRoomRangeBytes = 0U;
     std::size_t retainedBytes =
         LegacyGameplayCameraPacketExchange::retainedBytes();
     if (!checkedMultiply(
@@ -110,8 +114,20 @@ namespace {
             candidateBytes) ||
         !checkedMultiply(
             polygonCount, sizeof(Vec3), constraintBytes) ||
+        !checkedMultiply(
+            dynamicObjectCount,
+            sizeof(LegacyDynamicBspLineObject),
+            dynamicObjectBytes) ||
+        !checkedMultiply(
+            dynamicRoomRangeCount,
+            sizeof(LegacyDynamicBspRoomObjectRange),
+            dynamicRoomRangeBytes) ||
         !checkedAdd(retainedBytes, candidateBytes, retainedBytes) ||
-        !checkedAdd(retainedBytes, constraintBytes, retainedBytes)) {
+        !checkedAdd(retainedBytes, constraintBytes, retainedBytes) ||
+        !checkedAdd(
+            retainedBytes, dynamicObjectBytes, retainedBytes) ||
+        !checkedAdd(
+            retainedBytes, dynamicRoomRangeBytes, retainedBytes)) {
         return std::nullopt;
     }
     return retainedBytes;
@@ -121,19 +137,67 @@ namespace {
 
 LegacyGameplayCameraMissionRuntime::LegacyGameplayCameraMissionRuntime(
     assets::MissionWorldSpatialArena arena,
+    std::optional<MissionPlacedDynamicBspAssembly> placedCollision,
+    std::optional<PlayerActorCollisionAssembly> playerCollision,
     const BasisTransform& runtimeBasis,
     std::vector<MissionWorldRuntimeSphereCandidate> candidateWorkspace,
     std::vector<Vec3> constraintPlanesHeadFirst,
+    std::vector<LegacyDynamicBspLineObject> dynamicObjects,
+    std::vector<LegacyDynamicBspRoomObjectRange> dynamicRoomRanges,
     const std::size_t additionalRetainedBytes)
     : arena_(std::move(arena)),
+      placedCollision_(std::move(placedCollision)),
+      playerCollision_(std::move(playerCollision)),
       runtimeBasis_(runtimeBasis),
       candidateWorkspace_(std::move(candidateWorkspace)),
       constraintPlanesHeadFirst_(std::move(constraintPlanesHeadFirst)),
+      dynamicObjects_(std::move(dynamicObjects)),
+      dynamicRoomRanges_(std::move(dynamicRoomRanges)),
       additionalRetainedBytes_(additionalRetainedBytes) {}
 
 LegacyGameplayCameraMissionRuntimeBuildResult
 LegacyGameplayCameraMissionRuntime::create(
     assets::MissionWorldSpatialArena&& arena,
+    const BasisTransform& runtimeBasis,
+    const LegacyGameplayCameraStepCoordinatorInitializeInput&
+        initializeInput,
+    const LegacyGameplayCameraMissionRuntimeLimits& limits) {
+    return createImpl(
+        std::move(arena),
+        std::nullopt,
+        std::nullopt,
+        false,
+        runtimeBasis,
+        initializeInput,
+        limits);
+}
+
+LegacyGameplayCameraMissionRuntimeBuildResult
+LegacyGameplayCameraMissionRuntime::create(
+    assets::MissionWorldSpatialArena&& arena,
+    MissionPlacedDynamicBspAssembly&& placedCollision,
+    std::optional<PlayerActorCollisionAssembly>&& playerCollision,
+    const BasisTransform& runtimeBasis,
+    const LegacyGameplayCameraStepCoordinatorInitializeInput&
+        initializeInput,
+    const LegacyGameplayCameraMissionRuntimeLimits& limits) {
+    return createImpl(
+        std::move(arena),
+        std::optional<MissionPlacedDynamicBspAssembly>{
+            std::move(placedCollision)},
+        std::move(playerCollision),
+        true,
+        runtimeBasis,
+        initializeInput,
+        limits);
+}
+
+LegacyGameplayCameraMissionRuntimeBuildResult
+LegacyGameplayCameraMissionRuntime::createImpl(
+    assets::MissionWorldSpatialArena&& arena,
+    std::optional<MissionPlacedDynamicBspAssembly>&& placedCollision,
+    std::optional<PlayerActorCollisionAssembly>&& playerCollision,
+    const bool requireDynamicCollision,
     const BasisTransform& runtimeBasis,
     const LegacyGameplayCameraStepCoordinatorInitializeInput&
         initializeInput,
@@ -153,6 +217,63 @@ LegacyGameplayCameraMissionRuntime::create(
                 initialWorldRoomOutOfRange);
     }
 
+    std::size_t dynamicObjectCount = 0U;
+    std::size_t dynamicRoomRangeCount = 0U;
+    if (requireDynamicCollision) {
+        if (!placedCollision.has_value() ||
+            !placedCollision->complete()) {
+            return failure(
+                LegacyGameplayCameraMissionRuntimeBuildIssueKind::
+                    invalidPlacedCollision);
+        }
+        if (placedCollision->roomObjectRanges.size() !=
+            arena.rooms.size()) {
+            return failure(
+                LegacyGameplayCameraMissionRuntimeBuildIssueKind::
+                    placedCollisionRoomCountMismatch);
+        }
+        if (playerCollision.has_value() &&
+            !playerCollision->complete()) {
+            return failure(
+                LegacyGameplayCameraMissionRuntimeBuildIssueKind::
+                    invalidPlayerCollision);
+        }
+        if (playerCollision.has_value() &&
+            playerCollision->meshes.size() >
+                std::numeric_limits<std::size_t>::max() -
+                    placedCollision->meshes.size()) {
+            return failure(
+                LegacyGameplayCameraMissionRuntimeBuildIssueKind::
+                    dynamicMeshCountOverflow);
+        }
+
+        const auto playerObjectCount = playerCollision.has_value()
+            ? playerCollision->instances.size()
+            : 0U;
+        if (playerObjectCount >
+            std::numeric_limits<std::size_t>::max() -
+                placedCollision->objects.size()) {
+            return failure(
+                LegacyGameplayCameraMissionRuntimeBuildIssueKind::
+                    dynamicObjectCountOverflow);
+        }
+        dynamicObjectCount =
+            placedCollision->objects.size() + playerObjectCount;
+        dynamicRoomRangeCount =
+            placedCollision->roomObjectRanges.size();
+        if (dynamicObjectCount > limits.maximumDynamicObjects) {
+            return failure(
+                LegacyGameplayCameraMissionRuntimeBuildIssueKind::
+                    dynamicObjectLimitExceeded);
+        }
+        if (dynamicRoomRangeCount >
+            limits.maximumDynamicRoomRanges) {
+            return failure(
+                LegacyGameplayCameraMissionRuntimeBuildIssueKind::
+                    dynamicRoomRangeLimitExceeded);
+        }
+    }
+
     const auto polygonCount = arena.polygons.size();
     if (polygonCount > limits.maximumCandidateRecords) {
         return failure(
@@ -165,7 +286,10 @@ LegacyGameplayCameraMissionRuntime::create(
                 constraintPlaneLimitExceeded);
     }
     const auto retainedBytes =
-        additionalRetainedBytesFor(polygonCount);
+        additionalRetainedBytesFor(
+            polygonCount,
+            dynamicObjectCount,
+            dynamicRoomRangeCount);
     if (!retainedBytes.has_value()) {
         return failure(
             LegacyGameplayCameraMissionRuntimeBuildIssueKind::
@@ -181,13 +305,21 @@ LegacyGameplayCameraMissionRuntime::create(
         std::vector<MissionWorldRuntimeSphereCandidate>
             candidateWorkspace(polygonCount);
         std::vector<Vec3> constraintPlanesHeadFirst(polygonCount);
+        std::vector<LegacyDynamicBspLineObject>
+            dynamicObjects(dynamicObjectCount);
+        std::vector<LegacyDynamicBspRoomObjectRange>
+            dynamicRoomRanges(dynamicRoomRangeCount);
         auto runtime =
             std::unique_ptr<LegacyGameplayCameraMissionRuntime>(
                 new LegacyGameplayCameraMissionRuntime(
                     std::move(arena),
+                    std::move(placedCollision),
+                    std::move(playerCollision),
                     runtimeBasis,
                     std::move(candidateWorkspace),
                     std::move(constraintPlanesHeadFirst),
+                    std::move(dynamicObjects),
+                    std::move(dynamicRoomRanges),
                     *retainedBytes));
 
         const auto initialized =
@@ -281,6 +413,88 @@ LegacyGameplayCameraMissionRuntime::tryAcquire() noexcept {
         return std::nullopt;
     }
     return exchange_->tryAcquire();
+}
+
+MissionWorldDynamicCollisionPublicationResult
+LegacyGameplayCameraMissionRuntime::tryPublishDynamicCollisionFrame(
+    const ConvertedNodeTransform& playerWorld,
+    const std::uint32_t playerObjectId,
+    const bool playerActive,
+    const std::size_t playerWorldRoomIndex) noexcept {
+    if (!placedCollision_.has_value()) {
+        return {
+            .status =
+                MissionWorldDynamicCollisionPublicationStatus::
+                    invalidPlacedAssembly,
+            .frame = {},
+        };
+    }
+
+    auto published = publishMissionWorldDynamicCollisionFrame(
+        *placedCollision_,
+        playerCollision_.has_value()
+            ? &*playerCollision_
+            : nullptr,
+        playerWorld,
+        playerObjectId,
+        playerActive,
+        playerWorldRoomIndex,
+        dynamicObjects_,
+        dynamicRoomRanges_);
+    if (published.published()) {
+        dynamicCollisionFramePublished_ = true;
+    }
+    return published;
+}
+
+std::optional<MissionWorldDynamicCollisionFrameView>
+LegacyGameplayCameraMissionRuntime::currentDynamicCollisionFrame()
+    const noexcept {
+    if (!dynamicCollisionFramePublished_ ||
+        !placedCollision_.has_value()) {
+        return std::nullopt;
+    }
+    return MissionWorldDynamicCollisionFrameView{
+        .meshes =
+            {
+                .primary = placedCollision_->meshes,
+                .secondary = playerCollision_.has_value()
+                    ? std::span<const LegacyDynamicBspMesh>{
+                          playerCollision_->meshes}
+                    : std::span<const LegacyDynamicBspMesh>{},
+            },
+        .objects = dynamicObjects_,
+        .roomObjectRanges = dynamicRoomRanges_,
+    };
+}
+
+MissionWorldRuntimeCombinedLineTraceResult
+LegacyGameplayCameraMissionRuntime::
+    tracePublishedDynamicCollisionPortalLine(
+        const std::size_t worldRoomIndex,
+        const Vec3& runtimeStart,
+        const Vec3& runtimeEnd,
+        const MissionWorldRuntimeCombinedPortalLineTraceOptions&
+            options) const noexcept {
+    const auto frame = currentDynamicCollisionFrame();
+    if (!frame.has_value()) {
+        return {
+            .status =
+                MissionWorldRuntimeCombinedLineTraceStatus::invalidInput,
+            .hit = std::nullopt,
+            .portalTransitionCount = 0U,
+        };
+    }
+    return traceMissionWorldRuntimeCombinedPortalLine(
+        arena_,
+        runtimeBasis_,
+        worldRoomIndex,
+        runtimeStart,
+        runtimeEnd,
+        frame->meshes,
+        frame->objects,
+        frame->roomObjectRanges,
+        options);
 }
 
 std::optional<LegacyGameplayCameraFrameSnapshot>
