@@ -173,7 +173,7 @@ private:
     const std::optional<std::string_view> textureRoot =
         airfix::testing::kSyntheticTextureRoot,
     const airfix::assets::ObjectDefinitionKind kind =
-        airfix::assets::ObjectDefinitionKind::object) {
+        airfix::assets::ObjectDefinitionKind::model) {
     Bytes chunks;
     if (textureRoot.has_value()) {
         airfix::testing::legacy_detail::appendAfChunk(
@@ -548,7 +548,7 @@ void testAuthenticatedPlayerVisualDescriptor() {
                 std::optional<std::string>{
                     airfix::testing::kSyntheticTextureRoot} &&
             player.legacySkinSlot == 0U,
-        "player descriptor lost canonical identity or derived OBJE fields");
+        "player descriptor lost canonical identity or derived MODL fields");
     require(
         player.objectDefinitionSourceAllocationFootprintBytes ==
                 footprint(session, kPlayerObjectLogicalPath) &&
@@ -633,15 +633,15 @@ void testPlayerVisualFailuresAreTypedAndAtomic() {
     requireRequestFailure(
         std::string{},
         MissionLoadManifestIssueKind::missingLogicalPath,
-        "present empty player OBJE path was accepted");
+        "present empty player visual path was accepted");
     requireRequestFailure(
         "../Player.object",
         MissionLoadManifestIssueKind::invalidLogicalPath,
-        "invalid player OBJE path was accepted");
+        "invalid player visual path was accepted");
     requireRequestFailure(
         "Game/Objects/MissingPlayer.object",
         MissionLoadManifestIssueKind::notFound,
-        "missing player OBJE path was accepted");
+        "missing player visual path was accepted");
 
     const auto requireObjectFailure = [](
         Bytes objectBytes,
@@ -663,7 +663,7 @@ void testPlayerVisualFailuresAreTypedAndAtomic() {
         {0x00U, 0x01U, 0x02U},
         MissionLoadManifestIssueKind::parseFailure,
         MissionLoadDependencyKind::playerObjectDefinition,
-        "malformed player OBJE was accepted");
+        "malformed player MODL-root definition was accepted");
     {
         auto entries = playerHappyEntries();
         auto& object = entries[entries.size() - 2U];
@@ -677,17 +677,17 @@ void testPlayerVisualFailuresAreTypedAndAtomic() {
                 session, playerRequest()),
             MissionLoadManifestIssueKind::readFailure,
             MissionLoadDependencyKind::playerObjectDefinition,
-            "unreadable compressed player OBJE was accepted");
+            "unreadable compressed player MODL-root definition was accepted");
     }
     requireObjectFailure(
         makePlayerObjectDefinition(
             kPlayerCcfLogicalPath,
             kPlayerBlueprintSelector,
             airfix::testing::kSyntheticTextureRoot,
-            airfix::assets::ObjectDefinitionKind::model),
+            airfix::assets::ObjectDefinitionKind::object),
         MissionLoadManifestIssueKind::objectDefinitionKindMismatch,
         MissionLoadDependencyKind::playerObjectDefinition,
-        "player MODL-root definition was accepted");
+        "player OBJE-root definition was accepted");
     requireObjectFailure(
         makePlayerObjectDefinition(
             kPlayerCcfLogicalPath, std::nullopt),
@@ -730,7 +730,7 @@ void testPlayerVisualFailuresAreTypedAndAtomic() {
                 session, playerRequest()),
             MissionLoadManifestIssueKind::ambiguous,
             MissionLoadDependencyKind::playerObjectDefinition,
-            "ambiguous player OBJE was accepted");
+            "ambiguous player visual definition was accepted");
     }
     {
         auto entries = playerHappyEntries();
@@ -822,7 +822,7 @@ void testPlayerVisualExactBudgetsAndLateAtomicity() {
             limits,
             MissionLoadManifestIssueKind::sourceLimitExceeded,
             MissionLoadDependencyKind::playerObjectDefinition,
-            "one-under player OBJE source limit succeeded");
+            "one-under player MODL source limit succeeded");
     }
     {
         auto limits = exact;

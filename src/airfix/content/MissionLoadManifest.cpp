@@ -1391,7 +1391,7 @@ MissionLoadManifestResult buildMissionLoadManifest(
             }
             std::vector<std::uint8_t>().swap(playerObjectBytes);
             if (playerObject.kind !=
-                assets::ObjectDefinitionKind::object) {
+                assets::ObjectDefinitionKind::model) {
                 fail(
                     result,
                     MissionLoadManifestIssueKind::

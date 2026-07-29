@@ -496,11 +496,13 @@
   callback-driven session replacement or move-out returns
   `sessionIdentityChanged`, even with the same revision. Handle identity and
   revision are checked before/after callbacks and before publication.
-- The manifest optionally authenticates one explicit player `OBJE` definition.
-  Its canonical definition and model-CCF identities, visible slot-zero
-  blueprint selector, texture root, and checked source footprints are retained
-  as a separate descriptor. The player CCF is planned but never read during
-  manifest construction and is not inserted into the room-catalogue load list.
+- The manifest optionally authenticates one explicit player `MODL`-root visual
+  definition. Its canonical definition and model-CCF identities, visible
+  slot-zero blueprint selector, texture root, and checked source footprints are
+  retained as a separate descriptor. Level `OBJE` placements still require
+  `OBJE`; an `OBJE`-root player definition now fails closed. The player CCF is
+  planned but never read during manifest construction and is not inserted into
+  the room-catalogue load list.
 - Added `MissionWorldRoomLoader`, the atomic consumer of that proof. It
   validates the full descriptor shape and exact logical-path/file-index
   identity, pins the loader session's revision and opaque transaction marker,

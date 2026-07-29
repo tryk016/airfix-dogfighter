@@ -22,8 +22,10 @@ high-resolution `Classic` profile alongside `Enhanced`.
 > and an unsigned data-less UIKit/Metal iOS shell. The Windows product now
 > keeps its public synthetic smoke path while an explicit private launch can
 > authenticate one AFPACK revision, load a selected mission room, upload its
-> geometry and complete texture chains, and render it through the recovered
-> gameplay camera contract in D3D11. It also exercises bounded synthetic PCM
+> geometry and complete texture chains, optionally join the authenticated
+> player's textured slot-zero aircraft at its start pose, and render the
+> combined scene through the recovered gameplay camera contract in D3D11. It
+> also exercises bounded synthetic PCM
 > through the reconstructed AirCraft audio coordinator and XAudio2 2.9.
 > The iOS shell now consumes the same audio contract through AVAudioEngine and
 > enforces explicit-resume interruption and route-loss handling. Both products

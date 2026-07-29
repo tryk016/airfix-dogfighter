@@ -1,10 +1,10 @@
 # Player spawn and visual identity
 
-**Status:** player/type/primary-actor, mission start-room, and visible
-slot-0 visual construction recovered; authenticated bounded AFS loading,
-ordered multi-CCF lookup, atomic portable start-pose publication, and generic
-object visual assembly implemented; authenticated actor publication is
-pending
+**Status:** player/type/primary-actor, mission start-room, and visible slot-zero
+visual construction recovered; authenticated MODL-root player admission,
+bounded AFS/CCF/texture loading, exact start pose, combined scene/collision
+publication, iOS pose exchange, and a static owner-local Windows D3D11
+room-plus-aircraft capture implemented; live movement remains pending
 
 **Evidence:** `EV-20260724-005`, `EV-20260724-006`, `EV-20260727-003`,
 `EV-20260727-004`
@@ -165,6 +165,12 @@ primary actor UID
   -> complete instantiated hierarchy for every present slot
 ```
 
+The selected player visual is an object-definition file with an AF `MODL`
+container root. This differs from the `OBJE` roots required for Level `OBJE`
+placement definitions. The `MODL` definition supplies the model CCF, texture
+root, and skin blueprint selector; treating the filename extension as proof of
+an `OBJE` root rejects real aircraft before visual construction.
+
 `AfVehicleType::GetSkinByName` selects a skin. `AfVehicle::SetSkin` stores it
 at actor offset `+0x3F0`. The skin owns blueprint pointers named
 `thirdperson`, `damaged`, and `destroyed` at `+0x24`, `+0x28`, and `+0x2C`.
@@ -247,12 +253,11 @@ the pose and fresh deterministic input state assigned before content becomes
 ready. A new request, stale callback, preparation failure, or validation
 failure leaves the previously committed player state intact.
 
-The implementation deliberately does not execute AFS or infer a setup path. It
-does not yet publish the recovered primary actor to Metal. The reusable
-`ObjectVisualDrawAssembly` now resolves one complete selected blueprint
-subtree, shares physical meshes by first use, retains mesh/instance provenance,
-and publishes only an atomic bounded result. It deliberately stops at
-converted authored-world transforms. The slot-0 actor adapter derives the
-root-relative transforms described above; the remaining boundary is to source
-that visual through the authenticated manifest, append it with tagged
-provenance, and compose the selected spawn pose exactly once.
+The implementation deliberately does not execute AFS or infer a setup path.
+The authenticated `MODL` player visual is resolved through the manifest,
+assembled with typed actor provenance, composed with the selected spawn pose
+exactly once, appended to the room draw model, and published atomically with
+its collision asset. Metal consumes its step-zero pose through the bounded
+player runtime. Windows now consumes the same combined model and has produced a
+private checked D3D11 room-plus-aircraft frame. A changing AirCraft pose and
+live gameplay-camera producer remain the next boundary.

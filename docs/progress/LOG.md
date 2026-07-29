@@ -1593,7 +1593,7 @@ superseded evidence.
 
 ## 2026-07-27 - authenticated player visual admission and scene join
 
-- `MissionLoadManifest` now accepts an optional exact player `OBJE` logical
+- `MissionLoadManifest` now accepts an optional exact player visual logical
   path. The same pinned content session authenticates and parses that
   definition, then derives the model CCF identity, visible blueprint selector,
   and texture root only from the parsed payload. The player CCF is planned and
@@ -3269,3 +3269,29 @@ superseded evidence.
   The 454-file public-boundary scan, local-path scan, local Markdown-link check,
   `actionlint`, and `git diff --check` pass; hosted platform builds remain the
   merge gate.
+
+## 2026-07-29 - first authenticated Windows room-plus-aircraft frame
+
+- `EV-20260729-003` / `EXP-20260729-048` corrected the player visual definition
+  contract from the synthetic `OBJE` assumption to the owner-data-confirmed
+  `MODL` root. Level `OBJE` definitions retain their existing strict `OBJE`
+  requirement; the player gate now rejects that root with the existing typed,
+  atomic kind-mismatch result.
+- Updated the room loader's transient definition kind and made the synthetic
+  manifest and end-to-end room fixtures use `MODL`. Exact path, session,
+  revision, source-budget, CCF, texture, blueprint, scene, collision, and
+  publication checks are unchanged.
+- Every available aircraft definition passed the corrected manifest gate.
+  Thirteen completed the current full room/player loader pilot; one reached a
+  separate aircraft-specific downstream room-loader failure retained for
+  focused follow-up.
+- One representative owner-local launch completed the authenticated manifest,
+  room, model CCF, texture, slot-zero hierarchy, start pose, combined draw
+  model, D3D11 preparation, reverse-depth draw, visible-back-buffer check, and
+  private BMP capture. The 960x540 image visibly contains the aircraft inside
+  the mission room's current centered 720x540 parity viewport. It remains a
+  static Classic/parity frame, not live flight or ADR-0013 completion.
+- The current MSVC 19.51 and MinGW GCC 15.2 Windows product builds each pass
+  92/92 tests, including the real data-less D3D11/XAudio2 smoke. Targeted
+  portable manifest and room-loader tests pass 2/2. The private AFPACK and
+  capture remain ignored and outside public infrastructure.

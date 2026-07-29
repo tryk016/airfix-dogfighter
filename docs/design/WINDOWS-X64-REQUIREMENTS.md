@@ -20,8 +20,10 @@ draw plan through HLSL and D3D11/DXGI, handles focus and resize, falls back
 from hardware D3D11 to WARP, and verifies the rendered back buffer in a hidden
 CTest smoke mode. An explicit owner-local launch can instead authenticate one
 AFPACK revision, build a selected mission manifest and room, prepare complete
-D3D11 geometry and texture resources, bootstrap the recovered gameplay camera,
-and render through reverse depth in a parity-first aspect-fitted 4:3 viewport.
+D3D11 geometry and texture resources, optionally join an authenticated
+MODL-root player aircraft at its selected start pose, bootstrap the recovered
+gameplay camera, and render through reverse depth in a parity-first
+aspect-fitted 4:3 viewport.
 The hidden private validator requires visible D3D11 output without exposing
 the requested logical paths. An explicit one-shot capture mode writes the same
 validated back buffer to a new owner-private BMP for local visual comparison;
