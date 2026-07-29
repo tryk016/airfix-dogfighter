@@ -47,29 +47,28 @@ transactional handoff with that ordering.
 - returns the already-advanced fire state next to the prepared request.
 
 The runtime ordering is explicit: commit the returned fire state, attempt
-private ammo allocation, and dispatch the payload only if allocation succeeds.
-The coordinator is allocation-free and owns no private type, attachment node,
-room, actor, tracer, effect, or original resource.
+capacity acquisition, and activate the payload only if acquisition succeeds.
+The coordinator remains an eager pure-preparation helper. The follow-up
+`LegacyMachineGunProjectileRuntime` directly composes the timing primitive,
+fixed-capacity acquisition, and payload construction so muzzle/event-only
+input is not consumed before capacity succeeds. It preserves the native
+branch order without creating an original private type; see
+[EXP-20260729-047](EXP-20260729-047-portable-projectile-runtime-pool.md).
 
 Invalid timing, attachment, or payload inputs fail closed. Payload-only values
 are intentionally not inspected on a refresh that emits no shot, preserving
 the native branch-consumption boundary.
 
-## Deferred spatial join
+## Follow-up runtime join
 
-The retained mission BSP arena already carries static polygon fractions,
-normals, and the material `0x2152` collision value. It is not yet a faithful
-replacement for the complete `NfProjectile::DetectCollisions` loop:
-
-- dynamic actor ownership/UID and server-side actor gates are absent;
-- native projectile room IDs are not yet mapped to the public world-room
-  catalogue; and
-- the original loop orders static surfaces, portals, material-8 pass behavior,
-  actor callbacks, and repeated room traversal through one collision iterator.
-
-Consequently this slice does not route projectiles through the camera-oriented
-line tracer or claim collision parity. That join remains a separate adapter
-after those inputs are explicit.
+Room-ID mapping, retained static/dynamic collision, projectile-level portals,
+the authenticated primary-player resolver, terminal state/command reduction,
+and creator BSP bracketing are now represented by later slices. The remaining
+join is to advance active generation-tagged slots through that transaction
+using live muzzle and actor producers, then consume terminal commands through
+concrete actor/effect adapters. The fixed-capacity activation boundary is
+recorded in
+[EXP-20260729-047](EXP-20260729-047-portable-projectile-runtime-pool.md).
 
 ## Validation
 

@@ -75,6 +75,7 @@ add_library(airfix_simulation
     src/airfix/simulation/LegacyMachineGunFireState.cpp
     src/airfix/simulation/LegacyMachineGunProjectile.cpp
     src/airfix/simulation/LegacyMachineGunProjectileCollisionCommit.cpp
+    src/airfix/simulation/LegacyMachineGunProjectileRuntime.cpp
     src/airfix/simulation/LegacyMachineGunShotCoordinator.cpp
     src/airfix/simulation/LegacyProjectileCollisionLoop.cpp
     src/airfix/simulation/LegacyVehicleSleepState.cpp
@@ -528,6 +529,15 @@ if(AIRFIX_BUILD_TESTS)
         NAME airfix_legacy_machine_gun_projectile_collision_commit_tests
         COMMAND
             airfix_legacy_machine_gun_projectile_collision_commit_tests)
+
+    add_executable(airfix_legacy_machine_gun_projectile_runtime_tests
+        tests/LegacyMachineGunProjectileRuntimeTests.cpp)
+    target_link_libraries(
+        airfix_legacy_machine_gun_projectile_runtime_tests
+        PRIVATE airfix::simulation)
+    add_test(
+        NAME airfix_legacy_machine_gun_projectile_runtime_tests
+        COMMAND airfix_legacy_machine_gun_projectile_runtime_tests)
 
     add_executable(airfix_legacy_projectile_collision_loop_tests
         tests/LegacyProjectileCollisionLoopTests.cpp)

@@ -128,10 +128,11 @@ was treated as evidence for its own missing boundary.
 
 ## Reconstruction decision
 
-The new pure C++20 helper intentionally stops at a projectile request. It owns
-no type database, actor pointer, room, original attachment record, effect,
-sample, allocation, or platform API. Its caller supplies the barrel count
-rather than assuming the observed weapon layout, and the output carries only:
+The original pure C++20 timing helper intentionally stops at a projectile
+request. It owns no type database, actor pointer, room, original attachment
+record, effect, sample, allocation, or platform API. Its caller supplies the
+barrel count rather than assuming the observed weapon layout, and the output
+carries only:
 
 ```text
 event type 0xE2
@@ -139,10 +140,13 @@ selected barrel index
 projectile speed
 ```
 
-The future runtime adapter must create the private ammunition object and fill
-the complete projectile event. A failed creation produces no projectile;
-projectile motion, collision, impact, damage, ricochet, and rendering are not
-claimed by this slice.
+The follow-up portable runtime now replaces private ammunition allocation with
+a deterministic caller-owned fixed-capacity pool and fills the complete
+semantic projectile event only after a slot is acquired. Capacity failure
+produces no projectile while retaining the already-advanced weapon state.
+Active-slot collision advancement, terminal command consumption, live muzzle
+production, and rendering remain separate. See
+[EXP-20260729-047](EXP-20260729-047-portable-projectile-runtime-pool.md).
 
 ## Validation
 

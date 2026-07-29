@@ -175,10 +175,14 @@ scene, room, actor, polygon, tracer, effect, or networking object. It provides:
 - a surface result with an optional bounded ricochet request.
 
 The runtime must supply the already-rotated muzzle attachment, creator/target
-snapshots, room-spatial collision, actor lookup, private allocation, and event
-dispatch. Invalid/non-finite values and collision fractions outside `[0,1]`
-are rejected at the portable boundary rather than reproducing unsafe memory or
-x87 unordered behavior.
+snapshots, room-spatial collision, actor lookup, and live effect consumption.
+The portable fixed-capacity pool now replaces private allocation and activates
+the complete event-`0xE2` state while preserving the recovered branch order;
+see
+[EXP-20260729-047](EXP-20260729-047-portable-projectile-runtime-pool.md).
+Invalid/non-finite values and collision fractions outside `[0,1]` are rejected
+at the portable boundary rather than reproducing unsafe memory or x87
+unordered behavior.
 
 ## Validation
 

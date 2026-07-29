@@ -113,7 +113,7 @@ The project still needs:
 - authenticated geometry/state publication and resolvers for other actors;
 - concrete creator BSP and actor/effect adapters for the implemented guard and
   terminal damage/surface command contracts;
-- private projectile allocation/event dispatch and live muzzle transforms; and
+- active generation-tagged slot advancement and live muzzle transforms; and
 - controlled executable traces for final runtime comparison.
 
 ## Confidence
@@ -122,7 +122,7 @@ Confidence is **3/3** for transaction retention, lookup outcomes, native actor
 gate order, and allocation-free primary-player resolution.
 
 Confidence remains **2/3** for complete live weapon behavior until the
-changing producer, other actors, private live dispatch, and controlled runtime
+changing producer, other actors, live slot/effect dispatch, and controlled runtime
 traces exist.
 
 ## Related material
@@ -133,3 +133,4 @@ traces exist.
 - [Projectile runtime query adapter](EXP-20260729-043-projectile-runtime-query-adapter.md)
 - [Projectile terminal collision commit](EXP-20260729-045-projectile-terminal-collision-commit.md)
 - [Projectile creator BSP guard](EXP-20260729-046-projectile-creator-bsp-guard.md)
+- [Portable projectile runtime pool](EXP-20260729-047-portable-projectile-runtime-pool.md)

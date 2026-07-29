@@ -70,6 +70,10 @@ Implemented foundations include:
   published collision query and a fail-closed creator
   `DisableBsp`/conditional `EnableBsp` transaction around the complete
   portal/terminal path, without dispatching private effects;
+- a caller-owned fixed-capacity projectile runtime that preserves the recovered
+  state-before-capacity order, activates semantic event `0xE2` into
+  generation-tagged slots, rejects stale handles, and allocates no memory in
+  the hot path;
 - validated, allocation-free reconstructions of the legacy world-to-camera
   point transform and camera-space screen projection, including the recovered
   reverse-depth scalar, four depth presets, gameplay camera preset selection,
