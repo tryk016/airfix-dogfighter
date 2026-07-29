@@ -138,7 +138,7 @@ public:
       lastErrorCode_ = invalidArgumentError;
       return AirfixIOSAudioClipRegistrationResult::invalidClip;
     }
-    const NSNumber *key = identifierKey(clip.id.value);
+    NSNumber *key = identifierKey(clip.id.value);
     if ([clips_ objectForKey:key] != nil) {
       lastErrorCode_ = invalidArgumentError;
       return AirfixIOSAudioClipRegistrationResult::duplicateId;
@@ -666,7 +666,7 @@ private:
   }
 
   void removeVoice(const std::uint32_t identifier) noexcept {
-    const NSNumber *key = identifierKey(identifier);
+    NSNumber *key = identifierKey(identifier);
     AirfixIOSAudioVoice *voice = [voices_ objectForKey:key];
     if (voice == nil) {
       return;
