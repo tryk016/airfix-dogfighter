@@ -1,9 +1,12 @@
 #include "AirfixD3D11Renderer.hpp"
 #include "AirfixSdlInputAdapter.hpp"
+#include "AirfixWindowsCommandLine.hpp"
 #include "AirfixXAudio2Backend.hpp"
 
 #include "airfix/audio/AudioCommand.hpp"
 #include "airfix/content/LegacyAircraftAudioClipSet.hpp"
+#include "airfix/content/MissionLoadManifest.hpp"
+#include "airfix/content/MissionWorldRoomLoader.hpp"
 #include "airfix/content/VerifiedContentSession.hpp"
 #include "airfix/package/AfPackRecovery.hpp"
 #include "airfix/runtime/AppSession.hpp"
@@ -24,6 +27,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -164,42 +168,16 @@ struct SdlWindowDeleter {
 
 using SdlWindow = std::unique_ptr<SDL_Window, SdlWindowDeleter>;
 
-struct CommandLineOptions final {
-  bool smokeTest{};
-  bool validateContentOnly{};
-  std::optional<std::filesystem::path> contentRoot;
+struct LoadedPrivateContent final {
+  airfix::content::ContentRevision revision;
+  airfix::simulation::LegacyAircraftAudioBindings aircraftAudioBindings;
+  std::optional<airfix::content::LoadedMissionWorldRoom> missionRoom;
 };
 
-[[nodiscard]] CommandLineOptions parseCommandLine(const int argumentCount,
-                                                  char *arguments[]) {
-  if (argumentCount == 1) {
-    return {};
-  }
-  if (argumentCount == 2 && std::string_view(arguments[1]) == "--smoke-test") {
-    return {
-        .smokeTest = true,
-        .validateContentOnly = false,
-        .contentRoot = std::nullopt,
-    };
-  }
-  if (argumentCount == 3 && !std::string_view(arguments[2]).empty() &&
-      (std::string_view(arguments[1]) == "--content-root" ||
-       std::string_view(arguments[1]) == "--validate-content-root")) {
-    return {
-        .smokeTest = false,
-        .validateContentOnly =
-            std::string_view(arguments[1]) == "--validate-content-root",
-        .contentRoot = std::filesystem::path(arguments[2]),
-    };
-  }
-  throw std::runtime_error(
-      "usage: AirfixDogfighter.exe [--smoke-test | --content-root <path> | "
-      "--validate-content-root <path>]");
-}
-
-[[nodiscard]] airfix::simulation::LegacyAircraftAudioBindings
-loadPrivateAircraftAudio(const std::filesystem::path &contentRoot,
-                         airfix::windows::AirfixXAudio2Backend &audio) {
+[[nodiscard]] LoadedPrivateContent loadPrivateContent(
+    const std::filesystem::path &contentRoot,
+    const std::optional<airfix::windows::AirfixWindowsMissionOptions> &mission,
+    airfix::windows::AirfixXAudio2Backend &audio) {
   auto inspection = airfix::afpack::inspectActiveContent(contentRoot);
   if (inspection.status() != airfix::afpack::ActiveContentStatus::ready) {
     throw std::runtime_error(
@@ -207,14 +185,48 @@ loadPrivateAircraftAudio(const std::filesystem::path &contentRoot,
   }
   auto session = airfix::content::VerifiedContentSession::adopt(
       std::move(inspection).takeReadyLease());
-  auto result = airfix::content::loadLegacyAircraftAudioClips(session);
-  if (!result.success() || !result.clips.has_value() ||
-      !result.clips->belongsTo(session)) {
+  const auto revision = session.revision();
+  auto audioResult = airfix::content::loadLegacyAircraftAudioClips(session);
+  if (!audioResult.success() || !audioResult.clips.has_value() ||
+      !audioResult.clips->belongsTo(session)) {
     throw std::runtime_error(
         "authenticated aircraft audio could not be loaded");
   }
 
-  for (const auto &clip : result.clips->clipViews()) {
+  std::optional<airfix::content::LoadedMissionWorldRoom> missionRoom;
+  if (mission.has_value()) {
+    const airfix::content::MissionLoadManifestRequest manifestRequest{
+        .levelLogicalPath = mission->levelLogicalPath,
+        .setupLogicalPath = mission->setupLogicalPath,
+        .playerObjectLogicalPath = mission->playerObjectLogicalPath,
+    };
+    auto manifest =
+        airfix::content::buildMissionLoadManifest(session, manifestRequest);
+    if (!manifest.success() || !manifest.manifest.has_value() ||
+        !manifest.manifest->belongsTo(session) ||
+        manifest.manifest->revision() != revision) {
+      throw std::runtime_error(
+          "authenticated Windows mission manifest could not be built");
+    }
+
+    const airfix::content::MissionWorldRoomLoadRequest roomRequest{
+        .initialRootName = {},
+        .requestedStartIndex = mission->requestedStartIndex,
+        .basis = {},
+        .uvPolicy = airfix::render::UvPolicy::preserveRaw,
+    };
+    auto loadedRoom = airfix::content::loadMissionWorldRoom(
+        session, *manifest.manifest, roomRequest);
+    if (!loadedRoom.success() || !loadedRoom.room.has_value() ||
+        loadedRoom.room->revision != revision ||
+        session.revision() != revision) {
+      throw std::runtime_error(
+          "authenticated Windows mission room could not be loaded");
+    }
+    missionRoom = std::move(*loadedRoom.room);
+  }
+
+  for (const auto &clip : audioResult.clips->clipViews()) {
     if (audio.registerPcm16Clip(clip) !=
         airfix::windows::AirfixAudioClipRegistrationResult::registered) {
       throw std::runtime_error("XAudio2 rejected authenticated aircraft PCM");
@@ -229,16 +241,27 @@ loadPrivateAircraftAudio(const std::filesystem::path &contentRoot,
       {5U},
       {6U},
   }};
-  const auto bindings = result.clips->bindings(voices);
+  const auto bindings = audioResult.clips->bindings(voices);
   if (!bindings.has_value()) {
     throw std::runtime_error(
         "authenticated aircraft audio bindings are invalid");
   }
-  return *bindings;
+  return {
+      .revision = revision,
+      .aircraftAudioBindings = *bindings,
+      .missionRoom = std::move(missionRoom),
+  };
 }
 
 int run(const int argumentCount, char *arguments[]) {
-  const CommandLineOptions options = parseCommandLine(argumentCount, arguments);
+  std::vector<std::string_view> commandLineArguments;
+  commandLineArguments.reserve(
+      argumentCount > 1 ? static_cast<std::size_t>(argumentCount - 1) : 0U);
+  for (int index = 1; index < argumentCount; ++index) {
+    commandLineArguments.emplace_back(arguments[index]);
+  }
+  const auto options =
+      airfix::windows::parseAirfixWindowsCommandLine(commandLineArguments);
 
   if (!SDL_SetAppMetadata("Airfix Dogfighter Reconstruction", "0.1.0",
                           "com.tryk016.airfixdogfighter")) {
@@ -253,7 +276,8 @@ int run(const int argumentCount, char *arguments[]) {
   } quitGuard;
 
   SDL_WindowFlags flags = SDL_WINDOW_HIGH_PIXEL_DENSITY;
-  flags |= options.smokeTest || options.validateContentOnly
+  flags |= options.smokeTest || options.validateContentOnly ||
+                   options.captureFrameOutput.has_value()
                ? SDL_WINDOW_HIDDEN
                : SDL_WINDOW_RESIZABLE;
   SdlWindow window{
@@ -270,17 +294,38 @@ int run(const int argumentCount, char *arguments[]) {
     throw std::runtime_error("XAudio2 2.9 initialization failed");
   }
 
-  std::optional<airfix::simulation::LegacyAircraftAudioBindings>
-      privateAircraftAudioBindings;
+  std::optional<LoadedPrivateContent> privateContent;
   if (options.contentRoot.has_value()) {
-    privateAircraftAudioBindings =
-        loadPrivateAircraftAudio(*options.contentRoot, audio);
+    privateContent.emplace(
+        loadPrivateContent(*options.contentRoot, options.mission, audio));
   }
-  if (privateAircraftAudioBindings.has_value()) {
+  if (privateContent.has_value() && privateContent->missionRoom.has_value()) {
+    renderer.installLoadedMissionRoom(std::move(*privateContent->missionRoom),
+                                      privateContent->revision);
+    privateContent->missionRoom.reset();
+    if (!renderer.missionWorldRoomInstalled()) {
+      throw std::runtime_error(
+          "authenticated Windows mission was not published");
+    }
+  }
+  if (privateContent.has_value()) {
     audio.setActive(true);
   }
+  if (options.captureFrameOutput.has_value()) {
+    renderer.captureFrameToBmp(*options.captureFrameOutput);
+    std::cout << "Authenticated private D3D11 mission frame captured\n";
+    return 0;
+  }
   if (options.validateContentOnly) {
-    std::cout << "Authenticated private aircraft audio validation passed\n";
+    if (options.mission.has_value() && !renderer.renderFrame(true)) {
+      throw std::runtime_error(
+          "authenticated Windows mission produced no visible D3D11 output");
+    }
+    std::cout
+        << (options.mission.has_value()
+                ? "Authenticated private mission, rendering resources, and "
+                  "aircraft audio validation passed\n"
+                : "Authenticated private aircraft audio validation passed\n");
     return 0;
   }
 

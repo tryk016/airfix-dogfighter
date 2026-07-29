@@ -33,8 +33,15 @@
   phase-transition/destroyed-dive/modulation order. Windows can authenticate an
   owner-local AFPACK root, decode the six recovered PCM16 samples through the
   same retained content session, register the complete clip set, and derive
-  explicit role/voice bindings; the public product smoke remains synthetic and
-  data-less. It is not yet a playable build.
+  explicit role/voice bindings. An explicit mission request now builds the
+  manifest and complete room through that same session, prepares dense D3D11
+  geometry and authored/generated texture mip chains, bootstraps the recovered
+  camera projection, and renders with reverse depth in an aspect-fitted 4:3
+  viewport. The hidden private validator requires visible GPU output, and a
+  separate one-shot mode saves that checked frame as a non-overwriting private
+  BMP for local parity work. The public product smoke remains synthetic and
+  data-less. The loaded room and camera are still static because live flight
+  simulation is not connected, so this is not yet a playable build.
 - The native iOS audio adapter consumes the same monotonic command batches.
   It converts bounded PCM16 registrations once into AVAudioEngine's standard
   deinterleaved Float32 representation, uses one player/varispeed graph per
@@ -791,10 +798,10 @@
 ## Next
 
 1. Feed the committed authenticated aircraft-audio bindings from the live
-   12 ms producer on both products. Extend the native Windows x64 product with
-   authenticated mission/world loading, persistent remapping/calibration
-   profiles, and controller glyphs; replace the public smoke scene with shared
-   reconstructed world commands without weakening either data-less CI path.
+   12 ms producer on both products. Connect Windows semantic input and the
+   authenticated rendered room to the changing AirCraft/player pose and camera
+   runtimes; add persistent remapping/calibration profiles and controller
+   glyphs without weakening the public data-less smoke path.
 2. Obtain controlled runtime traces for free flight and the ground, inverted,
    water, collision, engine-transition, and too-high branches; establish
    x87-versus-portable numeric tolerances and deterministic replacement PRNG
@@ -836,6 +843,19 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The authenticated Windows mission-rendering slice builds with MSVC 19.51 and
+  MinGW GCC 15.2 and passes 92/92 tests under each compiler. The public hidden
+  smoke still compiles HLSL, renders only synthetic geometry, reads the D3D11
+  target, and exercises synthetic XAudio2. A complete owner-local AFPACK was
+  separately created and installed outside Git; an explicit mission then
+  passed manifest/room/audio authentication, complete D3D11 resource
+  preparation, gameplay-camera rendering, visible back-buffer readback, and a
+  private BMP capture.
+  The exact temporary validation tree was removed and the original installation
+  remained unchanged. The portable code-intelligence build passes 89/89 tests;
+  the 453-file public-boundary scan, `actionlint`, changed-source formatting,
+  changed-scope local-path scan, and `git diff --check` also pass. Hosted CI is
+  required before merge.
 - The authenticated aircraft-audio slice passes a fresh 289-step GCC 15.2
   build and all 89 portable tests. A fresh native MSVC 19.51/Ninja product
   build compiles 548 steps and passes 91/91 tests, including the real hidden

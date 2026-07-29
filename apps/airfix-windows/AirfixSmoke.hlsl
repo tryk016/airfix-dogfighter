@@ -3,6 +3,17 @@ cbuffer SmokeUniforms : register(b0)
     row_major float4x4 modelFromLocal;
 };
 
+cbuffer GameplayUniforms : register(b1)
+{
+    row_major float4x4 gameplayModelFromLocal;
+    float4 cameraAxisX;
+    float4 cameraAxisY;
+    float4 cameraAxisZ;
+    float4 cameraTranslationAndInverseScaleSquared;
+    float4 projection;
+    float4 logicalCanvas;
+};
+
 struct SmokeVertexInput
 {
     float4 position : POSITION;
@@ -17,12 +28,59 @@ struct SmokeRasterInput
     float light : TEXCOORD1;
 };
 
+struct GameplayRasterInput
+{
+    float4 position : SV_POSITION;
+    float2 uv : TEXCOORD0;
+    float farClipDistance : SV_ClipDistance0;
+};
+
 SmokeRasterInput AirfixSmokeVS(SmokeVertexInput input)
 {
     SmokeRasterInput output;
     output.position = mul(input.position, modelFromLocal);
     output.uv = input.uv;
     output.light = saturate(input.normal.z * 0.25f + 0.75f);
+    return output;
+}
+
+GameplayRasterInput AirfixGameplayVS(SmokeVertexInput input)
+{
+    GameplayRasterInput output;
+    const float3 worldPosition =
+        mul(input.position, gameplayModelFromLocal).xyz;
+    const float3 cameraDelta =
+        worldPosition - cameraTranslationAndInverseScaleSquared.xyz;
+    const float inverseScaleSquared =
+        cameraTranslationAndInverseScaleSquared.w;
+    const float3 cameraPosition =
+        float3(
+            dot(cameraDelta, cameraAxisX.xyz),
+            dot(cameraDelta, cameraAxisY.xyz),
+            dot(cameraDelta, cameraAxisZ.xyz))
+        * inverseScaleSquared;
+
+    const float nearDistance = projection.x;
+    const float farDistance = projection.y;
+    const float projectScale = projection.z;
+    const float centreX = logicalCanvas.x;
+    const float centreY = logicalCanvas.y;
+    const float canvasWidth = logicalCanvas.z;
+    const float canvasHeight = logicalCanvas.w;
+    const float homogeneousW = cameraPosition.z / nearDistance;
+    const float clipX =
+        ((2.0f * projectScale) / canvasWidth) * cameraPosition.x
+        + ((2.0f * centreX) / canvasWidth - 1.0f) * homogeneousW;
+    const float clipY =
+        ((2.0f * projectScale) / canvasHeight) * cameraPosition.y
+        + (1.0f - (2.0f * centreY) / canvasHeight) * homogeneousW;
+
+    // D3D11 uses the same [0,1] homogeneous depth contract as Metal here.
+    // z=1 and w=Z/near reject Z<near; the explicit clip distance supplies
+    // the separately recovered inclusive far plane.
+    output.position = float4(clipX, clipY, 1.0f, homogeneousW);
+    output.farClipDistance = farDistance - cameraPosition.z;
+    output.uv = input.uv;
     return output;
 }
 
@@ -33,4 +91,9 @@ float4 AirfixSmokePS(SmokeRasterInput input) : SV_TARGET
 {
     float4 color = colorTexture.Sample(colorSampler, input.uv);
     return float4(color.rgb * input.light, color.a);
+}
+
+float4 AirfixGameplayPS(GameplayRasterInput input) : SV_TARGET
+{
+    return colorTexture.Sample(colorSampler, input.uv);
 }

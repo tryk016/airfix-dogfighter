@@ -3205,3 +3205,38 @@ superseded evidence.
   runs `30457131783` and `30457131656` pass all seven hosted Visual Studio,
   Windows/Ubuntu/macOS portable, clangd, `iphoneos`, and `iphonesimulator`
   jobs.
+
+## 2026-07-29 - authenticated mission rendering in the Windows product
+
+- Added a strict Windows launch parser for an explicit owner-local content
+  root and optional setup/Level pair, player-object path, and `uint32_t` start
+  index. Duplicate, incomplete, overlong, overflowing, unknown, and mixed
+  smoke/private requests fail closed. AFPACK v1 paths remain out-of-band and
+  are never inferred or stored in public configuration.
+- Refactored private startup so aircraft audio, the mission manifest, and the
+  complete room load through one unchanged `VerifiedContentSession` and
+  revision. Any failed stage suppresses application publication.
+- Extended the D3D11 backend with a separately compiled gameplay HLSL path,
+  recovered homogeneous scalar projection, explicit far clip distance,
+  reverse-depth clear/compare, and the shared parity-first 4:3 aspect-fit
+  viewport. The public diagnostic shader and scene remain unchanged.
+- D3D11 now prepares bounded vertex/index buffers plus every dense mission
+  texture before committing the replacement scene. Authored mip chains are
+  uploaded intact; base-only plans use checked D3D11 mip generation. The
+  renderer independently rebuilds and compares the portable submission plan
+  and validates the native publication boundary.
+- Expanded hidden private validation to issue an actual mission draw, read the
+  D3D11 back buffer, and require visible output. Public CTest still uses only
+  synthetic geometry and PCM. A separate hidden one-shot capture mode writes
+  the checked BGRA8 buffer to a new private BMP without overwriting existing
+  data.
+- MSVC 19.51 and MinGW GCC 15.2 product builds each pass 92/92 tests, including
+  the new command-line contract and native D3D11/XAudio2 smoke. A separate
+  owner-local trial created and atomically installed a complete AFPACK outside
+  Git, loaded an explicit mission, prepared its GPU resources, rendered through
+  the gameplay camera, and passed back-buffer visibility. The exact temporary
+  tree was removed afterward; the original installation was not modified.
+- The portable code-intelligence build passes 89/89 tests. The 453-file public
+  boundary scan, `actionlint`, changed-source formatting, changed-scope
+  local-path scanning, and `git diff --check` pass. Hosted Windows, portable,
+  clangd, and iOS gates remain mandatory before merge.

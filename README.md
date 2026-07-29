@@ -18,8 +18,11 @@ switchable and testable.
 > **Project status:** active research and development. The repository builds
 > and tests its portable core, a native data-less SDL3/D3D11 Windows shell,
 > and an unsigned data-less UIKit/Metal iOS shell. The Windows product now
-> exercises shared synthetic draw commands through HLSL and bounded synthetic
-> PCM through the reconstructed AirCraft audio coordinator and XAudio2 2.9.
+> keeps its public synthetic smoke path while an explicit private launch can
+> authenticate one AFPACK revision, load a selected mission room, upload its
+> geometry and complete texture chains, and render it through the recovered
+> gameplay camera contract in D3D11. It also exercises bounded synthetic PCM
+> through the reconstructed AirCraft audio coordinator and XAudio2 2.9.
 > The iOS shell now consumes the same audio contract through AVAudioEngine and
 > enforces explicit-resume interruption and route-loss handling. Both products
 > can now bind the six recovered aircraft roles to PCM decoded from one
@@ -67,6 +70,12 @@ Implemented foundations include:
   loop recovery, and lifecycle/interruption-safe session activation;
 - one proprietary-data-free render scene and validated draw plan shared by the
   Windows D3D11 and iOS Metal bring-up paths;
+- an explicit owner-local Windows mission launch path that builds the manifest,
+  room, camera bootstrap, geometry, textures, and aircraft audio from one
+  unchanged authenticated content session; D3D11 prepares every replacement
+  resource before publication, preserves authored or generated mip chains,
+  uses the recovered reverse-depth projection, and aspect-fits the parity-first
+  4:3 canvas;
 - bounded UDSP, CCF, GTI, and related legacy-format parsing;
 - a private AFPACK container, strict validation, atomic installation, recovery,
   rollback, and authenticated content sessions;
@@ -138,7 +147,7 @@ transform until the recovered movement law supplies a changing world pose.
 Dynamic-object sphere collision for the camera, live event-5 camera production
 from complete AirCraft state, full gameplay simulation, campaign flow,
 live aircraft audio inputs, audible parity, finished
-menus, complete Windows input/content integration,
+menus, live Windows simulation/input-to-world integration,
 physical-device rendering, and visual acceptance remain future milestones.
 
 For frequently updated details, use
@@ -229,10 +238,43 @@ AirfixDogfighter.exe --validate-content-root <private-content-root>
 AirfixDogfighter.exe --content-root <private-content-root>
 ```
 
+An explicit mission adds owner-private logical paths out of band:
+
+```powershell
+AirfixDogfighter.exe --validate-content-root <private-content-root> `
+  --setup <setup-logical-path> `
+  --level <level-logical-path> `
+  [--player-object <player-object-logical-path>] `
+  [--start-index <uint32>]
+
+AirfixDogfighter.exe --content-root <private-content-root> `
+  --setup <setup-logical-path> `
+  --level <level-logical-path> `
+  [--player-object <player-object-logical-path>] `
+  [--start-index <uint32>]
+
+AirfixDogfighter.exe --content-root <private-content-root> `
+  --setup <setup-logical-path> `
+  --level <level-logical-path> `
+  [--player-object <player-object-logical-path>] `
+  [--start-index <uint32>] `
+  --capture-frame <private-output.bmp>
+```
+
 All placeholders must point outside the repository. The validation mode opens a
 hidden window, authenticates the AFAC-selected package, decodes and checks the
-six aircraft samples, registers them with XAudio2, and exits. Normal startup
-keeps the registered private clips available for the reconstructed runtime.
+six aircraft samples, registers them with XAudio2, and exits. With a complete
+mission pair it additionally loads the mission from the same pinned session,
+prepares all D3D11 resources, renders one gameplay-camera frame, reads the back
+buffer, and requires visible output. Normal startup keeps the authenticated
+room and registered clips available for the reconstructed runtime. AFPACK v1
+contains no launch catalogue, so setup and Level paths are deliberately
+explicit and are never inferred. Do not place real values in source files,
+presets, scripts, shell history shared with others, or issue reports.
+The one-shot capture mode keeps the SDL window hidden, refuses to overwrite an
+existing file, and writes a top-down BGRA8 BMP after the same visible-output
+check. Captures contain derived proprietary imagery and must stay private and
+outside Git.
 Loose WAV files and the original installation directory are not accepted by
 the application.
 
@@ -309,8 +351,8 @@ See the [AFPACK format and trust boundary](docs/formats/AFPACK.md) and
 
 Public workflows validate portable C++ and compile the data-less UIKit/Metal
 shell for `iphoneos` and `iphonesimulator` with deployment target 16.4 and no
-code signing. The existing Windows CI job validates portable code and tools; it
-will also build and smoke-test the native x64 product after that shell exists.
+code signing. The Windows CI job builds the native x64 SDL3/D3D11/XAudio2
+product with Visual Studio and runs its hidden data-less GPU/audio smoke test.
 Pull-request workflows do not read private content configuration or signing
 secrets.
 
