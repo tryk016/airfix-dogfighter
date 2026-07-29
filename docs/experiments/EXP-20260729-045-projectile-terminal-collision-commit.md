@@ -100,8 +100,16 @@ actor-gate pass-through, a two-room portal-to-surface commit with ricochet
 request, and 4,096 complete actor-gate and portal/surface transactions without
 observed allocation.
 
-Full build, portability, tooling, public-boundary, isolated WSL, and CI results
-are recorded in the progress log when this slice is published.
+A fresh Windows GCC 15.2 Release build compiles 265 steps; it and the
+regenerated code-intelligence build pass 82/82 tests. The compilation database
+contains 169 portable entries and no Apple-only source. Clangd 22.1.8 reports
+zero errors in all five changed production/test translation units with the
+trusted GCC query driver. The RE wrapper suites, 12 Rizin normalization tests,
+synthetic/public boundary tests and 405-file scan, 263-row function catalogue,
+`actionlint`, 19-file local-path scan, and `git diff --check` pass. Exact commit
+`b355415` compiles all 265 steps with GCC 13.3 and passes 82/82 tests in
+44.80 seconds in a new isolated `Airfix-Dev` WSL clone. GitHub Actions remains
+the publication gate.
 
 ## Remaining boundary
 
