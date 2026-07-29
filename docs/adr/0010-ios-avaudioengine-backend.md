@@ -25,8 +25,10 @@ iOS 16.4 and does not play audio in the background.
 Use **AVAudioEngine** with one `AVAudioPlayerNode` and one
 `AVAudioUnitVarispeed` per active portable voice.
 
-- Copy each valid mono/stereo interleaved PCM16 registration into an immutable
-  `AVAudioPCMBuffer` owned by the backend.
+- Convert each valid mono/stereo interleaved PCM16 registration once into
+  AVAudioEngine's standard deinterleaved Float32 representation and retain the
+  immutable `AVAudioPCMBuffer` in the backend. Memory admission accounts for
+  the converted storage, not only the smaller source view.
 - Connect each player through its varispeed node to the engine's main mixer.
   `AVAudioUnitVarispeed.rate` directly implements the portable pitch/rate
   multiplier and has the same documented `0.25...4.0` range.
@@ -98,6 +100,8 @@ contracts remain under `src/airfix/audio`.
 - Clip and voice IDs are explicit and bounded. A start command must reference a
   registered clip, and preflight must prove capacity and generation safety
   before command application.
+- PCM16-to-Float32 conversion is deterministic (`sample / 32768.0`) and occurs
+  outside the render callback at registration time.
 - Gain and pitch are accepted only through the existing portable validation.
 - Completion work is dispatched off the audio render callback before graph
   mutation. A voice generation token prevents an old completion from removing
@@ -119,6 +123,7 @@ contracts remain under `src/airfix/audio`.
 
 - [Apple: AVAudioEngine](https://developer.apple.com/documentation/avfaudio/avaudioengine)
 - [Apple: AVAudioPlayerNode](https://developer.apple.com/documentation/avfaudio/avaudioplayernode)
+- [Apple: AVAudioFormat](https://developer.apple.com/documentation/avfaudio/avaudioformat)
 - [Apple: AVAudioUnitVarispeed](https://developer.apple.com/documentation/avfaudio/avaudiounitvarispeed)
 - [Apple: AVAudioUnitVarispeed rate](https://developer.apple.com/documentation/avfaudio/avaudiounitvarispeed/rate)
 - [Apple: AVAudioSession](https://developer.apple.com/documentation/avfaudio/avaudiosession)

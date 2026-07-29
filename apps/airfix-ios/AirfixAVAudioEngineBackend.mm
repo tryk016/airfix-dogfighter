@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <cstring>
 #include <limits>
 #include <memory>
 #include <utility>
@@ -148,9 +147,9 @@ public:
       return AirfixIOSAudioClipRegistrationResult::capacityExceeded;
     }
 
-    const std::size_t clipBytes =
-        clip.interleavedSamples.size() * sizeof(std::int16_t);
-    if (clipBytes > maximumRegisteredPcmBytes - registeredPcmBytes_) {
+    const std::size_t storageBytes =
+        clip.interleavedSamples.size() * sizeof(float);
+    if (storageBytes > maximumRegisteredPcmBytes - registeredPcmBytes_) {
       lastErrorCode_ = voiceCapacityError;
       return AirfixIOSAudioClipRegistrationResult::capacityExceeded;
     }
@@ -162,11 +161,12 @@ public:
       return AirfixIOSAudioClipRegistrationResult::invalidClip;
     }
 
+    // AVAudioEngine's standard processing representation is deinterleaved
+    // Float32. Convert at this bounded registration boundary instead of
+    // relying on an audio unit to accept interleaved Int16 at graph start.
     AVAudioFormat *format = [[AVAudioFormat alloc]
-        initWithCommonFormat:AVAudioPCMFormatInt16
-                  sampleRate:static_cast<double>(clip.sampleRate)
-                    channels:clip.channelCount
-                 interleaved:YES];
+        initStandardFormatWithSampleRate:static_cast<double>(clip.sampleRate)
+                                channels:clip.channelCount];
     if (format == nil) {
       lastErrorCode_ = graphCreationError;
       return AirfixIOSAudioClipRegistrationResult::allocationFailed;
@@ -175,14 +175,19 @@ public:
     AVAudioPCMBuffer *buffer = [[AVAudioPCMBuffer alloc]
         initWithPCMFormat:format
             frameCapacity:static_cast<AVAudioFrameCount>(frameCount)];
-    if (buffer == nil || buffer.int16ChannelData == nullptr ||
-        buffer.int16ChannelData[0] == nullptr) {
+    float *const *channelData = buffer.floatChannelData;
+    if (buffer == nil || channelData == nullptr) {
       lastErrorCode_ = graphCreationError;
       return AirfixIOSAudioClipRegistrationResult::allocationFailed;
     }
     buffer.frameLength = static_cast<AVAudioFrameCount>(frameCount);
-    std::memcpy(buffer.int16ChannelData[0], clip.interleavedSamples.data(),
-                clipBytes);
+    for (std::size_t frame = 0U; frame < frameCount; ++frame) {
+      for (std::uint16_t channel = 0U; channel < clip.channelCount; ++channel) {
+        const std::size_t sampleIndex = frame * clip.channelCount + channel;
+        channelData[channel][frame] =
+            static_cast<float>(clip.interleavedSamples[sampleIndex]) / 32768.0F;
+      }
+    }
 
     AirfixIOSRegisteredAudioClip *registered =
         [[AirfixIOSRegisteredAudioClip alloc] init];
@@ -193,9 +198,9 @@ public:
     registered->clipId = clip.id.value;
     registered->format = format;
     registered->buffer = buffer;
-    registered->byteCount = clipBytes;
+    registered->byteCount = storageBytes;
     [clips_ setObject:registered forKey:key];
-    registeredPcmBytes_ += clipBytes;
+    registeredPcmBytes_ += storageBytes;
     lastErrorCode_ = 0;
     return AirfixIOSAudioClipRegistrationResult::registered;
   }
