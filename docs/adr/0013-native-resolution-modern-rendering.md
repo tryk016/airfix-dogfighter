@@ -40,6 +40,11 @@ The first non-visual-quality stage is implemented:
 - the Windows product exposes validated 50-200% render scale and Original 4:3
   command-line settings, while Metal exposes the equivalent fail-closed
   main-thread backend settings for later product UI binding;
+- a shared frame-diagnostics contract now publishes output/scene extents,
+  render scale, FPS, CPU/GPU frame time, draw calls, triangles, lights, and an
+  explicitly estimated or backend-reported GPU-memory figure; D3D11 and Metal
+  composite the same portable text panel after scene scaling, with Metal
+  respecting the UIKit safe area;
 - portable tests cover 4:3, 16:10, 16:9, 19.5:9, 21:9, 32:9, safe-area/UI/input
   transforms, invalid inputs, and the exact 3840x2160 acceptance case; and
 - private direct D3D11 backbuffer captures have verified 1920x1080, 2560x1440,
@@ -48,12 +53,14 @@ The first non-visual-quality stage is implemented:
   480x270 target at 50% and a 1920x1080 target at 200%.
 
 This is a foundation milestone, not completion of this ADR. The portable core
-and both native backends now execute the 50-200% render-scale policy, but
-finished product settings UI, the diagnostic overlay, visual profiles, modern
+and both native backends now execute the 50-200% render-scale and diagnostic
+overlay policies, but finished product settings UI, visual profiles, modern
 lighting, and physical-device iOS acceptance remain pending. See
 [EXP-20260729-049](../experiments/EXP-20260729-049-native-render-layout-horplus.md)
 and
-[EXP-20260729-050](../experiments/EXP-20260729-050-backend-render-scale-targets.md).
+[EXP-20260729-050](../experiments/EXP-20260729-050-backend-render-scale-targets.md)
+and
+[EXP-20260729-051](../experiments/EXP-20260729-051-render-frame-diagnostics-overlay.md).
 
 ### Resolution domains
 
@@ -293,8 +300,10 @@ path while sharing the higher-level rendering contract.
   input-coordinate tests for the required aspect ratios.
 - [x] Add backend offscreen render-scale targets and presentation passes.
 - [ ] Expose Original 4:3, render scale, safe FOV, and independent UI settings.
-- [ ] Complete native backbuffer/render-target verification on both platforms
-  and add the diagnostic overlay.
+- [x] Add the shared diagnostic contract and output-resolution overlays to
+  D3D11 and Metal.
+- [ ] Complete physical-device backbuffer/render-target and diagnostic
+  acceptance on iPhone SE 3 and iPhone 17 Pro Max.
 - [ ] Implement the ordered image-quality stages above, maintaining separate
   `Classic` and `Enhanced` screenshot baselines.
 - [x] Keep all original and converted assets and owner-derived captures outside

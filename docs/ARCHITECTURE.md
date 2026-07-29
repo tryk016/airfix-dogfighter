@@ -136,6 +136,16 @@ presentation without inheriting the 3D render scale. Allocation and texture
 dimension limits fail closed rather than silently changing the requested
 scale.
 
+`RenderFrameDiagnosticsAccumulator` is the shared, presentation-only telemetry
+boundary. D3D11 and Metal publish the same output extent, scene-target extent,
+render scale, smoothed FPS/CPU time, asynchronous GPU time, scene/total draw
+and triangle counts, active lights, and explicitly labelled GPU-memory
+measurement. A portable RGBA8 panel rasterizer lets both backends composite the
+same crisp developer overlay after scene presentation. The overlay is excluded
+from its own draw/triangle counters, never changes the simulation clock, and
+uses output pixels rather than the 3D render extent. Metal additionally offsets
+the panel by UIKit safe-area insets.
+
 The portable front end owns camera, geometry, material, light, pass, draw, and
 diagnostic descriptions. D3D11/HLSL and Metal translate those descriptions
 without changing simulation. Render timing, quality policy, exposure, dynamic

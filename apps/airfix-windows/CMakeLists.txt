@@ -173,13 +173,14 @@ if(AIRFIX_BUILD_TESTS)
         COMMAND airfix_windows_input_mapping_tests)
 
     add_test(NAME airfix_windows_product_smoke_tests
-        COMMAND airfix_windows --smoke-test)
+        COMMAND airfix_windows --smoke-test --render-diagnostics)
     set_tests_properties(airfix_windows_product_smoke_tests PROPERTIES
         TIMEOUT 30
     )
     add_test(NAME airfix_windows_scaled_product_smoke_tests
         COMMAND airfix_windows
             --smoke-test
+            --render-diagnostics
             --render-scale 50
             --original-4x3)
     set_tests_properties(

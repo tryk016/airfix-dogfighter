@@ -277,7 +277,8 @@ int run(const int argumentCount, char *arguments[]) {
 
   SDL_WindowFlags flags = SDL_WINDOW_HIGH_PIXEL_DENSITY;
   flags |= options.smokeTest || options.validateContentOnly ||
-                   options.captureFrameOutput.has_value()
+                   options.captureFrameOutput.has_value() ||
+                   options.captureDiagnosticFrameOutput.has_value()
                ? SDL_WINDOW_HIDDEN
                : SDL_WINDOW_RESIZABLE;
   const auto initialWindowSize =
@@ -315,6 +316,7 @@ int run(const int argumentCount, char *arguments[]) {
       options.originalFourByThreePresentation
           ? airfix::render::ScenePresentationMode::originalFourByThree
           : airfix::render::ScenePresentationMode::widescreenHorPlus);
+  renderer.setDiagnosticsOverlayEnabled(options.renderDiagnostics);
   airfix::windows::AirfixXAudio2Backend audio;
   if (audio.outputState() ==
       airfix::windows::AirfixXAudio2OutputState::initializationFailed) {
@@ -343,6 +345,12 @@ int run(const int argumentCount, char *arguments[]) {
     std::cout << "Authenticated private D3D11 mission frame captured\n";
     return 0;
   }
+  if (options.captureDiagnosticFrameOutput.has_value()) {
+    renderer.capturePublicDiagnosticFrameToBmp(
+        *options.captureDiagnosticFrameOutput);
+    std::cout << "Public D3D11 diagnostic frame captured\n";
+    return 0;
+  }
   if (options.validateContentOnly) {
     if (options.mission.has_value() && !renderer.renderFrame(true)) {
       throw std::runtime_error(
@@ -360,6 +368,15 @@ int run(const int argumentCount, char *arguments[]) {
     if (!renderer.renderFrame(true)) {
       throw std::runtime_error(
           "D3D11 smoke frame contains no rendered geometry");
+    }
+    const auto diagnostics = renderer.frameDiagnostics();
+    if (!diagnostics.has_value() ||
+        diagnostics->outputExtent.width == 0U ||
+        diagnostics->renderTargetExtent.width == 0U ||
+        diagnostics->sceneDrawCallCount == 0U ||
+        diagnostics->sceneTriangleCount == 0U) {
+      throw std::runtime_error(
+          "D3D11 smoke frame did not publish diagnostics");
     }
     renderer.resize();
     if (!renderer.renderFrame(true)) {

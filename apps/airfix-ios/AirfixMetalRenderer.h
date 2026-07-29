@@ -30,6 +30,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, readonly) float renderScalePercent;
 @property(nonatomic, readonly)
     BOOL originalFourByThreePresentationEnabled;
+@property(nonatomic, readonly) BOOL diagnosticsOverlayEnabled;
 
 - (nullable instancetype)initWithMetalView:(MTKView*)metalView
                                      error:(NSError* _Nullable* _Nullable)error
@@ -43,6 +44,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)updateOriginalFourByThreePresentationEnabled:(BOOL)enabled
                                                error:(NSError* _Nullable*
                                                           _Nullable)error;
+- (BOOL)updateDiagnosticsOverlayEnabled:(BOOL)enabled
+                                  error:(NSError* _Nullable* _Nullable)error;
 
 #ifdef __cplusplus
 // Builds every Metal resource without changing the renderer's published room.

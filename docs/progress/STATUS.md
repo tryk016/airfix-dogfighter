@@ -33,8 +33,14 @@
   switches; Metal exposes the equivalent backend setting boundary. Windows
   direct D3D11 readbacks verify 1080p, 1440p, 4K, and 32:9. A controlled
   960x540 comparison uses 480x270 at 50% and 1920x1080 at 200%; owner-content
-  images remain private. Finished settings UI, diagnostics, modern visual
-  stages, and iOS runtime/device acceptance remain pending.
+  images remain private. The shared renderer now also publishes smoothed FPS,
+  CPU/GPU frame time, output and scene extents, render scale, draw calls,
+  triangles, lights, and labelled GPU-memory measurements. D3D11 and Metal
+  composite the same output-resolution developer panel after scene
+  presentation; Metal applies UIKit safe-area offsets. Finished settings UI,
+  modern visual stages, and iOS runtime/device acceptance remain pending.
+  Hosted iPhoneOS and iPhoneSimulator builds compile the complete Metal path;
+  only physical-device visual/timing acceptance remains for this slice.
 - The native Windows x64 product foundation is implemented. A statically
   linked SDL3 shell owns the window and lifecycle events; a separate
   D3D11/DXGI backend compiles HLSL, uploads the same public scene used by Metal,
@@ -858,8 +864,9 @@
    primary-fire intent into runtime.
 8. In parallel with gameplay reconstruction, extend the implemented ADR-0013
    resolution/Hor+/UI/input/offscreen-target foundation with finished settings
-   for render scale, Original 4:3 and safe FOV, HUD/effect integration, and the
-   diagnostic overlay before lighting, materials, shadows, or post-processing.
+   for render scale, Original 4:3 and safe FOV plus HUD/effect integration.
+   Validate the implemented diagnostic overlay on both physical iPhones before
+   lighting, materials, shadows, or post-processing.
 
 ## Open questions
 
