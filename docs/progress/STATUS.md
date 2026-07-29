@@ -39,6 +39,8 @@
   composite the same output-resolution developer panel after scene
   presentation; Metal applies UIKit safe-area offsets. Finished settings UI,
   modern visual stages, and iOS runtime/device acceptance remain pending.
+  Hosted iPhoneOS and iPhoneSimulator builds compile the complete Metal path;
+  only physical-device visual/timing acceptance remains for this slice.
 - The native Windows x64 product foundation is implemented. A statically
   linked SDL3 shell owns the window and lifecycle events; a separate
   D3D11/DXGI backend compiles HLSL, uploads the same public scene used by Metal,

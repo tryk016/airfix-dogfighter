@@ -2,7 +2,7 @@
 
 - Date: 2026-07-29
 - Evidence ID: `EV-20260729-006`
-- Status: implemented; hosted Apple and physical-device acceptance pending
+- Status: implemented; hosted gates pass; physical-device acceptance pending
 - Scope: portable telemetry, D3D11/Metal timing, memory labels, and developer
   overlay composition
 
@@ -64,6 +64,10 @@ allocation sizes; neither value claims whole-process or system-wide GPU use.
   `4EF8D286642D3326F80B4FF444F3632042A2BD925F55ABF37289503A345DDCA4`.
 - The complete portable Ninja build passes 91/91 tests. Independent complete
   MinGW GCC 15.2 and MSVC 19.51 Windows product builds each pass 95/95 tests.
+- GitHub Actions runs `30476632803` and `30476641501` pass all seven hosted
+  clangd, Windows product, Windows/Ubuntu/macOS portable, iPhoneOS, and
+  iPhoneSimulator gates. Both Apple variants compile the Objective-C++ overlay
+  lifetime path and the Metal overlay shader and verify a data-less bundle.
 - The capture contains only the public synthetic scene. It remains a local,
   ignored progress artifact; no original or converted game content is added to
   Git.

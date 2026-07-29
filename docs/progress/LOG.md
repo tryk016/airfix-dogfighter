@@ -3379,5 +3379,7 @@ superseded evidence.
   the local BMP remains ignored.
 - The complete portable build passes 91/91 tests. Independent MinGW GCC 15.2
   and MSVC 19.51 Windows product builds each pass 95/95 tests, including both
-  D3D11 overlay smoke paths. Hosted iPhoneOS/iPhoneSimulator compilation
-  remains a merge check; physical-device timing accuracy remains pending.
+  D3D11 overlay smoke paths. GitHub Actions runs `30476632803` and
+  `30476641501` pass all seven hosted clangd, Windows, Ubuntu, macOS,
+  iPhoneOS, and iPhoneSimulator gates. Physical-device timing accuracy remains
+  pending.
