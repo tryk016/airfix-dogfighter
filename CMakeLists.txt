@@ -96,6 +96,7 @@ else()
 endif()
 
 add_library(airfix_simulation
+    src/airfix/simulation/LegacyAircraftAudioCoordinator.cpp
     src/airfix/simulation/LegacyAircraftDestroyedDiveAudioState.cpp
     src/airfix/simulation/LegacyAircraftEngineAudioState.cpp
     src/airfix/simulation/LegacyAircraftThrustState.cpp
@@ -115,7 +116,7 @@ target_include_directories(airfix_simulation
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
 )
 target_compile_features(airfix_simulation PUBLIC cxx_std_20)
-target_link_libraries(airfix_simulation PUBLIC airfix::input)
+target_link_libraries(airfix_simulation PUBLIC airfix::audio airfix::input)
 
 if(MSVC)
     target_compile_options(airfix_simulation PRIVATE /W4 /permissive-)
@@ -546,6 +547,15 @@ if(AIRFIX_BUILD_TESTS)
     add_test(
         NAME airfix_legacy_aircraft_destroyed_dive_audio_state_tests
         COMMAND airfix_legacy_aircraft_destroyed_dive_audio_state_tests)
+
+    add_executable(airfix_legacy_aircraft_audio_coordinator_tests
+        tests/LegacyAircraftAudioCoordinatorTests.cpp)
+    target_link_libraries(
+        airfix_legacy_aircraft_audio_coordinator_tests
+        PRIVATE airfix::simulation)
+    add_test(
+        NAME airfix_legacy_aircraft_audio_coordinator_tests
+        COMMAND airfix_legacy_aircraft_audio_coordinator_tests)
 
     add_executable(airfix_legacy_machine_gun_fire_state_tests
         tests/LegacyMachineGunFireStateTests.cpp)

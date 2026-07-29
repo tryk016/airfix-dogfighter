@@ -3107,3 +3107,32 @@ superseded evidence.
   portable audio translation units report zero clangd errors; changed-source
   formatting, public-boundary tests and the 434-file scan, `actionlint`, the
   22-file local-path scan, and `git diff --check` pass.
+
+## 2026-07-29 - AirCraft audio composition into the shared backend
+
+- Added an explicit phase-command boundary to the recovered engine-audio step
+  and a portable `LegacyAircraftAudioCoordinator`. It executes destroyed-dive
+  state only on the shared fifth-call cadence and preserves native slot-44
+  ordering: engine phase transitions, destroyed-dive commands, then common
+  engine modulation.
+- Added validated caller-owned bindings for all six recovered AirCraft sound
+  roles. Clip and voice IDs must be valid, roles and voices must be unique,
+  clips may be shared, and loop policy remains explicit until private sample
+  metadata is verified. No original sample, path, or decoded data enters the
+  public implementation.
+- Play, stop, gain, and pitch operations translate transactionally into the
+  bounded platform-neutral command batch. Model-parameter and legacy mixer
+  update operations stay outside the device API. Values outside the portable
+  backend contract fail closed rather than being silently clamped.
+- Expanded the Windows product smoke from a direct synthetic voice start/stop
+  into the recovered engine start, running, shutdown, destroyed-dive, and
+  recovery sequence. One synthetic PCM clip exercises distinct role voices
+  through XAudio2 2.9 and retains the supported no-output-device path.
+- A fresh 281-step MinGW GCC 15.2 Release build and the code-intelligence build
+  each pass all 87 portable tests. The native product passes 89/89, including
+  the original engine-state tests, new composition tests, and D3D11 plus
+  XAudio2 product smoke. Clangd reports zero errors in both new translation
+  units. The three reverse-engineering wrapper suites, twelve Rizin
+  normalization tests, synthetic and 438-file public-boundary scans,
+  `actionlint`, new-source formatting, the 17-file local-path scan, and
+  `git diff --check` pass. GitHub Actions publication remains pending.

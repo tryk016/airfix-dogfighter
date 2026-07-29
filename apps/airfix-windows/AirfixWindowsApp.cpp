@@ -4,6 +4,7 @@
 
 #include "airfix/audio/AudioCommand.hpp"
 #include "airfix/runtime/AppSession.hpp"
+#include "airfix/simulation/LegacyAircraftAudioCoordinator.hpp"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -23,19 +24,53 @@ namespace {
 constexpr std::uint64_t inputStepNanoseconds = 1'000'000'000ULL / 60ULL;
 constexpr std::uint64_t maximumFrameNanoseconds = 250'000'000ULL;
 constexpr airfix::audio::AudioClipId smokeAudioClip{1U};
-constexpr airfix::audio::AudioVoiceId smokeAudioVoice{1U};
 
 [[nodiscard]] std::array<std::int16_t, 480U> makeSmokeAudio() noexcept {
-  std::array<std::int16_t, 480U> samples{};
-  constexpr std::int16_t amplitude = 1'000;
-  for (std::size_t index = 0U; index < samples.size(); ++index) {
-    const std::size_t phase = index % 48U;
-    const std::int32_t ramp = phase < 24U
-                                  ? static_cast<std::int32_t>(phase)
-                                  : static_cast<std::int32_t>(48U - phase);
-    samples[index] = static_cast<std::int16_t>((ramp - 12) * amplitude / 12);
-  }
-  return samples;
+  return {};
+}
+
+[[nodiscard]] airfix::simulation::LegacyAircraftAudioBindings
+makeSmokeAudioBindings() noexcept {
+  using airfix::simulation::LegacyAircraftAudioBinding;
+  using airfix::simulation::LegacyAircraftEngineSound;
+
+  return {{
+      LegacyAircraftAudioBinding{
+          .sound = LegacyAircraftEngineSound::engineOn,
+          .clip = smokeAudioClip,
+          .voice = airfix::audio::AudioVoiceId{1U},
+          .looping = true,
+      },
+      LegacyAircraftAudioBinding{
+          .sound = LegacyAircraftEngineSound::engineIdle,
+          .clip = smokeAudioClip,
+          .voice = airfix::audio::AudioVoiceId{2U},
+          .looping = true,
+      },
+      LegacyAircraftAudioBinding{
+          .sound = LegacyAircraftEngineSound::engineTurn,
+          .clip = smokeAudioClip,
+          .voice = airfix::audio::AudioVoiceId{3U},
+          .looping = true,
+      },
+      LegacyAircraftAudioBinding{
+          .sound = LegacyAircraftEngineSound::engineStart,
+          .clip = smokeAudioClip,
+          .voice = airfix::audio::AudioVoiceId{4U},
+          .looping = true,
+      },
+      LegacyAircraftAudioBinding{
+          .sound = LegacyAircraftEngineSound::engineStop,
+          .clip = smokeAudioClip,
+          .voice = airfix::audio::AudioVoiceId{5U},
+      },
+      LegacyAircraftAudioBinding{
+          .sound = LegacyAircraftEngineSound::engineDive,
+          .clip = smokeAudioClip,
+          .voice = airfix::audio::AudioVoiceId{6U},
+          .looping = true,
+      },
+  }};
 }
 
 void runAudioSmokeTest(airfix::windows::AirfixXAudio2Backend &audio) {
@@ -51,40 +86,69 @@ void runAudioSmokeTest(airfix::windows::AirfixXAudio2Backend &audio) {
     throw std::runtime_error("synthetic PCM16 registration failed");
   }
 
-  airfix::audio::AudioCommandBatch start{.sequence = 1U};
-  if (!airfix::audio::appendAudioCommand(
-          start, {
-                     .kind = airfix::audio::AudioCommandKind::startVoice,
-                     .voice = smokeAudioVoice,
-                     .clip = smokeAudioClip,
-                     .gain = 0.0F,
-                 })) {
-    throw std::runtime_error("synthetic audio start command failed");
+  const auto bindings = makeSmokeAudioBindings();
+  airfix::simulation::LegacyAircraftAudioCoordinatorState state{};
+  std::uint64_t sequence = 0U;
+  bool outputAvailable = false;
+
+  const auto advanceFive = [&](const float deltaSeconds, const float thrust,
+                               const float health, const float velocityY) {
+    for (std::uint32_t index = 0U; index < 5U; ++index) {
+      ++sequence;
+      const auto step = airfix::simulation::legacyAircraftAdvanceAudio(
+          state, bindings,
+          {
+              .sequence = sequence,
+              .engine =
+                  {
+                      .deltaSeconds = deltaSeconds,
+                      .smoothedThrust = thrust,
+                      .speedMagnitude = 2.0F,
+                      .smoothedOrientationM01 = -0.25F,
+                  },
+              .destroyedDive =
+                  {
+                      .health = health,
+                      .velocityY = velocityY,
+                  },
+          });
+      if (!step.has_value()) {
+        throw std::runtime_error(
+            "reconstructed aircraft audio composition failed");
+      }
+
+      const auto result = audio.submit(step->audio);
+      if (!result.accepted ||
+          result.appliedCommandCount != step->audio.commandCount) {
+        throw std::runtime_error(
+            "XAudio2 rejected reconstructed aircraft audio");
+      }
+      outputAvailable = outputAvailable || result.outputAvailable;
+      state = step->state;
+    }
+  };
+
+  advanceFive(0.012F, 0.5F, 1.0F, 0.0F);
+  if (!state.engine.engineStartTransitionActive) {
+    throw std::runtime_error("aircraft engine-start audio was not entered");
   }
-  const auto startResult = audio.submit(start);
-  if (!startResult.accepted ||
-      startResult.appliedCommandCount != start.commandCount) {
-    throw std::runtime_error("XAudio2 rejected synthetic audio");
+  advanceFive(1.01F, 0.5F, 1.0F, 0.0F);
+  if (!state.engine.engineRunning) {
+    throw std::runtime_error("aircraft running audio was not entered");
+  }
+  advanceFive(0.012F, 0.0005F, 0.0F, -8.0F);
+  if (state.engine.engineRunning || !state.destroyedDive.soundActive) {
+    throw std::runtime_error("aircraft shutdown/dive audio was not entered");
+  }
+  advanceFive(0.012F, 0.0005F, 1.0F, 0.0F);
+  if (state.destroyedDive.soundActive) {
+    throw std::runtime_error("aircraft dive audio was not stopped");
   }
 
-  airfix::audio::AudioCommandBatch stop{.sequence = 2U};
-  if (!airfix::audio::appendAudioCommand(
-          stop, {
-                    .kind = airfix::audio::AudioCommandKind::stopVoice,
-                    .voice = smokeAudioVoice,
-                })) {
-    throw std::runtime_error("synthetic audio stop command failed");
-  }
-  const auto stopResult = audio.submit(stop);
-  if (!stopResult.accepted ||
-      stopResult.appliedCommandCount != stop.commandCount) {
-    throw std::runtime_error("XAudio2 rejected synthetic audio stop");
-  }
-
-  std::cout
-      << (startResult.outputAvailable
-              ? "XAudio2 synthetic smoke test passed\n"
-              : "XAudio2 synthetic smoke accepted without an output device\n");
+  std::cout << (outputAvailable
+                    ? "XAudio2 reconstructed aircraft audio smoke passed\n"
+                    : "XAudio2 reconstructed aircraft audio accepted without "
+                      "an output device\n");
 }
 
 struct SdlWindowDeleter {

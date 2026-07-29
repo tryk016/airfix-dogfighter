@@ -28,7 +28,11 @@
   neutralization. A separate XAudio2 2.9 backend consumes the new bounded
   portable command/PCM16 contract, owns copied clips, pauses with focus,
   recovers outside its callback, and accepts commands safely without an output
-  endpoint. It remains a data-less product shell, not a playable build.
+  endpoint. The shared AirCraft audio coordinator now preserves the recovered
+  phase-transition/destroyed-dive/modulation order and maps explicit private
+  clip/voice bindings into this backend; the product smoke executes the whole
+  synthetic state sequence. It remains a data-less product shell, not a
+  playable build.
 - Cross-platform input/control/haptics system specified; semantic input
   architecture recorded in ADR-0002.
 - Local Git repository initialized on branch `main`; planning baseline committed
@@ -642,7 +646,11 @@
   `clamp(-0.15 * velocity.y - 0.2, 0, 1)` volume; positive health stops it.
   A separate allocation-free C++20 transition preserves the exact command
   order and deliberately initializes the original constructor's unwritten
-  `+0x566` state byte to false. It remains unwired from an audio backend.
+  `+0x566` state byte to false. A portable coordinator now runs it only on the
+  shared fifth-call cadence, splices it between engine phase transitions and
+  common modulation, and translates the combined stream to generic audio
+  commands with validated caller-supplied clip/voice bindings. Live aircraft
+  inputs and private decoded samples remain unwired.
 - Recovered the primary weapon path from `EVENT_PRIMARY_ATTACK` through the
   AirCraft `WpMgun` pointer and persistent `AfWeapon::Fire` state into the
   separate `WpMGun` time-dependant refresh. The five technology levels use
@@ -771,8 +779,9 @@
 1. Extend the implemented native Windows x64 renderer/input/audio shell with
    owner-local authenticated content, persistent
    remapping/calibration profiles and controller glyphs; replace the public
-   smoke scene with shared reconstructed world commands without weakening its
-   data-less CI path.
+   smoke scene and synthetic audio clip with shared reconstructed world/audio
+   commands and validated private bindings without weakening its data-less CI
+   path.
 2. Obtain controlled runtime traces for free flight and the ground, inverted,
    water, collision, engine-transition, and too-high branches; establish
    x87-versus-portable numeric tolerances and deterministic replacement PRNG
@@ -814,11 +823,16 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
-- The portable audio command boundary passes the full 86/86
-  code-intelligence tests. The native MinGW GCC 15.2 Release product build
-  passes 88/88 tests; its hidden product smoke validates D3D11 readback/resize,
-  then registers muted synthetic PCM and exercises XAudio2 2.9 start/stop. The
-  public-boundary tests and 434-file repository scan pass.
+- The AirCraft audio-composition slice passes a fresh 281-step MinGW GCC 15.2
+  Release build and all 87 portable tests; the code-intelligence build also
+  passes 87/87. The native product build passes 89/89 tests. Its hidden app
+  validates D3D11 readback/resize, registers silent synthetic PCM, and drives
+  XAudio2 2.9 through reconstructed engine start/running/shutdown plus
+  destroyed-dive/recovery commands. Clangd reports zero errors in both new
+  translation units. The three reverse-engineering wrapper suites, twelve
+  Rizin normalization tests, synthetic and 438-file public-boundary scans,
+  `actionlint`, new-source formatting, the 17-file local-path scan, and
+  `git diff --check` pass.
 - The first Windows product slice passes a local MinGW GCC 15.2 Release build
   and 85/85 CTest cases. The final test creates a hidden SDL3
   window, compiles HLSL, renders the shared scene through D3D11/DXGI, reads the

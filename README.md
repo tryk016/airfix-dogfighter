@@ -19,8 +19,8 @@ switchable and testable.
 > and tests its portable core, a native data-less SDL3/D3D11 Windows shell,
 > and an unsigned data-less UIKit/Metal iOS shell. The Windows product now
 > exercises shared synthetic draw commands through HLSL and bounded synthetic
-> audio commands through XAudio2 2.9. Neither target is **yet a complete
-> playable release**.
+> PCM through the reconstructed AirCraft audio coordinator and XAudio2 2.9.
+> Neither target is **yet a complete playable release**.
 
 **Lawfully owned original game data is required for private use and is not
 included in this repository.**
@@ -56,7 +56,9 @@ Implemented foundations include:
 - a portable bounded audio-command/PCM16 contract and native XAudio2 2.9
   backend with secure system loading, copied clip ownership, focus pause,
   game-thread recovery, safe no-output operation, and a muted synthetic smoke
-  path;
+  path; the recovered engine start/running/stop and destroyed-dive state
+  machines are now composed in their original order and translated into this
+  shared command stream;
 - one proprietary-data-free render scene and validated draw plan shared by the
   Windows D3D11 and iOS Metal bring-up paths;
 - bounded UDSP, CCF, GTI, and related legacy-format parsing;
@@ -125,8 +127,8 @@ for every runtime room. The actor still remains at its authenticated spawn
 transform until the recovered movement law supplies a changing world pose.
 Dynamic-object sphere collision for the camera, live event-5 camera production
 from complete AirCraft state, full gameplay simulation, campaign flow,
-audio-command composition and iOS playback, finished menus, complete Windows
-input/content integration,
+live aircraft audio inputs and private clip binding, iOS playback, finished
+menus, complete Windows input/content integration,
 physical-device rendering, and visual acceptance remain future milestones.
 
 For frequently updated details, use
@@ -200,9 +202,10 @@ The resulting data-less `AirfixDogfighter.exe` displays only the public
 synthetic renderer scene. CTest launches it with `--smoke-test`, creates a
 hidden SDL window, compiles the embedded HLSL, submits the shared draw plan,
 reads the D3D11 back buffer, and requires visible non-clear pixels. It also
-loads inbox XAudio2 2.9, registers muted synthetic PCM, and validates voice
-start/stop; a runner without an output endpoint remains supported. This is a
-platform-shell milestone, not yet a playable build.
+loads inbox XAudio2 2.9, registers muted synthetic PCM, and drives the recovered
+five-call AirCraft audio cadence through engine start, running, shutdown,
+destroyed dive, and recovery; a runner without an output endpoint remains
+supported. This is a platform-shell milestone, not yet a playable build.
 
 ## Architecture
 
@@ -236,6 +239,7 @@ Read the [architecture](docs/ARCHITECTURE.md), the
 [Windows x64 product decision](docs/adr/0007-windows-x64-parallel-target.md),
 the [Windows platform stack decision](docs/adr/0008-windows-rendering-and-platform-stack.md),
 the [Windows audio decision](docs/adr/0009-windows-xaudio2-audio-backend.md),
+the [audio-system contract](docs/systems/AUDIO.md),
 and the [reverse-engineering workflow](docs/RE-WORKFLOW.md) for the detailed
 contracts.
 

@@ -23,10 +23,12 @@ hot-plug, disconnect, ordered taps, dead-zone handling, and lifecycle neutral
 gates. A native XAudio2 2.9 adapter validates bounded portable audio commands,
 owns copied PCM16 data, follows focus state, recovers the engine outside its
 callback, and safely consumes commands when no output endpoint exists. The
-synthetic product smoke test exercises rendering and audio without proprietary
-data. These shells prove the platform boundaries but are not a playable game.
-Product status becomes playable only after owner-local content, composed
-gameplay/audio state, and reconstructed gameplay are integrated.
+synthetic product smoke test exercises rendering and the shared AirCraft
+audio coordinator through start, running, shutdown, destroyed-dive, and
+recovery phases without proprietary data. These shells prove the platform
+boundaries but are not a playable game. Product status becomes playable only
+after owner-local content, live gameplay/audio inputs, and reconstructed
+gameplay are integrated.
 
 ## Shared-core contract
 
