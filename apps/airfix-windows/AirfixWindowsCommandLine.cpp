@@ -10,6 +10,7 @@ namespace airfix::windows {
 namespace {
 
 constexpr std::size_t maximumPrivatePathBytes = 4096U;
+constexpr std::uint32_t maximumCaptureDimension = 16384U;
 
 [[noreturn]] void invalidCommandLine() {
   throw std::runtime_error(std::string(airfixWindowsUsage()));
@@ -41,6 +42,32 @@ requireValue(const std::span<const std::string_view> arguments,
   return static_cast<std::uint32_t>(parsed);
 }
 
+[[nodiscard]] AirfixWindowsCaptureSize
+parseCaptureSize(const std::string_view value) {
+  const auto separator = value.find_first_of("xX");
+  if (separator == std::string_view::npos || separator == 0U ||
+      separator + 1U >= value.size() ||
+      value.find_first_of("xX", separator + 1U) != std::string_view::npos) {
+    invalidCommandLine();
+  }
+
+  const auto parseDimension = [](const std::string_view text) {
+    std::uint32_t parsed = 0U;
+    const auto *const first = text.data();
+    const auto *const last = first + text.size();
+    const auto result = std::from_chars(first, last, parsed, 10);
+    if (result.ec != std::errc{} || result.ptr != last || parsed == 0U ||
+        parsed > maximumCaptureDimension) {
+      invalidCommandLine();
+    }
+    return parsed;
+  };
+  return {
+      .width = parseDimension(value.substr(0U, separator)),
+      .height = parseDimension(value.substr(separator + 1U)),
+  };
+}
+
 } // namespace
 
 AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
@@ -59,6 +86,7 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
   std::optional<std::string> playerObject;
   std::optional<std::uint32_t> startIndex;
   std::optional<std::filesystem::path> captureFrameOutput;
+  std::optional<AirfixWindowsCaptureSize> captureSize;
 
   for (std::size_t index = 0U; index < arguments.size(); ++index) {
     const auto option = arguments[index];
@@ -99,6 +127,11 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
       if (extension != ".bmp" && extension != ".BMP") {
         invalidCommandLine();
       }
+    } else if (option == "--capture-size") {
+      if (captureSize.has_value()) {
+        invalidCommandLine();
+      }
+      captureSize = parseCaptureSize(requireValue(arguments, index));
     } else {
       invalidCommandLine();
     }
@@ -111,7 +144,8 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
   if (!options.contentRoot.has_value() ||
       (hasAnyMissionOption && !hasMissionPair) ||
       (captureFrameOutput.has_value() &&
-       (options.validateContentOnly || !hasMissionPair))) {
+       (options.validateContentOnly || !hasMissionPair)) ||
+      (captureSize.has_value() && !captureFrameOutput.has_value())) {
     invalidCommandLine();
   }
   if (hasMissionPair) {
@@ -123,6 +157,7 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
     };
   }
   options.captureFrameOutput = std::move(captureFrameOutput);
+  options.captureSize = captureSize;
   return options;
 }
 

@@ -9,6 +9,15 @@
 
 namespace airfix::windows {
 
+struct AirfixWindowsCaptureSize final {
+  std::uint32_t width{};
+  std::uint32_t height{};
+
+  [[nodiscard]] friend bool
+  operator==(const AirfixWindowsCaptureSize &,
+             const AirfixWindowsCaptureSize &) = default;
+};
+
 struct AirfixWindowsMissionOptions final {
   std::string setupLogicalPath;
   std::string levelLogicalPath;
@@ -26,6 +35,7 @@ struct AirfixWindowsCommandLineOptions final {
   std::optional<std::filesystem::path> contentRoot;
   std::optional<AirfixWindowsMissionOptions> mission;
   std::optional<std::filesystem::path> captureFrameOutput;
+  std::optional<AirfixWindowsCaptureSize> captureSize;
 
   [[nodiscard]] friend bool
   operator==(const AirfixWindowsCommandLineOptions &,
@@ -43,7 +53,8 @@ parseAirfixWindowsCommandLine(std::span<const std::string_view> arguments);
   return "usage: AirfixDogfighter.exe [--smoke-test | "
          "--content-root <path> [--setup <logical-path> "
          "--level <logical-path> [--player-object <logical-path>] "
-         "[--start-index <uint32>] [--capture-frame <private-output.bmp>]] | "
+         "[--start-index <uint32>] [--capture-frame <private-output.bmp> "
+         "[--capture-size <width>x<height>]]] | "
          "--validate-content-root <path> [--setup <logical-path> "
          "--level <logical-path> [--player-object <logical-path>] "
          "[--start-index <uint32>]]]";

@@ -41,7 +41,7 @@ void testEmptyAndSmokeModes() {
   const std::array<std::string_view, 0U> empty{};
   const auto defaultOptions = parse(empty);
   require(!defaultOptions.smokeTest && !defaultOptions.contentRoot &&
-              !defaultOptions.mission,
+              !defaultOptions.mission && !defaultOptions.captureSize,
           "empty command line must retain the data-less interactive shell");
 
   const std::array smoke{"--smoke-test"sv};
@@ -128,6 +128,28 @@ void testValidationAndRejections() {
   requireRejected(std::array{"--content-root"sv, "private-pack"sv,
                              "--capture-frame"sv, "frame.bmp"sv},
                   "capture without a complete mission must fail closed");
+  requireRejected(
+      std::array{"--content-root"sv, "private-pack"sv, "--capture-size"sv,
+                 "3840x2160"sv},
+      "capture size without frame capture must fail closed");
+  requireRejected(
+      std::array{"--content-root"sv, "private-pack"sv, "--setup"sv,
+                 "mission.afs"sv, "--level"sv, "mission.level"sv,
+                 "--capture-frame"sv, "frame.bmp"sv, "--capture-size"sv,
+                 "0x2160"sv},
+      "zero capture dimension must fail closed");
+  requireRejected(
+      std::array{"--content-root"sv, "private-pack"sv, "--setup"sv,
+                 "mission.afs"sv, "--level"sv, "mission.level"sv,
+                 "--capture-frame"sv, "frame.bmp"sv, "--capture-size"sv,
+                 "16385x2160"sv},
+      "capture dimension above D3D11 limits must fail closed");
+  requireRejected(
+      std::array{"--content-root"sv, "private-pack"sv, "--setup"sv,
+                 "mission.afs"sv, "--level"sv, "mission.level"sv,
+                 "--capture-frame"sv, "frame.bmp"sv, "--capture-size"sv,
+                 "1920x1080x2"sv},
+      "malformed capture size must fail closed");
 }
 
 void testPrivateCaptureRequest() {
@@ -135,11 +157,15 @@ void testPrivateCaptureRequest() {
       "--content-root"sv,  "private-pack"sv,      "--setup"sv,
       "mission.afs"sv,     "--level"sv,           "mission.level"sv,
       "--capture-frame"sv, "private-frame.bmp"sv,
+      "--capture-size"sv,  "3840X2160"sv,
   };
   const auto options = parse(arguments);
   require(options.mission.has_value() &&
               options.captureFrameOutput ==
                   std::filesystem::path("private-frame.bmp") &&
+              options.captureSize ==
+                  airfix::windows::AirfixWindowsCaptureSize{
+                      3840U, 2160U} &&
               !options.validateContentOnly,
           "private capture request was not retained");
 }

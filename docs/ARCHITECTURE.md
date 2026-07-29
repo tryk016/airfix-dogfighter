@@ -125,6 +125,14 @@ individual effect controls are orthogonal to those profiles. Optional
 upscaling is available only as an explicit render-scale technique, never as a
 substitute for native rendering at 100%. See ADR-0013.
 
+The first implementation slice is shared `NativeRenderLayout`. It provides
+strongly typed domains, exact 100% target identity, Hor+ and Original 4:3
+policies, safe-area-aware UI fitting, and reversible UI/camera input
+transforms. D3D11 and Metal currently consume its direct-to-native-target 100%
+path. The 50-200% extent policy is already portable and tested, while the
+backend-specific offscreen targets and final resampling pass are deliberately
+still pending; no backend pretends that a non-100% scale is implemented.
+
 The portable front end owns camera, geometry, material, light, pass, draw, and
 diagnostic descriptions. D3D11/HLSL and Metal translate those descriptions
 without changing simulation. Render timing, quality policy, exposure, dynamic

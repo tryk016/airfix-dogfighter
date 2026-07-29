@@ -181,6 +181,7 @@ add_library(airfix_render
     src/airfix/render/MissionWorldRuntimeSphereCollision.cpp
     src/airfix/render/MissionPlacedDynamicBspAssembly.cpp
     src/airfix/render/MissionWorldDynamicCollisionFrame.cpp
+    src/airfix/render/NativeRenderLayout.cpp
     src/airfix/render/DiagnosticRasterizer.cpp
     src/airfix/render/DynamicInstancePose.cpp
     src/airfix/render/DrawMesh.cpp
@@ -646,6 +647,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_legacy_canvas_layout_tests
         COMMAND airfix_legacy_canvas_layout_tests)
+
+    add_executable(airfix_native_render_layout_tests
+        tests/NativeRenderLayoutTests.cpp)
+    target_link_libraries(airfix_native_render_layout_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_native_render_layout_tests
+        COMMAND airfix_native_render_layout_tests)
 
     add_executable(airfix_legacy_depth_state_tests
         tests/LegacyDepthStateTests.cpp)

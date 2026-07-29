@@ -280,10 +280,31 @@ int run(const int argumentCount, char *arguments[]) {
                    options.captureFrameOutput.has_value()
                ? SDL_WINDOW_HIDDEN
                : SDL_WINDOW_RESIZABLE;
+  const auto initialWindowSize =
+      options.captureSize.value_or(
+          airfix::windows::AirfixWindowsCaptureSize{960U, 540U});
   SdlWindow window{
-      SDL_CreateWindow("Airfix Dogfighter Reconstruction", 960, 540, flags)};
+      SDL_CreateWindow(
+          "Airfix Dogfighter Reconstruction",
+          static_cast<int>(initialWindowSize.width),
+          static_cast<int>(initialWindowSize.height),
+          flags)};
   if (!window) {
     throw std::runtime_error(SDL_GetError());
+  }
+  if (options.captureSize.has_value()) {
+    int pixelWidth{};
+    int pixelHeight{};
+    if (!SDL_GetWindowSizeInPixels(
+            window.get(), &pixelWidth, &pixelHeight)) {
+      throw std::runtime_error(SDL_GetError());
+    }
+    if (pixelWidth != static_cast<int>(options.captureSize->width) ||
+        pixelHeight != static_cast<int>(options.captureSize->height)) {
+      throw std::runtime_error(
+          "requested capture size does not match the physical backbuffer "
+          "extent");
+    }
   }
 
   airfix::runtime::AppSession session;
