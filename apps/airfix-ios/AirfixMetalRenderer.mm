@@ -12,6 +12,7 @@
 #include "airfix/render/LegacyGameplayCameraMissionRuntime.hpp"
 #include "airfix/render/NativeRenderLayout.hpp"
 #include "airfix/render/PlayerActorPoseRuntime.hpp"
+#include "airfix/render/PlayerActorPoseRuntimePreparation.hpp"
 #include "airfix/render/PublicRenderSmokeScene.hpp"
 #include "airfix/render/RenderFrameDiagnostics.hpp"
 #include "airfix/render/SnapshotGpuBudgetLedger.hpp"
@@ -19,7 +20,6 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <bit>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -473,235 +473,6 @@ gameplayCameraInitializeInput(
                 logicalExtent.width,
                 logicalExtent.height),
     };
-}
-
-[[nodiscard]] bool sameFloatBits(
-    const float left,
-    const float right) noexcept {
-    return std::bit_cast<std::uint32_t>(left) ==
-        std::bit_cast<std::uint32_t>(right);
-}
-
-[[nodiscard]] bool sameVecBits(
-    const airfix::render::Vec3& left,
-    const airfix::render::Vec3& right) noexcept {
-    return sameFloatBits(left.x, right.x) &&
-        sameFloatBits(left.y, right.y) &&
-        sameFloatBits(left.z, right.z);
-}
-
-[[nodiscard]] bool sameMatBits(
-    const airfix::render::Mat3& left,
-    const airfix::render::Mat3& right) noexcept {
-    return sameVecBits(left.columns[0], right.columns[0]) &&
-        sameVecBits(left.columns[1], right.columns[1]) &&
-        sameVecBits(left.columns[2], right.columns[2]);
-}
-
-enum class ScenePoseRuntimePreparationStatus : std::uint8_t {
-    noPlayer,
-    ready,
-    invalidPayload,
-    resourceLimit,
-};
-
-struct ScenePoseRuntimePreparation {
-    ScenePoseRuntimePreparationStatus status{
-        ScenePoseRuntimePreparationStatus::noPlayer};
-    std::shared_ptr<airfix::render::PlayerActorPoseRuntime> runtime;
-};
-
-struct ScenePoseRuntimePlan {
-    ScenePoseRuntimePreparationStatus status{
-        ScenePoseRuntimePreparationStatus::noPlayer};
-    airfix::render::DynamicInstancePoseLimits exactLimits{};
-    std::size_t retainedPoseBytes{};
-};
-
-[[nodiscard]] ScenePoseRuntimePlan planScenePoseRuntime(
-    const airfix::content::LoadedMissionWorldRoom& room) noexcept {
-    if (!room.playerActorBinding.has_value()) {
-        return {};
-    }
-
-    const airfix::render::DynamicInstancePoseLimits platformCeiling;
-    if (room.model.instances.size() >
-            static_cast<std::size_t>(platformCeiling.maximumInstances) ||
-        room.model.instances.size() >
-            static_cast<std::size_t>(
-                std::numeric_limits<std::uint32_t>::max())) {
-        return {
-            .status =
-                ScenePoseRuntimePreparationStatus::resourceLimit,
-        };
-    }
-
-    const auto& binding = *room.playerActorBinding;
-    std::size_t frameBytes = 0U;
-    if (binding.instanceCount > platformCeiling.maximumOverrides ||
-        !checkedMultiply(
-            binding.instanceCount,
-            sizeof(airfix::render::DynamicInstancePoseOverride),
-            frameBytes) ||
-        frameBytes > platformCeiling.maximumFrameBytes) {
-        return {
-            .status =
-                ScenePoseRuntimePreparationStatus::resourceLimit,
-        };
-    }
-
-    std::size_t sourceBytes = 0U;
-    std::size_t retainedOverrideBytes = 0U;
-    std::size_t retainedPoseBytes = 0U;
-    if (!checkedMultiply(
-            binding.instanceCount,
-            sizeof(airfix::render::PlayerActorPoseRuntimeSource),
-            sourceBytes) ||
-        !checkedMultiply(frameBytes, 3U, retainedOverrideBytes) ||
-        !checkedAdd(
-            sourceBytes,
-            retainedOverrideBytes,
-            retainedPoseBytes)) {
-        return {
-            .status =
-                ScenePoseRuntimePreparationStatus::resourceLimit,
-        };
-    }
-
-    return {
-        .status = ScenePoseRuntimePreparationStatus::ready,
-        .exactLimits =
-            {
-                .maximumInstances = static_cast<std::uint32_t>(
-                    room.model.instances.size()),
-                .maximumOverrides = binding.instanceCount,
-                .maximumFrameBytes = frameBytes,
-            },
-        .retainedPoseBytes = retainedPoseBytes,
-    };
-}
-
-[[nodiscard]] ScenePoseRuntimePreparation prepareScenePoseRuntime(
-    const airfix::content::LoadedMissionWorldRoom& room,
-    const ScenePoseRuntimePlan& plan) noexcept {
-    if (plan.status == ScenePoseRuntimePreparationStatus::noPlayer) {
-        return {};
-    }
-    if (plan.status != ScenePoseRuntimePreparationStatus::ready) {
-        return {
-            plan.status,
-            nullptr,
-        };
-    }
-    if (!room.playerActorBinding.has_value()) {
-        return {
-            ScenePoseRuntimePreparationStatus::invalidPayload,
-            nullptr,
-        };
-    }
-    const auto& binding = *room.playerActorBinding;
-
-    try {
-        auto built = airfix::render::PlayerActorPoseRuntime::create(
-            room.playerActorBinding,
-            room.playerActorInstanceProvenance,
-            room.model.instances.size(),
-            actorWorldFrom(room.playerSpawnPose),
-            0U,
-            plan.exactLimits);
-        if (!built.complete()) {
-            const bool allocationFailure =
-                built.issue.has_value() &&
-                built.issue->kind ==
-                    airfix::render::
-                        PlayerActorPoseRuntimeBuildIssueKind::
-                            allocationFailure;
-            return {
-                allocationFailure
-                    ? ScenePoseRuntimePreparationStatus::resourceLimit
-                    : ScenePoseRuntimePreparationStatus::invalidPayload,
-                nullptr,
-            };
-        }
-        if (built.retainedBytes != plan.retainedPoseBytes ||
-            built.runtime->retainedBytes() != plan.retainedPoseBytes) {
-            return {
-                ScenePoseRuntimePreparationStatus::invalidPayload,
-                nullptr,
-            };
-        }
-
-        {
-            auto initialLease = built.runtime->tryAcquire();
-            if (!initialLease.has_value() ||
-                initialLease->simulationStep() != 0U ||
-                initialLease->overrides().size() !=
-                    binding.instanceCount) {
-                return {
-                    ScenePoseRuntimePreparationStatus::invalidPayload,
-                    nullptr,
-                };
-            }
-            const auto initialOverrides = initialLease->overrides();
-            for (std::size_t index = 0U;
-                 index < initialOverrides.size();
-                 ++index) {
-                const auto& poseOverride = initialOverrides[index];
-                std::size_t expectedInstanceIndex = 0U;
-                if (!checkedAdd(
-                        binding.firstInstanceIndex,
-                        index,
-                        expectedInstanceIndex) ||
-                    expectedInstanceIndex >=
-                        room.model.instances.size() ||
-                    static_cast<std::size_t>(
-                        poseOverride.instanceIndex) !=
-                        expectedInstanceIndex) {
-                    return {
-                        ScenePoseRuntimePreparationStatus::
-                            invalidPayload,
-                        nullptr,
-                    };
-                }
-                const auto& authored =
-                    room.model.instances[expectedInstanceIndex];
-                if (!sameMatBits(
-                        poseOverride.modelLinear,
-                        authored.modelLinear) ||
-                    !sameVecBits(
-                        poseOverride.modelTranslation,
-                        authored.modelTranslation)) {
-                    return {
-                        ScenePoseRuntimePreparationStatus::
-                            invalidPayload,
-                        nullptr,
-                    };
-                }
-            }
-        }
-
-        std::shared_ptr<airfix::render::PlayerActorPoseRuntime> runtime(
-            std::move(built.runtime));
-        return {
-            ScenePoseRuntimePreparationStatus::ready,
-            std::move(runtime),
-        };
-    } catch (const std::bad_alloc&) {
-        return {
-            ScenePoseRuntimePreparationStatus::resourceLimit,
-            nullptr,
-        };
-    } catch (const std::length_error&) {
-        return {
-            ScenePoseRuntimePreparationStatus::resourceLimit,
-            nullptr,
-        };
-    } catch (...) {
-        return {
-            ScenePoseRuntimePreparationStatus::invalidPayload,
-            nullptr,
-        };
-    }
 }
 
 } // namespace
@@ -2344,9 +2115,15 @@ bool preflightPrivateRoom(
             }
             return nil;
         }
-        const auto scenePosePlan = planScenePoseRuntime(room);
+        const auto scenePosePlan =
+            airfix::render::planPlayerActorPoseRuntime(
+                room.playerActorBinding,
+                room.playerActorInstanceProvenance,
+                room.model.instances);
         if (scenePosePlan.status ==
-            ScenePoseRuntimePreparationStatus::resourceLimit) {
+            airfix::render::
+                PlayerActorPoseRuntimePreparationStatus::
+                    resourceLimit) {
             if (error != nullptr) {
                 *error = makeError(
                     RendererError::resourceLimit,
@@ -2367,9 +2144,16 @@ bool preflightPrivateRoom(
         }
 
         auto scenePosePreparation =
-            prepareScenePoseRuntime(room, scenePosePlan);
+            airfix::render::preparePlayerActorPoseRuntime(
+                room.playerActorBinding,
+                room.playerActorInstanceProvenance,
+                room.model.instances,
+                actorWorldFrom(room.playerSpawnPose),
+                scenePosePlan);
         if (scenePosePreparation.status ==
-            ScenePoseRuntimePreparationStatus::resourceLimit) {
+            airfix::render::
+                PlayerActorPoseRuntimePreparationStatus::
+                    resourceLimit) {
             if (error != nullptr) {
                 *error = makeError(
                     RendererError::resourceLimit,
@@ -2378,12 +2162,17 @@ bool preflightPrivateRoom(
             return nil;
         }
         if (scenePosePreparation.status ==
-                ScenePoseRuntimePreparationStatus::invalidPayload ||
+                airfix::render::
+                    PlayerActorPoseRuntimePreparationStatus::
+                        invalidPayload ||
             (scenePosePreparation.status ==
-                 ScenePoseRuntimePreparationStatus::ready &&
+                 airfix::render::
+                     PlayerActorPoseRuntimePreparationStatus::ready &&
              scenePosePreparation.runtime == nullptr) ||
             (scenePosePreparation.status ==
-                 ScenePoseRuntimePreparationStatus::noPlayer &&
+                 airfix::render::
+                     PlayerActorPoseRuntimePreparationStatus::
+                         noPlayer &&
              scenePosePreparation.runtime != nullptr)) {
             if (error != nullptr) {
                 *error = makeError(

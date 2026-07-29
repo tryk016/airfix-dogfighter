@@ -109,8 +109,9 @@ Implemented foundations include:
   pause, focus, disconnect, or invalid transitions;
 - authenticated player selection plus bounded player-model, texture,
   scene-placement, and publication integration in the mission-world loader;
-- a preallocated per-scene pose runtime that publishes authenticated actor
-  frames for accepted simulation steps and is resolved once per Metal frame;
+- a preallocated per-scene pose runtime planned and prepared by one portable
+  boundary, publishing authenticated actor frames for accepted simulation
+  steps and resolved through one coherent lease per Metal or D3D11 frame;
 - a retained, pointer-free mission BSP arena with source-aware runtime-room
   bindings, bounded allocation-free static/portal line tracing, and the
   recovered portal mesh/type/visibility transition gate, plus a fail-closed
