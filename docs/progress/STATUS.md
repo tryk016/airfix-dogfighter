@@ -791,8 +791,9 @@ These questions do not block static analysis or the archive work.
   synthetic public-boundary tests and the 410-file public scan, the 265-row
   unique function catalogue with valid source paths and only its two known
   missing references, `actionlint`, the 19-file local-path scan, and
-  `git diff --check` pass. Isolated WSL and GitHub Actions remain the
-  publication gates.
+  `git diff --check` pass. Exact commit `6c5d386` compiles all 268 steps with
+  GCC 13.3 and passes 83/83 tests in 26.23 seconds in a fresh isolated
+  `Airfix-Dev` WSL clone. GitHub Actions remains the publication gate.
 
 ## Blockers
 

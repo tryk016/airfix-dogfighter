@@ -117,8 +117,10 @@ report-normalization tests. Synthetic public-boundary tests and the 410-file
 public scan pass. The 265-row, 14-column function catalogue retains unique IDs
 and module/RVA pairs, valid source paths, and only its two known missing
 references. `actionlint`, the 19-file changed-scope local-path scan, and
-`git diff --check` are clean. Isolated WSL and GitHub Actions remain the
-publication gates for this slice.
+`git diff --check` are clean. Exact commit `6c5d386` also compiles all 268
+steps with GCC 13.3 and passes 83/83 tests in 26.23 seconds in a new isolated
+`Airfix-Dev` WSL clone. GitHub Actions remains the publication gate for this
+slice.
 
 No proprietary data, binary, analyzer project, or local path is required by
 the implementation or tests.

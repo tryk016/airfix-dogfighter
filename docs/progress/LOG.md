@@ -2981,5 +2981,6 @@ superseded evidence.
   Rizin wrappers, 12 Rizin normalization tests, synthetic public-boundary
   tests and the 410-file public scan, the 265-row unique catalogue with only
   its two known missing references, `actionlint`, the 19-file local-path scan,
-  and `git diff --check` pass. Isolated WSL and GitHub Actions remain the
-  publication gates.
+  and `git diff --check` pass. Exact commit `6c5d386` compiles all 268 steps
+  with GCC 13.3 and passes 83/83 tests in 26.23 seconds in a fresh isolated
+  `Airfix-Dev` WSL clone. GitHub Actions remains the publication gate.
