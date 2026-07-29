@@ -666,6 +666,58 @@ void testPublishedPlayerActorResolverAndNoAllocations() {
                 std::optional<std::int32_t>{4},
         "published player did not resolve to actor contact");
 
+    const auto ammo = legacyMachineGunAmmoProfile(0U);
+    require(ammo.has_value(), "machine-gun profile fixture missing");
+    const LegacyMachineGunProjectileState projectile{
+        .position = input.segmentEnd,
+        .velocity = {0.0F, 0.0F, 20.0F},
+        .ageSeconds = 1.0F,
+        .roomId = input.roomId,
+        .creatorUid = 7U,
+        .targetUid = 0U,
+        .active = true,
+        .waterContacted = false,
+    };
+    const auto actorTransaction =
+        resolvePublishedLegacyMachineGunProjectileCollision(
+            rooms,
+            *built.runtime,
+            projectile,
+            *ammo,
+            input,
+            true);
+    require(
+        actorTransaction.committed() &&
+            actorTransaction.collision.queryCount == 1U &&
+            actorTransaction.commit->outcome ==
+                LegacyProjectileCollisionOutcome::actorContact &&
+            !actorTransaction.commit->state.active &&
+            actorTransaction.commit->state.position ==
+                LegacyMachineGunVector3{0.0F, 0.0F, 2.0F} &&
+            actorTransaction.commit->damage.has_value() &&
+            actorTransaction.commit->damage->targetUid == 91U &&
+            actorTransaction.commit->damage->creatorUid == 7U &&
+            !actorTransaction.commit->surface.has_value(),
+        "published actor terminal transaction mismatch");
+
+    auto mismatchedProjectile = projectile;
+    mismatchedProjectile.position.z = 3.0F;
+    const auto mismatchedTransaction =
+        resolvePublishedLegacyMachineGunProjectileCollision(
+            rooms,
+            *built.runtime,
+            mismatchedProjectile,
+            *ammo,
+            input,
+            true);
+    require(
+        !mismatchedTransaction.committed() &&
+            mismatchedTransaction.collision.status ==
+                LegacyProjectileCollisionLoopStatus::invalidInput &&
+            mismatchedTransaction.collision.queryCount == 0U &&
+            !mismatchedTransaction.commit.has_value(),
+        "mismatched flight/query transaction reached the runtime");
+
     const auto projectileGatePublication =
         built.runtime->tryPublishDynamicCollisionFrame(
             playerWorld,
@@ -717,12 +769,20 @@ void testPublishedPlayerActorResolverAndNoAllocations() {
     countAllocations.store(true, std::memory_order_relaxed);
     for (std::size_t index = 0U; index < 4'096U; ++index) {
         const auto repeated =
-            resolvePublishedLegacyProjectileCollisionLoop(
-                rooms, *built.runtime, input, true);
-        complete = complete && repeated.completed() &&
-            repeated.queryCount == 1U &&
-            repeated.decision->outcome ==
-                LegacyProjectileCollisionOutcome::advanceActorGate;
+            resolvePublishedLegacyMachineGunProjectileCollision(
+                rooms,
+                *built.runtime,
+                projectile,
+                *ammo,
+                input,
+                true);
+        complete = complete && repeated.committed() &&
+            repeated.collision.queryCount == 1U &&
+            repeated.commit->outcome ==
+                LegacyProjectileCollisionOutcome::advanceActorGate &&
+            repeated.commit->state.active &&
+            !repeated.commit->damage.has_value() &&
+            !repeated.commit->surface.has_value();
     }
     countAllocations.store(false, std::memory_order_relaxed);
     require(
@@ -808,19 +868,59 @@ void testPublishedRuntimePortalLoopAndNoAllocations() {
                 std::optional<std::int32_t>{4},
         "published runtime portal loop result mismatch");
 
+    const auto ammo = legacyMachineGunAmmoProfile(0U);
+    require(ammo.has_value(), "portal transaction profile missing");
+    const LegacyMachineGunProjectileState projectile{
+        .position = input.segmentEnd,
+        .velocity = {0.0F, 0.0F, 20.0F},
+        .ageSeconds = 1.0F,
+        .roomId = input.roomId,
+        .creatorUid = 7U,
+        .targetUid = 0U,
+        .active = true,
+        .waterContacted = false,
+    };
+    const auto transaction =
+        resolvePublishedLegacyMachineGunProjectileCollision(
+            rooms,
+            *built.runtime,
+            projectile,
+            *ammo,
+            input,
+            true);
+    require(
+        transaction.committed() &&
+            transaction.collision.queryCount == 2U &&
+            transaction.collision.portalTransitionCount == 1U &&
+            transaction.commit->outcome ==
+                LegacyProjectileCollisionOutcome::surfaceContact &&
+            !transaction.commit->state.active &&
+            transaction.commit->state.roomId == 1 &&
+            transaction.commit->state.position ==
+                LegacyMachineGunVector3{0.0F, 0.0F, 3.0F} &&
+            transaction.commit->surface.has_value() &&
+            transaction.commit->surface->ricochet.has_value() &&
+            transaction.commit->surface->ricochet->material == 4 &&
+            transaction.commit->surface->ricochet->roomId == 1,
+        "published portal/surface terminal transaction mismatch");
+
     bool complete = true;
     allocationCount.store(0U, std::memory_order_relaxed);
     countAllocations.store(true, std::memory_order_relaxed);
     for (std::size_t index = 0U; index < 4'096U; ++index) {
         const auto repeated =
-            resolvePublishedLegacyProjectileCollisionLoop(
+            resolvePublishedLegacyMachineGunProjectileCollision(
                 rooms,
                 *built.runtime,
+                projectile,
+                *ammo,
                 input,
                 true);
-        complete = complete && repeated.completed() &&
-            repeated.queryCount == 2U &&
-            repeated.portalTransitionCount == 1U;
+        complete = complete && repeated.committed() &&
+            repeated.collision.queryCount == 2U &&
+            repeated.collision.portalTransitionCount == 1U &&
+            repeated.commit->surface.has_value() &&
+            !repeated.commit->state.active;
     }
     countAllocations.store(false, std::memory_order_relaxed);
     require(complete, "steady-state runtime projectile query failed");
@@ -907,6 +1007,18 @@ int main() {
             std::declval<const MissionWorldRoomCatalog&>(),
             std::declval<
                 const LegacyGameplayCameraMissionRuntime&>(),
+            std::declval<
+                const LegacyProjectileCollisionQueryInput&>(),
+            true)));
+    static_assert(noexcept(
+        resolvePublishedLegacyMachineGunProjectileCollision(
+            std::declval<const MissionWorldRoomCatalog&>(),
+            std::declval<
+                const LegacyGameplayCameraMissionRuntime&>(),
+            std::declval<
+                const LegacyMachineGunProjectileState&>(),
+            std::declval<
+                const LegacyMachineGunAmmoProfile&>(),
             std::declval<
                 const LegacyProjectileCollisionQueryInput&>(),
             true)));

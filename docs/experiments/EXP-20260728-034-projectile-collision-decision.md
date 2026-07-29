@@ -138,12 +138,14 @@ budget. The authenticated runtime adapter in
 [EXP-20260729-043](EXP-20260729-043-projectile-runtime-query-adapter.md)
 now supplies the combined trace, room mapping, material value, and a typed
 seam for live actor gates. The primary player's gates are resolved from the
-same complete runtime generation as its collider. A higher-level live actor
-transaction must still:
+same complete runtime generation as its collider. The terminal reducer in
+[EXP-20260729-045](EXP-20260729-045-projectile-terminal-collision-commit.md)
+now commits machine-gun state and bounded damage/surface command data. A
+higher-level live actor transaction must still:
 
 - publish other changing actor colliders and resolve those actors; and
-- dispatch actor/projectile callbacks and effects while bracketing the complete
-  loop with the creator collision guard.
+- consume those commands through live actors/effects while bracketing the
+  complete loop with the creator collision guard.
 
 The portable transition rejects non-finite segments, non-finite or
 out-of-segment fractions, zero/non-finite contact normals, zero actor object

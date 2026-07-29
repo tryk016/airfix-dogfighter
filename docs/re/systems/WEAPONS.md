@@ -353,7 +353,9 @@ The repeated projectile query is recorded in
 its runtime adapter is recorded in
 [EXP-20260729-043](../../experiments/EXP-20260729-043-projectile-runtime-query-adapter.md);
 the concrete primary-player resolver is recorded in
-[EXP-20260729-044](../../experiments/EXP-20260729-044-projectile-player-actor-resolver.md).
+[EXP-20260729-044](../../experiments/EXP-20260729-044-projectile-player-actor-resolver.md);
+and terminal machine-gun state/command reduction is recorded in
+[EXP-20260729-045](../../experiments/EXP-20260729-045-projectile-terminal-collision-commit.md).
 
 ## Actor damage and surface reaction
 
@@ -406,7 +408,10 @@ fields, and the effect-creation request without owning an effect runtime.
 - surface interpolation, deactivation, and a bounded ricochet event request;
   and
 - the shared material/portal/actor/surface decision order for one already
-  selected nearest collision.
+  selected nearest collision; and
+- a fail-closed terminal commit that updates endpoint, room, activity, and the
+  recovered material-15 water flag while returning bounded damage or
+  surface/ricochet command data.
 
 `LegacyMachineGunShotCoordinator` composes the timing request with the selected
 already-rotated muzzle, capped technology ammo profile, and complete payload.
@@ -419,10 +424,13 @@ performs the recovered millisecond conversion. They reject non-finite or unsafe
 consumed inputs instead of reproducing x87 unordered behavior or invalid
 attachment memory. The retained mission query is now wired through the bounded
 automatic and projectile-level portal paths, including the atomic
-primary-player resolver. The remaining live transaction must resolve private
-types and authored muzzle transforms, publish and resolve other actor
-geometry/state, implement the creator guard, dispatch terminal events, and
-honor allocation failure without inventing a projectile or effect.
+primary-player resolver and the terminal machine-gun state/command reducer.
+Ownerless retained-room contacts deactivate but deliberately suppress the
+optional ricochet request when no owner-backed material provenance exists.
+The remaining live transaction must resolve private types and authored muzzle
+transforms, publish and resolve other actor geometry/state, bracket the query
+with the creator guard, dispatch the reduced terminal events/effects, and honor
+allocation failure without inventing a projectile or effect.
 
 ## Remaining work
 
@@ -431,7 +439,8 @@ honor allocation failure without inventing a projectile or effect.
 - Feed the implemented player collider and concrete resolver from the changing
   actor producer, extend the same authenticated publication/resolution to
   other live actors and dynamic portal objects, then provide the creator guard
-  and terminal callbacks around the implemented runtime projectile query.
+  around the implemented runtime projectile query and consume its terminal
+  command data through live actor/effect adapters.
 - Recreate the optional `mguntracer` and `FxRicochet` visual/effect adapters.
 - Trace sample/effect commands associated with a shot.
 - Recover secondary weapon selection and each secondary projectile family.

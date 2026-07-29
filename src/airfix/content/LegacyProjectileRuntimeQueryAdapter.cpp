@@ -338,4 +338,63 @@ resolvePublishedLegacyProjectileCollisionLoop(
         options);
 }
 
+LegacyPublishedMachineGunProjectileCollisionResult
+resolvePublishedLegacyMachineGunProjectileCollision(
+    const assets::MissionWorldRoomCatalog& catalog,
+    const render::LegacyGameplayCameraMissionRuntime& runtime,
+    const simulation::LegacyMachineGunProjectileState& current,
+    const simulation::LegacyMachineGunAmmoProfile& profile,
+    const LegacyProjectileCollisionQueryInput& input,
+    const bool projectileIsServer,
+    const LegacyProjectileLiveActorQuery actorQuery,
+    void* const actorQueryContext,
+    const LegacyPublishedProjectileCollisionOptions& options) noexcept {
+    LegacyPublishedMachineGunProjectileCollisionResult result;
+    if (current.position != input.segmentEnd ||
+        current.roomId != input.roomId) {
+        result.collision.status =
+            LegacyProjectileCollisionLoopStatus::invalidInput;
+        return result;
+    }
+
+    result.collision = resolvePublishedLegacyProjectileCollisionLoop(
+        catalog,
+        runtime,
+        input,
+        projectileIsServer,
+        actorQuery,
+        actorQueryContext,
+        options);
+    if (result.collision.completed()) {
+        result.commit =
+            simulation::commitLegacyMachineGunProjectileCollision(
+                current, profile, result.collision);
+    }
+    return result;
+}
+
+LegacyPublishedMachineGunProjectileCollisionResult
+resolvePublishedLegacyMachineGunProjectileCollision(
+    const assets::MissionWorldRoomCatalog& catalog,
+    const render::LegacyGameplayCameraMissionRuntime& runtime,
+    const simulation::LegacyMachineGunProjectileState& current,
+    const simulation::LegacyMachineGunAmmoProfile& profile,
+    const LegacyProjectileCollisionQueryInput& input,
+    const bool projectileIsServer,
+    const LegacyPublishedProjectileCollisionOptions& options) noexcept {
+    PublishedPlayerActorQueryContext actorContext{
+        .runtime = &runtime,
+    };
+    return resolvePublishedLegacyMachineGunProjectileCollision(
+        catalog,
+        runtime,
+        current,
+        profile,
+        input,
+        projectileIsServer,
+        queryPublishedPlayerActor,
+        &actorContext,
+        options);
+}
+
 } // namespace airfix::content

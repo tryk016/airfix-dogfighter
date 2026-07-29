@@ -243,6 +243,7 @@ legacyMachineGunProjectileInitialState(
         .creatorUid = payload.creatorUid,
         .targetUid = payload.targetUid,
         .active = true,
+        .waterContacted = false,
     };
 }
 
@@ -508,10 +509,10 @@ legacyMachineGunProjectileSurfaceContact(
         .deactivateProjectile = true,
         .ricochet = std::nullopt,
     };
-    if (input.roomId.has_value()) {
+    if (input.roomId.has_value() && input.material.has_value()) {
         result.ricochet = LegacyMachineGunRicochetCommand{
             .normal = input.normal,
-            .material = input.material,
+            .material = *input.material,
             .position = position,
             .roomId = *input.roomId,
         };
