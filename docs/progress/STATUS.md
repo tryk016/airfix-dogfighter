@@ -637,7 +637,14 @@
   request. A transactional coordinator now selects the emitted rotated muzzle,
   caps the technology profile, produces the complete payload, and returns the
   already-advanced cadence/barrel/ammunition state so a later private
-  allocation failure cannot incorrectly roll it back. Root ID zero,
+  allocation failure cannot incorrectly roll it back.
+  A caller-owned fixed-capacity runtime now preserves that native branch
+  order without importing private PE32 objects: it commits weapon state before
+  capacity acquisition, delays muzzle/event-only reads until a reusable slot
+  exists, activates semantic event `0xE2`, and returns a generation-tagged
+  handle. First-free selection is an explicit deterministic port policy;
+  saturated generations fail closed and reuse cannot revive stale handles.
+  Root ID zero,
   monotonic ordinary-room IDs, and newest-first lookup now map bidirectionally
   to the retained mission-world catalogue without native pointers.
   `PhLine::GetBspCollision` now also confirms static-before-dynamic traversal
@@ -672,11 +679,11 @@
   or already-disabled creators preserve the native no-enable path; rejected
   disable prevents tracing and rejected enable suppresses terminal
   commit/command data.
-  Private allocation and live event/effect dispatch, live muzzle transforms,
-  non-player actor and dynamic-portal publication/resolution, concrete creator
-  BSP callbacks, tracer/effect realization, secondary weapon families,
-  dynamic camera-sphere contacts, runtime traces, and integration remain
-  pending.
+  Active-slot collision advancement and live event/effect dispatch, live
+  muzzle transforms, non-player actor and dynamic-portal
+  publication/resolution, concrete creator BSP callbacks, tracer/effect
+  realization, secondary weapon families, dynamic camera-sphere contacts,
+  runtime traces, and integration remain pending.
   The authenticated player CCF now also produces bounded immutable per-mesh
   colliders and ordered actor-local instances inside the atomic mission load.
   A two-pass `noexcept` frame adapter publishes a supplied live player
@@ -756,8 +763,9 @@
    recovered changing actor producer. Extend the same generation-matched
    publication/resolution to other live actors, then connect the implemented
    creator BSP guard callbacks and already reduced terminal damage/surface
-   commands to private live actors/effects. Join private type allocation/event
-   dispatch, live muzzle transforms, and tracer/effect adapters before wiring
+   commands to private live actors/effects. Feed live muzzle transforms into
+   the fixed-capacity activation runtime, advance its active slots through the
+   collision transaction, and add tracer/effect adapters before wiring
    primary-fire intent into runtime.
 
 ## Open questions
@@ -771,21 +779,20 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
-- Merged projectile runtime-query adapter commit `c013135` passes the
-  exact-main Ubuntu, Windows, ARM64 macOS, clangd/code-intelligence,
-  `iphoneos`, and `iphonesimulator` Actions jobs.
-- The current creator BSP guard slice passes a fresh 265-step Windows GCC 15.2
-  Release build and the regenerated code-intelligence build plus 82/82 tests
-  in both. Its compilation database has 169 portable entries and no Apple-only
-  source; clangd 22.1.8 reports zero errors in the adapter, collision-loop, and
-  focused test translation units when allowed to query the trusted local GCC
-  driver. The Ghidra, working-copy, and Rizin wrapper suites, twelve Rizin
-  normalization tests, synthetic public-boundary tests and the 406-file public
-  scan, the 265-row unique function catalogue with no bad source paths and
-  only its two known missing references, `actionlint`, the 16-file local-path
-  scan, and `git diff --check` pass. Exact commit `71eaca1` compiles all 265
-  steps with GCC 13.3 and passes 82/82 tests in 27.15 seconds in a fresh
-  isolated `Airfix-Dev` WSL clone. GitHub Actions remains the publication gate.
+- Merged creator BSP guard main commit `d26dee0` passes the exact-main Ubuntu,
+  Windows, ARM64 macOS, clangd/code-intelligence, `iphoneos`, and
+  `iphonesimulator` Actions jobs.
+- The current portable projectile runtime-pool slice passes a fresh 268-step
+  Windows GCC 15.2 Release build and separate code-intelligence build plus
+  83/83 tests in both. Its compilation database has 171 portable entries and
+  no Apple-only source; clangd 22.1.8 reports zero errors in all three affected
+  translation units with the trusted GCC query driver. The Ghidra,
+  working-copy, and Rizin wrapper suites, twelve Rizin normalization tests,
+  synthetic public-boundary tests and the 410-file public scan, the 265-row
+  unique function catalogue with valid source paths and only its two known
+  missing references, `actionlint`, the 19-file local-path scan, and
+  `git diff --check` pass. Isolated WSL and GitHub Actions remain the
+  publication gates.
 
 ## Blockers
 

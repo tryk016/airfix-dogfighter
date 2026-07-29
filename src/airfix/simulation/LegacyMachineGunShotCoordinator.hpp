@@ -41,11 +41,13 @@ struct LegacyMachineGunShotPreparationStep final {
     std::optional<LegacyMachineGunPreparedShot> shot;
 };
 
-// Atomically composes the recovered WpMGun timing transition with the selected
-// muzzle and complete event-0xE2 payload. This boundary allocates nothing and
-// does not create or activate a private ammo object. A runtime consumer must
-// first commit fireState, then attempt private allocation, and only on success
-// dispatch the prepared payload. Invalid adapter input fails closed.
+// Eagerly composes the recovered WpMGun timing transition with the selected
+// muzzle and complete event-0xE2 payload. This pure preparation helper
+// allocates nothing and does not create or activate an ammo object. Consumers
+// that model native allocation order must commit fireState before acquiring
+// capacity; LegacyMachineGunProjectileRuntime provides that boundary without
+// reading payload-only input before capacity succeeds. Invalid adapter input
+// fails closed.
 [[nodiscard]] std::optional<LegacyMachineGunShotPreparationStep>
 legacyMachineGunPrepareShot(
     const LegacyMachineGunShotPreparationInput& input) noexcept;

@@ -2951,3 +2951,35 @@ superseded evidence.
   pass. Exact commit `71eaca1` compiles all 265 steps with GCC 13.3 and passes
   82/82 tests in 27.15 seconds in a fresh isolated `Airfix-Dev` WSL clone.
   GitHub Actions remains the publication gate.
+
+## 2026-07-29 - portable machine-gun projectile runtime pool
+
+- `EXP-20260729-047` refreshes the complete weapon-to-projectile activation
+  join using hash-verified, read-only `Projectiles.type` and `AfEngine.dll`
+  working copies. Ghidra remains canonical for ABI and event pseudocode;
+  independent Rizin reports confirm exact boundaries and instruction bytes for
+  `WpMGunRefresh`, the ammunition factory/constructor, and
+  `AfAmmo::ProcessEvent`.
+- The recovered order is now explicit in one portable transaction: cadence,
+  barrel, and nonzero ammunition advance before capacity acquisition; muzzle
+  and event-only data are consumed only after acquisition succeeds.
+- Added a caller-owned fixed-capacity projectile runtime. It selects the first
+  reusable slot, writes the complete semantic event-`0xE2` state and
+  technology profile, and returns a 64-bit generation-tagged handle without
+  allocation. Generation wrap fails closed and reuse cannot revive a stale
+  identity. Pool capacity and first-free selection are deliberate port policy,
+  not claims about the native private allocator.
+- Focused tests cover full and empty pools, exhausted and skipped generations,
+  state-before-capacity behavior, payload rejection after capacity,
+  activation mapping, deactivation/reuse, mutable and const handle lookup,
+  stale and out-of-range handles, and 4,096 successful activations with zero
+  observed heap allocations.
+- A fresh Windows GCC 15.2 Release build and separate code-intelligence build
+  each compile all 268 steps and pass 83/83 tests. The compilation database has
+  171 portable entries and no Apple-only source; clangd 22.1.8 reports zero
+  errors in all three affected translation units. Ghidra, working-copy, and
+  Rizin wrappers, 12 Rizin normalization tests, synthetic public-boundary
+  tests and the 410-file public scan, the 265-row unique catalogue with only
+  its two known missing references, `actionlint`, the 19-file local-path scan,
+  and `git diff --check` pass. Isolated WSL and GitHub Actions remain the
+  publication gates.

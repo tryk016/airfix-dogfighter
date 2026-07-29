@@ -137,7 +137,7 @@ The project still needs:
 - resolvers backed by those future non-player producers;
 - concrete creator BSP and actor/effect adapters that consume the existing
   callback contracts and terminal command data;
-- private projectile allocation/event dispatch and live muzzle transforms; and
+- active generation-tagged slot advancement and live muzzle transforms; and
 - controlled executable traces for final numeric/runtime comparison.
 
 ## Confidence
@@ -147,7 +147,7 @@ Confidence is **3/3** for room mapping, static/dynamic owner mapping,
 behavior.
 
 Confidence remains **2/3** for complete live behavior until the actor producer,
-private live-dispatch adapters, and controlled executable traces exist.
+live slot/effect adapters, and controlled executable traces exist.
 
 ## Related material
 
@@ -156,3 +156,4 @@ private live-dispatch adapters, and controlled executable traces exist.
 - [Mission runtime ownership](EXP-20260729-041-mission-runtime-dynamic-collision-ownership.md)
 - [Projectile portal loop](EXP-20260729-042-projectile-collision-portal-loop.md)
 - [Projectile creator BSP guard](EXP-20260729-046-projectile-creator-bsp-guard.md)
+- [Portable projectile runtime pool](EXP-20260729-047-portable-projectile-runtime-pool.md)

@@ -3,9 +3,11 @@
 This note records only behavior confirmed in the original PE32/x86 modules.
 Working names are descriptive and do not claim recovered source identifiers.
 The current portable boundary covers primary `WpMGun` timing, the complete
-semantic projectile payload, unobstructed projectile motion, and the isolated
-actor/surface contact reactions. Private type allocation, room collision
-queries, event dispatch, visual instances, and secondary weapons remain
+semantic projectile payload, deterministic fixed-capacity activation,
+unobstructed projectile motion, retained room collision queries, and isolated
+actor/surface contact reactions. Native private type allocation is
+intentionally replaced rather than imported. Live slot advancement, concrete
+actor/effect consumption, visual instances, and secondary weapons remain
 separate work.
 
 ## Evidence boundary
@@ -358,6 +360,8 @@ and terminal machine-gun state/command reduction is recorded in
 [EXP-20260729-045](../../experiments/EXP-20260729-045-projectile-terminal-collision-commit.md).
 Creator BSP bracketing is recorded in
 [EXP-20260729-046](../../experiments/EXP-20260729-046-projectile-creator-bsp-guard.md).
+The fixed-capacity activation boundary is recorded in
+[EXP-20260729-047](../../experiments/EXP-20260729-047-portable-projectile-runtime-pool.md).
 
 ## Actor damage and surface reaction
 
@@ -424,6 +428,16 @@ It returns the already-advanced fire state alongside the prepared shot because
 the native refresh cycles the barrel and decrements nonzero ammunition before
 private allocation. A later allocation failure must not roll that state back.
 
+`LegacyMachineGunProjectileRuntime` preserves that recovered order while
+replacing the native private allocator with caller-owned fixed-capacity
+storage. It commits weapon state before capacity acquisition, reads
+muzzle/event-only input only after a usable slot exists, activates semantic
+event `0xE2`, and returns a generation-tagged handle. First-free inactive-slot
+selection is a deterministic port policy. A saturated generation never wraps,
+deactivation invalidates its handle immediately, and reuse cannot revive a
+stale identity. The complete operation is bounded, `noexcept`, and
+allocation-free.
+
 The helpers accept seconds because the owning scheduler boundary already
 performs the recovered millisecond conversion. They reject non-finite or unsafe
 consumed inputs instead of reproducing x87 unordered behavior or invalid
@@ -432,15 +446,16 @@ automatic and projectile-level portal paths, including the atomic
 primary-player resolver and the terminal machine-gun state/command reducer.
 Ownerless retained-room contacts deactivate but deliberately suppress the
 optional ricochet request when no owner-backed material provenance exists.
-The remaining live transaction must resolve private types and authored muzzle
-transforms, publish and resolve other actor geometry/state, provide the
-concrete creator BSP callbacks, dispatch the reduced terminal events/effects,
-and honor allocation failure without inventing a projectile or effect.
+The remaining live transaction must supply authored muzzle transforms, advance
+active slots through the published collision transaction, publish and resolve
+other actor geometry/state, provide concrete creator BSP callbacks, and
+dispatch the reduced terminal events/effects without inventing an actor or
+effect.
 
 ## Remaining work
 
-- Consume the prepared-shot transaction through private type allocation and
-  event dispatch without rolling back fire state on allocation failure.
+- Feed real rotated-muzzle snapshots into the portable runtime and advance
+  active generation-tagged slots through the published collision transaction.
 - Feed the implemented player collider and concrete resolver from the changing
   actor producer, extend the same authenticated publication/resolution to
   other live actors and dynamic portal objects, then connect the implemented

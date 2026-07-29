@@ -127,7 +127,7 @@ The project still needs:
 - changing primary-player and authenticated non-player producers;
 - concrete creator BSP calls and live consumption of damage and surface/effect
   command data through the implemented callback seams;
-- private projectile allocation and event `0xE2` dispatch;
+- active generation-tagged projectile-slot advancement;
 - authored live muzzle transforms and tracer/effect realization; and
 - controlled executable traces for final runtime comparison.
 
@@ -138,7 +138,7 @@ interpolation, material-15 water update, and bounded command values because
 they compose already cross-checked Ghidra/Rizin contracts.
 
 Confidence remains **2/3** for complete live collision behavior until the
-changing actors, private dispatch adapters, and controlled traces exist.
+changing actors, live slot/effect adapters, and controlled traces exist.
 
 ## Related material
 
@@ -148,3 +148,4 @@ changing actors, private dispatch adapters, and controlled traces exist.
 - [Projectile runtime query adapter](EXP-20260729-043-projectile-runtime-query-adapter.md)
 - [Projectile primary-player resolver](EXP-20260729-044-projectile-player-actor-resolver.md)
 - [Projectile creator BSP guard](EXP-20260729-046-projectile-creator-bsp-guard.md)
+- [Portable projectile runtime pool](EXP-20260729-047-portable-projectile-runtime-pool.md)

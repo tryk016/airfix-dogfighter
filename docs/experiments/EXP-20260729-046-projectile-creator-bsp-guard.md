@@ -152,7 +152,7 @@ query/reducer transaction. The project still needs:
   publication/resolution;
 - concrete live adapters that invoke the private actor methods and consume
   damage/surface commands;
-- private projectile allocation and event `0xE2` dispatch;
+- active generation-tagged projectile-slot advancement;
 - authored live muzzle transforms plus tracer/ricochet realization; and
 - controlled executable traces for final runtime and numeric comparison.
 
@@ -173,3 +173,4 @@ adapters, changing actor publication, and controlled executable traces exist.
 - [Projectile collision portal loop](EXP-20260729-042-projectile-collision-portal-loop.md)
 - [Projectile runtime query adapter](EXP-20260729-043-projectile-runtime-query-adapter.md)
 - [Projectile terminal collision commit](EXP-20260729-045-projectile-terminal-collision-commit.md)
+- [Portable projectile runtime pool](EXP-20260729-047-portable-projectile-runtime-pool.md)
