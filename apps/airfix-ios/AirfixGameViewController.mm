@@ -15,6 +15,7 @@
 #include "airfix/render/LegacyGameplayCameraMissionRuntime.hpp"
 #include "airfix/render/PlayerActorPoseRuntime.hpp"
 #include "airfix/runtime/AppSession.hpp"
+#include "airfix/simulation/LegacyAircraftAudioCoordinator.hpp"
 #include "airfix/simulation/PlayerAircraftSimulation.hpp"
 #include "airfix/simulation/PlayerSpawnPose.hpp"
 
@@ -25,6 +26,16 @@
 #include <utility>
 
 namespace {
+
+constexpr std::array<airfix::audio::AudioVoiceId, 6U>
+    playerAircraftAudioVoices{{
+        {1U},
+        {2U},
+        {3U},
+        {4U},
+        {5U},
+        {6U},
+    }};
 
 [[nodiscard]] NSString* decodePrivateLogicalPath(
     const std::string_view encoded) {
@@ -83,6 +94,8 @@ namespace {
     AirfixPlayerActorPoseRuntimeEndpoint _playerActorPoseRuntime;
     AirfixGameplayCameraMissionRuntimeEndpoint _gameplayCameraRuntime;
     std::unique_ptr<airfix::ios::AirfixAVAudioEngineBackend> _audioBackend;
+    std::optional<airfix::simulation::LegacyAircraftAudioBindings>
+        _playerAircraftAudioBindings;
     dispatch_queue_t _rendererPreparationQueue;
 }
 @property(nonatomic, strong) AirfixMetalRenderer* renderer;
@@ -493,11 +506,20 @@ namespace {
     __weak AirfixGameViewController* weakSelf = self;
     dispatch_async(_rendererPreparationQueue, ^{
         AirfixPreparedMetalRoom* preparedRoom = nil;
+        std::shared_ptr<
+            airfix::content::LoadedLegacyAircraftAudioClips>
+            preparedAudioClips;
         NSError* preparationError = nil;
         @try {
             try {
                 auto room =
                     airfix::ios::takeLoadedMissionWorldRoom(snapshot);
+                auto audioClips =
+                    airfix::ios::takeLoadedLegacyAircraftAudioClips(
+                        snapshot);
+                preparedAudioClips = std::make_shared<
+                    airfix::content::LoadedLegacyAircraftAudioClips>(
+                        std::move(audioClips));
                 preparedRoom =
                     [renderer
                         prepareLoadedMissionRoom:std::move(room)
@@ -531,7 +553,7 @@ namespace {
                     isMissionWorldRoomSnapshotCurrent:snapshot]) {
                 return;
             }
-            if (preparedRoom == nil) {
+            if (preparedRoom == nil || preparedAudioClips == nullptr) {
                 [strongSelf.contentCoordinator
                     abandonMissionWorldRoomSnapshot:snapshot];
                 strongSelf->_session.setContentState(
@@ -618,15 +640,86 @@ namespace {
                 return;
             }
 
+            const auto aircraftAudioBindings =
+                preparedAudioClips->bindings(
+                    playerAircraftAudioVoices);
+            if (!aircraftAudioBindings.has_value()) {
+                [strongSelf.contentCoordinator
+                    abandonMissionWorldRoomSnapshot:snapshot];
+                strongSelf->_session.setContentState(
+                    airfix::runtime::ContentState::rejected);
+                [strongSelf.inputCoordinator resetForGameplayBoundary];
+                ((MTKView*)strongSelf.view).paused = YES;
+                strongSelf.touchControlsView.hidden = YES;
+                strongSelf.statusLabel.text =
+                    @"Airfix Dogfighter reconstruction\n"
+                     @"Aircraft audio bindings are invalid";
+                return;
+            }
+
+            std::unique_ptr<
+                airfix::ios::AirfixAVAudioEngineBackend>
+                preparedAudioBackend;
+            bool audioPreparationFailed = false;
+            try {
+                preparedAudioBackend = std::make_unique<
+                    airfix::ios::AirfixAVAudioEngineBackend>();
+                audioPreparationFailed =
+                    preparedAudioBackend->outputState() ==
+                    airfix::ios::AirfixIOSAudioOutputState::
+                        initializationFailed;
+                if (!audioPreparationFailed) {
+                    for (const auto& clip :
+                         preparedAudioClips->clipViews()) {
+                        if (preparedAudioBackend->
+                                registerPcm16Clip(clip) !=
+                            airfix::ios::
+                                AirfixIOSAudioClipRegistrationResult::
+                                    registered) {
+                            audioPreparationFailed = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            catch (...) {
+                audioPreparationFailed = true;
+            }
+            if (audioPreparationFailed ||
+                preparedAudioBackend == nullptr) {
+                [strongSelf.contentCoordinator
+                    abandonMissionWorldRoomSnapshot:snapshot];
+                strongSelf->_session.setContentState(
+                    airfix::runtime::ContentState::rejected);
+                [strongSelf.inputCoordinator resetForGameplayBoundary];
+                ((MTKView*)strongSelf.view).paused = YES;
+                strongSelf.touchControlsView.hidden = YES;
+                strongSelf.statusLabel.text =
+                    @"Airfix Dogfighter reconstruction\n"
+                     @"Aircraft audio preparation failed";
+                return;
+            }
+            preparedAudioBackend->setForcedPauseHandler(
+                [weakSelf](
+                    const airfix::ios::AirfixIOSAudioPauseReason
+                        reason) {
+                    AirfixGameViewController* owner = weakSelf;
+                    if (owner != nil) {
+                        [owner handleAudioForcedPause:reason];
+                    }
+                });
+
             // Main owns this complete transaction. Validation is read-only;
             // consuming the exact ticket is immediately followed by the
-            // renderer's no-fail constant-time pointer swap.
+            // renderer and audio backends' no-fail ownership swaps.
             if (![strongSelf.contentCoordinator
                     isMissionWorldRoomSnapshotCurrent:snapshot] ||
                 ![strongSelf.contentCoordinator
                     consumeMissionWorldRoomSnapshot:snapshot]) {
                 return;
             }
+            strongSelf->_audioBackend =
+                std::move(preparedAudioBackend);
             [renderer commitValidatedPreparedRoom:preparedRoom];
             strongSelf->_playerActorPoseRuntime =
                 playerActorPoseRuntime;
@@ -638,6 +731,8 @@ namespace {
                 gameplayCameraRuntime;
             strongSelf->_playerSpawnPose = *playerSpawnPose;
             strongSelf->_playerAircraftState = {};
+            strongSelf->_playerAircraftAudioBindings =
+                *aircraftAudioBindings;
 
             strongSelf->_session.setContentState(
                 airfix::runtime::ContentState::ready);
@@ -675,6 +770,7 @@ namespace {
     (AirfixContentCoordinator*)coordinator {
     (void)coordinator;
     _audioBackend->setActive(false);
+    _playerAircraftAudioBindings.reset();
     _session.setContentState(airfix::runtime::ContentState::rejected);
     [self.inputCoordinator resetForGameplayBoundary];
     ((MTKView*)self.view).paused = YES;

@@ -1,8 +1,9 @@
 # Audio system
 
 **Status:** portable command boundary, AirCraft engine/dive composition,
-Windows XAudio2 2.9, and iOS AVAudioEngine backends implemented; private
-content and physical-output acceptance pending
+authenticated owner-local PCM binding, Windows XAudio2 2.9, and iOS
+AVAudioEngine backends implemented; live scheduling and physical-output
+acceptance pending
 
 ## Product boundary
 
@@ -54,17 +55,29 @@ nonzero, and voice IDs must be unique within one aircraft instance. Clip IDs
 may be shared, which lets public tests drive all roles with one synthetic PCM
 fixture.
 
-The owner-local content layer will eventually:
+The owner-local content layer now:
 
-1. resolve and decode the lawfully owned sample for each role;
-2. register immutable PCM under its clip ID;
-3. allocate voice IDs unique to the actor instance;
-4. select looping behavior from verified sample/type metadata; and
-5. retain all source paths and decoded proprietary content outside Git.
+1. resolves all six roles by exact logical entry in the nested `Resource.up`;
+2. preflights per-file and aggregate source memory before any sample read;
+3. reads only through one unchanged authenticated `VerifiedContentSession`;
+4. decodes bounded RIFF/WAVE PCM16 into owned portable storage;
+5. preserves the recovered numeric role as its clip ID;
+6. allocates unique voice IDs for the actor instance; and
+7. retains all packages, decoded proprietary content, and local paths outside
+   Git.
 
-Looping is deliberately a binding property. The current evidence proves when
-the game calls play and stop, but it does not yet prove every sample's authored
-loop metadata.
+The observed full-buffer infinite sampler loop is required for `engineOn`,
+`engineIdle`, `engineTurn`, and `engineDive`. `engineStart` and `engineStop`
+remain one-shots because the recovered runtime stops or naturally replaces
+them; authored sampler metadata in those two files does not redefine runtime
+behavior. The seventh nearby `engineoff` source is not assigned to a recovered
+role.
+
+The parser accepts only bounded RIFF/WAVE integer PCM, mono/stereo, 16-bit
+frame-aligned data at 8–192 kHz. Chunk counts, sampler-loop counts, source
+bytes, transient source footprint, and published PCM all have independent
+ceilings. Missing, ambiguous, malformed, cancelled, over-budget, or
+transaction-changed input produces no partial clip set.
 
 ## Portable command contract
 
@@ -106,6 +119,13 @@ IDs. It performs:
 
 This proves the portable-to-native path, not audible parity.
 
+For owner-local development, `afpack-install` writes an AFPACK into an explicit
+private content root using the same atomic installer used by iOS. The Windows
+application accepts `--content-root <private-directory>` for normal startup and
+`--validate-content-root <private-directory>` for a hidden load/register check.
+It authenticates the AFAC-selected package before loading samples. Passing the
+original installation directory or loose WAV files is unsupported.
+
 ## iOS execution
 
 The iOS backend converts each bounded interleaved PCM16 registration once into
@@ -130,9 +150,16 @@ Unsigned `iphoneos` and `iphonesimulator` builds validate the Objective-C++ API,
 iOS 16.4 availability, linkage, and data-less bundle. They do not prove audible
 output, route timing, or physical-device recovery.
 
+The content worker loads the six clips from the same authenticated session as
+the mission and moves them inside the opaque mission snapshot. Main prepares a
+new AVAudioEngine backend, registers all six copied clips, and derives the
+actor bindings before consuming the mission ticket. The prepared renderer,
+backend, bindings, spawn state, and exact ticket then commit by no-fail
+ownership swaps; a failed or stale preparation leaves the previous committed
+mission untouched.
+
 ## Pending acceptance
 
-- bind and decode owner-local samples without publishing them;
 - feed the coordinator from the live 12 ms AirCraft producer;
 - retain/restart desired looping voices across Windows output-device
   recreation;

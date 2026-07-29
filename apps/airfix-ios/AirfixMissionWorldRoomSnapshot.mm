@@ -11,16 +11,19 @@ namespace {
 struct SnapshotStorage final {
     SnapshotStorage(
         airfix::content::WorldRoomPublicationTicket publicationTicket,
-        airfix::content::LoadedMissionWorldRoom&& loadedRoom)
+        airfix::content::LoadedMissionWorldRoom&& loadedRoom,
+        airfix::content::LoadedLegacyAircraftAudioClips&& loadedAudioClips)
         : ticket(std::move(publicationTicket)),
           resultRevision(loadedRoom.revision),
           playerSpawnPose(loadedRoom.playerSpawnPose),
-          room(std::move(loadedRoom)) {}
+          room(std::move(loadedRoom)),
+          audioClips(std::move(loadedAudioClips)) {}
 
     airfix::content::WorldRoomPublicationTicket ticket;
     airfix::content::ContentRevision resultRevision;
     airfix::simulation::PlayerSpawnPose playerSpawnPose;
     std::optional<airfix::content::LoadedMissionWorldRoom> room;
+    std::optional<airfix::content::LoadedLegacyAircraftAudioClips> audioClips;
 };
 
 dispatch_queue_t snapshotTeardownQueue() {
@@ -40,6 +43,7 @@ dispatch_queue_t snapshotTeardownQueue() {
 @property(nonatomic, readwrite) NSUInteger textureCount;
 @property(nonatomic, readwrite) NSUInteger meshCount;
 @property(nonatomic, readwrite) NSUInteger drawCommandCount;
+@property(nonatomic, readwrite) NSUInteger audioClipCount;
 
 - (instancetype)initWithRequestSerial:(uint64_t)requestSerial
                       loadedRoomStore:(void*)loadedRoomStore;
@@ -58,7 +62,8 @@ dispatch_queue_t snapshotTeardownQueue() {
     }
 
     auto* const storage = static_cast<SnapshotStorage*>(loadedRoomStore);
-    if (storage == nullptr || !storage->room.has_value()) {
+    if (storage == nullptr || !storage->room.has_value() ||
+        !storage->audioClips.has_value()) {
         delete storage;
         return nil;
     }
@@ -70,6 +75,7 @@ dispatch_queue_t snapshotTeardownQueue() {
     _textureCount = storage->room->textures.size();
     _meshCount = storage->room->submission.meshUploads.size();
     _drawCommandCount = storage->room->submission.commands.size();
+    _audioClipCount = storage->audioClips->clips.size();
     return self;
 }
 
@@ -97,18 +103,25 @@ namespace airfix::ios {
 
 AirfixMissionWorldRoomSnapshot* makeMissionWorldRoomSnapshot(
     content::WorldRoomPublicationTicket ticket,
-    content::LoadedMissionWorldRoom&& room) {
+    content::LoadedMissionWorldRoom&& room,
+    content::LoadedLegacyAircraftAudioClips&& audioClips) {
     if (content::validateMissionWorldRoomPublication(
             room, ticket.expectedRevision).has_value()) {
         throw std::invalid_argument(
             "mission room snapshot failed its publication contract");
     }
+    if (!audioClips.valid() ||
+        audioClips.revision != ticket.expectedRevision ||
+        audioClips.revision != room.revision) {
+        throw std::invalid_argument(
+            "mission audio snapshot failed its publication contract");
+    }
     // Initialize the long-lived teardown queue on the content worker so the
     // first stale release never has to create it from a main-thread dealloc.
     (void)snapshotTeardownQueue();
     const auto requestSerial = ticket.serial;
-    auto* const storage =
-        new SnapshotStorage(std::move(ticket), std::move(room));
+    auto* const storage = new SnapshotStorage(
+        std::move(ticket), std::move(room), std::move(audioClips));
     AirfixMissionWorldRoomSnapshot* const snapshot =
         [[AirfixMissionWorldRoomSnapshot alloc]
             initWithRequestSerial:requestSerial
@@ -135,6 +148,24 @@ content::LoadedMissionWorldRoom takeLoadedMissionWorldRoom(
     auto room = std::move(*storage->room);
     storage->room.reset();
     return room;
+}
+
+content::LoadedLegacyAircraftAudioClips
+takeLoadedLegacyAircraftAudioClips(
+    AirfixMissionWorldRoomSnapshot* const snapshot) {
+    if (snapshot == nil) {
+        throw std::invalid_argument("mission room snapshot is null");
+    }
+    auto* const storage =
+        static_cast<SnapshotStorage*>([snapshot airfix_privateStorage]);
+    if (storage == nullptr || !storage->audioClips.has_value()) {
+        throw std::logic_error(
+            "mission audio snapshot payload was already consumed");
+    }
+
+    auto audioClips = std::move(*storage->audioClips);
+    storage->audioClips.reset();
+    return audioClips;
 }
 
 content::WorldRoomPublicationTicket missionWorldRoomPublicationTicket(

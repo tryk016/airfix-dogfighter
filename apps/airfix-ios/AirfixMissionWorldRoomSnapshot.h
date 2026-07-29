@@ -19,6 +19,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, readonly) NSUInteger textureCount;
 @property(nonatomic, readonly) NSUInteger meshCount;
 @property(nonatomic, readonly) NSUInteger drawCommandCount;
+@property(nonatomic, readonly) NSUInteger audioClipCount;
 
 - (instancetype)init NS_UNAVAILABLE;
 

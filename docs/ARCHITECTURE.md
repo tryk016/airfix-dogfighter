@@ -150,9 +150,11 @@ video. The products implement separate outer layers:
 
 ADR-0008 selects the Windows window/input and renderer stack. ADR-0009 selects
 XAudio2 2.9; ADR-0010 selects AVAudioEngine and the explicit-resume iOS audio
-session policy over the same shared command contract. The exact minimum Windows
-release, D3D feature-level floor, and packaging remain bounded follow-up
-decisions. ADR-0002 records the staged input decision.
+session policy over the same shared command contract. ADR-0011 binds the six
+recovered aircraft roles to PCM decoded from one authenticated owner-local
+content transaction on both products. The exact minimum Windows release, D3D
+feature-level floor, and packaging remain bounded follow-up decisions. ADR-0002
+records the staged input decision.
 
 Input is a distinct subsystem: platform adapters produce normalized physical
 events, a context/binding router resolves semantic actions, and the simulation
@@ -166,11 +168,14 @@ optional motion never enter the game core as platform key/button codes. See
 - `airfix-windows`: native x64 playable application, primary debug/parity
   environment, and faithful-reference capture host. Its data-less SDL3,
   D3D11/DXGI/HLSL, input, and XAudio2 2.9 platform shell is implemented;
-  owner-local content and reconstructed gameplay integration remain.
+  authenticated aircraft-audio loading is implemented, while mission/world and
+  reconstructed gameplay integration remain.
 - `airfix-ios`: CMake-generated Objective-C++/UIKit/Metal application target.
   The first shell is data-less, iPhone-landscape only, delegates lifecycle
   state to portable `airfix::runtime`, and owns native AVAudioEngine/session
-  handling without original samples; see ADR-0006 and ADR-0010.
+  handling. Owner-local mission preparation now atomically carries and
+  registers the authenticated aircraft clip set; see ADR-0006, ADR-0010, and
+  ADR-0011.
 - Optional diagnostic viewers for archives, models, levels, and effects.
 
 ## Dependency direction

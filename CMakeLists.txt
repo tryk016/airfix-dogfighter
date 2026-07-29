@@ -61,6 +61,7 @@ endif()
 
 add_library(airfix_audio
     src/airfix/audio/AudioCommand.cpp
+    src/airfix/audio/WavePcm16.cpp
 )
 add_library(airfix::audio ALIAS airfix_audio)
 
@@ -272,6 +273,7 @@ else()
 endif()
 
 add_library(airfix_content
+    src/airfix/content/LegacyAircraftAudioClipSet.cpp
     src/airfix/content/LegacyProjectileRuntimeQueryAdapter.cpp
     src/airfix/content/MissionLoadManifest.cpp
     src/airfix/content/MissionWorldRoomPublication.cpp
@@ -303,6 +305,9 @@ if(AIRFIX_BUILD_TOOLS)
 
     add_executable(afpack-create tools/afpack/main.cpp)
     target_link_libraries(afpack-create PRIVATE airfix::afpack airfix::udsp)
+
+    add_executable(afpack-install tools/afpack-install/main.cpp)
+    target_link_libraries(afpack-install PRIVATE airfix::afpack)
 
     add_executable(gti-preview tools/gti-preview/main.cpp)
     target_link_libraries(gti-preview PRIVATE airfix::assets airfix::udsp)
@@ -363,6 +368,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::content)
     add_test(NAME airfix_verified_content_tests
         COMMAND airfix_verified_content_tests)
+
+    add_executable(airfix_legacy_aircraft_audio_clip_set_tests
+        tests/LegacyAircraftAudioClipSetTests.cpp)
+    target_link_libraries(airfix_legacy_aircraft_audio_clip_set_tests
+        PRIVATE airfix::content)
+    add_test(NAME airfix_legacy_aircraft_audio_clip_set_tests
+        COMMAND airfix_legacy_aircraft_audio_clip_set_tests)
 
     add_executable(airfix_world_room_loader_tests
         tests/WorldRoomLoaderTests.cpp)
@@ -493,6 +505,10 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_audio_command_tests tests/AudioCommandTests.cpp)
     target_link_libraries(airfix_audio_command_tests PRIVATE airfix::audio)
     add_test(NAME airfix_audio_command_tests COMMAND airfix_audio_command_tests)
+
+    add_executable(airfix_wave_pcm16_tests tests/WavePcm16Tests.cpp)
+    target_link_libraries(airfix_wave_pcm16_tests PRIVATE airfix::audio)
+    add_test(NAME airfix_wave_pcm16_tests COMMAND airfix_wave_pcm16_tests)
 
     add_executable(airfix_input_tests tests/InputRouterTests.cpp)
     target_link_libraries(airfix_input_tests PRIVATE airfix::input)

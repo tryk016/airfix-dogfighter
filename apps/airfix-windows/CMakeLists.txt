@@ -88,6 +88,7 @@ endif()
 target_link_libraries(airfix_windows PRIVATE
     airfix_windows_input
     airfix::audio
+    airfix::content
     airfix::render
     airfix::runtime
     airfix::simulation
