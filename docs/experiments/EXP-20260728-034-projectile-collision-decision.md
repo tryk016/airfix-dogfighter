@@ -137,9 +137,11 @@ now repeats the decision after projectile-level portal outcomes with a bounded
 budget. The authenticated runtime adapter in
 [EXP-20260729-043](EXP-20260729-043-projectile-runtime-query-adapter.md)
 now supplies the combined trace, room mapping, material value, and a typed
-seam for live actor gates. A higher-level live actor transaction must still:
+seam for live actor gates. The primary player's gates are resolved from the
+same complete runtime generation as its collider. A higher-level live actor
+transaction must still:
 
-- publish other changing actor colliders and implement the actor resolver; and
+- publish other changing actor colliders and resolve those actors; and
 - dispatch actor/projectile callbacks and effects while bracketing the complete
   loop with the creator collision guard.
 

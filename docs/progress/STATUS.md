@@ -658,13 +658,14 @@
   existing terminal decisions, and fails closed on query/decision errors or
   bounded cycles without allocation. An authenticated adapter now maps its
   current signed room through the retained catalogue, invokes the published
-  runtime portal trace, preserves the exact `0x2152` material bits, and accepts
-  server actor lookup/gates only through a typed callback. Private
-  allocation/event dispatch, live muzzle transforms, non-player actor and
-  dynamic-portal publication, a concrete actor resolver, creator-guard and
-  callback dispatch, tracer/effect realization, secondary weapon families,
-  dynamic camera-sphere contacts, runtime traces, and integration remain
-  pending.
+  runtime portal trace, preserves the exact `0x2152` material bits, and
+  resolves the primary player's server actor gates from state committed in
+  the same complete collision-frame generation. A typed callback remains for
+  future non-player actors. Private allocation/event dispatch, live muzzle
+  transforms, non-player actor and dynamic-portal publication/resolution,
+  creator-guard and callback dispatch, tracer/effect realization, secondary
+  weapon families, dynamic camera-sphere contacts, runtime traces, and
+  integration remain pending.
   The authenticated player CCF now also produces bounded immutable per-mesh
   colliders and ordered actor-local instances inside the atomic mission load.
   A two-pass `noexcept` frame adapter publishes a supplied live player
@@ -690,9 +691,11 @@
   ahead of each room's unchanged placed list without copying geometry,
   allocation, or partial output. The mission-lifetime runtime now owns those
   immutable assets and exact flat buffers, exposes the last complete frame,
-  and traces it against its owned static arena without allocation. Other live
-  actors, a real changing producer, controlled traces, and dynamic sphere
-  collision remain separate.
+  stores the primary player's object ID, active flag, and both recovered
+  projectile gates in the same successful transaction, and traces against its
+  owned static arena without allocation. Failed republishes retain both the
+  previous geometry and actor state. Other live actors, a real changing
+  producer, controlled traces, and dynamic sphere collision remain separate.
 
 ## Confirmed
 
@@ -738,12 +741,12 @@
    controlled multi-room executable traces when the isolated runtime is ready.
 5. Keep BSP render culling disabled until its separate runtime semantics are
    proven against executable evidence.
-6. Extend the runtime-owned placed/player dynamic-collision frame to other
-   live actors and feed it from the recovered changing actor producer. Provide
-   the concrete actor resolver plus creator guard and terminal callbacks around
-   the implemented runtime projectile query, then join private type
-   allocation/event dispatch, live muzzle transforms, and tracer/effect
-   adapters before wiring primary-fire intent into runtime.
+6. Feed the runtime-owned player collider and concrete resolver from the
+   recovered changing actor producer. Extend the same generation-matched
+   publication/resolution to other live actors, then add the creator guard and
+   terminal callbacks around the implemented runtime projectile query. Join
+   private type allocation/event dispatch, live muzzle transforms, and
+   tracer/effect adapters before wiring primary-fire intent into runtime.
 
 ## Open questions
 
@@ -756,19 +759,18 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
-- Merged projectile portal-loop commit `402a26e` passes the exact-main Ubuntu,
-  Windows, ARM64 macOS, clangd/code-intelligence, `iphoneos`, and
-  `iphonesimulator` Actions jobs.
-- The current projectile runtime-query adapter passes fresh 262-step Windows
-  GCC 15.2 Release and regenerated code-intelligence builds plus 81/81 tests.
-  Its compilation database has 167 portable entries, and clangd 22.1.8 reports
-  zero errors in the adapter and its test. Twelve Rizin/public-boundary Python
-  tests, the 400-file public scan, 263-row unique function catalogue with no
-  bad source paths and only its two known missing references, `actionlint`,
-  14-file changed-scope local-path scan, and `git diff --check` pass. Exact
-  commit `c1b4d15` compiles all 262 steps with GCC 13.3 and passes 81/81 tests
-  in a new isolated `Airfix-Dev` WSL clone. GitHub Actions remains the
-  publication gate.
+- Merged projectile runtime-query adapter commit `c013135` passes the
+  exact-main Ubuntu, Windows, ARM64 macOS, clangd/code-intelligence,
+  `iphoneos`, and `iphonesimulator` Actions jobs.
+- The current primary-player resolver passes fresh 262-step Windows GCC 15.2
+  Release and regenerated code-intelligence builds plus 81/81 tests. Its
+  compilation database has 167 portable entries and no Apple-only source;
+  clangd 22.1.8 reports zero errors in both changed production units and
+  tests. Twelve Rizin normalization tests, synthetic public-boundary tests and
+  the 401-file public scan, the 263-row unique function catalogue with no bad
+  source paths and only its two known missing references, `actionlint`,
+  16-file local-path scan, and `git diff --check` pass. Exact-commit isolated
+  Linux and GitHub Actions remain the publication gates.
 
 ## Blockers
 

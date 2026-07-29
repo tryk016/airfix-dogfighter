@@ -429,6 +429,64 @@ void testMalformedRuntimeResultsFailClosed() {
     return geometry;
 }
 
+[[nodiscard]] MissionPlacedDynamicBspAssembly emptyPlacedCollision() {
+    MissionPlacedDynamicBspAssembly placed;
+    placed.roomObjectRanges.push_back({
+        .firstObjectIndex = 0U,
+        .objectCount = 0U,
+    });
+    placed.retainedPayloadBytes =
+        sizeof(LegacyDynamicBspRoomObjectRange);
+    require(
+        placed.complete(),
+        "empty placed collision fixture failed validation");
+    return placed;
+}
+
+[[nodiscard]] PlayerActorCollisionAssembly playerCollision() {
+    PlayerActorCollisionAssembly player;
+    const LegacyDynamicBspMaterialBinding binding{
+        .sourceReference = 100U,
+        .collisionMode2152 = 4U,
+    };
+    player.meshes.push_back(
+        buildLegacyDynamicBsp(
+            triangleGeometry(), {&binding, 1U}));
+    require(
+        player.meshes[0].complete(),
+        "player fixture mesh build failed");
+    const PlayerActorVisualProvenance actor{
+        .legacySkinSlot = 0U,
+        .blueprintIndex = 1U,
+        .blueprintReference = 20U,
+        .physicalMeshIndex = 0U,
+    };
+    player.meshProvenance.push_back({
+        .actor = actor,
+        .collisionMeshIndex = 0U,
+        .sourceMeshReference = 10U,
+    });
+    player.instances.push_back({
+        .collisionMeshIndex = 0U,
+        .actor = actor,
+        .actorLocal =
+            {
+                .linear = {},
+                .translation = {},
+                .rawScalar = 1.0F,
+            },
+    });
+    player.retainedPayloadBytes =
+        sizeof(LegacyDynamicBspMesh) +
+        sizeof(PlayerActorCollisionMeshProvenance) +
+        sizeof(PlayerActorCollisionInstance) +
+        player.meshes[0].retainedPayloadBytes;
+    require(
+        player.complete(),
+        "player collision fixture failed validation");
+    return player;
+}
+
 [[nodiscard]] MissionPlacedDynamicBspAssembly portalCollision() {
     MissionPlacedDynamicBspAssembly placed;
     const LegacyDynamicBspMaterialBinding binding{
@@ -525,18 +583,202 @@ buildPortalRuntime() {
         initializeInput());
 }
 
+[[nodiscard]] LegacyGameplayCameraMissionRuntimeBuildResult
+buildPlayerRuntime() {
+    MissionWorldSpatialArena arena;
+    arena.rooms.resize(1U);
+    auto placed = emptyPlacedCollision();
+    std::optional<PlayerActorCollisionAssembly> player{
+        playerCollision()};
+    return LegacyGameplayCameraMissionRuntime::create(
+        std::move(arena),
+        std::move(placed),
+        std::move(player),
+        {},
+        initializeInput());
+}
+
+void testPublishedPlayerActorResolverAndNoAllocations() {
+    auto built = buildPlayerRuntime();
+    require(built.complete(), "player runtime creation failed");
+    require(
+        queryPublishedLegacyProjectilePlayerActor(
+            *built.runtime, 91U)
+                .status ==
+            LegacyProjectileLiveActorQueryStatus::rejected,
+        "unpublished player resolver did not fail closed");
+
+    const ConvertedNodeTransform playerWorld{
+        .linear = {},
+        .translation = {0.0F, 0.0F, 2.0F},
+        .rawScalar = 1.0F,
+    };
+    const auto published =
+        built.runtime->tryPublishDynamicCollisionFrame(
+            playerWorld,
+            {
+                .objectId = 91U,
+                .active = true,
+                .projectileActorCollisionsEnabled = true,
+                .actorAcceptsProjectileCollision = true,
+            },
+            0U);
+    const auto resolvedActor =
+        queryPublishedLegacyProjectilePlayerActor(
+            *built.runtime, 91U);
+    require(
+        published.published() &&
+            resolvedActor.status ==
+                LegacyProjectileLiveActorQueryStatus::resolved &&
+            resolvedActor.projectileActorCollisionsEnabled &&
+            resolvedActor.actorAcceptsProjectileCollision &&
+            resolvedActor.actorActive &&
+            queryPublishedLegacyProjectilePlayerActor(
+                *built.runtime, 92U)
+                    .status ==
+                LegacyProjectileLiveActorQueryStatus::notFound &&
+            queryPublishedLegacyProjectilePlayerActor(
+                *built.runtime, 0U)
+                    .status ==
+                LegacyProjectileLiveActorQueryStatus::rejected,
+        "published player resolver state mismatch");
+
+    const auto rooms = catalog();
+    const LegacyProjectileCollisionQueryInput input{
+        .segmentStart = {0.0F, 0.0F, 0.0F},
+        .segmentEnd = {0.0F, 0.0F, 4.0F},
+        .roomId = 0,
+    };
+    const auto actorContact =
+        resolvePublishedLegacyProjectileCollisionLoop(
+            rooms, *built.runtime, input, true);
+    require(
+        actorContact.completed() &&
+            actorContact.queryCount == 1U &&
+            actorContact.portalTransitionCount == 0U &&
+            actorContact.decision->outcome ==
+                LegacyProjectileCollisionOutcome::actorContact &&
+            actorContact.decision->actorUid ==
+                std::optional<std::uint32_t>{91U} &&
+            actorContact.decision->position ==
+                LegacyMachineGunVector3{0.0F, 0.0F, 2.0F} &&
+            actorContact.decision->material ==
+                std::optional<std::int32_t>{4},
+        "published player did not resolve to actor contact");
+
+    const auto projectileGatePublication =
+        built.runtime->tryPublishDynamicCollisionFrame(
+            playerWorld,
+            {
+                .objectId = 91U,
+                .active = true,
+                .projectileActorCollisionsEnabled = false,
+                .actorAcceptsProjectileCollision = true,
+            },
+            0U);
+    const auto projectileGate =
+        resolvePublishedLegacyProjectileCollisionLoop(
+            rooms, *built.runtime, input, true);
+    require(
+        projectileGatePublication.published() &&
+            projectileGate.completed() &&
+            projectileGate.decision->outcome ==
+                LegacyProjectileCollisionOutcome::advanceActorGate,
+        "published projectile collision gate was ignored");
+
+    const auto gatedPublication =
+        built.runtime->tryPublishDynamicCollisionFrame(
+            playerWorld,
+            {
+                .objectId = 91U,
+                .active = true,
+                .projectileActorCollisionsEnabled = true,
+                .actorAcceptsProjectileCollision = false,
+            },
+            0U);
+    const auto actorGate =
+        resolvePublishedLegacyProjectileCollisionLoop(
+            rooms, *built.runtime, input, true);
+    const auto clientGate =
+        resolvePublishedLegacyProjectileCollisionLoop(
+            rooms, *built.runtime, input, false);
+    require(
+        gatedPublication.published() &&
+            actorGate.completed() &&
+            actorGate.decision->outcome ==
+                LegacyProjectileCollisionOutcome::advanceActorGate &&
+            clientGate.completed() &&
+            clientGate.decision->outcome ==
+                LegacyProjectileCollisionOutcome::advanceActorGate,
+        "published player actor gate order diverged");
+
+    bool complete = true;
+    allocationCount.store(0U, std::memory_order_relaxed);
+    countAllocations.store(true, std::memory_order_relaxed);
+    for (std::size_t index = 0U; index < 4'096U; ++index) {
+        const auto repeated =
+            resolvePublishedLegacyProjectileCollisionLoop(
+                rooms, *built.runtime, input, true);
+        complete = complete && repeated.completed() &&
+            repeated.queryCount == 1U &&
+            repeated.decision->outcome ==
+                LegacyProjectileCollisionOutcome::advanceActorGate;
+    }
+    countAllocations.store(false, std::memory_order_relaxed);
+    require(
+        complete,
+        "steady-state published player resolver failed");
+    require(
+        allocationCount.load(std::memory_order_relaxed) == 0U,
+        "steady-state published player resolver allocated");
+
+    const auto inactivePublication =
+        built.runtime->tryPublishDynamicCollisionFrame(
+            playerWorld,
+            {
+                .objectId = 91U,
+                .active = false,
+                .projectileActorCollisionsEnabled = true,
+                .actorAcceptsProjectileCollision = true,
+            },
+            0U);
+    const auto inactiveActor =
+        queryPublishedLegacyProjectilePlayerActor(
+            *built.runtime, 91U);
+    const auto inactiveTrace =
+        resolvePublishedLegacyProjectileCollisionLoop(
+            rooms, *built.runtime, input, true);
+    require(
+        inactivePublication.published() &&
+            inactiveActor.status ==
+                LegacyProjectileLiveActorQueryStatus::resolved &&
+            !inactiveActor.actorActive &&
+            inactiveTrace.completed() &&
+            inactiveTrace.decision->outcome ==
+                LegacyProjectileCollisionOutcome::advanceNoHit,
+        "inactive published player state diverged from geometry");
+}
+
 void testPublishedRuntimePortalLoopAndNoAllocations() {
     auto built = buildPortalRuntime();
     require(built.complete(), "portal runtime creation failed");
     const auto published =
         built.runtime->tryPublishDynamicCollisionFrame(
             {},
-            0U,
-            false,
+            {
+                .objectId = 0U,
+                .active = false,
+                .projectileActorCollisionsEnabled = false,
+                .actorAcceptsProjectileCollision = false,
+            },
             std::numeric_limits<std::size_t>::max());
     require(
         published.published() &&
-            built.runtime->worldRoomCount() == 2U,
+            built.runtime->worldRoomCount() == 2U &&
+            queryPublishedLegacyProjectilePlayerActor(
+                *built.runtime, 91U)
+                    .status ==
+                LegacyProjectileLiveActorQueryStatus::notFound,
         "portal runtime publication failed");
 
     const auto rooms = catalog(2U);
@@ -550,9 +792,7 @@ void testPublishedRuntimePortalLoopAndNoAllocations() {
             rooms,
             *built.runtime,
             input,
-            true,
-            nullptr,
-            nullptr);
+            true);
     require(
         resolved.completed() &&
             resolved.queryCount == 2U &&
@@ -577,9 +817,7 @@ void testPublishedRuntimePortalLoopAndNoAllocations() {
                 rooms,
                 *built.runtime,
                 input,
-                true,
-                nullptr,
-                nullptr);
+                true);
         complete = complete && repeated.completed() &&
             repeated.queryCount == 2U &&
             repeated.portalTransitionCount == 1U;
@@ -596,9 +834,7 @@ void testPublishedRuntimePortalLoopAndNoAllocations() {
             mismatchedRooms,
             *built.runtime,
             input,
-            true,
-            nullptr,
-            nullptr);
+            true);
     require(
         mismatch.status ==
                 LegacyProjectileCollisionLoopStatus::invalidInput &&
@@ -661,12 +897,26 @@ int main() {
             true,
             nullptr,
             nullptr)));
+    static_assert(noexcept(
+        queryPublishedLegacyProjectilePlayerActor(
+            std::declval<
+                const LegacyGameplayCameraMissionRuntime&>(),
+            1U)));
+    static_assert(noexcept(
+        resolvePublishedLegacyProjectileCollisionLoop(
+            std::declval<const MissionWorldRoomCatalog&>(),
+            std::declval<
+                const LegacyGameplayCameraMissionRuntime&>(),
+            std::declval<
+                const LegacyProjectileCollisionQueryInput&>(),
+            true)));
 
     testNoHitAndStaticMapping();
     testMaterialAndClientActorOrder();
     testServerActorResolutionStates();
     testPortalAndSignedMaterialMapping();
     testMalformedRuntimeResultsFailClosed();
+    testPublishedPlayerActorResolverAndNoAllocations();
     testPublishedRuntimePortalLoopAndNoAllocations();
 
     std::cout

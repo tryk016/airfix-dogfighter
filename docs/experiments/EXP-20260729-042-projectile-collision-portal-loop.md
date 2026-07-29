@@ -123,11 +123,12 @@ WSL clone. GitHub Actions remains the publication gate for this slice.
 The authenticated adapter in
 [EXP-20260729-043](EXP-20260729-043-projectile-runtime-query-adapter.md)
 now binds the published runtime trace, signed room mapping, exact collision
-material, and a callback-supplied live actor state to this loop. The current
-collision frame still contains only the authenticated player and placed
-objects. Other actor publication, a concrete live resolver, creator collision
-guard/callback dispatch, private projectile allocation/event dispatch,
-effects, and controlled executable traces remain separate.
+material, and generation-matched primary-player actor state to this loop. The
+explicit callback form remains available for later non-player actors. The
+current collision frame still contains only the authenticated player and
+placed objects. Other actor publication/resolution, creator collision
+guard/callback dispatch, private projectile allocation/event dispatch, effects,
+and controlled executable traces remain separate.
 
 ## Confidence
 

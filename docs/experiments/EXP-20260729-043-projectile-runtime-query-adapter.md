@@ -77,6 +77,12 @@ The resolver supplies transient state only. The current mission frame still
 publishes the authenticated player and placed objects; other live actors need
 their own future publication producer.
 
+The primary-player follow-up in
+[EXP-20260729-044](EXP-20260729-044-projectile-player-actor-resolver.md)
+now commits those confirmed gates in the same transaction as the player
+collision frame and provides the concrete allocation-free resolver overload.
+The explicit callback contract remains the extension seam for other actors.
+
 ## Runtime composition
 
 `resolvePublishedLegacyProjectileCollisionLoop` verifies that the
@@ -115,15 +121,16 @@ normalization tests, the synthetic and 400-file public-boundary scans, the
 263-row unique function catalogue, `actionlint`, 14-file changed-scope
 local-path scan, and `git diff --check` also pass. Exact commit `c1b4d15`
 compiles all 262 steps with GCC 13.3 and passes 81/81 tests in a new isolated
-`Airfix-Dev` WSL clone. GitHub Actions remains the publication gate for this
-slice.
+`Airfix-Dev` WSL clone. The merged main commit `c013135` passes Ubuntu,
+Windows, ARM64 macOS, clangd/code-intelligence, `iphoneos`, and
+`iphonesimulator` GitHub Actions jobs.
 
 ## Remaining boundary
 
 The project still needs:
 
 - publication of other live actor colliders and their changing state;
-- a concrete actor resolver backed by that producer;
+- resolvers backed by those future non-player producers;
 - creator collision-guard lifetime around the complete loop;
 - terminal actor/surface callback and damage/effect dispatch;
 - private projectile allocation/event dispatch and live muzzle transforms; and
