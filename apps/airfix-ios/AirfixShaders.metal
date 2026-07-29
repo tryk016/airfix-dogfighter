@@ -23,6 +23,11 @@ struct GpuGameplayUniforms {
     float4 logicalCanvas;
 };
 
+struct GpuOverlayUniforms {
+    float4 outputAndPanelSize;
+    float4 panelOrigin;
+};
+
 struct DiagnosticRasterVertex {
     float4 position [[position]];
     float2 uv [[user(uv)]];
@@ -108,6 +113,32 @@ vertex DiagnosticRasterVertex airfixPresentationVertexMain(
     DiagnosticRasterVertex output;
     output.position = float4(positions[vertexId], 0.0f, 1.0f);
     output.uv = texcoords[vertexId];
+    return output;
+}
+
+vertex DiagnosticRasterVertex airfixOverlayVertexMain(
+    uint vertexId [[vertex_id]],
+    constant GpuOverlayUniforms& uniforms [[buffer(2)]]) {
+    constexpr float2 unitPositions[] = {
+        float2(0.0f, 0.0f),
+        float2(1.0f, 0.0f),
+        float2(0.0f, 1.0f),
+        float2(1.0f, 0.0f),
+        float2(1.0f, 1.0f),
+        float2(0.0f, 1.0f),
+    };
+    const float2 uv = unitPositions[vertexId];
+    const float2 outputSize = uniforms.outputAndPanelSize.xy;
+    const float2 panelSize = uniforms.outputAndPanelSize.zw;
+    const float2 pixelPosition = uniforms.panelOrigin.xy + uv * panelSize;
+
+    DiagnosticRasterVertex output;
+    output.position = float4(
+        pixelPosition.x * 2.0f / outputSize.x - 1.0f,
+        1.0f - pixelPosition.y * 2.0f / outputSize.y,
+        0.0f,
+        1.0f);
+    output.uv = uv;
     return output;
 }
 

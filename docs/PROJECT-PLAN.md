@@ -373,9 +373,13 @@ to the native output at 100% and use backend-private offscreen color/depth
 targets plus linear presentation at non-100% scales. Windows direct backbuffer
 captures verify 1080p, 1440p, 4K, and 32:9, and a controlled 50%/200% trial
 verifies that output and 3D raster extents vary independently. Remaining stage
-1-2 work is finished settings UI, the diagnostic overlay, complete HUD/effect
-integration, and iOS runtime/device acceptance. This checkpoint does not
-advance the lighting/material/post-processing stages.
+1-2 work is finished settings UI and persistence, complete HUD/effect
+integration, safe FOV control, and iOS runtime/device acceptance. The shared
+telemetry contract and output-resolution developer overlay are implemented:
+both backends publish the same resolution, timing, workload, light, and
+labelled GPU-memory fields; D3D11 uses non-blocking timestamp queries and Metal
+uses completed-command-buffer timing. This checkpoint does not advance the
+lighting/material/post-processing stages.
 
 `Classic` and `Enhanced` are visual-intent profiles independent of the quality
 tier. Classic renders faithfully at the chosen high resolution; Enhanced adds

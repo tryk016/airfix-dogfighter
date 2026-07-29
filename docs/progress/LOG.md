@@ -3354,3 +3354,30 @@ superseded evidence.
 - Finished settings UI, HUD composition, safe FOV, diagnostics, color/HDR,
   lighting/material/effect stages, and physical-device iOS performance remain
   pending. This slice does not claim a playable build or ADR-0013 completion.
+
+## 2026-07-29 - shared frame diagnostics and native overlays
+
+- `EV-20260729-006` / `EXP-20260729-051` adds a portable, fail-closed frame
+  diagnostics contract. It validates and smooths backend samples, formats one
+  locale-independent four-line report, and rasterizes a bounded RGBA8 panel at
+  an output-relative pixel scale.
+- Both native renderers now report output and 3D target extents, render scale,
+  FPS, CPU and asynchronous GPU frame time, scene and total draw/triangle
+  counts, active lights, and GPU memory with measurement accuracy shown.
+  Diagnostic composition is excluded from its own workload counts and cannot
+  feed timing or visual data back into simulation.
+- D3D11 uses a non-blocking four-slot timestamp-query ring, estimates tracked
+  resource bytes, uploads the portable panel to a dynamic texture, and blends
+  it after native or scaled presentation. Metal obtains GPU time from completed
+  command buffers, reports its admitted/backend allocation sizes, uploads the
+  same panel to a shared texture, and places it inside UIKit safe-area insets.
+- Windows adds explicit `--render-diagnostics` and a public, data-less
+  `--capture-diagnostic-frame` path. A 2560x1440, 100%-scale D3D11 capture
+  visibly proves that the panel is composed into the native backbuffer. Its
+  SHA-256 is
+  `4EF8D286642D3326F80B4FF444F3632042A2BD925F55ABF37289503A345DDCA4`;
+  the local BMP remains ignored.
+- The complete portable build passes 91/91 tests. Independent MinGW GCC 15.2
+  and MSVC 19.51 Windows product builds each pass 95/95 tests, including both
+  D3D11 overlay smoke paths. Hosted iPhoneOS/iPhoneSimulator compilation
+  remains a merge check; physical-device timing accuracy remains pending.

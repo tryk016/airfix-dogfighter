@@ -41,6 +41,12 @@ struct PresentationRasterInput
     float2 uv : TEXCOORD0;
 };
 
+cbuffer OverlayUniforms : register(b2)
+{
+    float4 outputAndPanelSize;
+    float4 panelOrigin;
+};
+
 SmokeRasterInput AirfixSmokeVS(SmokeVertexInput input)
 {
     SmokeRasterInput output;
@@ -106,6 +112,32 @@ PresentationRasterInput AirfixPresentationVS(
     return output;
 }
 
+PresentationRasterInput AirfixOverlayVS(
+    uint vertexId : SV_VertexID)
+{
+    static const float2 unitPositions[6] = {
+        float2(0.0f, 0.0f),
+        float2(1.0f, 0.0f),
+        float2(0.0f, 1.0f),
+        float2(1.0f, 0.0f),
+        float2(1.0f, 1.0f),
+        float2(0.0f, 1.0f),
+    };
+    const float2 uv = unitPositions[vertexId];
+    const float2 outputSize = outputAndPanelSize.xy;
+    const float2 panelSize = outputAndPanelSize.zw;
+    const float2 pixelPosition = panelOrigin.xy + uv * panelSize;
+
+    PresentationRasterInput output;
+    output.position = float4(
+        pixelPosition.x * 2.0f / outputSize.x - 1.0f,
+        1.0f - pixelPosition.y * 2.0f / outputSize.y,
+        0.0f,
+        1.0f);
+    output.uv = uv;
+    return output;
+}
+
 Texture2D colorTexture : register(t0);
 SamplerState colorSampler : register(s0);
 
@@ -121,6 +153,11 @@ float4 AirfixGameplayPS(GameplayRasterInput input) : SV_TARGET
 }
 
 float4 AirfixPresentationPS(PresentationRasterInput input) : SV_TARGET
+{
+    return colorTexture.Sample(colorSampler, input.uv);
+}
+
+float4 AirfixOverlayPS(PresentationRasterInput input) : SV_TARGET
 {
     return colorTexture.Sample(colorSampler, input.uv);
 }

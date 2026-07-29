@@ -43,7 +43,9 @@ void testEmptyAndSmokeModes() {
   require(!defaultOptions.smokeTest && !defaultOptions.contentRoot &&
               !defaultOptions.mission && !defaultOptions.captureSize &&
               defaultOptions.renderScalePercent == 100U &&
-              !defaultOptions.originalFourByThreePresentation,
+              !defaultOptions.originalFourByThreePresentation &&
+              !defaultOptions.renderDiagnostics &&
+              !defaultOptions.captureDiagnosticFrameOutput,
           "empty command line must retain the data-less interactive shell");
 
   const std::array smoke{"--smoke-test"sv};
@@ -60,11 +62,13 @@ void testPresentationOptions() {
       "--render-scale"sv,
       "50"sv,
       "--original-4x3"sv,
+      "--render-diagnostics"sv,
   };
   const auto smokeOptions = parse(smoke);
   require(smokeOptions.smokeTest &&
               smokeOptions.renderScalePercent == 50U &&
               smokeOptions.originalFourByThreePresentation &&
+              smokeOptions.renderDiagnostics &&
               !smokeOptions.contentRoot,
           "data-less smoke presentation settings were not retained");
 
@@ -146,6 +150,9 @@ void testValidationAndRejections() {
                  "--original-4x3"sv},
       "duplicate Original 4:3 mode must fail closed");
   requireRejected(
+      std::array{"--render-diagnostics"sv, "--render-diagnostics"sv},
+      "duplicate diagnostics mode must fail closed");
+  requireRejected(
       std::array{"--content-root"sv, "private-pack"sv, "--unknown-option"sv},
       "unknown options must fail closed");
   requireRejected(std::array{"--content-root"sv, ""sv},
@@ -178,6 +185,14 @@ void testValidationAndRejections() {
       std::array{"--content-root"sv, "private-pack"sv, "--capture-size"sv,
                  "3840x2160"sv},
       "capture size without frame capture must fail closed");
+  requireRejected(
+      std::array{"--content-root"sv, "private-pack"sv,
+                 "--capture-diagnostic-frame"sv, "public.bmp"sv},
+      "public diagnostic capture must reject private content");
+  requireRejected(
+      std::array{"--smoke-test"sv, "--capture-diagnostic-frame"sv,
+                 "public.bmp"sv},
+      "public diagnostic capture and smoke mode must remain exclusive");
   requireRejected(
       std::array{"--content-root"sv, "private-pack"sv, "--setup"sv,
                  "mission.afs"sv, "--level"sv, "mission.level"sv,
@@ -220,6 +235,30 @@ void testPrivateCaptureRequest() {
           "private capture request was not retained");
 }
 
+void testPublicDiagnosticCaptureRequest() {
+  const std::array arguments{
+      "--capture-diagnostic-frame"sv,
+      "diagnostics.bmp"sv,
+      "--capture-size"sv,
+      "2560x1440"sv,
+      "--render-scale"sv,
+      "75"sv,
+      "--original-4x3"sv,
+  };
+  const auto options = parse(arguments);
+  require(
+      options.captureDiagnosticFrameOutput ==
+              std::filesystem::path("diagnostics.bmp") &&
+          options.captureSize ==
+              airfix::windows::AirfixWindowsCaptureSize{
+                  2560U, 1440U} &&
+          options.renderDiagnostics &&
+          options.renderScalePercent == 75U &&
+          options.originalFourByThreePresentation &&
+          !options.contentRoot && !options.mission,
+      "public diagnostic capture request was not retained");
+}
+
 } // namespace
 
 int main() {
@@ -229,6 +268,7 @@ int main() {
     testAuthenticatedMissionRequest();
     testValidationAndRejections();
     testPrivateCaptureRequest();
+    testPublicDiagnosticCaptureRequest();
     std::cout << "Airfix Windows command-line tests passed\n";
     return 0;
   } catch (const std::exception &error) {

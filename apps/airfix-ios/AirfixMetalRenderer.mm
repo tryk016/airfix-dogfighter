@@ -13,11 +13,14 @@
 #include "airfix/render/NativeRenderLayout.hpp"
 #include "airfix/render/PlayerActorPoseRuntime.hpp"
 #include "airfix/render/PublicRenderSmokeScene.hpp"
+#include "airfix/render/RenderFrameDiagnostics.hpp"
 #include "airfix/render/SnapshotGpuBudgetLedger.hpp"
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <bit>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -96,11 +99,18 @@ struct alignas(16) GpuGameplayUniforms {
     simd_float4 logicalCanvas;
 };
 
+struct alignas(16) GpuOverlayUniforms {
+    simd_float4 outputAndPanelSize;
+    simd_float4 panelOrigin;
+};
+
 static_assert(sizeof(GpuVertex) == 48U);
 static_assert(alignof(GpuVertex) == 16U);
 static_assert(sizeof(GpuUniforms) == 64U);
 static_assert(sizeof(GpuGameplayUniforms) == 160U);
 static_assert(alignof(GpuGameplayUniforms) == 16U);
+static_assert(sizeof(GpuOverlayUniforms) == 32U);
+static_assert(alignof(GpuOverlayUniforms) == 16U);
 
 NSError* makeError(const RendererError code, NSString* description) {
     return [NSError errorWithDomain:AirfixMetalRendererErrorDomain
@@ -747,6 +757,33 @@ struct ScenePoseRuntimePlan {
 @implementation AirfixSnapshotGpuBudgetLedgerHolder
 @end
 
+@interface AirfixMetalDiagnosticsState : NSObject {
+@public
+    airfix::render::RenderFrameDiagnosticsAccumulator _accumulator;
+    std::optional<std::chrono::steady_clock::time_point>
+        _previousFrameStart;
+    std::optional<std::chrono::steady_clock::time_point>
+        _lastOverlayRefresh;
+    std::atomic<double> _latestGpuFrameMilliseconds;
+    std::atomic<bool> _hasGpuFrameMilliseconds;
+}
+@end
+
+@implementation AirfixMetalDiagnosticsState
+
+- (instancetype)init {
+    self = [super init];
+    if (self != nil) {
+        _latestGpuFrameMilliseconds.store(
+            0.0, std::memory_order_relaxed);
+        _hasGpuFrameMilliseconds.store(
+            false, std::memory_order_relaxed);
+    }
+    return self;
+}
+
+@end
+
 @interface AirfixGpuBudgetReservationHolder : NSObject {
 @public
     std::optional<airfix::render::SnapshotGpuBudgetReservation>
@@ -1178,24 +1215,34 @@ bool preflightPrivateRoom(
 @property(nonatomic, strong)
     id<MTLRenderPipelineState> presentationPipelineState;
 @property(nonatomic, strong)
+    id<MTLRenderPipelineState> overlayPipelineState;
+@property(nonatomic, strong)
     id<MTLSamplerState> presentationSamplerState;
 @property(nonatomic, strong) id<MTLTexture> scaledSceneColorTexture;
 @property(nonatomic, strong) id<MTLTexture> scaledSceneDepthTexture;
 @property(nonatomic) NSUInteger scaledSceneWidth;
 @property(nonatomic) NSUInteger scaledSceneHeight;
+@property(nonatomic, strong) id<MTLTexture> diagnosticsOverlayTexture;
+@property(nonatomic) NSUInteger diagnosticsOverlayWidth;
+@property(nonatomic) NSUInteger diagnosticsOverlayHeight;
+@property(nonatomic) NSUInteger diagnosticsOverlayPixelScale;
 @property(nonatomic, readwrite) float renderScalePercent;
 @property(nonatomic, readwrite)
     BOOL originalFourByThreePresentationEnabled;
+@property(nonatomic, readwrite) BOOL diagnosticsOverlayEnabled;
 @property(nonatomic, strong) AirfixBudgetedMetalTexture* fallbackResource;
 @property(atomic, strong) AirfixMetalRoomSnapshot* roomSnapshot;
 @property(nonatomic, strong) NSObject* preparationOwnerToken;
 @property(nonatomic, strong) dispatch_queue_t resourceReleaseQueue;
 @property(nonatomic, strong)
     AirfixSnapshotGpuBudgetLedgerHolder* gpuBudgetHolder;
+@property(nonatomic, strong)
+    AirfixMetalDiagnosticsState* diagnosticsState;
 
 - (BOOL)ensureScaledSceneTargetsWithDevice:(id<MTLDevice>)device
                                      width:(NSUInteger)width
                                     height:(NSUInteger)height;
+- (BOOL)updateDiagnosticsOverlayTextureWithDevice:(id<MTLDevice>)device;
 @end
 
 @implementation AirfixMetalRenderer
@@ -1257,11 +1304,13 @@ bool preflightPrivateRoom(
     }
     AirfixSnapshotGpuBudgetLedgerHolder* gpuBudgetHolder =
         [[AirfixSnapshotGpuBudgetLedgerHolder alloc] init];
-    if (gpuBudgetHolder == nil) {
+    AirfixMetalDiagnosticsState* diagnosticsState =
+        [[AirfixMetalDiagnosticsState alloc] init];
+    if (gpuBudgetHolder == nil || diagnosticsState == nil) {
         if (error != nullptr) {
             *error = makeError(
                 RendererError::unexpectedFailure,
-                @"Metal snapshot GPU accounting could not be created.");
+                @"Metal GPU accounting or diagnostics could not be created.");
         }
         return nil;
     }
@@ -1301,9 +1350,12 @@ bool preflightPrivateRoom(
         [library newFunctionWithName:@"airfixGameplayVertexMain"];
     id<MTLFunction> presentationVertexFunction =
         [library newFunctionWithName:@"airfixPresentationVertexMain"];
+    id<MTLFunction> overlayVertexFunction =
+        [library newFunctionWithName:@"airfixOverlayVertexMain"];
     id<MTLFunction> fragmentFunction = [library newFunctionWithName:@"airfixFragmentMain"];
     if (vertexFunction == nil || gameplayVertexFunction == nil ||
-        presentationVertexFunction == nil || fragmentFunction == nil) {
+        presentationVertexFunction == nil ||
+        overlayVertexFunction == nil || fragmentFunction == nil) {
         if (error != nullptr) {
             *error = makeError(
                 RendererError::missingShaderFunction,
@@ -1377,6 +1429,40 @@ bool preflightPrivateRoom(
             *error = makeError(
                 RendererError::pipelineCreation,
                 [@"Metal render-scale presentation pipeline creation failed: "
+                    stringByAppendingString:reason]);
+        }
+        return nil;
+    }
+
+    pipelineDescriptor.label = @"Airfix render diagnostics overlay pipeline";
+    pipelineDescriptor.vertexFunction = overlayVertexFunction;
+    auto* overlayAttachment =
+        pipelineDescriptor.colorAttachments[0];
+    overlayAttachment.blendingEnabled = YES;
+    overlayAttachment.sourceRGBBlendFactor =
+        MTLBlendFactorSourceAlpha;
+    overlayAttachment.destinationRGBBlendFactor =
+        MTLBlendFactorOneMinusSourceAlpha;
+    overlayAttachment.rgbBlendOperation = MTLBlendOperationAdd;
+    overlayAttachment.sourceAlphaBlendFactor = MTLBlendFactorOne;
+    overlayAttachment.destinationAlphaBlendFactor =
+        MTLBlendFactorOneMinusSourceAlpha;
+    overlayAttachment.alphaBlendOperation = MTLBlendOperationAdd;
+    NSError* overlayPipelineError = nil;
+    id<MTLRenderPipelineState> overlayPipelineState =
+        [device
+            newRenderPipelineStateWithDescriptor:pipelineDescriptor
+                                           error:&overlayPipelineError];
+    if (overlayPipelineState == nil) {
+        if (error != nullptr) {
+            NSString* reason =
+                overlayPipelineError.localizedDescription;
+            if (reason == nil) {
+                reason = @"unknown overlay pipeline error";
+            }
+            *error = makeError(
+                RendererError::pipelineCreation,
+                [@"Metal diagnostics overlay pipeline creation failed: "
                     stringByAppendingString:reason]);
         }
         return nil;
@@ -1968,16 +2054,19 @@ bool preflightPrivateRoom(
     self.gameplayDepthState = gameplayDepthState;
     self.samplerState = samplerState;
     self.presentationPipelineState = presentationPipelineState;
+    self.overlayPipelineState = overlayPipelineState;
     self.presentationSamplerState = presentationSamplerState;
     self.renderScalePercent =
         airfix::render::native_render_policy::
             defaultRenderScalePercent;
     self.originalFourByThreePresentationEnabled = NO;
+    self.diagnosticsOverlayEnabled = NO;
     self.fallbackResource = fallbackResource;
     self.roomSnapshot = roomSnapshot;
     self.preparationOwnerToken = preparationOwnerToken;
     self.resourceReleaseQueue = resourceReleaseQueue;
     self.gpuBudgetHolder = gpuBudgetHolder;
+    self.diagnosticsState = diagnosticsState;
 
     return self;
     }
@@ -2052,6 +2141,29 @@ bool preflightPrivateRoom(
     return YES;
 }
 
+- (BOOL)updateDiagnosticsOverlayEnabled:(BOOL)enabled
+                                  error:(NSError* _Nullable* _Nullable)error {
+    if (error != nullptr) {
+        *error = nil;
+    }
+    if (!NSThread.isMainThread) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::wrongThread,
+                @"Metal diagnostics settings must be changed on the main thread.");
+        }
+        return NO;
+    }
+    self.diagnosticsOverlayEnabled = enabled;
+    if (!enabled) {
+        self.diagnosticsOverlayTexture = nil;
+        self.diagnosticsOverlayWidth = 0U;
+        self.diagnosticsOverlayHeight = 0U;
+        self.diagnosticsOverlayPixelScale = 0U;
+    }
+    return YES;
+}
+
 - (BOOL)ensureScaledSceneTargetsWithDevice:(id<MTLDevice>)device
                                      width:(NSUInteger)width
                                     height:(NSUInteger)height {
@@ -2119,6 +2231,69 @@ bool preflightPrivateRoom(
     self.scaledSceneWidth = width;
     self.scaledSceneHeight = height;
     return YES;
+}
+
+- (BOOL)updateDiagnosticsOverlayTextureWithDevice:(id<MTLDevice>)device {
+    AirfixMetalDiagnosticsState* state = self.diagnosticsState;
+    if (device == nil || state == nil ||
+        !state->_accumulator.latest().has_value()) {
+        return NO;
+    }
+    try {
+        const auto image =
+            airfix::render::rasterizeRenderFrameDiagnostics(
+                *state->_accumulator.latest());
+        if (!image.complete() ||
+            !fitsNSUInteger(image.width) ||
+            !fitsNSUInteger(image.height) ||
+            !fitsNSUInteger(image.bytesPerRow)) {
+            return NO;
+        }
+
+        const NSUInteger width =
+            static_cast<NSUInteger>(image.width);
+        const NSUInteger height =
+            static_cast<NSUInteger>(image.height);
+        MTLTextureDescriptor* descriptor =
+            [MTLTextureDescriptor
+                texture2DDescriptorWithPixelFormat:
+                    MTLPixelFormatRGBA8Unorm
+                                             width:width
+                                            height:height
+                                         mipmapped:NO];
+        if (descriptor == nil) {
+            return NO;
+        }
+        descriptor.storageMode = MTLStorageModeShared;
+        descriptor.hazardTrackingMode =
+            MTLHazardTrackingModeTracked;
+        descriptor.usage = MTLTextureUsageShaderRead;
+        // Publish a fresh immutable-per-submission texture. A completed
+        // command-buffer handler retains the previous texture, avoiding a CPU
+        // replaceRegion race with in-flight GPU sampling.
+        id<MTLTexture> texture =
+            [device newTextureWithDescriptor:descriptor];
+        if (texture == nil || texture.width != width ||
+            texture.height != height) {
+            return NO;
+        }
+        texture.label = @"Airfix render diagnostics overlay";
+
+        [texture
+            replaceRegion:MTLRegionMake2D(0U, 0U, width, height)
+              mipmapLevel:0U
+                withBytes:image.rgba8.data()
+              bytesPerRow:
+                  static_cast<NSUInteger>(image.bytesPerRow)];
+        self.diagnosticsOverlayTexture = texture;
+        self.diagnosticsOverlayWidth = width;
+        self.diagnosticsOverlayHeight = height;
+        self.diagnosticsOverlayPixelScale =
+            static_cast<NSUInteger>(image.pixelScale);
+        return YES;
+    } catch (...) {
+        return NO;
+    }
 }
 
 - (nullable AirfixPreparedMetalRoom*)prepareLoadedMissionRoom:
@@ -2896,6 +3071,15 @@ bool preflightPrivateRoom(
     self.scaledSceneDepthTexture = nil;
     self.scaledSceneWidth = 0U;
     self.scaledSceneHeight = 0U;
+    self.diagnosticsOverlayTexture = nil;
+    self.diagnosticsOverlayWidth = 0U;
+    self.diagnosticsOverlayHeight = 0U;
+    self.diagnosticsOverlayPixelScale = 0U;
+    AirfixMetalDiagnosticsState* diagnosticsState =
+        self.diagnosticsState;
+    if (diagnosticsState != nil) {
+        diagnosticsState->_lastOverlayRefresh.reset();
+    }
 }
 
 - (void)drawInMTKView:(MTKView*)view {
@@ -2907,6 +3091,29 @@ bool preflightPrivateRoom(
     if (resources == nil) {
         return;
     }
+    AirfixMetalDiagnosticsState* diagnosticsState =
+        self.diagnosticsState;
+    AirfixSnapshotGpuBudgetLedgerHolder* gpuBudgetHolder =
+        self.gpuBudgetHolder;
+    if (diagnosticsState == nil || gpuBudgetHolder == nil ||
+        gpuBudgetHolder->_ledger == nullptr) {
+        return;
+    }
+    const auto frameStarted =
+        std::chrono::steady_clock::now();
+    double frameIntervalMilliseconds = 1000.0 / 60.0;
+    if (diagnosticsState->_previousFrameStart.has_value()) {
+        frameIntervalMilliseconds =
+            std::chrono::duration<double, std::milli>(
+                frameStarted -
+                *diagnosticsState->_previousFrameStart)
+                .count();
+        if (!std::isfinite(frameIntervalMilliseconds) ||
+            frameIntervalMilliseconds <= 0.0) {
+            frameIntervalMilliseconds = 1000.0 / 60.0;
+        }
+    }
+    diagnosticsState->_previousFrameStart = frameStarted;
     const bool gameplayCameraActive =
         resources->_missionRoom.has_value();
     std::optional<airfix::render::LegacyGameplayCameraPacketLease>
@@ -2944,6 +3151,8 @@ bool preflightPrivateRoom(
         renderPass.depthAttachment.texture == nil) {
         return;
     }
+    id<MTLTexture> drawableDepthTexture =
+        renderPass.depthAttachment.texture;
     const auto outputExtent =
         outputPixelExtent(drawable.texture);
     if (!outputExtent.has_value()) {
@@ -3076,11 +3285,13 @@ bool preflightPrivateRoom(
         CGSizeMake(
             static_cast<CGFloat>(sceneViewport.width),
             static_cast<CGFloat>(sceneViewport.height)));
+    std::uint64_t sceneTriangleCount = 0U;
     for (std::size_t commandIndex = 0U;
          commandIndex < submissionPlan.commands.size();
          ++commandIndex) {
         const auto& command =
             submissionPlan.commands[commandIndex];
+        sceneTriangleCount += command.indexCount / 3U;
         const auto& instance =
             payload.instances[command.instanceIndex];
         const auto resolvedPose =
@@ -3182,14 +3393,190 @@ bool preflightPrivateRoom(
                 vertexCount:3U];
         [presentationEncoder endEncoding];
     }
+
+    std::optional<double> latestGpuMilliseconds;
+    if (diagnosticsState->_hasGpuFrameMilliseconds.load(
+            std::memory_order_acquire)) {
+        latestGpuMilliseconds =
+            diagnosticsState->_latestGpuFrameMilliseconds.load(
+                std::memory_order_relaxed);
+    }
+    std::uint64_t trackedGpuBytes =
+        static_cast<std::uint64_t>(
+            gpuBudgetHolder->_ledger->reservedBytes());
+    const auto accountResource =
+        [&trackedGpuBytes](id<MTLResource> resource) noexcept {
+            if (resource == nil) {
+                return;
+            }
+            const auto bytes =
+                static_cast<std::uint64_t>(resource.allocatedSize);
+            if (bytes >
+                std::numeric_limits<std::uint64_t>::max() -
+                    trackedGpuBytes) {
+                trackedGpuBytes =
+                    std::numeric_limits<std::uint64_t>::max();
+                return;
+            }
+            trackedGpuBytes += bytes;
+        };
+    accountResource(drawable.texture);
+    accountResource(drawableDepthTexture);
+    accountResource(retainedScaledSceneColor);
+    accountResource(retainedScaledSceneDepth);
+    accountResource(self.diagnosticsOverlayTexture);
+
+    const auto cpuSampled =
+        std::chrono::steady_clock::now();
+    const double cpuFrameMilliseconds =
+        std::chrono::duration<double, std::milli>(
+            cpuSampled - frameStarted)
+            .count();
+    const auto sceneDrawCallCount =
+        static_cast<std::uint64_t>(
+            submissionPlan.commands.size());
+    const std::uint64_t auxiliaryDrawCallCount =
+        usesScaledSceneTarget ? 1U : 0U;
+    const bool diagnosticAccepted =
+        diagnosticsState->_accumulator.record({
+            .outputExtent = *outputExtent,
+            .renderTargetExtent = renderTargetExtent,
+            .renderScalePercent = self.renderScalePercent,
+            .frameIntervalMilliseconds =
+                frameIntervalMilliseconds,
+            .cpuFrameMilliseconds = cpuFrameMilliseconds,
+            .gpuFrameMilliseconds = latestGpuMilliseconds,
+            .drawCallCount =
+                sceneDrawCallCount + auxiliaryDrawCallCount,
+            .sceneDrawCallCount = sceneDrawCallCount,
+            .triangleCount =
+                sceneTriangleCount + auxiliaryDrawCallCount,
+            .sceneTriangleCount = sceneTriangleCount,
+            .activeLightCount = 0U,
+            .gpuMemoryBytes = trackedGpuBytes,
+            .gpuMemoryMeasurement =
+                airfix::render::GpuMemoryMeasurement::
+                    backendReported,
+        });
+    id<MTLTexture> retainedDiagnosticsOverlay = nil;
+    if (diagnosticAccepted && self.diagnosticsOverlayEnabled) {
+        constexpr auto refreshInterval =
+            std::chrono::milliseconds(250);
+        if (!diagnosticsState->_lastOverlayRefresh.has_value() ||
+            frameStarted -
+                    *diagnosticsState->_lastOverlayRefresh >=
+                refreshInterval ||
+            self.diagnosticsOverlayTexture == nil) {
+            if ([self
+                    updateDiagnosticsOverlayTextureWithDevice:
+                        self.commandQueue.device]) {
+                diagnosticsState->_lastOverlayRefresh =
+                    frameStarted;
+            }
+        }
+        retainedDiagnosticsOverlay =
+            self.diagnosticsOverlayTexture;
+    }
+    if (retainedDiagnosticsOverlay != nil &&
+        self.diagnosticsOverlayWidth != 0U &&
+        self.diagnosticsOverlayHeight != 0U) {
+        renderPass.colorAttachments[0].loadAction =
+            MTLLoadActionLoad;
+        renderPass.colorAttachments[0].storeAction =
+            MTLStoreActionStore;
+        renderPass.depthAttachment.texture = nil;
+        id<MTLRenderCommandEncoder> overlayEncoder =
+            [commandBuffer
+                renderCommandEncoderWithDescriptor:renderPass];
+        if (overlayEncoder != nil) {
+            const float margin = static_cast<float>(
+                self.diagnosticsOverlayPixelScale * 8U);
+            float originX = margin;
+            float originY = margin;
+            const CGSize logicalBounds = view.bounds.size;
+            const UIEdgeInsets safeArea = view.safeAreaInsets;
+            if (std::isfinite(logicalBounds.width) &&
+                std::isfinite(logicalBounds.height) &&
+                logicalBounds.width > 0.0 &&
+                logicalBounds.height > 0.0 &&
+                std::isfinite(safeArea.left) &&
+                std::isfinite(safeArea.top) &&
+                safeArea.left >= 0.0 && safeArea.top >= 0.0) {
+                originX += static_cast<float>(
+                    safeArea.left *
+                    static_cast<CGFloat>(outputExtent->width) /
+                    logicalBounds.width);
+                originY += static_cast<float>(
+                    safeArea.top *
+                    static_cast<CGFloat>(outputExtent->height) /
+                    logicalBounds.height);
+            }
+            const GpuOverlayUniforms uniforms{
+                .outputAndPanelSize =
+                    {
+                        static_cast<float>(outputExtent->width),
+                        static_cast<float>(outputExtent->height),
+                        static_cast<float>(
+                            self.diagnosticsOverlayWidth),
+                        static_cast<float>(
+                            self.diagnosticsOverlayHeight),
+                    },
+                .panelOrigin =
+                    {originX, originY, 0.0F, 0.0F},
+            };
+            [overlayEncoder
+                setRenderPipelineState:
+                    self.overlayPipelineState];
+            [overlayEncoder setCullMode:MTLCullModeNone];
+            [overlayEncoder
+                setViewport:MTLViewport{
+                    0.0,
+                    0.0,
+                    static_cast<double>(outputExtent->width),
+                    static_cast<double>(outputExtent->height),
+                    0.0,
+                    1.0,
+                }];
+            [overlayEncoder setVertexBytes:&uniforms
+                                    length:sizeof(uniforms)
+                                   atIndex:2U];
+            [overlayEncoder
+                setFragmentTexture:retainedDiagnosticsOverlay
+                           atIndex:0U];
+            [overlayEncoder
+                setFragmentSamplerState:self.samplerState
+                               atIndex:0U];
+            [overlayEncoder
+                drawPrimitives:MTLPrimitiveTypeTriangle
+                    vertexStart:0U
+                    vertexCount:6U];
+            [overlayEncoder endEncoding];
+        }
+    }
+    AirfixMetalDiagnosticsState* retainedDiagnosticsState =
+        diagnosticsState;
     [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completed) {
-        (void)completed;
+        const double gpuStart = completed.GPUStartTime;
+        const double gpuEnd = completed.GPUEndTime;
+        if (std::isfinite(gpuStart) &&
+            std::isfinite(gpuEnd) &&
+            gpuStart >= 0.0 && gpuEnd > gpuStart) {
+            retainedDiagnosticsState
+                ->_latestGpuFrameMilliseconds.store(
+                    (gpuEnd - gpuStart) * 1000.0,
+                    std::memory_order_relaxed);
+            retainedDiagnosticsState
+                ->_hasGpuFrameMilliseconds.store(
+                    true, std::memory_order_release);
+        }
         // Retain the immutable resource owner explicitly until this GPU
         // submission no longer references its buffers or textures.
         (void)snapshot;
         (void)fallbackResource;
         (void)retainedScaledSceneColor;
         (void)retainedScaledSceneDepth;
+        (void)retainedDiagnosticsOverlay;
+        (void)drawableDepthTexture;
     }];
     [commandBuffer presentDrawable:drawable];
     [commandBuffer commit];
