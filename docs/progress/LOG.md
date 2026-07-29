@@ -3070,5 +3070,7 @@ superseded evidence.
   coverage, SDL mapping, and the real D3D11 GPU readback/resize smoke test.
   The 428-file public-boundary scan, `actionlint`, clang-format dry run,
   changed-scope local-path scan, and `git diff --check` pass. The local MSVC
-  preset is unavailable because Visual Studio 2026 is not installed; the
-  hosted Visual Studio 2026 Actions job remains the publication gate.
+  preset is unavailable because Visual Studio 2026 is not installed.
+  Pull-request Actions run `30443041305` passes the Visual Studio 2026 D3D11
+  product job, Windows/Ubuntu/macOS portable jobs, and clangd; iOS run
+  `30443041280` passes both `iphoneos` and `iphonesimulator`.
