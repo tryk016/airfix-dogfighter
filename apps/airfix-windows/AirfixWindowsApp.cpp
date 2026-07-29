@@ -1,12 +1,15 @@
 #include "AirfixD3D11Renderer.hpp"
 #include "AirfixSdlInputAdapter.hpp"
+#include "AirfixXAudio2Backend.hpp"
 
+#include "airfix/audio/AudioCommand.hpp"
 #include "airfix/runtime/AppSession.hpp"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <exception>
 #include <iostream>
@@ -19,6 +22,70 @@ namespace {
 
 constexpr std::uint64_t inputStepNanoseconds = 1'000'000'000ULL / 60ULL;
 constexpr std::uint64_t maximumFrameNanoseconds = 250'000'000ULL;
+constexpr airfix::audio::AudioClipId smokeAudioClip{1U};
+constexpr airfix::audio::AudioVoiceId smokeAudioVoice{1U};
+
+[[nodiscard]] std::array<std::int16_t, 480U> makeSmokeAudio() noexcept {
+  std::array<std::int16_t, 480U> samples{};
+  constexpr std::int16_t amplitude = 1'000;
+  for (std::size_t index = 0U; index < samples.size(); ++index) {
+    const std::size_t phase = index % 48U;
+    const std::int32_t ramp = phase < 24U
+                                  ? static_cast<std::int32_t>(phase)
+                                  : static_cast<std::int32_t>(48U - phase);
+    samples[index] = static_cast<std::int16_t>((ramp - 12) * amplitude / 12);
+  }
+  return samples;
+}
+
+void runAudioSmokeTest(airfix::windows::AirfixXAudio2Backend &audio) {
+  const auto samples = makeSmokeAudio();
+  const auto registration = audio.registerPcm16Clip({
+      .id = smokeAudioClip,
+      .sampleRate = 48'000U,
+      .channelCount = 1U,
+      .interleavedSamples = samples,
+  });
+  if (registration !=
+      airfix::windows::AirfixAudioClipRegistrationResult::registered) {
+    throw std::runtime_error("synthetic PCM16 registration failed");
+  }
+
+  airfix::audio::AudioCommandBatch start{.sequence = 1U};
+  if (!airfix::audio::appendAudioCommand(
+          start, {
+                     .kind = airfix::audio::AudioCommandKind::startVoice,
+                     .voice = smokeAudioVoice,
+                     .clip = smokeAudioClip,
+                     .gain = 0.0F,
+                 })) {
+    throw std::runtime_error("synthetic audio start command failed");
+  }
+  const auto startResult = audio.submit(start);
+  if (!startResult.accepted ||
+      startResult.appliedCommandCount != start.commandCount) {
+    throw std::runtime_error("XAudio2 rejected synthetic audio");
+  }
+
+  airfix::audio::AudioCommandBatch stop{.sequence = 2U};
+  if (!airfix::audio::appendAudioCommand(
+          stop, {
+                    .kind = airfix::audio::AudioCommandKind::stopVoice,
+                    .voice = smokeAudioVoice,
+                })) {
+    throw std::runtime_error("synthetic audio stop command failed");
+  }
+  const auto stopResult = audio.submit(stop);
+  if (!stopResult.accepted ||
+      stopResult.appliedCommandCount != stop.commandCount) {
+    throw std::runtime_error("XAudio2 rejected synthetic audio stop");
+  }
+
+  std::cout
+      << (startResult.outputAvailable
+              ? "XAudio2 synthetic smoke test passed\n"
+              : "XAudio2 synthetic smoke accepted without an output device\n");
+}
 
 struct SdlWindowDeleter {
   void operator()(SDL_Window *window) const noexcept {
@@ -63,6 +130,11 @@ int run(const int argumentCount, char *arguments[]) {
 
   airfix::runtime::AppSession session;
   airfix::windows::AirfixD3D11Renderer renderer{*window};
+  airfix::windows::AirfixXAudio2Backend audio;
+  if (audio.outputState() ==
+      airfix::windows::AirfixXAudio2OutputState::initializationFailed) {
+    throw std::runtime_error("XAudio2 2.9 initialization failed");
+  }
 
   if (smokeTest) {
     if (!renderer.renderFrame(true)) {
@@ -74,6 +146,7 @@ int run(const int argumentCount, char *arguments[]) {
       throw std::runtime_error(
           "D3D11 smoke frame failed after swap-chain resize");
     }
+    runAudioSmokeTest(audio);
     std::cout << "D3D11 GPU smoke test passed\n";
     return 0;
   }
@@ -110,6 +183,7 @@ int run(const int argumentCount, char *arguments[]) {
         break;
       case SDL_EVENT_WINDOW_FOCUS_LOST:
         input.focusLost();
+        audio.setActive(false);
         session.enterInactive();
         break;
       case SDL_EVENT_WINDOW_FOCUS_GAINED:
@@ -117,6 +191,8 @@ int run(const int argumentCount, char *arguments[]) {
           throw std::runtime_error(
               "SDL3 controller state failed after focus regain");
         }
+        (void)audio.recover();
+        audio.setActive(true);
         session.enterForeground();
         break;
       default:

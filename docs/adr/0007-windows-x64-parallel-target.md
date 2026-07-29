@@ -53,13 +53,13 @@ Each product owns separate outer adapters:
 | Window and lifecycle | SDL3 window/events plus Windows product lifecycle | UIKit scene and application lifecycle |
 | Rendering | Direct3D 11, DXGI, and HLSL | Metal renderer |
 | Physical input | SDL3 keyboard, mouse, and game controller | touch and Game Controller |
-| Audio | native Windows device/session backend | Apple audio session and device backend |
+| Audio | XAudio2 2.9 device/session backend | Apple audio session and device backend |
 | Files and private content | owner-local desktop import and storage | sandboxed document import and storage |
 
 ADR-0008 selects SDL3 for the Windows window/events/physical input and
-D3D11/DXGI with HLSL for rendering. SDL3 does not own game rendering. The exact
-Windows audio API remains deferred; no implementation choice may change the
-interfaces or ownership split above.
+D3D11/DXGI with HLSL for rendering. ADR-0009 selects XAudio2 2.9 for Windows
+audio. SDL3 owns neither game rendering nor audio; no implementation choice may
+change the interfaces or ownership split above.
 
 The original executable may run only as an external, read-only reference in a
 controlled environment. The reconstructed Windows application must not load,

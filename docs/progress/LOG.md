@@ -3074,3 +3074,36 @@ superseded evidence.
   Pull-request Actions run `30443041305` passes the Visual Studio 2026 D3D11
   product job, Windows/Ubuntu/macOS portable jobs, and clangd; iOS run
   `30443041280` passes both `iphoneos` and `iphonesimulator`.
+
+## 2026-07-29 - portable audio contract and Windows XAudio2 2.9 shell
+
+- ADR-0009 selects the inbox XAudio2 2.9 runtime for Windows 10/11, with the
+  null default-device identifier, `AudioCategory_GameMedia`, later X3DAudio
+  spatialization, and a native Apple backend remaining on iOS. Direct WASAPI,
+  SDL audio, DirectSound, XAudio2 2.7, and the legacy DirectX SDK are not part
+  of the product architecture.
+- Added a portable C++20 audio contract with explicit clip/voice IDs, monotonic
+  command batches, fixed command capacity, bounded finite gain/pitch, validated
+  mono/stereo PCM16 views, and a 64 MiB per-clip limit. Public tests cover valid
+  commands, malformed state, capacity, and PCM format rejection.
+- Added a native Windows adapter that securely loads `XAUDIO2_9.DLL` from the
+  system directory instead of linking the local MinGW XAudio2 2.8 import
+  library. It owns copied immutable clips under count/aggregate budgets,
+  bounds active voices, consumes missing-voice updates as safe no-ops, and
+  rejects invalid, stale, or unknown-clip command batches.
+- The mastering voice uses the virtualized default endpoint. No output device
+  is a supported silent state; critical errors are reduced to an atomic signal
+  in the callback and engine recreation occurs on the game thread. Focus loss
+  pauses the engine and focus regain resumes it without destroying healthy
+  voices.
+- Expanded the data-less Windows product smoke to register muted synthetic
+  PCM, start and stop a source voice when output exists, and validate the same
+  commands without failing on a headless/no-endpoint runner. No original audio
+  or private package is used.
+- A local MinGW GCC 15.2 Release product build compiles the complete native
+  shell and passes 88/88 tests, including the real D3D11 back-buffer readback,
+  SDL3 mapping, portable audio contract, and native XAudio2 smoke. The
+  code-intelligence build passes its full 86/86 portable tests. The two
+  portable audio translation units report zero clangd errors; changed-source
+  formatting, public-boundary tests and the 434-file scan, `actionlint`, the
+  22-file local-path scan, and `git diff --check` pass.

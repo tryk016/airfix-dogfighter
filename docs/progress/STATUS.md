@@ -14,7 +14,9 @@
   adapters; ADR-0007 and both product checklists define the boundary.
 - ADR-0008 selects SDL3 for the Windows window/events/keyboard/mouse/controllers
   and D3D11/DXGI with HLSL for the Windows renderer. SDL3 does not own game
-  rendering; iOS remains on its native Metal backend.
+  rendering; iOS remains on its native Metal backend. ADR-0009 selects inbox
+  XAudio2 2.9 for the Windows native audio backend and keeps SDL3 audio
+  disabled.
 - The native Windows x64 product foundation is implemented. A statically
   linked SDL3 shell owns the window and lifecycle events; a separate
   D3D11/DXGI backend compiles HLSL, uploads the same public scene used by Metal,
@@ -23,7 +25,10 @@
   rejects a clear-only frame. SDL3 keyboard/mouse/standardized-gamepad events
   now feed the shared 60 Hz semantic input path with ordered tap preservation,
   dead-zone/trigger normalization, hot-plug, disconnect release, and focus
-  neutralization. It remains a data-less product shell, not a playable build.
+  neutralization. A separate XAudio2 2.9 backend consumes the new bounded
+  portable command/PCM16 contract, owns copied clips, pauses with focus,
+  recovers outside its callback, and accepts commands safely without an output
+  endpoint. It remains a data-less product shell, not a playable build.
 - Cross-platform input/control/haptics system specified; semantic input
   architecture recorded in ADR-0002.
 - Local Git repository initialized on branch `main`; planning baseline committed
@@ -763,8 +768,8 @@
 
 ## Next
 
-1. Extend the implemented native Windows x64 renderer/input shell with the
-   separate audio adapter, owner-local authenticated content, persistent
+1. Extend the implemented native Windows x64 renderer/input/audio shell with
+   owner-local authenticated content, persistent
    remapping/calibration profiles and controller glyphs; replace the public
    smoke scene with shared reconstructed world commands without weakening its
    data-less CI path.
@@ -798,8 +803,8 @@
 
 ## Open questions
 
-- Which Windows audio API, D3D feature-level floor, minimum Windows version, and
-  private packaging procedure will be used?
+- Which D3D feature-level floor, exact Windows 10 release floor, and private
+  packaging procedure will be used?
 - Which Windows-compatible method will install the signed Actions IPA on both
   registered phones?
 - Which optional widescreen/Hor+ design should follow the parity-first 4:3
@@ -809,6 +814,11 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The portable audio command boundary passes the full 86/86
+  code-intelligence tests. The native MinGW GCC 15.2 Release product build
+  passes 88/88 tests; its hidden product smoke validates D3D11 readback/resize,
+  then registers muted synthetic PCM and exercises XAudio2 2.9 start/stop. The
+  public-boundary tests and 434-file repository scan pass.
 - The first Windows product slice passes a local MinGW GCC 15.2 Release build
   and 85/85 CTest cases. The final test creates a hidden SDL3
   window, compiles HLSL, renders the shared scene through D3D11/DXGI, reads the

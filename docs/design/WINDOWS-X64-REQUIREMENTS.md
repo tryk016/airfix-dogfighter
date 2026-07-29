@@ -1,7 +1,7 @@
 # Windows x64 product requirements
 
-**Status:** accepted product direction; data-less renderer and baseline physical
-input shells implemented; playable integration pending
+**Status:** accepted product direction; data-less renderer, baseline physical
+input, and native audio shells implemented; playable integration pending
 
 **Scope:** requirements unique to the playable Windows x64 product. Shared
 gameplay scope and parity requirements are defined in `V1-SCOPE.md`.
@@ -20,9 +20,13 @@ WARP, and verifies the rendered back buffer in a hidden CTest smoke mode. A
 separate SDL3 adapter now feeds fixed-rate semantic frames from the baseline
 keyboard/mouse and standardized-controller layout, including focus loss,
 hot-plug, disconnect, ordered taps, dead-zone handling, and lifecycle neutral
-gates. This proves the product, renderer, and physical-input boundaries but is
-not a playable game. Product status becomes playable only after audio,
-owner-local content, and reconstructed gameplay are integrated.
+gates. A native XAudio2 2.9 adapter validates bounded portable audio commands,
+owns copied PCM16 data, follows focus state, recovers the engine outside its
+callback, and safely consumes commands when no output endpoint exists. The
+synthetic product smoke test exercises rendering and audio without proprietary
+data. These shells prove the platform boundaries but are not a playable game.
+Product status becomes playable only after owner-local content, composed
+gameplay/audio state, and reconstructed gameplay are integrated.
 
 ## Shared-core contract
 
@@ -47,13 +51,14 @@ translate operating-system events; it may not redefine gameplay behavior.
 | Window and lifecycle | SDL3 x64 window/events, clean startup/shutdown, focus loss, resize, windowed/fullscreen presentation, display changes, and recoverable device recreation |
 | Rendering | D3D11/DXGI faithful backend with HLSL, consuming shared draw/camera commands with resolution-independent presentation and optional enhancements kept behind explicit modes |
 | Input | SDL3 keyboard/mouse and supported game controllers mapped into the shared semantic action model, including disconnect and focus-loss neutralization |
-| Audio | Native output backend consuming shared audio commands, with device change, focus, pause, and absent-music behavior |
+| Audio | XAudio2 2.9 backend consuming shared bounded audio commands; default-device virtualization, focus/pause, recovery, no-device, and absent-music behavior |
 | Files and content | Owner-local import, validation, activation, rollback, saves, and diagnostics without persisting source installation paths |
 
 ADR-0008 selects SDL3 for window/events/input and D3D11/DXGI with HLSL for
-rendering. SDL3 must not issue game draw calls. Minimum supported Windows
-version, D3D feature-level floor, Windows audio API, and final packaging format
-remain focused follow-up decisions.
+rendering. ADR-0009 selects inbox XAudio2 2.9 for native audio; SDL3 audio stays
+disabled. SDL3 must not issue game draw calls. The exact supported Windows 10
+release, D3D feature-level floor, and final packaging format remain focused
+follow-up decisions.
 
 ## Controls
 

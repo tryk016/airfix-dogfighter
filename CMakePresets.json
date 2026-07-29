@@ -24,7 +24,7 @@
     {
       "name": "windows-product",
       "displayName": "Windows x64 product (Visual Studio 2026)",
-      "description": "Data-less SDL3 and Direct3D 11 application shell with tests",
+      "description": "Data-less SDL3, Direct3D 11, and XAudio2 2.9 application shell with tests",
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",

@@ -212,8 +212,8 @@ Slice contents:
 
 - Bootstrap converted resources.
 - Implement the SDL3 x64 window/events and keyboard/mouse/controller adapters,
-  the D3D11/DXGI faithful renderer with HLSL, and separate audio and owner-local
-  content adapters behind the portable interfaces.
+  the D3D11/DXGI faithful renderer with HLSL, the XAudio2 2.9 backend, and a
+  separate owner-local content adapter behind the portable interfaces.
 - Load one room/level and one aircraft.
 - Draw geometry, textures, depth, transparency, and faithful basic lighting.
 - Support camera, thrust, pitch, bank, one primary weapon, collision, one target,
@@ -409,7 +409,7 @@ contract, evidence, implementation, tests, parity result, and documentation agre
 | No iOS 16.4 runtime device | Minimum-version behavior can regress | Treat 16.4 as build/availability coverage only and state the limitation |
 | Cloud build/device loop slows interactive tuning | Delays UI/Metal/debug work | Move interactive profiling and debugging to local Xcode |
 | Platform code forks gameplay or physics | Windows/iOS behavior diverges | One portable core, narrow adapters, cross-platform state hashes, and identical replay scenarios |
-| Windows APIs leak into the core | Expensive platform lock-in | Keep SDL3 and D3D11/DXGI/HLSL behind ADR-0007/0008 adapters and test the API-neutral command boundary |
+| Windows APIs leak into the core | Expensive platform lock-in | Keep SDL3, D3D11/DXGI/HLSL, and XAudio2 behind ADR-0007/0008/0009 adapters and test API-neutral command boundaries |
 | Private artifacts are accidentally shared | Unauthorized redistribution | Ignore originals/converted assets and audit every packaged/staged artifact |
 | Scope expansion into enhancements | Delays playability | Lock faithful vertical slice before modern rendering work |
 
@@ -436,10 +436,10 @@ contract, evidence, implementation, tests, parity result, and documentation agre
 8. Establish the isolated reference runtime and record the first deterministic
    flight/control/render scenarios; this remains independent of host static
    analysis until the isolated environment is available.
-9. Implement the native Windows x64 product boundary with SDL3 window/events/
-   input and D3D11/DXGI/HLSL rendering, create the data-less shell, select the
-   separate audio adapter, and connect the first synthetic smoke scene without
-   moving gameplay into the platform layer.
+9. **Foundation complete:** the native Windows x64 boundary now has SDL3
+   window/events/input, D3D11/DXGI/HLSL rendering, XAudio2 2.9 audio, and a
+   data-less synthetic product smoke without platform gameplay. Owner-local
+   content and the first playable vertical slice remain.
 10. **In progress:** the bounded blueprint and placed-scene graphs, seam-safe
    draw-model payload, and multi-instance diagnostic have assembled and
    rendered a complete grouped aircraft. Parent-relative local derivation, the

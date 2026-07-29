@@ -17,9 +17,10 @@ switchable and testable.
 
 > **Project status:** active research and development. The repository builds
 > and tests its portable core, a native data-less SDL3/D3D11 Windows shell,
-> and an unsigned data-less UIKit/Metal iOS shell. The Windows renderer now
-> executes shared synthetic draw commands through HLSL and verifies its real
-> GPU output. Neither target is **yet a complete playable release**.
+> and an unsigned data-less UIKit/Metal iOS shell. The Windows product now
+> exercises shared synthetic draw commands through HLSL and bounded synthetic
+> audio commands through XAudio2 2.9. Neither target is **yet a complete
+> playable release**.
 
 **Lawfully owned original game data is required for private use and is not
 included in this repository.**
@@ -33,8 +34,8 @@ included in this repository.**
 | Products | Native playable Windows x64 desktop application and private native ARM64 iOS application |
 | Product role | Windows is the primary rapid-debug/parity environment; iOS is the private mobile port |
 | Distribution | Original and converted data remain owner-private; no App Store release or public content-bearing package |
-| Platform layers | SDL3 window/input plus D3D11/DXGI/HLSL rendering on Windows; UIKit, Metal, touch, Game Controller, and Apple audio adapters on iOS |
-| OS targets | Windows x64 baseline selected during the platform spike; iOS 16.4 minimum |
+| Platform layers | SDL3 window/input, D3D11/DXGI/HLSL rendering, and XAudio2 2.9 on Windows; UIKit, Metal, touch, Game Controller, and Apple audio adapters on iOS |
+| OS targets | Windows 10/11 API family with exact release floor pending; iOS 16.4 minimum |
 | iOS validation devices | iPhone 17 Pro Max (iOS 26.6) and iPhone SE, 3rd generation (iOS 26.3) |
 | Gameplay | Single-player campaign and required menus |
 | Controls | Windows keyboard/mouse and controllers; iOS touch and Bluetooth/USB extended controllers |
@@ -52,6 +53,10 @@ Implemented foundations include:
 - a native Windows x64 shell with SDL3 window/lifecycle events, a separate
   D3D11/DXGI renderer, runtime-compiled HLSL, hardware-to-WARP fallback,
   resize/focus handling, and a hidden data-less GPU readback smoke test;
+- a portable bounded audio-command/PCM16 contract and native XAudio2 2.9
+  backend with secure system loading, copied clip ownership, focus pause,
+  game-thread recovery, safe no-output operation, and a muted synthetic smoke
+  path;
 - one proprietary-data-free render scene and validated draw plan shared by the
   Windows D3D11 and iOS Metal bring-up paths;
 - bounded UDSP, CCF, GTI, and related legacy-format parsing;
@@ -119,8 +124,9 @@ draw model plus mission-lifetime static and placed/player dynamic BSP assets
 for every runtime room. The actor still remains at its authenticated spawn
 transform until the recovered movement law supplies a changing world pose.
 Dynamic-object sphere collision for the camera, live event-5 camera production
-from complete AirCraft state, full gameplay simulation, campaign flow, audio,
-finished menus, complete Windows input/audio/content integration,
+from complete AirCraft state, full gameplay simulation, campaign flow,
+audio-command composition and iOS playback, finished menus, complete Windows
+input/content integration,
 physical-device rendering, and visual acceptance remain future milestones.
 
 For frequently updated details, use
@@ -193,8 +199,10 @@ ctest --preset windows-product-release
 The resulting data-less `AirfixDogfighter.exe` displays only the public
 synthetic renderer scene. CTest launches it with `--smoke-test`, creates a
 hidden SDL window, compiles the embedded HLSL, submits the shared draw plan,
-reads the D3D11 back buffer, and requires visible non-clear pixels. This is a
-renderer/product-shell milestone, not yet a playable build.
+reads the D3D11 back buffer, and requires visible non-clear pixels. It also
+loads inbox XAudio2 2.9, registers muted synthetic PCM, and validates voice
+start/stop; a runner without an output endpoint remains supported. This is a
+platform-shell milestone, not yet a playable build.
 
 ## Architecture
 
@@ -216,7 +224,7 @@ flowchart TD
     R --> X
     E --> Y["iOS ARM64 app"]
     R --> Y
-    X --> WX["SDL3 / D3D11 + DXGI + HLSL / Windows audio + files"]
+    X --> WX["SDL3 / D3D11 + DXGI + HLSL / XAudio2 2.9 / files"]
     Y --> IY["UIKit / Metal / Apple audio / sandbox"]
 ```
 
@@ -227,6 +235,7 @@ Read the [architecture](docs/ARCHITECTURE.md), the
 [port strategy ADR](docs/adr/0001-port-strategy.md), the
 [Windows x64 product decision](docs/adr/0007-windows-x64-parallel-target.md),
 the [Windows platform stack decision](docs/adr/0008-windows-rendering-and-platform-stack.md),
+the [Windows audio decision](docs/adr/0009-windows-xaudio2-audio-backend.md),
 and the [reverse-engineering workflow](docs/RE-WORKFLOW.md) for the detailed
 contracts.
 
@@ -236,11 +245,12 @@ Every platform adapter maps physical devices into the same deterministic
 semantic action model.
 
 SDL3 supplies Windows keyboard, mouse, focus, and standardized gamepad events;
-it does not own rendering. The implemented Windows adapter converts physical
-USB HID scancodes, relative mouse motion, buttons, wheels, sticks, triggers,
-D-pad, shoulders, and face buttons into the same fixed-rate `InputFrame` used
-by iOS. Ordered taps, controller hot-plug, disconnect release, per-source
-neutral gates, and focus-loss neutralization are covered by data-less tests.
+it owns neither rendering nor audio. The implemented Windows adapter converts
+physical USB HID scancodes, relative mouse motion, buttons, wheels, sticks,
+triggers, D-pad, shoulders, and face buttons into the same fixed-rate
+`InputFrame` used by iOS. Ordered taps, controller hot-plug, disconnect
+release, per-source neutral gates, and focus-loss neutralization are covered
+by data-less tests.
 iOS supplies the corresponding landscape touch and Game Controller adapters.
 Persistent remapping/calibration profiles, controller glyphs, polished menus,
 and end-to-end device usability acceptance remain pending.

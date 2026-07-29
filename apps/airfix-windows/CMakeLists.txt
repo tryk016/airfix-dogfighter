@@ -62,6 +62,8 @@ add_executable(airfix_windows WIN32
     AirfixD3D11Renderer.hpp
     AirfixSmoke.hlsl
     AirfixWindowsApp.cpp
+    AirfixXAudio2Backend.cpp
+    AirfixXAudio2Backend.hpp
 )
 set_source_files_properties(AirfixSmoke.hlsl PROPERTIES HEADER_FILE_ONLY TRUE)
 
@@ -85,11 +87,13 @@ else()
 endif()
 target_link_libraries(airfix_windows PRIVATE
     airfix_windows_input
+    airfix::audio
     airfix::render
     airfix::runtime
     d3d11
     d3dcompiler
     dxgi
+    ole32
 )
 
 set_target_properties(airfix_windows PROPERTIES
@@ -127,9 +131,9 @@ if(AIRFIX_BUILD_TESTS)
     add_test(NAME airfix_windows_input_mapping_tests
         COMMAND airfix_windows_input_mapping_tests)
 
-    add_test(NAME airfix_windows_gpu_smoke_tests
+    add_test(NAME airfix_windows_product_smoke_tests
         COMMAND airfix_windows --smoke-test)
-    set_tests_properties(airfix_windows_gpu_smoke_tests PROPERTIES
+    set_tests_properties(airfix_windows_product_smoke_tests PROPERTIES
         TIMEOUT 30
     )
 endif()
