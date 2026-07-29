@@ -148,6 +148,7 @@ add_library(airfix_render
     src/airfix/render/MissionWorldRuntimeSpatialTrace.cpp
     src/airfix/render/MissionWorldRuntimeSphereCollision.cpp
     src/airfix/render/MissionPlacedDynamicBspAssembly.cpp
+    src/airfix/render/MissionWorldDynamicCollisionFrame.cpp
     src/airfix/render/DiagnosticRasterizer.cpp
     src/airfix/render/DynamicInstancePose.cpp
     src/airfix/render/DrawMesh.cpp
@@ -579,6 +580,14 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_mission_placed_dynamic_bsp_tests
         COMMAND airfix_mission_placed_dynamic_bsp_tests)
+
+    add_executable(airfix_mission_world_dynamic_collision_frame_tests
+        tests/MissionWorldDynamicCollisionFrameTests.cpp)
+    target_link_libraries(
+        airfix_mission_world_dynamic_collision_frame_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_mission_world_dynamic_collision_frame_tests
+        COMMAND airfix_mission_world_dynamic_collision_frame_tests)
 
     add_executable(airfix_mission_world_runtime_sphere_collision_tests
         tests/MissionWorldRuntimeSphereCollisionTests.cpp)

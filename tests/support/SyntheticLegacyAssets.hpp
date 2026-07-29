@@ -255,7 +255,9 @@ inline void appendBytes(
     appendU32(payload, options.placedRoomReference);
     appendU32(payload, 0U);
     payload.push_back(0U);
-    appendU32(payload, 0U);
+    // Ordinary scene object. Serialized 0xFFFFFFFF is native portalType -1;
+    // zero would describe a transparent portal and require a room target.
+    appendU32(payload, 0xFFFFFFFFU);
     appendU32(payload, 0U);
     appendBytes(
         payload,

@@ -96,6 +96,30 @@ struct LegacyDynamicBspLineObject final {
         const LegacyDynamicBspLineObject&) noexcept = default;
 };
 
+// One logical immutable mesh index space backed by at most two disjoint
+// owners. The primary span is a stable prefix and the secondary span follows
+// it. This permits mission-placed meshes and actor meshes to participate in
+// one trace without copying their nested BSP arenas into a combined vector.
+struct LegacyDynamicBspMeshView final {
+    std::span<const LegacyDynamicBspMesh> primary;
+    std::span<const LegacyDynamicBspMesh> secondary;
+
+    [[nodiscard]] constexpr std::size_t size() const noexcept {
+        return primary.size() + secondary.size();
+    }
+
+    [[nodiscard]] constexpr const LegacyDynamicBspMesh*
+    tryGet(const std::size_t index) const noexcept {
+        if (index < primary.size()) {
+            return &primary[index];
+        }
+        const auto secondaryIndex = index - primary.size();
+        return secondaryIndex < secondary.size()
+            ? &secondary[secondaryIndex]
+            : nullptr;
+    }
+};
+
 enum class MissionWorldRuntimeCombinedLineHitKind : std::uint8_t {
     staticRoom,
     dynamicObject,
@@ -203,6 +227,17 @@ traceMissionWorldRuntimeCombinedLine(
     std::span<const LegacyDynamicBspLineObject> dynamicObjects,
     const MissionWorldRuntimeCombinedLineTraceOptions& options = {}) noexcept;
 
+[[nodiscard]] MissionWorldRuntimeCombinedLineTraceResult
+traceMissionWorldRuntimeCombinedLine(
+    const assets::MissionWorldSpatialArena& staticArena,
+    const BasisTransform& runtimeBasis,
+    std::size_t worldRoomIndex,
+    const Vec3& runtimeStart,
+    const Vec3& runtimeEnd,
+    const LegacyDynamicBspMeshView& dynamicMeshes,
+    std::span<const LegacyDynamicBspLineObject> dynamicObjects,
+    const MissionWorldRuntimeCombinedLineTraceOptions& options = {}) noexcept;
+
 // Reconstructs the automatic portal-continuation tail of
 // PhLine::GetBspCollision after the combined static/dynamic nearest pass.
 // roomObjectRanges is parallel to staticArena.rooms and addresses one flat
@@ -223,6 +258,19 @@ traceMissionWorldRuntimeCombinedPortalLine(
     const Vec3& runtimeStart,
     const Vec3& runtimeEnd,
     std::span<const LegacyDynamicBspMesh> dynamicMeshes,
+    std::span<const LegacyDynamicBspLineObject> dynamicObjects,
+    std::span<const LegacyDynamicBspRoomObjectRange> roomObjectRanges,
+    const MissionWorldRuntimeCombinedPortalLineTraceOptions& options = {})
+    noexcept;
+
+[[nodiscard]] MissionWorldRuntimeCombinedLineTraceResult
+traceMissionWorldRuntimeCombinedPortalLine(
+    const assets::MissionWorldSpatialArena& staticArena,
+    const BasisTransform& runtimeBasis,
+    std::size_t worldRoomIndex,
+    const Vec3& runtimeStart,
+    const Vec3& runtimeEnd,
+    const LegacyDynamicBspMeshView& dynamicMeshes,
     std::span<const LegacyDynamicBspLineObject> dynamicObjects,
     std::span<const LegacyDynamicBspRoomObjectRange> roomObjectRanges,
     const MissionWorldRuntimeCombinedPortalLineTraceOptions& options = {})

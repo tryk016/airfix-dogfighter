@@ -238,6 +238,9 @@ indexedIssue(const MissionWorldRoomPublicationIssueKind kind,
                total,
                room.playerActorInstanceProvenance.size(),
                sizeof(render::PlayerActorSceneInstanceProvenance)) &&
+        detail::checkedMissionWorldRoomByteAdd(
+            total,
+            room.placedDynamicCollision.retainedPayloadBytes) &&
         (!room.playerActorCollision.has_value() ||
          detail::checkedMissionWorldRoomByteAdd(
              total,
@@ -513,6 +516,46 @@ validateSpatialArena(const LoadedMissionWorldRoom& room) noexcept {
     return std::nullopt;
 }
 
+[[nodiscard]] std::optional<MissionWorldRoomPublicationIssue>
+validatePlacedDynamicCollision(
+    const LoadedMissionWorldRoom& room) noexcept {
+    const auto& collision = room.placedDynamicCollision;
+    if (!collision.complete()) {
+        return issue(
+            MissionWorldRoomPublicationIssueKind::
+                placedCollisionIncomplete);
+    }
+    if (collision.roomObjectRanges.size() !=
+        room.spatialArena.rooms.size()) {
+        return issue(
+            MissionWorldRoomPublicationIssueKind::
+                placedCollisionRoomCountMismatch);
+    }
+    for (std::size_t meshIndex = 0U;
+         meshIndex < collision.meshProvenance.size();
+         ++meshIndex) {
+        if (collision.meshProvenance[meshIndex].sourceIndex >=
+            room.semanticCcfSourceCount) {
+            return indexedIssue(
+                MissionWorldRoomPublicationIssueKind::
+                    placedCollisionSourceIndexOutOfRange,
+                collision.meshProvenance[meshIndex].sourceIndex);
+        }
+    }
+    for (std::size_t objectIndex = 0U;
+         objectIndex < collision.objectProvenance.size();
+         ++objectIndex) {
+        if (collision.objectProvenance[objectIndex].sourceIndex >=
+            room.semanticCcfSourceCount) {
+            return indexedIssue(
+                MissionWorldRoomPublicationIssueKind::
+                    placedCollisionSourceIndexOutOfRange,
+                collision.objectProvenance[objectIndex].sourceIndex);
+        }
+    }
+    return std::nullopt;
+}
+
 [[nodiscard]] bool sameVecBits(const render::Vec3 &left,
                                const render::Vec3 &right) noexcept {
     return sameFloatBits(left.x, right.x) &&
@@ -670,6 +713,11 @@ validateMissionWorldRoomPublication(
     if (const auto spatialIssue = validateSpatialArena(room);
         spatialIssue.has_value()) {
         return spatialIssue;
+    }
+    if (const auto placedCollisionIssue =
+            validatePlacedDynamicCollision(room);
+        placedCollisionIssue.has_value()) {
+        return placedCollisionIssue;
     }
     const auto expectedPose = buildPlayerSpawnPose(
         room.startSelection, room.selectedStart, room.runtimeBasis);

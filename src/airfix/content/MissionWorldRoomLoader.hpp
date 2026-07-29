@@ -5,6 +5,7 @@
 #include "airfix/content/LoadedTextureAsset.hpp"
 #include "airfix/content/MissionLoadManifest.hpp"
 #include "airfix/render/DrawSubmissionPlan.hpp"
+#include "airfix/render/MissionPlacedDynamicBspAssembly.hpp"
 #include "airfix/render/MissionWorldRoomDrawAssembly.hpp"
 #include "airfix/render/MissionWorldRoomTextureBindings.hpp"
 #include "airfix/render/PlayerActorCollisionAssembly.hpp"
@@ -35,6 +36,7 @@ struct MissionWorldRoomLoadLimits {
     assets::MissionWorldSpatialArenaLimits spatialArena{};
     assets::MissionWorldStartResolutionLimits starts{};
     render::MissionWorldRoomTextureBindingLimits textureBindings{};
+    render::MissionPlacedDynamicBspLimits placedCollision{};
     render::MissionWorldRoomDrawLimits draw{};
     render::DrawSubmissionLimits submission{};
     render::GtiUploadDataLimits gtiPerTexture{};
@@ -71,6 +73,7 @@ enum class MissionWorldRoomLoadPhase : std::uint8_t {
     loadingCcfSources,
     buildingRoomCatalog,
     buildingSpatialArena,
+    assemblingPlacedCollision,
     resolvingStart,
     planningTextureBindings,
     preflightingTextures,
@@ -113,6 +116,7 @@ enum class MissionWorldRoomLoadIssueKind : std::uint8_t {
     retainedCcfMetadataLimitExceeded,
     catalogFailure,
     spatialArenaFailure,
+    placedCollisionAssemblyFailure,
     startResolutionFailure,
     startSelectionFailure,
     textureBindingFailure,
@@ -152,6 +156,10 @@ struct MissionWorldRoomLoadIssue {
     std::optional<assets::MissionWorldRoomBuildIssueKind> catalogIssue;
     std::optional<assets::MissionWorldSpatialArenaIssueKind>
         spatialArenaIssue;
+    std::optional<render::MissionPlacedDynamicBspIssueKind>
+        placedCollisionAssemblyIssue;
+    std::optional<assets::PlacedSceneIssueKind>
+        placedCollisionSceneIssue;
     std::optional<assets::RoomSceneIssueKind> roomSceneIssue;
     std::optional<assets::MissionWorldStartIssueKind> startIssue;
     std::optional<render::MissionWorldRoomTextureBindingIssueKind>
@@ -180,6 +188,9 @@ struct LoadedMissionWorldRoom {
     // Pointer-free source-world BSP retained for room collision and portal
     // transitions after the parsed CCF cache is destroyed.
     assets::MissionWorldSpatialArena spatialArena;
+    // Authenticated immutable dynamic BSPs for serialized 0x4101 objects.
+    // Room ranges preserve the native linked-list order for every world room.
+    render::MissionPlacedDynamicBspAssembly placedDynamicCollision;
     render::DrawModelPayload model;
     // Static room provenance remains a stable prefix of the final model.
     std::vector<render::MissionWorldRoomMeshProvenance> meshProvenance;

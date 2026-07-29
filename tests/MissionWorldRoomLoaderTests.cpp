@@ -1280,8 +1280,10 @@ void testPlayerLateFailuresAndCallbacksAreAtomic() {
 
     constexpr std::array playerPhases{
         MissionWorldRoomLoadPhase::preflightingPlayerCcfSource,
+        MissionWorldRoomLoadPhase::assemblingPlacedCollision,
         MissionWorldRoomLoadPhase::planningPlayerTextureBindings,
         MissionWorldRoomLoadPhase::assemblingPlayerVisual,
+        MissionWorldRoomLoadPhase::assemblingPlayerCollision,
         MissionWorldRoomLoadPhase::assemblingPlayerScene,
         MissionWorldRoomLoadPhase::validatingPublication,
     };
@@ -1455,6 +1457,7 @@ sourceFootprint(const VerifiedContentSession &session,
              sizeof(airfix::render::PlayerActorSceneMeshProvenance);
     total += room.playerActorInstanceProvenance.size() *
              sizeof(airfix::render::PlayerActorSceneInstanceProvenance);
+    total += room.placedDynamicCollision.retainedPayloadBytes;
     if (room.playerActorCollision.has_value()) {
         total += room.playerActorCollision->retainedPayloadBytes;
     }
@@ -1535,6 +1538,18 @@ void testExactAndOneUnderBudgets() {
         }
         require(room.ccfCacheIndexByLoadSource ==
                         std::vector<std::size_t>{0U, 1U, 2U, 2U} &&
+                    room.placedDynamicCollision.complete() &&
+                    room.placedDynamicCollision.meshes.size() == 1U &&
+                    room.placedDynamicCollision.objects.size() == 1U &&
+                    room.placedDynamicCollision
+                            .roomObjectRanges.size() ==
+                        room.spatialArena.rooms.size() &&
+                    room.placedDynamicCollision
+                            .objectProvenance[0]
+                            .sourceIndex == 0U &&
+                    room.placedDynamicCollision.objects[0]
+                            .runtimeTranslation ==
+                        airfix::render::Vec3{1.0F, 2.0F, 3.0F} &&
                     room.uniqueCcfSourceFootprintBytes ==
                         independentUniqueCcfFootprint &&
                     room.textureSourceFootprintBytes ==
@@ -1553,6 +1568,12 @@ void testExactAndOneUnderBudgets() {
             room.retainedCcfMetadataBytes;
         exact.spatialArena.maximumRetainedBytes =
             room.retainedSpatialBytes;
+        exact.placedCollision.maximumRetainedBytes =
+            room.placedDynamicCollision.retainedPayloadBytes;
+        exact.placedCollision.maximumMeshes =
+            room.placedDynamicCollision.meshes.size();
+        exact.placedCollision.maximumObjects =
+            room.placedDynamicCollision.objects.size();
         exact.maximumTextureAssets = room.textures.size();
         exact.maximumTotalTextureSourceBytes = room.textureSourceFootprintBytes;
         exact.maximumDecodedRgbaBytes = room.decodedRgbaBytes;
@@ -1640,6 +1661,33 @@ void testExactAndOneUnderBudgets() {
             limits,
             MissionWorldRoomLoadIssueKind::spatialArenaFailure,
             "one-under retained spatial arena succeeded");
+    }
+    {
+        auto limits = exact;
+        --limits.placedCollision.maximumRetainedBytes;
+        requireOneUnder(
+            limits,
+            MissionWorldRoomLoadIssueKind::
+                placedCollisionAssemblyFailure,
+            "one-under placed collision assembly succeeded");
+    }
+    {
+        auto limits = exact;
+        --limits.placedCollision.maximumMeshes;
+        requireOneUnder(
+            limits,
+            MissionWorldRoomLoadIssueKind::
+                placedCollisionAssemblyFailure,
+            "one-under placed collision mesh count succeeded");
+    }
+    {
+        auto limits = exact;
+        --limits.placedCollision.maximumObjects;
+        requireOneUnder(
+            limits,
+            MissionWorldRoomLoadIssueKind::
+                placedCollisionAssemblyFailure,
+            "one-under placed collision object count succeeded");
     }
     {
         auto limits = exact;

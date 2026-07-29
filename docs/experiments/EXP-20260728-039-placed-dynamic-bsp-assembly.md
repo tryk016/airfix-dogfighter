@@ -7,7 +7,8 @@
 **Scenarios:** `SCN-WEAPON-001`, `SCN-CAMERA-001`
 
 **Status:** bounded material/cache/room-list assembly implemented; mission
-ownership integration deferred
+ownership and live-player composition completed by
+[EXP-20260729-040](EXP-20260729-040-mission-dynamic-collision-composition.md)
 
 ## Question
 

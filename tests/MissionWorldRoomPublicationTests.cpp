@@ -137,6 +137,7 @@ void require(const bool condition, const std::string_view message) {
         sizeof(airfix::render::PlayerActorSceneMeshProvenance);
     total += room.playerActorInstanceProvenance.size() *
         sizeof(airfix::render::PlayerActorSceneInstanceProvenance);
+    total += room.placedDynamicCollision.retainedPayloadBytes;
     if (room.playerActorCollision.has_value()) {
         total += room.playerActorCollision->retainedPayloadBytes;
     }
@@ -170,6 +171,9 @@ void refreshPublishedCpuBytes(LoadedMissionWorldRoom& room) {
         sizeof(airfix::assets::MissionWorldSpatialRoom);
     room.retainedSpatialBytes =
         room.spatialArena.retainedPayloadBytes;
+    room.placedDynamicCollision.roomObjectRanges.resize(1U);
+    room.placedDynamicCollision.retainedPayloadBytes =
+        sizeof(airfix::render::LegacyDynamicBspRoomObjectRange);
     refreshPublishedCpuBytes(room);
     return room;
 }
@@ -186,6 +190,10 @@ void refreshPublishedCpuBytes(LoadedMissionWorldRoom& room) {
         2U * sizeof(airfix::assets::MissionWorldSpatialRoom);
     room.retainedSpatialBytes =
         room.spatialArena.retainedPayloadBytes;
+    room.placedDynamicCollision.roomObjectRanges.resize(2U);
+    room.placedDynamicCollision.retainedPayloadBytes =
+        2U * sizeof(
+            airfix::render::LegacyDynamicBspRoomObjectRange);
     room.selectedStart = MissionStartPosition{
         .roomName = "Room",
         .position =
@@ -351,6 +359,74 @@ actorWorldFrom(
             "valid player collision fixture is incomplete");
     }
     room.playerActorCollision = std::move(collision);
+    refreshPublishedCpuBytes(room);
+    return room;
+}
+
+[[nodiscard]] LoadedMissionWorldRoom validPlacedCollisionRoom() {
+    auto room = validRootRoom();
+    airfix::render::ConvertedMeshGeometry geometry;
+    geometry.reference = 88U;
+    geometry.vertices = {
+        {{-1.0F, -1.0F, 0.0F}},
+        {{1.0F, -1.0F, 0.0F}},
+        {{0.0F, 1.0F, 0.0F}},
+    };
+    geometry.triangles = {
+        {
+            .vertexIndices = {0U, 1U, 2U},
+            .materialReference = 99U,
+        },
+    };
+    auto mesh = airfix::render::buildLegacyDynamicBsp(geometry);
+    if (!mesh.complete()) {
+        throw std::runtime_error(
+            "valid placed collision fixture failed to build");
+    }
+
+    airfix::render::MissionPlacedDynamicBspAssembly collision;
+    collision.meshes.push_back(std::move(mesh));
+    collision.meshProvenance.push_back({
+        .sourceIndex = 0U,
+        .physicalMeshIndex = 4U,
+        .firstPlacedNodeIndex = 6U,
+        .sourceMeshReference = 88U,
+    });
+    collision.objects.push_back({
+        .meshIndex = 0U,
+        .actorObjectId = 0U,
+        .active = true,
+        .objectLocalToRuntime = {},
+        .runtimeTranslation = {2.0F, 3.0F, 4.0F},
+        .portalType = -1,
+        .portalWorldRoomIndex = std::nullopt,
+        .portalObjectVisible = false,
+    });
+    collision.objectProvenance.push_back({
+        .sourceIndex = 0U,
+        .placedNodeIndex = 6U,
+        .physicalMeshIndex = 4U,
+        .worldRoomIndex = 0U,
+        .sourceNodeReference = 100U,
+    });
+    collision.roomObjectRanges.push_back({
+        .firstObjectIndex = 0U,
+        .objectCount = 1U,
+    });
+    collision.retainedPayloadBytes =
+        sizeof(airfix::render::LegacyDynamicBspMesh) +
+        sizeof(
+            airfix::render::MissionPlacedDynamicBspMeshProvenance) +
+        sizeof(airfix::render::LegacyDynamicBspLineObject) +
+        sizeof(
+            airfix::render::MissionPlacedDynamicBspObjectProvenance) +
+        sizeof(airfix::render::LegacyDynamicBspRoomObjectRange) +
+        collision.meshes[0].retainedPayloadBytes;
+    if (!collision.complete()) {
+        throw std::runtime_error(
+            "valid placed collision fixture is incomplete");
+    }
+    room.placedDynamicCollision = std::move(collision);
     refreshPublishedCpuBytes(room);
     return room;
 }
@@ -1185,6 +1261,59 @@ void testSpatialPublicationBoundary() {
     }
 }
 
+void testPlacedCollisionPublicationBoundary() {
+    {
+        const auto room = validPlacedCollisionRoom();
+        require(
+            !airfix::content::validateMissionWorldRoomPublication(
+                 room, revision())
+                 .has_value(),
+            "valid placed dynamic collision was rejected");
+    }
+    {
+        auto room = validPlacedCollisionRoom();
+        room.placedDynamicCollision.issues.push_back({});
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 placedCollisionIncomplete},
+            "incomplete placed collision was accepted");
+    }
+    {
+        auto room = validPlacedCollisionRoom();
+        room.placedDynamicCollision.roomObjectRanges.push_back({
+            .firstObjectIndex = 1U,
+            .objectCount = 0U,
+        });
+        room.placedDynamicCollision.retainedPayloadBytes +=
+            sizeof(airfix::render::LegacyDynamicBspRoomObjectRange);
+        require(
+            room.placedDynamicCollision.complete(),
+            "room-count mismatch fixture is internally incomplete");
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 placedCollisionRoomCountMismatch},
+            "placed collision room-count mismatch was accepted");
+    }
+    {
+        auto room = validPlacedCollisionRoom();
+        room.placedDynamicCollision.meshProvenance[0].sourceIndex =
+            room.semanticCcfSourceCount;
+        room.placedDynamicCollision.objectProvenance[0].sourceIndex =
+            room.semanticCcfSourceCount;
+        require(
+            room.placedDynamicCollision.complete(),
+            "source-index mismatch fixture is internally incomplete");
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 placedCollisionSourceIndexOutOfRange,
+             .sourceIndex = room.semanticCcfSourceCount},
+            "out-of-range placed collision source was accepted");
+    }
+}
+
 } // namespace
 
 int main() {
@@ -1199,6 +1328,7 @@ int main() {
         testCcfCountAndCacheMutations();
         testPlayerActorPublicationBoundary();
         testSpatialPublicationBoundary();
+        testPlacedCollisionPublicationBoundary();
     } catch (const std::exception &error) {
         std::cerr << "Mission world publication tests failed: " << error.what()
                   << '\n';

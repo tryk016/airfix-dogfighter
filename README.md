@@ -54,6 +54,9 @@ Implemented foundations include:
   bindings, bounded allocation-free static/portal line tracing, and the
   recovered portal mesh/type/visibility transition gate, plus a fail-closed
   runtime/source-world basis adapter with strict per-hop segment validation;
+- authenticated immutable dynamic BSP assets for mission-placed objects and
+  the player, with exact CPU budgeting and an allocation-free native-order
+  frame that traces both disjoint mesh owners without copying geometry;
 - validated, allocation-free reconstructions of the legacy world-to-camera
   point transform and camera-space screen projection, including the recovered
   reverse-depth scalar, four depth presets, gameplay camera preset selection,
@@ -79,12 +82,13 @@ Implemented foundations include:
   iOS producer endpoint that expires safely when the mission is replaced.
 
 The portable authenticated load now produces one validated room-and-player
-draw model plus a mission-lifetime BSP arena for every runtime room. The actor
-still remains at its authenticated spawn transform until the recovered
-movement law supplies a changing world pose. Dynamic-object camera collision,
-live event-5 camera production from complete AirCraft state, full gameplay
-simulation, campaign flow, audio, finished menus, physical-device rendering,
-and visual acceptance remain future milestones.
+draw model plus mission-lifetime static and placed/player dynamic BSP assets
+for every runtime room. The actor still remains at its authenticated spawn
+transform until the recovered movement law supplies a changing world pose.
+Dynamic-object sphere collision for the camera, live event-5 camera production
+from complete AirCraft state, full gameplay simulation, campaign flow, audio,
+finished menus, physical-device rendering, and visual acceptance remain future
+milestones.
 
 For frequently updated details, use
 [project status](docs/progress/STATUS.md) and the

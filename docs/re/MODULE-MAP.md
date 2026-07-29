@@ -94,7 +94,9 @@ slice: first physical mesh use owns the cached tree, the loader's forced
 unlink/relink prepends that builder object to its room list, and a later cache
 hit performs no relink. The portable material-bound assembly authenticates
 those source/room/object relations and emits native-order immutable ranges for
-the combined line query; live mission ownership remains separate.
+the combined line query. The authenticated mission snapshot now owns and
+budgets the assembly, and a segmented immutable mesh view composes it with the
+live player frame without copying BSP arenas.
 `EV-20260727-003` independently cross-checks the mission start pose: x/y/z
 radians, mode zero, exact Z-X-Y matrix construction, and absolute-world
 position/matrix semantics with separate room membership. The portable
