@@ -32,6 +32,14 @@ struct LegacyPublishedProjectileCollisionOptions final {
     simulation::LegacyProjectileCollisionLoopOptions collisionLoop{};
 };
 
+// Resolves the primary player from the actor state published atomically with
+// the runtime collision frame. An unpublished frame or zero query ID is
+// rejected; a complete frame without that player ID is a valid lookup miss.
+[[nodiscard]] LegacyProjectileLiveActorQueryResult
+queryPublishedLegacyProjectilePlayerActor(
+    const render::LegacyGameplayCameraMissionRuntime& runtime,
+    std::uint32_t actorObjectId) noexcept;
+
 // Converts one complete runtime PhLine-equivalent result into the simulation
 // collision contract. Static polygons are ownerless. Dynamic polygons carry
 // their authenticated CCF 0x2152 value bit-for-bit as native signed material.
@@ -60,6 +68,18 @@ resolvePublishedLegacyProjectileCollisionLoop(
     bool projectileIsServer,
     LegacyProjectileLiveActorQuery actorQuery,
     void* actorQueryContext,
+    const LegacyPublishedProjectileCollisionOptions& options = {}) noexcept;
+
+// Primary-player convenience overload. It uses only the actor state committed
+// with the current runtime collision frame and therefore cannot observe gates
+// from a different geometry generation. Other actors still require the
+// explicit callback overload above.
+[[nodiscard]] simulation::LegacyProjectileCollisionLoopResult
+resolvePublishedLegacyProjectileCollisionLoop(
+    const assets::MissionWorldRoomCatalog& catalog,
+    const render::LegacyGameplayCameraMissionRuntime& runtime,
+    const simulation::LegacyProjectileCollisionQueryInput& input,
+    bool projectileIsServer,
     const LegacyPublishedProjectileCollisionOptions& options = {}) noexcept;
 
 } // namespace airfix::content

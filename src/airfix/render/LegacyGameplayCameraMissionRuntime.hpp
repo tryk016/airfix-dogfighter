@@ -83,6 +83,21 @@ struct LegacyGameplayCameraMissionRuntimeAdvanceResult final {
     }
 };
 
+struct LegacyGameplayCameraMissionPlayerActorState final {
+    // Native CcObject +0x19C identity and the three independently recovered
+    // NfProjectile server-side actor gates. The producer supplies all values;
+    // this runtime only keeps them atomic with the published collision frame.
+    std::uint32_t objectId{};
+    bool active{};
+    bool projectileActorCollisionsEnabled{};
+    bool actorAcceptsProjectileCollision{};
+
+    [[nodiscard]] friend constexpr bool operator==(
+        const LegacyGameplayCameraMissionPlayerActorState&,
+        const LegacyGameplayCameraMissionPlayerActorState&) noexcept =
+        default;
+};
+
 struct LegacyGameplayCameraMissionRuntimeBuildResult;
 
 // One non-moving runtime owns every object needed by the retained-static
@@ -137,14 +152,20 @@ class LegacyGameplayCameraMissionRuntime final {
     [[nodiscard]] MissionWorldDynamicCollisionPublicationResult
     tryPublishDynamicCollisionFrame(
         const ConvertedNodeTransform& playerWorld,
-        std::uint32_t playerObjectId,
-        bool playerActive,
+        const LegacyGameplayCameraMissionPlayerActorState& playerActor,
         std::size_t playerWorldRoomIndex) noexcept;
 
     // Producer-only view. Its spans remain valid for the runtime lifetime but
     // object/range contents are replaced by the next successful publication.
     [[nodiscard]] std::optional<MissionWorldDynamicCollisionFrameView>
     currentDynamicCollisionFrame() const noexcept;
+
+    // Producer-only snapshot kept in the same transaction as the current
+    // dynamic frame. A failed republish leaves both the geometry and actor
+    // gates at their last complete generation.
+    [[nodiscard]] std::optional<
+        LegacyGameplayCameraMissionPlayerActorState>
+    currentDynamicCollisionPlayerActorState() const noexcept;
 
     // Queries the most recently published dynamic frame against the runtime's
     // owned static arena. Calling before a successful publication fails
@@ -226,6 +247,8 @@ class LegacyGameplayCameraMissionRuntime final {
     std::vector<Vec3> constraintPlanesHeadFirst_;
     std::vector<LegacyDynamicBspLineObject> dynamicObjects_;
     std::vector<LegacyDynamicBspRoomObjectRange> dynamicRoomRanges_;
+    std::optional<LegacyGameplayCameraMissionPlayerActorState>
+        dynamicPlayerActorState_;
     bool dynamicCollisionFramePublished_{};
     LegacyGameplayCameraStepCoordinator coordinator_;
     std::optional<LegacyGameplayCameraPacketExchange> exchange_;

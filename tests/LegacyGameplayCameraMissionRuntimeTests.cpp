@@ -72,8 +72,8 @@ static_assert(noexcept(
     std::declval<LegacyGameplayCameraMissionRuntime&>()
         .tryPublishDynamicCollisionFrame(
             std::declval<const ConvertedNodeTransform&>(),
-            0U,
-            false,
+            std::declval<
+                const LegacyGameplayCameraMissionPlayerActorState&>(),
             0U)));
 static_assert(noexcept(
     std::declval<const LegacyGameplayCameraMissionRuntime&>()
@@ -320,13 +320,30 @@ void testDynamicCollisionOwnershipBuffersAndTrace() {
     };
     const auto published =
         built.runtime->tryPublishDynamicCollisionFrame(
-            playerWorld, 123U, true, 0U);
+            playerWorld,
+            {
+                .objectId = 123U,
+                .active = true,
+                .projectileActorCollisionsEnabled = true,
+                .actorAcceptsProjectileCollision = true,
+            },
+            0U);
     const auto frame =
         built.runtime->currentDynamicCollisionFrame();
+    const auto actorState =
+        built.runtime->currentDynamicCollisionPlayerActorState();
     require(
         published.published() &&
             built.runtime->dynamicCollisionFramePublished() &&
             frame.has_value() &&
+            actorState ==
+                std::optional{
+                    LegacyGameplayCameraMissionPlayerActorState{
+                        .objectId = 123U,
+                        .active = true,
+                        .projectileActorCollisionsEnabled = true,
+                        .actorAcceptsProjectileCollision = true,
+                    }} &&
             frame->meshes.primary.size() == 1U &&
             frame->meshes.secondary.size() == 1U &&
             frame->objects.size() == 2U &&
@@ -360,9 +377,18 @@ void testDynamicCollisionOwnershipBuffersAndTrace() {
         std::numeric_limits<float>::quiet_NaN();
     const auto rejected =
         built.runtime->tryPublishDynamicCollisionFrame(
-            invalidWorld, 999U, false, 0U);
+            invalidWorld,
+            {
+                .objectId = 999U,
+                .active = false,
+                .projectileActorCollisionsEnabled = false,
+                .actorAcceptsProjectileCollision = false,
+            },
+            0U);
     const auto retained =
         built.runtime->currentDynamicCollisionFrame();
+    const auto retainedActorState =
+        built.runtime->currentDynamicCollisionPlayerActorState();
     require(
         rejected.status ==
                 MissionWorldDynamicCollisionPublicationStatus::
@@ -370,8 +396,9 @@ void testDynamicCollisionOwnershipBuffersAndTrace() {
             built.runtime->dynamicCollisionFramePublished() &&
             retained.has_value() &&
             retained->objects[0].actorObjectId == 123U &&
-            retained->objects[0].active,
-        "failed republish changed the last complete dynamic frame");
+            retained->objects[0].active &&
+            retainedActorState == actorState,
+        "failed republish changed the last complete dynamic generation");
 }
 
 void testDynamicCollisionWithoutPlayerPublishesPlacedOnly() {
@@ -394,13 +421,20 @@ void testDynamicCollisionWithoutPlayerPublishesPlacedOnly() {
     const auto published =
         built.runtime->tryPublishDynamicCollisionFrame(
             {},
-            999U,
-            true,
+            {
+                .objectId = 999U,
+                .active = true,
+                .projectileActorCollisionsEnabled = true,
+                .actorAcceptsProjectileCollision = true,
+            },
             std::numeric_limits<std::size_t>::max());
     const auto frame =
         built.runtime->currentDynamicCollisionFrame();
     require(
         published.published() && frame.has_value() &&
+            !built.runtime
+                 ->currentDynamicCollisionPlayerActorState()
+                 .has_value() &&
             frame->meshes.secondary.empty() &&
             frame->objects.size() == 1U &&
             frame->objects[0].actorObjectId == 0U &&
@@ -713,7 +747,14 @@ void testSteadyStateDoesNotAllocate() {
         auto lease = built.runtime->tryAcquire();
         const auto collision =
             built.runtime->tryPublishDynamicCollisionFrame(
-                playerWorld, 123U, true, 0U);
+                playerWorld,
+                {
+                    .objectId = 123U,
+                    .active = true,
+                    .projectileActorCollisionsEnabled = true,
+                    .actorAcceptsProjectileCollision = true,
+                },
+                0U);
         const auto traced =
             built.runtime->tracePublishedDynamicCollisionPortalLine(
                 0U,

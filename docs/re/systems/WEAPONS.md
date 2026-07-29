@@ -329,12 +329,14 @@ prepends the live player instances in their current room and exposes both mesh
 owners as one segmented logical index space, so the combined portal query
 copies neither mesh records nor nested arenas.
 
-A live producer must still provide changing player pose/room/ID/active state,
-publish other actors, implement the live actor resolver, and dispatch
-callbacks. The separate projectile-level `followPortal` repetition is a
-bounded generic coordinator. Its authenticated adapter now consumes the
+A live producer must still provide changing player pose/room/ID/active state
+and the two recovered projectile-collision gates, publish other actors, and
+dispatch callbacks. The separate projectile-level `followPortal` repetition
+is a bounded generic coordinator. Its authenticated adapter now consumes the
 published mission trace, maps signed room IDs and exact collision materials,
-and accepts actor gates only through an explicit callback. See
+and resolves the primary player's gates from the same complete runtime
+generation as its collider. An explicit callback remains for future
+non-player actor producers. See
 [EXP-20260728-034](../../experiments/EXP-20260728-034-projectile-collision-decision.md),
 [EXP-20260728-035](../../experiments/EXP-20260728-035-dynamic-bsp-line-adapter.md),
 [EXP-20260728-036](../../experiments/EXP-20260728-036-combined-line-portal-continuation.md),
@@ -349,7 +351,9 @@ Runtime ownership is recorded in
 The repeated projectile query is recorded in
 [EXP-20260729-042](../../experiments/EXP-20260729-042-projectile-collision-portal-loop.md);
 its runtime adapter is recorded in
-[EXP-20260729-043](../../experiments/EXP-20260729-043-projectile-runtime-query-adapter.md).
+[EXP-20260729-043](../../experiments/EXP-20260729-043-projectile-runtime-query-adapter.md);
+the concrete primary-player resolver is recorded in
+[EXP-20260729-044](../../experiments/EXP-20260729-044-projectile-player-actor-resolver.md).
 
 ## Actor damage and surface reaction
 
@@ -414,20 +418,20 @@ The helpers accept seconds because the owning scheduler boundary already
 performs the recovered millisecond conversion. They reject non-finite or unsafe
 consumed inputs instead of reproducing x87 unordered behavior or invalid
 attachment memory. The retained mission query is now wired through the bounded
-automatic and projectile-level portal paths. The remaining live transaction
-must resolve private types and authored muzzle transforms, publish other actor
-geometry/state, implement the actor resolver and creator guard, dispatch
-terminal events, and honor allocation failure without inventing a projectile
-or effect.
+automatic and projectile-level portal paths, including the atomic
+primary-player resolver. The remaining live transaction must resolve private
+types and authored muzzle transforms, publish and resolve other actor
+geometry/state, implement the creator guard, dispatch terminal events, and
+honor allocation failure without inventing a projectile or effect.
 
 ## Remaining work
 
 - Consume the prepared-shot transaction through private type allocation and
   event dispatch without rolling back fire state on allocation failure.
-- Consume the implemented player collider frame, extend the same authenticated
-  publication to other live actors and dynamic portal objects, then provide
-  the live actor resolver, creator guard, and terminal callbacks around the
-  implemented runtime projectile query.
+- Feed the implemented player collider and concrete resolver from the changing
+  actor producer, extend the same authenticated publication/resolution to
+  other live actors and dynamic portal objects, then provide the creator guard
+  and terminal callbacks around the implemented runtime projectile query.
 - Recreate the optional `mguntracer` and `FxRicochet` visual/effect adapters.
 - Trace sample/effect commands associated with a shot.
 - Recover secondary weapon selection and each secondary projectile family.

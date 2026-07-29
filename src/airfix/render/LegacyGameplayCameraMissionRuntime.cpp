@@ -418,8 +418,7 @@ LegacyGameplayCameraMissionRuntime::tryAcquire() noexcept {
 MissionWorldDynamicCollisionPublicationResult
 LegacyGameplayCameraMissionRuntime::tryPublishDynamicCollisionFrame(
     const ConvertedNodeTransform& playerWorld,
-    const std::uint32_t playerObjectId,
-    const bool playerActive,
+    const LegacyGameplayCameraMissionPlayerActorState& playerActor,
     const std::size_t playerWorldRoomIndex) noexcept {
     if (!placedCollision_.has_value()) {
         return {
@@ -436,13 +435,18 @@ LegacyGameplayCameraMissionRuntime::tryPublishDynamicCollisionFrame(
             ? &*playerCollision_
             : nullptr,
         playerWorld,
-        playerObjectId,
-        playerActive,
+        playerActor.objectId,
+        playerActor.active,
         playerWorldRoomIndex,
         dynamicObjects_,
         dynamicRoomRanges_);
     if (published.published()) {
         dynamicCollisionFramePublished_ = true;
+        dynamicPlayerActorState_ = playerCollision_.has_value()
+            ? std::optional<
+                  LegacyGameplayCameraMissionPlayerActorState>{
+                  playerActor}
+            : std::nullopt;
     }
     return published;
 }
@@ -466,6 +470,15 @@ LegacyGameplayCameraMissionRuntime::currentDynamicCollisionFrame()
         .objects = dynamicObjects_,
         .roomObjectRanges = dynamicRoomRanges_,
     };
+}
+
+std::optional<LegacyGameplayCameraMissionPlayerActorState>
+LegacyGameplayCameraMissionRuntime::
+    currentDynamicCollisionPlayerActorState() const noexcept {
+    if (!dynamicCollisionFramePublished_) {
+        return std::nullopt;
+    }
+    return dynamicPlayerActorState_;
 }
 
 MissionWorldRuntimeCombinedLineTraceResult

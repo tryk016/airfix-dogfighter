@@ -62,7 +62,8 @@ Implemented foundations include:
   closed on malformed results or cycles;
 - an authenticated, allocation-free adapter from the published mission
   collision frame to that coordinator, including room-ID, material and
-  callback-supplied live actor gates;
+  generation-matched primary-player actor gates, while retaining an explicit
+  callback seam for future non-player actors;
 - validated, allocation-free reconstructions of the legacy world-to-camera
   point transform and camera-space screen projection, including the recovered
   reverse-depth scalar, four depth presets, gameplay camera preset selection,

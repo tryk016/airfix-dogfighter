@@ -40,6 +40,27 @@ struct PublishedQueryContext final {
         lineTraceOptions{};
 };
 
+struct PublishedPlayerActorQueryContext final {
+    const render::LegacyGameplayCameraMissionRuntime* runtime{};
+};
+
+[[nodiscard]] LegacyProjectileLiveActorQueryResult
+queryPublishedPlayerActor(
+    void* const opaqueContext,
+    const std::uint32_t actorObjectId) noexcept {
+    if (opaqueContext == nullptr) {
+        return {};
+    }
+    const auto& context =
+        *static_cast<const PublishedPlayerActorQueryContext*>(
+            opaqueContext);
+    if (context.runtime == nullptr) {
+        return {};
+    }
+    return queryPublishedLegacyProjectilePlayerActor(
+        *context.runtime, actorObjectId);
+}
+
 [[nodiscard]] LegacyProjectileCollisionQueryResult queryPublished(
     void* const opaqueContext,
     const LegacyProjectileCollisionQueryInput& input) noexcept {
@@ -83,6 +104,34 @@ struct PublishedQueryContext final {
 }
 
 } // namespace
+
+LegacyProjectileLiveActorQueryResult
+queryPublishedLegacyProjectilePlayerActor(
+    const render::LegacyGameplayCameraMissionRuntime& runtime,
+    const std::uint32_t actorObjectId) noexcept {
+    if (actorObjectId == 0U ||
+        !runtime.dynamicCollisionFramePublished()) {
+        return {};
+    }
+
+    const auto player =
+        runtime.currentDynamicCollisionPlayerActorState();
+    if (!player.has_value() ||
+        player->objectId != actorObjectId) {
+        return {
+            .status =
+                LegacyProjectileLiveActorQueryStatus::notFound,
+        };
+    }
+    return {
+        .status = LegacyProjectileLiveActorQueryStatus::resolved,
+        .projectileActorCollisionsEnabled =
+            player->projectileActorCollisionsEnabled,
+        .actorAcceptsProjectileCollision =
+            player->actorAcceptsProjectileCollision,
+        .actorActive = player->active,
+    };
+}
 
 LegacyProjectileCollisionQueryResult
 legacyProjectileQueryResultFromRuntimeTrace(
@@ -267,6 +316,26 @@ resolvePublishedLegacyProjectileCollisionLoop(
         queryPublished,
         &context,
         options.collisionLoop);
+}
+
+LegacyProjectileCollisionLoopResult
+resolvePublishedLegacyProjectileCollisionLoop(
+    const assets::MissionWorldRoomCatalog& catalog,
+    const render::LegacyGameplayCameraMissionRuntime& runtime,
+    const LegacyProjectileCollisionQueryInput& input,
+    const bool projectileIsServer,
+    const LegacyPublishedProjectileCollisionOptions& options) noexcept {
+    PublishedPlayerActorQueryContext actorContext{
+        .runtime = &runtime,
+    };
+    return resolvePublishedLegacyProjectileCollisionLoop(
+        catalog,
+        runtime,
+        input,
+        projectileIsServer,
+        queryPublishedPlayerActor,
+        &actorContext,
+        options);
 }
 
 } // namespace airfix::content

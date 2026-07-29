@@ -2863,3 +2863,31 @@ superseded evidence.
   pass. Exact commit `c1b4d15` compiles all 262 steps with GCC 13.3 and passes
   81/81 tests in a new isolated `Airfix-Dev` WSL clone. GitHub Actions remains
   the publication gate.
+
+## 2026-07-29 - generation-matched primary-player projectile resolver
+
+- `EXP-20260729-044` closes the concrete resolver gap for the already
+  authenticated primary-player collider without inferring any gate value or
+  publishing a synthetic non-player actor.
+- Added a typed player actor state carrying the native object ID, active flag,
+  projectile-collision enable, and actor-acceptance gate. Successful dynamic
+  frame publication commits those values beside the exact geometry
+  generation; a rejected republish retains both previous products.
+- Added a concrete primary-player lookup and projectile-loop overload.
+  Unpublished/zero-ID queries reject, mismatched IDs are native lookup misses,
+  and an exact match supplies all three recovered actor gates. The callback
+  overload remains the extension seam for other actors.
+- A complete one-room runtime fixture resolves the published player to an
+  actor contact, then reproduces server and client actor-gate pass-through
+  after a disabled acceptance gate. No-player, mismatched, transactional
+  retention, and 4,096 zero-allocation query cases are covered.
+- A fresh Windows GCC 15.2 Release build compiles all 262 steps; it and the
+  regenerated code-intelligence build pass 81/81 tests. The compilation
+  database has 167 portable entries and no Apple-only source. Clangd 22.1.8
+  reports zero errors in both changed production units and tests. Twelve Rizin
+  normalization tests, synthetic public-boundary tests and the 401-file public
+  scan, the 263-row unique function catalogue with only its two known missing
+  references, `actionlint`, 16-file local-path scan, and `git diff --check`
+  pass. Exact commit `0796d98` compiles all 262 steps with GCC 13.3 and passes
+  81/81 tests in a new isolated `Airfix-Dev` WSL clone. GitHub Actions remains
+  the publication gate.
