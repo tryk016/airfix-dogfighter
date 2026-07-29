@@ -100,8 +100,9 @@ reports zero errors in both changed production units and both changed tests.
 Twelve Rizin normalization tests, synthetic public-boundary tests, the
 401-file public scan, 263-row unique function catalogue with only its two known
 missing references, `actionlint`, 16-file changed-scope local-path scan, and
-`git diff --check` also pass. Exact-commit isolated Linux and GitHub Actions
-remain publication gates for this slice.
+`git diff --check` also pass. Exact commit `0796d98` compiles all 262 steps
+with GCC 13.3 and passes 81/81 tests in a new isolated `Airfix-Dev` WSL clone.
+GitHub Actions remains the publication gate for this slice.
 
 ## Remaining boundary
 

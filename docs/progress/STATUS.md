@@ -769,8 +769,9 @@ These questions do not block static analysis or the archive work.
   tests. Twelve Rizin normalization tests, synthetic public-boundary tests and
   the 401-file public scan, the 263-row unique function catalogue with no bad
   source paths and only its two known missing references, `actionlint`,
-  16-file local-path scan, and `git diff --check` pass. Exact-commit isolated
-  Linux and GitHub Actions remain the publication gates.
+  16-file local-path scan, and `git diff --check` pass. Exact commit `0796d98`
+  compiles all 262 steps with GCC 13.3 and passes 81/81 tests in a new isolated
+  `Airfix-Dev` WSL clone. GitHub Actions remains the publication gate.
 
 ## Blockers
 
