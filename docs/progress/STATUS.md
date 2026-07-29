@@ -656,11 +656,15 @@
   generic simulation coordinator now repeats the complete query after a
   projectile-level type-zero portal, preserves the full endpoint, returns all
   existing terminal decisions, and fails closed on query/decision errors or
-  bounded cycles without allocation. Private allocation/event dispatch, live
-  muzzle transforms, non-player actor and dynamic-portal publication, runtime
-  query/material/actor binding, creator-guard and callback dispatch,
-  tracer/effect realization, secondary weapon families, dynamic camera-sphere
-  contacts, runtime traces, and integration remain pending.
+  bounded cycles without allocation. An authenticated adapter now maps its
+  current signed room through the retained catalogue, invokes the published
+  runtime portal trace, preserves the exact `0x2152` material bits, and accepts
+  server actor lookup/gates only through a typed callback. Private
+  allocation/event dispatch, live muzzle transforms, non-player actor and
+  dynamic-portal publication, a concrete actor resolver, creator-guard and
+  callback dispatch, tracer/effect realization, secondary weapon families,
+  dynamic camera-sphere contacts, runtime traces, and integration remain
+  pending.
   The authenticated player CCF now also produces bounded immutable per-mesh
   colliders and ordered actor-local instances inside the atomic mission load.
   A two-pass `noexcept` frame adapter publishes a supplied live player
@@ -735,11 +739,11 @@
 5. Keep BSP render culling disabled until its separate runtime semantics are
    proven against executable evidence.
 6. Extend the runtime-owned placed/player dynamic-collision frame to other
-   live actors and feed it from the recovered changing actor producer. Bind
-   world-room/material/actor resolution plus the creator guard and terminal
-   callbacks to the implemented projectile portal coordinator, then join
-   private type allocation/event dispatch, live muzzle transforms, and
-   tracer/effect adapters before wiring primary-fire intent into runtime.
+   live actors and feed it from the recovered changing actor producer. Provide
+   the concrete actor resolver plus creator guard and terminal callbacks around
+   the implemented runtime projectile query, then join private type
+   allocation/event dispatch, live muzzle transforms, and tracer/effect
+   adapters before wiring primary-fire intent into runtime.
 
 ## Open questions
 
@@ -752,18 +756,17 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
-- Merged mission-collision composition commit `c6f008c` passes the exact-main
-  Ubuntu, Windows, ARM64 macOS, clangd/code-intelligence, `iphoneos`, and
+- Merged projectile portal-loop commit `402a26e` passes the exact-main Ubuntu,
+  Windows, ARM64 macOS, clangd/code-intelligence, `iphoneos`, and
   `iphonesimulator` Actions jobs.
-- The current projectile portal-loop slice passes a fresh 259-step Windows
-  GCC 15.2 Release build and 80/80 tests. Its compilation database has 165
-  portable entries, and clangd 22.1.8 reports zero errors in the coordinator
-  and its test. Twelve Rizin/public-boundary Python tests, the 396-file public
-  scan, 263-row unique function catalogue with no bad source paths and only
-  its two known missing references, `actionlint`, 13-file changed-scope
-  local-path scan, and `git diff --check` pass. Exact commit `ba5b2ec` compiles
-  all 259 steps with GCC 13.3 and passes 80/80 tests in a new isolated
-  `Airfix-Dev` WSL clone. GitHub Actions remains the publication gate.
+- The current projectile runtime-query adapter passes fresh 262-step Windows
+  GCC 15.2 Release and regenerated code-intelligence builds plus 81/81 tests.
+  Its compilation database has 167 portable entries, and clangd 22.1.8 reports
+  zero errors in the adapter and its test. Twelve Rizin/public-boundary Python
+  tests, the 400-file public scan, 263-row unique function catalogue with no
+  bad source paths and only its two known missing references, `actionlint`,
+  14-file changed-scope local-path scan, and `git diff --check` pass.
+  Exact-commit WSL and GitHub Actions remain the publication gates.
 
 ## Blockers
 

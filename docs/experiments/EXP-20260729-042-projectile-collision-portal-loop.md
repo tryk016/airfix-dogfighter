@@ -120,12 +120,14 @@ WSL clone. GitHub Actions remains the publication gate for this slice.
 
 ## Remaining boundary
 
-The generic loop deliberately does not yet bind the runtime collision hit to
-legacy material values or live actor gates. The current collision frame
-contains only the authenticated player and placed objects, and the native
-creator collision guard/callback dispatch still requires a stateful actor
-runtime. Private projectile allocation/event dispatch, effects, and controlled
-executable traces also remain separate.
+The authenticated adapter in
+[EXP-20260729-043](EXP-20260729-043-projectile-runtime-query-adapter.md)
+now binds the published runtime trace, signed room mapping, exact collision
+material, and a callback-supplied live actor state to this loop. The current
+collision frame still contains only the authenticated player and placed
+objects. Other actor publication, a concrete live resolver, creator collision
+guard/callback dispatch, private projectile allocation/event dispatch,
+effects, and controlled executable traces remain separate.
 
 ## Confidence
 
@@ -133,10 +135,12 @@ Confidence is **3/3** for query repetition, room/start/end state, terminal
 swaps, creator-guard lifetime, and the bounded coordinator structure.
 
 Confidence remains **2/3** for bitwise x87 interpolation and complete live
-behavior until controlled traces and the actor/material adapter are available.
+behavior until controlled traces and the actor guard/callback transaction are
+available.
 
 ## Related material
 
 - [Shared projectile collision decision](EXP-20260728-034-projectile-collision-decision.md)
 - [Combined line portal continuation](EXP-20260728-036-combined-line-portal-continuation.md)
 - [Mission-runtime dynamic collision](EXP-20260729-041-mission-runtime-dynamic-collision-ownership.md)
+- [Projectile runtime query adapter](EXP-20260729-043-projectile-runtime-query-adapter.md)

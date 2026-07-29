@@ -241,6 +241,7 @@ else()
 endif()
 
 add_library(airfix_content
+    src/airfix/content/LegacyProjectileRuntimeQueryAdapter.cpp
     src/airfix/content/MissionLoadManifest.cpp
     src/airfix/content/MissionWorldRoomPublication.cpp
     src/airfix/content/MissionWorldRoomLoader.cpp
@@ -363,6 +364,15 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::content)
     add_test(NAME airfix_world_room_publication_gate_tests
         COMMAND airfix_world_room_publication_gate_tests)
+
+    add_executable(airfix_legacy_projectile_runtime_query_adapter_tests
+        tests/LegacyProjectileRuntimeQueryAdapterTests.cpp)
+    target_link_libraries(
+        airfix_legacy_projectile_runtime_query_adapter_tests
+        PRIVATE airfix::content)
+    add_test(
+        NAME airfix_legacy_projectile_runtime_query_adapter_tests
+        COMMAND airfix_legacy_projectile_runtime_query_adapter_tests)
 
     add_executable(airfix_crypto_tests tests/Sha256Tests.cpp)
     target_link_libraries(airfix_crypto_tests PRIVATE airfix::crypto)
