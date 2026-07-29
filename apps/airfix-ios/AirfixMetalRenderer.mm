@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -64,6 +65,9 @@ constexpr std::size_t kMaximumPrivateRoomGpuHeapPlanBytes =
     256U * 1024U * 1024U;
 constexpr std::size_t kMaximumPrivateRoomCpuPackedBytes =
     128U * 1024U * 1024U;
+constexpr NSUInteger kMaximumScaledSceneDimension = 16384U;
+constexpr std::size_t kMaximumScaledSceneTargetBytes =
+    512U * 1024U * 1024U;
 constexpr MTLResourceOptions kSharedTrackedResourceOptions =
     static_cast<MTLResourceOptions>(
         MTLResourceStorageModeShared |
@@ -1171,12 +1175,27 @@ bool preflightPrivateRoom(
 @property(nonatomic, strong)
     id<MTLDepthStencilState> gameplayDepthState;
 @property(nonatomic, strong) id<MTLSamplerState> samplerState;
+@property(nonatomic, strong)
+    id<MTLRenderPipelineState> presentationPipelineState;
+@property(nonatomic, strong)
+    id<MTLSamplerState> presentationSamplerState;
+@property(nonatomic, strong) id<MTLTexture> scaledSceneColorTexture;
+@property(nonatomic, strong) id<MTLTexture> scaledSceneDepthTexture;
+@property(nonatomic) NSUInteger scaledSceneWidth;
+@property(nonatomic) NSUInteger scaledSceneHeight;
+@property(nonatomic, readwrite) float renderScalePercent;
+@property(nonatomic, readwrite)
+    BOOL originalFourByThreePresentationEnabled;
 @property(nonatomic, strong) AirfixBudgetedMetalTexture* fallbackResource;
 @property(atomic, strong) AirfixMetalRoomSnapshot* roomSnapshot;
 @property(nonatomic, strong) NSObject* preparationOwnerToken;
 @property(nonatomic, strong) dispatch_queue_t resourceReleaseQueue;
 @property(nonatomic, strong)
     AirfixSnapshotGpuBudgetLedgerHolder* gpuBudgetHolder;
+
+- (BOOL)ensureScaledSceneTargetsWithDevice:(id<MTLDevice>)device
+                                     width:(NSUInteger)width
+                                    height:(NSUInteger)height;
 @end
 
 @implementation AirfixMetalRenderer
@@ -1280,13 +1299,15 @@ bool preflightPrivateRoom(
     id<MTLFunction> vertexFunction = [library newFunctionWithName:@"airfixVertexMain"];
     id<MTLFunction> gameplayVertexFunction =
         [library newFunctionWithName:@"airfixGameplayVertexMain"];
+    id<MTLFunction> presentationVertexFunction =
+        [library newFunctionWithName:@"airfixPresentationVertexMain"];
     id<MTLFunction> fragmentFunction = [library newFunctionWithName:@"airfixFragmentMain"];
     if (vertexFunction == nil || gameplayVertexFunction == nil ||
-        fragmentFunction == nil) {
+        presentationVertexFunction == nil || fragmentFunction == nil) {
         if (error != nullptr) {
             *error = makeError(
                 RendererError::missingShaderFunction,
-                @"default.metallib does not contain every Airfix diagnostic and gameplay shader.");
+                @"default.metallib does not contain every Airfix diagnostic, gameplay, and presentation shader.");
         }
         return nil;
     }
@@ -1333,6 +1354,29 @@ bool preflightPrivateRoom(
             *error = makeError(
                 RendererError::pipelineCreation,
                 [@"Metal gameplay camera pipeline creation failed: "
+                    stringByAppendingString:reason]);
+        }
+        return nil;
+    }
+
+    pipelineDescriptor.label = @"Airfix render-scale presentation pipeline";
+    pipelineDescriptor.vertexFunction = presentationVertexFunction;
+    pipelineDescriptor.depthAttachmentPixelFormat = MTLPixelFormatInvalid;
+    NSError* presentationPipelineError = nil;
+    id<MTLRenderPipelineState> presentationPipelineState =
+        [device
+            newRenderPipelineStateWithDescriptor:pipelineDescriptor
+                                           error:&presentationPipelineError];
+    if (presentationPipelineState == nil) {
+        if (error != nullptr) {
+            NSString* reason =
+                presentationPipelineError.localizedDescription;
+            if (reason == nil) {
+                reason = @"unknown presentation pipeline error";
+            }
+            *error = makeError(
+                RendererError::pipelineCreation,
+                [@"Metal render-scale presentation pipeline creation failed: "
                     stringByAppendingString:reason]);
         }
         return nil;
@@ -1389,6 +1433,19 @@ bool preflightPrivateRoom(
     if (samplerState == nil) {
         if (error != nullptr) {
             *error = makeError(RendererError::samplerCreation, @"Metal sampler creation failed.");
+        }
+        return nil;
+    }
+    samplerDescriptor.minFilter = MTLSamplerMinMagFilterLinear;
+    samplerDescriptor.magFilter = MTLSamplerMinMagFilterLinear;
+    samplerDescriptor.mipFilter = MTLSamplerMipFilterNotMipmapped;
+    id<MTLSamplerState> presentationSamplerState =
+        [device newSamplerStateWithDescriptor:samplerDescriptor];
+    if (presentationSamplerState == nil) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::samplerCreation,
+                @"Metal render-scale presentation sampler creation failed.");
         }
         return nil;
     }
@@ -1910,6 +1967,12 @@ bool preflightPrivateRoom(
     self.depthState = depthState;
     self.gameplayDepthState = gameplayDepthState;
     self.samplerState = samplerState;
+    self.presentationPipelineState = presentationPipelineState;
+    self.presentationSamplerState = presentationSamplerState;
+    self.renderScalePercent =
+        airfix::render::native_render_policy::
+            defaultRenderScalePercent;
+    self.originalFourByThreePresentationEnabled = NO;
     self.fallbackResource = fallbackResource;
     self.roomSnapshot = roomSnapshot;
     self.preparationOwnerToken = preparationOwnerToken;
@@ -1931,6 +1994,131 @@ bool preflightPrivateRoom(
 - (BOOL)missionWorldRoomInstalled {
     AirfixMetalRoomSnapshot* snapshot = self.roomSnapshot;
     return snapshot != nil && snapshot->_worldRoomInstalled;
+}
+
+- (BOOL)updateRenderScalePercent:(float)renderScalePercent
+                           error:(NSError* _Nullable* _Nullable)error {
+    if (error != nullptr) {
+        *error = nil;
+    }
+    if (!NSThread.isMainThread) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::wrongThread,
+                @"Metal presentation settings must be changed on the main thread.");
+        }
+        return NO;
+    }
+    if (!std::isfinite(renderScalePercent) ||
+        renderScalePercent <
+            airfix::render::native_render_policy::
+                minimumRenderScalePercent ||
+        renderScalePercent >
+            airfix::render::native_render_policy::
+                maximumRenderScalePercent) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::invalidPayload,
+                @"Render scale must be finite and between 50 and 200 percent.");
+        }
+        return NO;
+    }
+
+    if (self.renderScalePercent != renderScalePercent) {
+        self.renderScalePercent = renderScalePercent;
+        self.scaledSceneColorTexture = nil;
+        self.scaledSceneDepthTexture = nil;
+        self.scaledSceneWidth = 0U;
+        self.scaledSceneHeight = 0U;
+    }
+    return YES;
+}
+
+- (BOOL)updateOriginalFourByThreePresentationEnabled:(BOOL)enabled
+                                               error:(NSError* _Nullable*
+                                                          _Nullable)error {
+    if (error != nullptr) {
+        *error = nil;
+    }
+    if (!NSThread.isMainThread) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::wrongThread,
+                @"Metal presentation settings must be changed on the main thread.");
+        }
+        return NO;
+    }
+    self.originalFourByThreePresentationEnabled = enabled;
+    return YES;
+}
+
+- (BOOL)ensureScaledSceneTargetsWithDevice:(id<MTLDevice>)device
+                                     width:(NSUInteger)width
+                                    height:(NSUInteger)height {
+    if (device == nil || width == 0U || height == 0U ||
+        width > kMaximumScaledSceneDimension ||
+        height > kMaximumScaledSceneDimension) {
+        return NO;
+    }
+    if (self.scaledSceneColorTexture != nil &&
+        self.scaledSceneDepthTexture != nil &&
+        self.scaledSceneWidth == width &&
+        self.scaledSceneHeight == height) {
+        return YES;
+    }
+
+    std::size_t pixelCount = 0U;
+    std::size_t targetBytes = 0U;
+    if (!checkedMultiply(
+            static_cast<std::size_t>(width),
+            static_cast<std::size_t>(height),
+            pixelCount) ||
+        !checkedMultiply(pixelCount, 8U, targetBytes) ||
+        targetBytes > kMaximumScaledSceneTargetBytes) {
+        return NO;
+    }
+
+    MTLTextureDescriptor* colorDescriptor =
+        [MTLTextureDescriptor
+            texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                         width:width
+                                        height:height
+                                     mipmapped:NO];
+    MTLTextureDescriptor* depthDescriptor =
+        [MTLTextureDescriptor
+            texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float
+                                         width:width
+                                        height:height
+                                     mipmapped:NO];
+    if (colorDescriptor == nil || depthDescriptor == nil) {
+        return NO;
+    }
+    colorDescriptor.storageMode = MTLStorageModePrivate;
+    colorDescriptor.hazardTrackingMode = MTLHazardTrackingModeTracked;
+    colorDescriptor.usage =
+        MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
+    depthDescriptor.storageMode = MTLStorageModePrivate;
+    depthDescriptor.hazardTrackingMode = MTLHazardTrackingModeTracked;
+    depthDescriptor.usage = MTLTextureUsageRenderTarget;
+
+    id<MTLTexture> colorTexture =
+        [device newTextureWithDescriptor:colorDescriptor];
+    id<MTLTexture> depthTexture =
+        [device newTextureWithDescriptor:depthDescriptor];
+    if (colorTexture == nil || depthTexture == nil) {
+        return NO;
+    }
+    colorTexture.label = @"Airfix scaled 3D scene color";
+    depthTexture.label = @"Airfix scaled 3D scene depth";
+
+    // Publish the new pair only after both allocations succeed. A frame that
+    // cannot allocate its requested target fails closed without exposing a
+    // partially replaced color/depth pair.
+    self.scaledSceneColorTexture = colorTexture;
+    self.scaledSceneDepthTexture = depthTexture;
+    self.scaledSceneWidth = width;
+    self.scaledSceneHeight = height;
+    return YES;
 }
 
 - (nullable AirfixPreparedMetalRoom*)prepareLoadedMissionRoom:
@@ -2704,6 +2892,10 @@ bool preflightPrivateRoom(
 - (void)mtkView:(MTKView*)view drawableSizeWillChange:(CGSize)size {
     (void)view;
     (void)size;
+    self.scaledSceneColorTexture = nil;
+    self.scaledSceneDepthTexture = nil;
+    self.scaledSceneWidth = 0U;
+    self.scaledSceneHeight = 0U;
 }
 
 - (void)drawInMTKView:(MTKView*)view {
@@ -2747,46 +2939,93 @@ bool preflightPrivateRoom(
     }
     MTLRenderPassDescriptor* renderPass = view.currentRenderPassDescriptor;
     id<CAMetalDrawable> drawable = view.currentDrawable;
-    if (renderPass == nil || drawable == nil) {
+    if (renderPass == nil || drawable == nil ||
+        renderPass.colorAttachments[0].texture == nil ||
+        renderPass.depthAttachment.texture == nil) {
         return;
     }
-    std::optional<airfix::render::NativeRenderLayout>
-        gameplayLayout;
+    const auto outputExtent =
+        outputPixelExtent(drawable.texture);
+    if (!outputExtent.has_value()) {
+        return;
+    }
+    auto layoutConfig =
+        airfix::render::NativeRenderLayoutConfig{
+            .outputExtent = *outputExtent,
+            .renderScalePercent = self.renderScalePercent,
+            .scenePresentation =
+                self.originalFourByThreePresentationEnabled
+                    ? airfix::render::ScenePresentationMode::
+                          originalFourByThree
+                    : airfix::render::ScenePresentationMode::
+                          widescreenHorPlus,
+        };
     if (gameplayCameraActive) {
-        const auto outputExtent =
-            outputPixelExtent(drawable.texture);
-        if (!outputExtent.has_value()) {
+        layoutConfig.referenceCameraCanvas = {
+            gameplayCamera->logicalCanvasWidth(),
+            gameplayCamera->logicalCanvasHeight(),
+        };
+        layoutConfig.referenceHorizontalFovDegrees =
+            gameplayCamera->pose()
+                .projection()
+                .horizontalFovDegrees();
+    }
+    const auto builtLayout =
+        airfix::render::buildNativeRenderLayout(layoutConfig);
+    if (!builtLayout.complete()) {
+        return;
+    }
+    const airfix::render::NativeRenderLayout& layout =
+        *builtLayout.layout;
+    const auto renderTargetExtent = layout.renderTargetExtent();
+    const bool usesScaledSceneTarget =
+        renderTargetExtent.width != outputExtent->width ||
+        renderTargetExtent.height != outputExtent->height;
+
+    MTLRenderPassDescriptor* sceneRenderPass = renderPass;
+    id<MTLTexture> retainedScaledSceneColor = nil;
+    id<MTLTexture> retainedScaledSceneDepth = nil;
+    if (usesScaledSceneTarget) {
+        if (![self
+                ensureScaledSceneTargetsWithDevice:self.commandQueue.device
+                                             width:static_cast<NSUInteger>(
+                                                       renderTargetExtent.width)
+                                            height:static_cast<NSUInteger>(
+                                                       renderTargetExtent.height)]) {
             return;
         }
-        const auto layoutConfig =
-            airfix::render::NativeRenderLayoutConfig{
-                .outputExtent = *outputExtent,
-                .referenceCameraCanvas =
-                    {
-                        gameplayCamera->logicalCanvasWidth(),
-                        gameplayCamera->logicalCanvasHeight(),
-                    },
-                .referenceHorizontalFovDegrees =
-                    gameplayCamera->pose()
-                        .projection()
-                        .horizontalFovDegrees(),
-            };
-        const auto layout =
-            airfix::render::buildNativeRenderLayout(
-                layoutConfig);
-        const auto expectedRenderTarget =
-            airfix::render::RenderTargetPixelExtent{
-                outputExtent->width,
-                outputExtent->height,
-            };
-        if (!layout.complete() ||
-            layout.layout->renderTargetExtent() !=
-                expectedRenderTarget ||
-            renderPass.depthAttachment == nil) {
+        retainedScaledSceneColor =
+            self.scaledSceneColorTexture;
+        retainedScaledSceneDepth =
+            self.scaledSceneDepthTexture;
+        if (retainedScaledSceneColor == nil ||
+            retainedScaledSceneDepth == nil) {
             return;
         }
-        gameplayLayout.emplace(*layout.layout);
-        renderPass.depthAttachment.clearDepth =
+
+        sceneRenderPass =
+            [MTLRenderPassDescriptor renderPassDescriptor];
+        sceneRenderPass.colorAttachments[0].texture =
+            retainedScaledSceneColor;
+        sceneRenderPass.colorAttachments[0].loadAction =
+            MTLLoadActionClear;
+        sceneRenderPass.colorAttachments[0].storeAction =
+            MTLStoreActionStore;
+        sceneRenderPass.colorAttachments[0].clearColor =
+            renderPass.colorAttachments[0].clearColor;
+        sceneRenderPass.depthAttachment.texture =
+            retainedScaledSceneDepth;
+        sceneRenderPass.depthAttachment.loadAction =
+            MTLLoadActionClear;
+        sceneRenderPass.depthAttachment.storeAction =
+            MTLStoreActionDontCare;
+        sceneRenderPass.depthAttachment.clearDepth =
+            gameplayCameraActive
+                ? airfix::render::legacyReverseDepthClearValue
+                : renderPass.depthAttachment.clearDepth;
+    }
+    else if (gameplayCameraActive) {
+        sceneRenderPass.depthAttachment.clearDepth =
             airfix::render::legacyReverseDepthClearValue;
     }
 
@@ -2795,7 +3034,8 @@ bool preflightPrivateRoom(
         return;
     }
     id<MTLRenderCommandEncoder> encoder =
-        [commandBuffer renderCommandEncoderWithDescriptor:renderPass];
+        [commandBuffer
+            renderCommandEncoderWithDescriptor:sceneRenderPass];
     if (encoder == nil) {
         return;
     }
@@ -2810,19 +3050,17 @@ bool preflightPrivateRoom(
             gameplayCameraActive
                 ? self.gameplayDepthState
                 : self.depthState];
-    if (gameplayLayout.has_value()) {
-        const auto viewport =
-            gameplayLayout->sceneViewportInRenderTarget();
-        const MTLViewport metalViewport{
-            static_cast<double>(viewport.x),
-            static_cast<double>(viewport.y),
-            static_cast<double>(viewport.width),
-            static_cast<double>(viewport.height),
-            0.0,
-            1.0,
-        };
-        [encoder setViewport:metalViewport];
-    }
+    const auto sceneViewport =
+        layout.sceneViewportInRenderTarget();
+    const MTLViewport metalSceneViewport{
+        static_cast<double>(sceneViewport.x),
+        static_cast<double>(sceneViewport.y),
+        static_cast<double>(sceneViewport.width),
+        static_cast<double>(sceneViewport.height),
+        0.0,
+        1.0,
+    };
+    [encoder setViewport:metalSceneViewport];
     [encoder setCullMode:MTLCullModeNone];
     [encoder setFragmentSamplerState:self.samplerState atIndex:0U];
 
@@ -2834,7 +3072,10 @@ bool preflightPrivateRoom(
         poseLease = resources->_scenePoseRuntime->tryAcquire();
     }
 
-    const simd_float4x4 viewport = aspectCorrection(view.drawableSize);
+    const simd_float4x4 viewport = aspectCorrection(
+        CGSizeMake(
+            static_cast<CGFloat>(sceneViewport.width),
+            static_cast<CGFloat>(sceneViewport.height)));
     for (std::size_t commandIndex = 0U;
          commandIndex < submissionPlan.commands.size();
          ++commandIndex) {
@@ -2866,7 +3107,7 @@ bool preflightPrivateRoom(
                 gameplayUniforms(
                     model,
                     *gameplayCamera,
-                    *gameplayLayout);
+                    layout);
             [encoder setVertexBytes:&uniforms
                              length:sizeof(uniforms)
                             atIndex:1U];
@@ -2901,12 +3142,54 @@ bool preflightPrivateRoom(
 
     [encoder endEncoding];
     poseLease.reset();
+    if (usesScaledSceneTarget) {
+        // The drawable remains at native output resolution. Only this
+        // presentation pass samples the independently sized 3D scene target.
+        renderPass.colorAttachments[0].loadAction =
+            MTLLoadActionDontCare;
+        renderPass.colorAttachments[0].storeAction =
+            MTLStoreActionStore;
+        renderPass.depthAttachment.texture = nil;
+        id<MTLRenderCommandEncoder> presentationEncoder =
+            [commandBuffer
+                renderCommandEncoderWithDescriptor:renderPass];
+        if (presentationEncoder == nil) {
+            return;
+        }
+        [presentationEncoder
+            setRenderPipelineState:
+                self.presentationPipelineState];
+        [presentationEncoder setCullMode:MTLCullModeNone];
+        [presentationEncoder
+            setViewport:MTLViewport{
+                0.0,
+                0.0,
+                static_cast<double>(outputExtent->width),
+                static_cast<double>(outputExtent->height),
+                0.0,
+                1.0,
+            }];
+        [presentationEncoder
+            setFragmentTexture:retainedScaledSceneColor
+                       atIndex:0U];
+        [presentationEncoder
+            setFragmentSamplerState:
+                self.presentationSamplerState
+                           atIndex:0U];
+        [presentationEncoder
+            drawPrimitives:MTLPrimitiveTypeTriangle
+                vertexStart:0U
+                vertexCount:3U];
+        [presentationEncoder endEncoding];
+    }
     [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completed) {
         (void)completed;
         // Retain the immutable resource owner explicitly until this GPU
         // submission no longer references its buffers or textures.
         (void)snapshot;
         (void)fallbackResource;
+        (void)retainedScaledSceneColor;
+        (void)retainedScaledSceneDepth;
     }];
     [commandBuffer presentDrawable:drawable];
     [commandBuffer commit];

@@ -41,14 +41,43 @@ void testEmptyAndSmokeModes() {
   const std::array<std::string_view, 0U> empty{};
   const auto defaultOptions = parse(empty);
   require(!defaultOptions.smokeTest && !defaultOptions.contentRoot &&
-              !defaultOptions.mission && !defaultOptions.captureSize,
+              !defaultOptions.mission && !defaultOptions.captureSize &&
+              defaultOptions.renderScalePercent == 100U &&
+              !defaultOptions.originalFourByThreePresentation,
           "empty command line must retain the data-less interactive shell");
 
   const std::array smoke{"--smoke-test"sv};
   const auto smokeOptions = parse(smoke);
   require(smokeOptions.smokeTest && !smokeOptions.contentRoot &&
-              !smokeOptions.mission,
+              !smokeOptions.mission &&
+              smokeOptions.renderScalePercent == 100U,
           "smoke mode must remain data-less");
+}
+
+void testPresentationOptions() {
+  const std::array smoke{
+      "--smoke-test"sv,
+      "--render-scale"sv,
+      "50"sv,
+      "--original-4x3"sv,
+  };
+  const auto smokeOptions = parse(smoke);
+  require(smokeOptions.smokeTest &&
+              smokeOptions.renderScalePercent == 50U &&
+              smokeOptions.originalFourByThreePresentation &&
+              !smokeOptions.contentRoot,
+          "data-less smoke presentation settings were not retained");
+
+  const std::array interactive{
+      "--render-scale"sv,
+      "200"sv,
+  };
+  const auto interactiveOptions = parse(interactive);
+  require(!interactiveOptions.smokeTest &&
+              interactiveOptions.renderScalePercent == 200U &&
+              !interactiveOptions.originalFourByThreePresentation &&
+              !interactiveOptions.contentRoot,
+          "interactive render scale was not retained");
 }
 
 void testAuthenticatedMissionRequest() {
@@ -99,6 +128,23 @@ void testValidationAndRejections() {
   requireRejected(
       std::array{"--smoke-test"sv, "--content-root"sv, "private-pack"sv},
       "the public smoke mode must remain exclusive");
+  requireRejected(
+      std::array{"--smoke-test"sv, "--render-scale"sv, "49"sv},
+      "render scale below 50 percent must fail closed");
+  requireRejected(
+      std::array{"--smoke-test"sv, "--render-scale"sv, "201"sv},
+      "render scale above 200 percent must fail closed");
+  requireRejected(
+      std::array{"--smoke-test"sv, "--render-scale"sv, "-50"sv},
+      "signed render scale must fail closed");
+  requireRejected(
+      std::array{"--smoke-test"sv, "--render-scale"sv, "50"sv,
+                 "--render-scale"sv, "100"sv},
+      "duplicate render scale must fail closed");
+  requireRejected(
+      std::array{"--smoke-test"sv, "--original-4x3"sv,
+                 "--original-4x3"sv},
+      "duplicate Original 4:3 mode must fail closed");
   requireRejected(
       std::array{"--content-root"sv, "private-pack"sv, "--unknown-option"sv},
       "unknown options must fail closed");
@@ -158,6 +204,8 @@ void testPrivateCaptureRequest() {
       "mission.afs"sv,     "--level"sv,           "mission.level"sv,
       "--capture-frame"sv, "private-frame.bmp"sv,
       "--capture-size"sv,  "3840X2160"sv,
+      "--render-scale"sv,  "200"sv,
+      "--original-4x3"sv,
   };
   const auto options = parse(arguments);
   require(options.mission.has_value() &&
@@ -166,6 +214,8 @@ void testPrivateCaptureRequest() {
               options.captureSize ==
                   airfix::windows::AirfixWindowsCaptureSize{
                       3840U, 2160U} &&
+              options.renderScalePercent == 200U &&
+              options.originalFourByThreePresentation &&
               !options.validateContentOnly,
           "private capture request was not retained");
 }
@@ -175,6 +225,7 @@ void testPrivateCaptureRequest() {
 int main() {
   try {
     testEmptyAndSmokeModes();
+    testPresentationOptions();
     testAuthenticatedMissionRequest();
     testValidationAndRejections();
     testPrivateCaptureRequest();

@@ -32,6 +32,8 @@ struct AirfixWindowsMissionOptions final {
 struct AirfixWindowsCommandLineOptions final {
   bool smokeTest{};
   bool validateContentOnly{};
+  std::uint32_t renderScalePercent{100U};
+  bool originalFourByThreePresentation{};
   std::optional<std::filesystem::path> contentRoot;
   std::optional<AirfixWindowsMissionOptions> mission;
   std::optional<std::filesystem::path> captureFrameOutput;
@@ -50,7 +52,9 @@ struct AirfixWindowsCommandLineOptions final {
 parseAirfixWindowsCommandLine(std::span<const std::string_view> arguments);
 
 [[nodiscard]] constexpr std::string_view airfixWindowsUsage() noexcept {
-  return "usage: AirfixDogfighter.exe [--smoke-test | "
+  return "usage: AirfixDogfighter.exe "
+         "[--render-scale <50-200>] [--original-4x3] "
+         "[--smoke-test | "
          "--content-root <path> [--setup <logical-path> "
          "--level <logical-path> [--player-object <logical-path>] "
          "[--start-index <uint32>] [--capture-frame <private-output.bmp> "

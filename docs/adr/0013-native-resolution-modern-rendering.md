@@ -34,18 +34,26 @@ The first non-visual-quality stage is implemented:
 - the layout guarantees that 100% render scale is an exact integer identity,
   implements full-target Hor+ while preserving reference vertical FOV, and
   retains Original 4:3 as an aspect-fitted comparison policy;
-- D3D11 and Metal consume the same layout on their current 100% native path;
+- D3D11 and Metal consume the same layout, render directly to the native output
+  at 100%, and use private color/depth scene targets plus a linear presentation
+  pass at non-100% scales;
+- the Windows product exposes validated 50-200% render scale and Original 4:3
+  command-line settings, while Metal exposes the equivalent fail-closed
+  main-thread backend settings for later product UI binding;
 - portable tests cover 4:3, 16:10, 16:9, 19.5:9, 21:9, 32:9, safe-area/UI/input
   transforms, invalid inputs, and the exact 3840x2160 acceptance case; and
 - private direct D3D11 backbuffer captures have verified 1920x1080, 2560x1440,
-  3840x2160, and 3840x1080 outputs without publishing owner content.
+  3840x2160, and 3840x1080 outputs without publishing owner content. A separate
+  controlled comparison verified that a 960x540 output is sourced from a
+  480x270 target at 50% and a 1920x1080 target at 200%.
 
 This is a foundation milestone, not completion of this ADR. The portable core
-already validates and computes the 50-200% render-scale policy, but backend
-offscreen targets, resolve/upscale passes, UI/settings exposure, the diagnostic
-overlay, visual profiles, modern lighting, and physical-device iOS acceptance
-remain pending. See
-[EXP-20260729-049](../experiments/EXP-20260729-049-native-render-layout-horplus.md).
+and both native backends now execute the 50-200% render-scale policy, but
+finished product settings UI, the diagnostic overlay, visual profiles, modern
+lighting, and physical-device iOS acceptance remain pending. See
+[EXP-20260729-049](../experiments/EXP-20260729-049-native-render-layout-horplus.md)
+and
+[EXP-20260729-050](../experiments/EXP-20260729-050-backend-render-scale-targets.md).
 
 ### Resolution domains
 
@@ -283,7 +291,7 @@ path while sharing the higher-level rendering contract.
   render-scale descriptions in the portable renderer.
 - [x] Add portable Hor+, FOV, viewport, UI-scale, safe-area, and
   input-coordinate tests for the required aspect ratios.
-- [ ] Add backend offscreen render-scale targets and presentation passes.
+- [x] Add backend offscreen render-scale targets and presentation passes.
 - [ ] Expose Original 4:3, render scale, safe FOV, and independent UI settings.
 - [ ] Complete native backbuffer/render-target verification on both platforms
   and add the diagnostic overlay.

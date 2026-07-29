@@ -92,6 +92,25 @@ vertex GameplayRasterVertex airfixGameplayVertexMain(
     return output;
 }
 
+vertex DiagnosticRasterVertex airfixPresentationVertexMain(
+    uint vertexId [[vertex_id]]) {
+    constexpr float2 positions[] = {
+        float2(-1.0f, -1.0f),
+        float2(-1.0f, 3.0f),
+        float2(3.0f, -1.0f),
+    };
+    constexpr float2 texcoords[] = {
+        float2(0.0f, 1.0f),
+        float2(0.0f, -1.0f),
+        float2(2.0f, 1.0f),
+    };
+
+    DiagnosticRasterVertex output;
+    output.position = float4(positions[vertexId], 0.0f, 1.0f);
+    output.uv = texcoords[vertexId];
+    return output;
+}
+
 fragment float4 airfixFragmentMain(
     RasterFragmentInput input [[stage_in]],
     texture2d<float> colorTexture [[texture(0)]],

@@ -3328,3 +3328,29 @@ superseded evidence.
   `git diff --check` pass. GitHub Actions runs `30470411401` and `30470413579`
   pass all seven hosted Visual Studio product, Windows/Ubuntu/macOS portable,
   clangd, iPhoneOS, and iPhoneSimulator gates.
+
+## 2026-07-29 - native backend render-scale targets
+
+- `EV-20260729-005` / `EXP-20260729-050` implements the next ADR-0013
+  foundation slice. At 100%, D3D11 and Metal retain the exact direct native
+  output path. At non-100% scales, each backend creates a private BGRA8 scene
+  color target and depth target at the portable render extent, renders the
+  Hor+ or Original 4:3 viewport there, and linearly presents it to the
+  unchanged native output.
+- D3D11 target replacement is transactional and bounded by the D3D11 texture
+  dimension limit. Metal publishes a new color/depth pair only after both
+  private allocations succeed and adds explicit dimension and aggregate target
+  byte limits. Neither backend silently changes a rejected scale.
+- Windows now accepts validated `--render-scale 50..200` and `--original-4x3`
+  product settings. Metal exposes equivalent validated main-thread renderer
+  settings for later UIKit binding.
+- A new data-less CTest renders a visible D3D11 frame through a 50% offscreen
+  target, Original 4:3 viewport, and presentation pass. Independent complete
+  MSVC 19.51 and MinGW GCC 15.2 product rebuilds each pass 94/94 tests.
+- A controlled owner-local comparison retained a 960x540 output while changing
+  the internal target from 480x270 at 50% to 1920x1080 at 200%. The frames are
+  visibly distinct and have different hashes. Both captures and all source
+  content remain ignored private artifacts.
+- Finished settings UI, HUD composition, safe FOV, diagnostics, color/HDR,
+  lighting/material/effect stages, and physical-device iOS performance remain
+  pending. This slice does not claim a playable build or ADR-0013 completion.

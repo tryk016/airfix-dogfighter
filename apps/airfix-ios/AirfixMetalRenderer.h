@@ -27,10 +27,22 @@ NS_ASSUME_NONNULL_BEGIN
 @interface AirfixMetalRenderer : NSObject <MTKViewDelegate>
 
 @property(nonatomic, readonly) BOOL missionWorldRoomInstalled;
+@property(nonatomic, readonly) float renderScalePercent;
+@property(nonatomic, readonly)
+    BOOL originalFourByThreePresentationEnabled;
 
 - (nullable instancetype)initWithMetalView:(MTKView*)metalView
                                      error:(NSError* _Nullable* _Nullable)error
     NS_DESIGNATED_INITIALIZER;
+
+// Main-thread renderer settings. Invalid or non-finite render scales are
+// rejected without changing the currently published value. UI remains in the
+// Metal drawable's output domain; only the 3D scene target is scaled.
+- (BOOL)updateRenderScalePercent:(float)renderScalePercent
+                           error:(NSError* _Nullable* _Nullable)error;
+- (BOOL)updateOriginalFourByThreePresentationEnabled:(BOOL)enabled
+                                               error:(NSError* _Nullable*
+                                                          _Nullable)error;
 
 #ifdef __cplusplus
 // Builds every Metal resource without changing the renderer's published room.
