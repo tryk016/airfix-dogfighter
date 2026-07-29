@@ -3295,3 +3295,34 @@ superseded evidence.
   92/92 tests, including the real data-less D3D11/XAudio2 smoke. Targeted
   portable manifest and room-loader tests pass 2/2. The private AFPACK and
   capture remain ignored and outside public infrastructure.
+
+## 2026-07-29 - native render layout and first Hor+ backends
+
+- `EV-20260729-004` / `EXP-20260729-049` implements the first ADR-0013
+  milestone. New allocation-free portable types separate output pixels, 3D
+  render-target pixels, camera coordinates, UI coordinates, safe areas, and
+  input points. A 100% scale is an explicit exact identity; the bounded
+  50-200% extent policy fails closed on invalid or overflowing input.
+- Standard presentation now fills the 3D target using Hor+ while preserving
+  the recovered reference vertical FOV. Original 4:3 remains a separately
+  tested aspect-fit comparison policy. UI fitting and reversible input
+  transforms depend on output/safe-area coordinates rather than 3D scale.
+- D3D11 and Metal gameplay-camera paths consume the same portable layout on
+  their current direct-to-native 100% path. The recovered 640x480 canvas is
+  reference-camera metadata only, not a raster target.
+- Portable tests cover exact 3840x2160 at 100%, 50% and 200% scaling, 4:3,
+  16:10, 16:9, 19.5:9, 21:9, 32:9, Original 4:3, safe-area/UI/input mapping,
+  invalid values, overflow, and no-allocation behavior.
+- A hidden Windows capture-size option rejects malformed requests and now
+  rejects any requested extent that does not match the physical D3D11
+  backbuffer. Direct private readbacks of one representative owner-local scene
+  produced exact 1920x1080, 2560x1440, 3840x2160, and 3840x1080 BMPs. These
+  ignored captures and all source content remain outside Git and public CI.
+- Backend offscreen targets/resampling for non-100% scales, settings/UI,
+  diagnostics, modern visual stages, and physical-device iOS validation remain
+  pending; this evidence does not claim ADR-0013 completion.
+- A clean 292-step GCC 15.2/Ninja build passes 90/90 portable tests. Full MSVC
+  19.51 and MinGW GCC 15.2 Windows product builds independently pass 93/93
+  tests, including native D3D11/XAudio2 smoke. The 459-file public-boundary
+  scan, `actionlint`, changed-document link and local-path checks, and
+  `git diff --check` pass. Hosted platform builds remain the merge gate.

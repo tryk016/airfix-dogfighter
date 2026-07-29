@@ -4,9 +4,9 @@
 
 #include "airfix/content/MissionWorldRoomPublication.hpp"
 #include "airfix/render/DrawSubmissionPlan.hpp"
-#include "airfix/render/LegacyCanvasLayout.hpp"
 #include "airfix/render/LegacyDepthState.hpp"
 #include "airfix/render/LegacyGameplayCameraClipPacket.hpp"
+#include "airfix/render/NativeRenderLayout.hpp"
 #include "airfix/render/PublicRenderSmokeScene.hpp"
 
 #include <SDL3/SDL.h>
@@ -193,11 +193,15 @@ makeSmokeUniforms(const airfix::render::DrawMeshInstance &instance) {
 
 [[nodiscard]] GameplayUniforms makeGameplayUniforms(
     const airfix::render::DrawMeshInstance &instance,
-    const airfix::render::LegacyGameplayCameraClipPacket &camera) {
+    const airfix::render::LegacyGameplayCameraClipPacket &camera,
+    const airfix::render::NativeRenderLayout &layout) {
   const auto &transform = camera.pose().worldToView();
   const auto &linear = transform.linear();
   const auto &translation = transform.translation();
   const auto &projection = camera.pose().projection();
+  const auto logicalCentre = layout.mapReferenceCameraPoint(
+      {projection.centre().x, projection.centre().y});
+  const auto logicalExtent = layout.cameraLogicalExtent();
   return {
       .modelFromLocal = modelFromLocal(instance),
       .cameraAxisX = {linear.columns[0].x, linear.columns[0].y,
@@ -211,9 +215,8 @@ makeSmokeUniforms(const airfix::render::DrawMeshInstance &instance) {
            transform.inverseScaleSquared()},
       .projection = {projection.nearDistance(), projection.farDistance(),
                      projection.projectScale(), 0.0F},
-      .logicalCanvas = {projection.centre().x, projection.centre().y,
-                        camera.logicalCanvasWidth(),
-                        camera.logicalCanvasHeight()},
+      .logicalCanvas = {logicalCentre.x, logicalCentre.y, logicalExtent.width,
+                        logicalExtent.height},
   };
 }
 
@@ -375,18 +378,38 @@ public:
     ID3D11RenderTargetView *renderTarget = renderTarget_.Get();
     context_->OMSetRenderTargets(1U, &renderTarget, depthView_.Get());
     D3D11_VIEWPORT activeViewport = viewport_;
+    const airfix::render::NativeRenderLayout *gameplayLayout = nullptr;
+    auto layoutConfig = airfix::render::NativeRenderLayoutConfig{
+        .outputExtent = {
+            static_cast<std::uint32_t>(width_),
+            static_cast<std::uint32_t>(height_),
+        },
+    };
     if (gameplay) {
-      const auto layout = airfix::render::buildLegacyCanvasAspectFitLayout({
-          .x = 0.0F,
-          .y = 0.0F,
-          .width = static_cast<float>(width_),
-          .height = static_cast<float>(height_),
-      });
-      if (!layout.complete()) {
+      const auto &cameraProjection = mission_->camera.pose().projection();
+      layoutConfig.referenceCameraCanvas = {
+          mission_->camera.logicalCanvasWidth(),
+          mission_->camera.logicalCanvasHeight(),
+      };
+      layoutConfig.referenceHorizontalFovDegrees =
+          cameraProjection.horizontalFovDegrees();
+    }
+    const auto layout =
+        airfix::render::buildNativeRenderLayout(layoutConfig);
+    if (gameplay) {
+      const auto expectedRenderTarget =
+          airfix::render::RenderTargetPixelExtent{
+              static_cast<std::uint32_t>(width_),
+              static_cast<std::uint32_t>(height_),
+          };
+      if (!layout.complete() ||
+          layout.layout->renderTargetExtent() != expectedRenderTarget) {
         throw std::runtime_error(
-            "gameplay viewport failed its 4:3 aspect-fit contract");
+            "gameplay native render layout does not match the D3D11 target");
       }
-      const auto fitted = layout.layout->fittedRect();
+      gameplayLayout = &*layout.layout;
+      const auto fitted =
+          gameplayLayout->sceneViewportInRenderTarget();
       activeViewport = {
           fitted.x, fitted.y, fitted.width, fitted.height, 0.0F, 1.0F,
       };
@@ -429,7 +452,8 @@ public:
 
       if (gameplay) {
         const GameplayUniforms uniforms = makeGameplayUniforms(
-            model.instances[command.instanceIndex], mission_->camera);
+            model.instances[command.instanceIndex], mission_->camera,
+            *gameplayLayout);
         context_->UpdateSubresource(gameplayUniforms_.Get(), 0U, nullptr,
                                     &uniforms, 0U, 0U);
         ID3D11Buffer *constantBuffer = gameplayUniforms_.Get();

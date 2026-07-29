@@ -22,12 +22,13 @@ CTest smoke mode. An explicit owner-local launch can instead authenticate one
 AFPACK revision, build a selected mission manifest and room, prepare complete
 D3D11 geometry and texture resources, optionally join an authenticated
 MODL-root player aircraft at its selected start pose, bootstrap the recovered
-gameplay camera, and render through reverse depth in a parity-first
-aspect-fitted 4:3 viewport.
+gameplay camera, and render through reverse depth in a full-target Hor+
+viewport backed by the shared native-resolution layout.
 The hidden private validator requires visible D3D11 output without exposing
 the requested logical paths. An explicit one-shot capture mode writes the same
 validated back buffer to a new owner-private BMP for local visual comparison;
-it never overwrites a file and captures remain outside Git. A
+it never overwrites a file, rejects a requested capture extent that differs
+from the physical backbuffer, and keeps all captures outside Git. A
 separate SDL3 adapter now feeds fixed-rate semantic frames from the baseline
 keyboard/mouse and standardized-controller layout, including focus loss,
 hot-plug, disconnect, ordered taps, dead-zone handling, and lifecycle neutral
@@ -93,10 +94,13 @@ ADR-0013 is mandatory for the Windows product:
 - `Low`, `Medium`, `High`, and `Ultra` plus separate shadow, MSAA, effect, and
   render-scale controls provide scalable performance.
 
-The current authenticated mission renderer's aspect-fitted 640x480 presentation
-is a temporary parity baseline. It must not become a backbuffer or render-target
-limit. D3D11 remains responsible for native rasterization; neither SDL3 nor a
-legacy DirectX 7 emulation layer owns drawing.
+The authenticated mission renderer now uses the shared full-target Hor+ policy
+and exact native target at 100% scale. The recovered 640x480 projection remains
+reference-camera evidence only. Original 4:3 is implemented in portable layout
+math but is not yet exposed as a Windows user setting. Backend offscreen targets
+for 50-200% render scale and their resolve/resampling pass also remain pending.
+D3D11 remains responsible for native rasterization; neither SDL3 nor a legacy
+DirectX 7 emulation layer owns drawing.
 
 The Windows performance target is 60 FPS at 1080p and 1440p on reasonable
 contemporary hardware, with scalable settings for 4K. Native 4K at 100% render

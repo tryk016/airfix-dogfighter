@@ -24,8 +24,13 @@
   text, safe areas, and input coordinates remain independent of scene render
   scale. Classic/Enhanced profiles, Low-Ultra tiers, staged lighting/material/
   HDR/effect work, platform budgets, diagnostics, aspect-ratio tests, and
-  matched screenshots are now specified. The current 640x480 aspect-fit is a
-  temporary parity baseline, not the target renderer.
+  matched screenshots are specified. The first implementation slice now
+  provides strongly typed domains, exact 100% target identity, Hor+, Original
+  4:3 comparison math, safe-area/UI fitting, and input transforms. Both native
+  backends consume the 100% native Hor+ path. Windows direct D3D11 readbacks
+  verify 1080p, 1440p, 4K, and 32:9; owner-content images remain private.
+  Backend offscreen render scaling, settings/UI, diagnostics, modern visual
+  stages, and iOS runtime acceptance remain pending.
 - The native Windows x64 product foundation is implemented. A statically
   linked SDL3 shell owns the window and lifecycle events; a separate
   D3D11/DXGI backend compiles HLSL, uploads the same public scene used by Metal,
@@ -44,11 +49,13 @@
   explicit role/voice bindings. An explicit mission request now builds the
   manifest and complete room through that same session, prepares dense D3D11
   geometry and authored/generated texture mip chains, bootstraps the recovered
-  camera projection, and renders with reverse depth in an aspect-fitted 4:3
-  viewport. The hidden private validator requires visible GPU output, and a
-  separate one-shot mode saves that checked frame as a non-overwriting private
-  BMP for local parity work. The public product smoke remains synthetic and
-  data-less. The loaded room and camera are still static because live flight
+  camera projection, and renders with reverse depth through the shared
+  full-target Hor+ layout. The hidden private validator requires visible GPU
+  output, and a separate one-shot mode saves that checked frame as a
+  non-overwriting private BMP for local parity work; an optional capture extent
+  is accepted only when it matches the physical backbuffer. The public product
+  smoke remains synthetic and data-less. The loaded room and camera are still
+  static because live flight
   simulation is not connected, so this is not yet a playable build.
 - The native iOS audio adapter consumes the same monotonic command batches.
   It converts bounded PCM16 registrations once into AVAudioEngine's standard
@@ -577,8 +584,10 @@
   audit corrected the fixed `(35,35)-(555,345)` rectangle from “gameplay” to
   the deferred House Editor. The portable projection result now preserves
   camera Z and the exact reciprocal-depth scalar, while an immutable,
-  allocation-free layout contract aspect-fits the recovered 640x480 canvas
-  without presenting that port policy as original behavior. A second portable
+  allocation-free legacy layout contract preserves the recovered 640x480
+  aspect-fit comparison without presenting that port policy as original
+  behavior. The newer native-render layout drives both product backends with
+  full-target Hor+ by default. A second portable
   contract fail-closed maps raw depth modes `1` through `4` to the recovered
   compare/write presets and confirmed zero clear. The actual gameplay camera
   is now separated from the House Editor: it uses a full-current-screen
@@ -629,10 +638,10 @@
   acquired generation and vehicle anchor to build an immutable look-at,
   world-to-view, and scalar gameplay projection snapshot without guessed SRT
   state. Placed/player dynamic line collision and transparent line portals are
-  now runtime-owned; dynamic-object sphere collision plus the Metal state
-  remain unimplemented. The private mission-room Metal path now consumes
-  the immutable pose through a tested homogeneous clip packet, recovered
-  reverse depth, explicit far clip, and parity-first 640x480 viewport. Until
+  now runtime-owned; dynamic-object sphere collision remains unimplemented.
+  The private mission-room Metal path now consumes the immutable pose through
+  a tested homogeneous clip packet, recovered reverse depth, explicit far
+  clip, and the shared native-resolution Hor+ viewport. Until
   the simulation publishes changing event-5 generations, it starts at an
   explicit camera0 target anchored to the authenticated spawn. The synthetic
   public-data path remains diagnostic and no full parity claim has been
@@ -828,9 +837,9 @@
    vehicle rotation, live health, inactive state, and the confirmed scheduler
    delta in seconds without resampling the separate 60 Hz input pump. Replace the
    camera0-only publication only when that complete input exists. Preserve
-   scalar clip, reciprocal-depth, and parity-first 4:3 behavior through device
-   acceptance; dynamic-object and transparent collision-portal paths remain
-   separate.
+   scalar clip and reciprocal depth while validating the new Hor+ port policy
+   separately from recovered 4:3 evidence; dynamic-object and transparent
+   collision-portal paths remain separate.
 5. Validate the implemented runtime portal-to-room-state proposal against
    controlled multi-room executable traces when the isolated runtime is ready.
 6. Keep BSP render culling disabled until its separate runtime semantics are
@@ -843,10 +852,10 @@
    the fixed-capacity activation runtime, advance its active slots through the
    collision transaction, and add tracer/effect adapters before wiring
    primary-fire intent into runtime.
-8. In parallel with gameplay reconstruction, introduce the ADR-0013 resolution
-   types and mathematical tests, then implement exact native 3D targets,
-   Hor+/Original-4:3 projection, independent UI/safe-area/input transforms, and
-   diagnostics before lighting, materials, shadows, or post-processing.
+8. In parallel with gameplay reconstruction, extend the implemented ADR-0013
+   resolution/Hor+/UI/input foundation with backend 50-200% offscreen targets,
+   settings for Original 4:3 and safe FOV, HUD/effect integration, and the
+   diagnostic overlay before lighting, materials, shadows, or post-processing.
 
 ## Open questions
 
@@ -858,19 +867,15 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
-- The authenticated Windows mission-rendering slice builds with MSVC 19.51 and
-  MinGW GCC 15.2 and passes 92/92 tests under each compiler. The public hidden
-  smoke still compiles HLSL, renders only synthetic geometry, reads the D3D11
-  target, and exercises synthetic XAudio2. A complete owner-local AFPACK was
-  separately created and installed outside Git; an explicit mission then
-  passed manifest/room/audio authentication, complete D3D11 resource
-  preparation, gameplay-camera rendering, visible back-buffer readback, and a
-  private BMP capture.
-  The exact temporary validation tree was removed and the original installation
-  remained unchanged. The portable code-intelligence build passes 89/89 tests;
-  the 453-file public-boundary scan, `actionlint`, changed-source formatting,
-  changed-scope local-path scan, and `git diff --check` also pass. Hosted CI is
-  required before merge.
+- The native-render-layout slice passes a clean 292-step GCC 15.2/Ninja build
+  and all 90 portable tests. Full MSVC 19.51 and MinGW GCC 15.2 Windows product
+  builds each pass 93/93 tests, including the data-less D3D11/XAudio2 smoke.
+  A representative private D3D11 mission capture made after physical-size
+  validation is exactly 3840x2160; the original installation and owner data
+  remained unchanged and outside Git. The 459-file public-boundary scan,
+  `actionlint`, changed-document link and local-path checks, and
+  `git diff --check` pass. Hosted Visual Studio, portable, clangd, iPhoneOS,
+  and iPhoneSimulator gates remain required before merge.
 - The authenticated aircraft-audio slice passes a fresh 289-step GCC 15.2
   build and all 89 portable tests. A fresh native MSVC 19.51/Ninja product
   build compiles 548 steps and passes 91/91 tests, including the real hidden

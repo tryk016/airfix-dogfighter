@@ -365,6 +365,16 @@ This phase is split into ordered, independently shippable stages:
    separate shadow/MSAA/effects/render-scale controls; dynamic render scale
    where useful; device profiling and memory budgets.
 
+Implementation checkpoint (2026-07-29): stages 1-2 have their portable
+foundation. Strongly typed resolution domains, exact 100% target identity,
+Hor+, Original 4:3 layout math, safe-area/UI fitting, input transforms, and the
+required aspect-ratio tests are implemented. D3D11 and Metal consume the 100%
+native Hor+ path, and Windows direct backbuffer captures verify 1080p, 1440p,
+4K, and 32:9. Remaining stage 1-2 work is backend offscreen render scaling,
+settings/UI exposure, the diagnostic overlay, complete HUD/effect integration,
+and iOS runtime/device acceptance. This checkpoint does not advance the
+lighting/material/post-processing stages.
+
 `Classic` and `Enhanced` are visual-intent profiles independent of the quality
 tier. Classic renders faithfully at the chosen high resolution; Enhanced adds
 the modern lighting/material/effect path. Neither may change simulation state.
@@ -506,7 +516,7 @@ contract, evidence, implementation, tests, parity result, and documentation agre
    disabled until its traversal semantics are proven.
 11. Implement native UIKit touch capture and Apple Game Controller adapters,
     followed by the configurable visual overlay and on-device usability tests.
-12. Introduce the ADR-0013 resolution domains and tests without blocking the
-    active player/gameplay reconstruction: exact native 3D targets at 100%,
-    Hor+ projection, Original 4:3 comparison, independent UI/safe-area/input
-    transforms, and renderer telemetry come before lighting or post-effects.
+12. Continue the implemented ADR-0013 foundation without blocking active
+    player/gameplay reconstruction: add backend 50-200% offscreen target/
+    presentation paths, expose Original 4:3 and UI/FOV settings, then add
+    renderer telemetry before lighting or post-effects.

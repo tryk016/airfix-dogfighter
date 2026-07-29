@@ -7,10 +7,10 @@
 #include "airfix/content/MissionWorldRoomPublication.hpp"
 #include "airfix/render/DrawModel.hpp"
 #include "airfix/render/DrawSubmissionPlan.hpp"
-#include "airfix/render/LegacyCanvasLayout.hpp"
 #include "airfix/render/LegacyDepthState.hpp"
 #include "airfix/render/LegacyGameplayCameraClipPacket.hpp"
 #include "airfix/render/LegacyGameplayCameraMissionRuntime.hpp"
+#include "airfix/render/NativeRenderLayout.hpp"
 #include "airfix/render/PlayerActorPoseRuntime.hpp"
 #include "airfix/render/PublicRenderSmokeScene.hpp"
 #include "airfix/render/SnapshotGpuBudgetLedger.hpp"
@@ -355,6 +355,23 @@ simd_float4x4 aspectCorrection(const CGSize size) {
     return matrix;
 }
 
+[[nodiscard]] std::optional<airfix::render::OutputPixelExtent>
+outputPixelExtent(id<MTLTexture> texture) noexcept {
+    constexpr auto maximum =
+        std::numeric_limits<std::uint32_t>::max();
+    if (texture == nil ||
+        texture.width == 0U ||
+        texture.height == 0U ||
+        texture.width > maximum ||
+        texture.height > maximum) {
+        return std::nullopt;
+    }
+    return airfix::render::OutputPixelExtent{
+        .width = static_cast<std::uint32_t>(texture.width),
+        .height = static_cast<std::uint32_t>(texture.height),
+    };
+}
+
 [[nodiscard]] airfix::render::ConvertedNodeTransform actorWorldFrom(
     const airfix::simulation::PlayerSpawnPose& pose) noexcept {
     const auto vectorAt = [](const std::array<float, 3U>& value) {
@@ -391,11 +408,18 @@ gameplayCameraInitializeInput(
 [[nodiscard]] GpuGameplayUniforms gameplayUniforms(
     const simd_float4x4 modelFromLocal,
     const airfix::render::LegacyGameplayCameraClipPacket&
-        camera) noexcept {
+        camera,
+    const airfix::render::NativeRenderLayout& layout) noexcept {
     const auto& transform = camera.pose().worldToView();
     const auto linear = transform.linear();
     const auto translation = transform.translation();
     const auto& projection = camera.pose().projection();
+    const auto logicalCentre =
+        layout.mapReferenceCameraPoint({
+            projection.centre().x,
+            projection.centre().y,
+        });
+    const auto logicalExtent = layout.cameraLogicalExtent();
     return {
         .modelFromLocal = modelFromLocal,
         .cameraAxisX =
@@ -430,10 +454,10 @@ gameplayCameraInitializeInput(
                 0.0F),
         .logicalCanvas =
             simd_make_float4(
-                projection.centre().x,
-                projection.centre().y,
-                camera.logicalCanvasWidth(),
-                camera.logicalCanvasHeight()),
+                logicalCentre.x,
+                logicalCentre.y,
+                logicalExtent.width,
+                logicalExtent.height),
     };
 }
 
@@ -2726,23 +2750,42 @@ bool preflightPrivateRoom(
     if (renderPass == nil || drawable == nil) {
         return;
     }
-    std::optional<airfix::render::LegacyCanvasRect>
-        gameplayViewport;
+    std::optional<airfix::render::NativeRenderLayout>
+        gameplayLayout;
     if (gameplayCameraActive) {
+        const auto outputExtent =
+            outputPixelExtent(drawable.texture);
+        if (!outputExtent.has_value()) {
+            return;
+        }
+        const auto layoutConfig =
+            airfix::render::NativeRenderLayoutConfig{
+                .outputExtent = *outputExtent,
+                .referenceCameraCanvas =
+                    {
+                        gameplayCamera->logicalCanvasWidth(),
+                        gameplayCamera->logicalCanvasHeight(),
+                    },
+                .referenceHorizontalFovDegrees =
+                    gameplayCamera->pose()
+                        .projection()
+                        .horizontalFovDegrees(),
+            };
         const auto layout =
-            airfix::render::buildLegacyCanvasAspectFitLayout({
-                .x = 0.0F,
-                .y = 0.0F,
-                .width =
-                    static_cast<float>(view.drawableSize.width),
-                .height =
-                    static_cast<float>(view.drawableSize.height),
-            });
+            airfix::render::buildNativeRenderLayout(
+                layoutConfig);
+        const auto expectedRenderTarget =
+            airfix::render::RenderTargetPixelExtent{
+                outputExtent->width,
+                outputExtent->height,
+            };
         if (!layout.complete() ||
+            layout.layout->renderTargetExtent() !=
+                expectedRenderTarget ||
             renderPass.depthAttachment == nil) {
             return;
         }
-        gameplayViewport = layout.layout->fittedRect();
+        gameplayLayout.emplace(*layout.layout);
         renderPass.depthAttachment.clearDepth =
             airfix::render::legacyReverseDepthClearValue;
     }
@@ -2767,8 +2810,9 @@ bool preflightPrivateRoom(
             gameplayCameraActive
                 ? self.gameplayDepthState
                 : self.depthState];
-    if (gameplayViewport.has_value()) {
-        const auto viewport = *gameplayViewport;
+    if (gameplayLayout.has_value()) {
+        const auto viewport =
+            gameplayLayout->sceneViewportInRenderTarget();
         const MTLViewport metalViewport{
             static_cast<double>(viewport.x),
             static_cast<double>(viewport.y),
@@ -2819,7 +2863,10 @@ bool preflightPrivateRoom(
                         atIndex:0U];
         if (gameplayCamera != nullptr) {
             const auto uniforms =
-                gameplayUniforms(model, *gameplayCamera);
+                gameplayUniforms(
+                    model,
+                    *gameplayCamera,
+                    *gameplayLayout);
             [encoder setVertexBytes:&uniforms
                              length:sizeof(uniforms)
                             atIndex:1U];

@@ -24,7 +24,12 @@ high-resolution `Classic` profile alongside `Enhanced`.
 > authenticate one AFPACK revision, load a selected mission room, upload its
 > geometry and complete texture chains, optionally join the authenticated
 > player's textured slot-zero aircraft at its start pose, and render the
-> combined scene through the recovered gameplay camera contract in D3D11. It
+> combined scene through the recovered gameplay camera contract in D3D11.
+> Both native backends now consume the first shared native-resolution layout:
+> the 3D target exactly equals the output at 100% scale and the standard
+> gameplay viewport is full-target Hor+ rather than a stretched or enlarged
+> legacy framebuffer. Windows has verified direct D3D11 readbacks at 1080p,
+> 1440p, 4K, and 32:9; the captures and owner data remain private. It
 > also exercises bounded synthetic PCM
 > through the reconstructed AirCraft audio coordinator and XAudio2 2.9.
 > The iOS shell now consumes the same audio contract through AVAudioEngine and
@@ -80,8 +85,14 @@ Implemented foundations include:
   room, camera bootstrap, geometry, textures, and aircraft audio from one
   unchanged authenticated content session; D3D11 prepares every replacement
   resource before publication, preserves authored or generated mip chains,
-  uses the recovered reverse-depth projection, and aspect-fits the parity-first
-  4:3 canvas;
+  uses the recovered reverse-depth projection, and now presents the scene
+  through the shared native-resolution Hor+ layout;
+- a portable, allocation-free native-render layout that keeps output pixels,
+  3D render-target pixels, logical camera coordinates, UI design coordinates,
+  safe areas, and input transforms separate; it guarantees an exact target
+  identity at 100% scale, computes the 50-200% policy, preserves reference
+  vertical FOV across 4:3 through 32:9, and retains Original 4:3 as a tested
+  comparison policy;
 - bounded UDSP, CCF, GTI, and related legacy-format parsing;
 - a private AFPACK container, strict validation, atomic installation, recovery,
   rollback, and authenticated content sessions;
@@ -125,15 +136,17 @@ Implemented foundations include:
   point transform and camera-space screen projection, including the recovered
   reverse-depth scalar, four depth presets, gameplay camera preset selection,
   exact quaternion-to-matrix and chase-target/nonlinear smoothing steps,
-  backend-neutral collision/factor/line primitives and look-at pose math, and
-  a parity-first 640x480 aspect-fit layout kept separate from Metal;
+  backend-neutral collision/factor/line primitives and look-at pose math; the
+  recovered 640x480 values remain reference-camera metadata rather than a
+  physical raster limit;
 - bounded static sphere and vehicle-to-camera line resolution with atomic
   position/room/factor completion, plus a preallocated single-writer owner and
   immutable backend-neutral pose snapshot joining look-at, unit-scale
   world-to-view, and the recovered gameplay projection;
 - a private-room Metal camera adapter that preserves the scalar projection as
-  homogeneous clip values, uses recovered reverse depth and an aspect-fitted
-  640x480 viewport, and starts from an explicit tested camera0 bootstrap;
+  homogeneous clip values, uses recovered reverse depth and the shared
+  full-target Hor+ layout, and starts from an explicit tested camera0
+  bootstrap;
 - a producer-side camera-step coordinator that transactionally composes
   recovered AirCraft factor recovery, input mode/rear selection, chase,
   retained-static collision, pose, clip packaging, and state commit while

@@ -14,8 +14,9 @@ from a modern native renderer.
 
 The recovered 640x480 projection is still valuable evidence. It defines a
 reference camera and an optional comparison composition; it does not define the
-physical resolution of a render target. Similarly, the current Windows
-aspect-fitted 4:3 mission path is a parity bring-up tool, not the final default.
+physical resolution of a render target. Similarly, the former Windows
+aspect-fitted 4:3 mission path was a parity bring-up tool, not the final
+default.
 
 This decision extends ADR-0008. The shared C++20 render front end remains
 backend-neutral, Windows remains on D3D11/DXGI/HLSL, and iOS remains on native
@@ -23,6 +24,28 @@ Metal. No DirectX 7 interface or fixed legacy framebuffer becomes part of the
 target architecture.
 
 ## Decision
+
+### Implementation status
+
+The first non-visual-quality stage is implemented:
+
+- portable C++20 types now distinguish output pixels, 3D render-target pixels,
+  camera coordinates, UI coordinates, safe areas, and input points;
+- the layout guarantees that 100% render scale is an exact integer identity,
+  implements full-target Hor+ while preserving reference vertical FOV, and
+  retains Original 4:3 as an aspect-fitted comparison policy;
+- D3D11 and Metal consume the same layout on their current 100% native path;
+- portable tests cover 4:3, 16:10, 16:9, 19.5:9, 21:9, 32:9, safe-area/UI/input
+  transforms, invalid inputs, and the exact 3840x2160 acceptance case; and
+- private direct D3D11 backbuffer captures have verified 1920x1080, 2560x1440,
+  3840x2160, and 3840x1080 outputs without publishing owner content.
+
+This is a foundation milestone, not completion of this ADR. The portable core
+already validates and computes the 50-200% render-scale policy, but backend
+offscreen targets, resolve/upscale passes, UI/settings exposure, the diagnostic
+overlay, visual profiles, modern lighting, and physical-device iOS acceptance
+remain pending. See
+[EXP-20260729-049](../experiments/EXP-20260729-049-native-render-layout-horplus.md).
 
 ### Resolution domains
 
@@ -244,8 +267,9 @@ path while sharing the higher-level rendering contract.
 - Native resolution and Hor+ become product requirements, not optional polish.
 - Modern lighting and post-processing remain ordered enhancements and do not
   block continued gameplay, format, or simulation reconstruction.
-- The temporary parity-first 640x480 viewport must be isolated as reference
-  camera evidence and replaced by an explicit resolution/presentation model.
+- The former parity-first 640x480 viewport is now isolated as reference-camera
+  evidence and replaced in native backends by an explicit
+  resolution/presentation model.
 - Both HLSL and Metal shader paths must implement compatible material and pass
   semantics, with backend-specific tests and captures.
 - Higher resolutions and effects increase GPU time and memory use, requiring
@@ -255,13 +279,15 @@ path while sharing the higher-level rendering contract.
 
 ## Action items
 
-- Introduce typed output, 3D render, viewport, safe-area, UI, and render-scale
-  descriptions in the portable renderer.
-- Add portable Hor+, FOV, viewport, UI-scale, safe-area, and input-coordinate
-  tests for the required aspect ratios.
-- Add native backbuffer/render-target extent verification and the diagnostic
-  overlay on D3D11 and Metal.
-- Implement the ordered image-quality stages above, maintaining separate
+- [x] Introduce typed output, 3D render, viewport, safe-area, UI, and
+  render-scale descriptions in the portable renderer.
+- [x] Add portable Hor+, FOV, viewport, UI-scale, safe-area, and
+  input-coordinate tests for the required aspect ratios.
+- [ ] Add backend offscreen render-scale targets and presentation passes.
+- [ ] Expose Original 4:3, render scale, safe FOV, and independent UI settings.
+- [ ] Complete native backbuffer/render-target verification on both platforms
+  and add the diagnostic overlay.
+- [ ] Implement the ordered image-quality stages above, maintaining separate
   `Classic` and `Enhanced` screenshot baselines.
-- Keep all original and converted assets and owner-derived captures outside
+- [x] Keep all original and converted assets and owner-derived captures outside
   Git, public CI, caches, and release artifacts.

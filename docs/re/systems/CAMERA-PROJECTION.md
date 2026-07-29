@@ -367,8 +367,10 @@ farClipDistance = far - cameraZ
 
 The divide therefore yields the exact screen-space NDC conversion and
 `zNdc = near / cameraZ`. Metal uses recovered depth mode one
-(`greaterEqual`, writes enabled), zero depth clear, and the aspect-fitted
-640x480 viewport. `[[clip_distance]]` supplies the separate far plane.
+(`greaterEqual`, writes enabled), zero depth clear, and the port's shared
+native-resolution Hor+ viewport. `[[clip_distance]]` supplies the separate far
+plane. The 640x480 values remain the recovered reference-camera canvas; they
+are not the Metal drawable or 3D raster extent.
 
 Until the simulation owns changing event-5 publications, private rooms use an
 explicit tested port bootstrap at the recovered camera0 target relative to the
@@ -405,6 +407,13 @@ caller-supplied target rectangle. The immutable build result is
 backend-neutral, `noexcept`, allocation-free, and rejects non-finite,
 non-positive, underflowing, or overflowing layouts. It deliberately knows
 nothing about UIKit points, display scale, orientation, safe areas, or Metal.
+
+`src/airfix/render/NativeRenderLayout.cpp` is the accepted product policy above
+that recovered evidence. It separates output, 3D render-target, camera, UI,
+safe-area, and input domains; makes 100% scale an exact target identity; and
+implements full-target Hor+ plus Original 4:3 comparison. D3D11 and Metal
+consume its 100% path. This policy is documented in `EXP-20260729-049` and must
+not be mistaken for behavior recovered from the original executable.
 
 `src/airfix/render/LegacyDepthState.cpp` maps untrusted raw mode numbers
 `1` through `4` to the confirmed active-path compare/write presets and rejects
@@ -539,9 +548,11 @@ state transaction.
 - first/third-person pose differences in actor plugins other than the examined
   aircraft path;
 - physical-device validation of the implemented Metal clip mapping,
-  raster-space Y convention, precision, and aspect-fit presentation;
-- optional widescreen/Hor+ behavior beyond the confirmed parity-first 4:3
-  policy;
+  raster-space Y convention, precision, and native Hor+ presentation;
+- whether the original executable had any widescreen behavior beyond the
+  confirmed 4:3 evidence. Independently, the reconstruction's accepted port
+  policy is now full-target Hor+ and must not be described as recovered
+  original behavior;
 - durable semantic names for every room list, clip virtual method, and portal
   enum;
 - whether any game path raises the portal depth limit above its constructor
@@ -578,3 +589,4 @@ evidence is recovered.
 - [Gameplay-camera packet exchange](../../experiments/EXP-20260728-022-camera-packet-exchange.md)
 - [Gameplay-camera mission runtime](../../experiments/EXP-20260728-024-camera-mission-runtime.md)
 - [AirCraft camera input contract](../../experiments/EXP-20260728-025-camera-aircraft-input-contract.md)
+- [Native render layout and Hor+ integration](../../experiments/EXP-20260729-049-native-render-layout-horplus.md)
