@@ -3,15 +3,16 @@
 **Status:** portable core and native V1 gameplay-action transport implemented;
 profiles, remapping, haptics, menu UI, and device acceptance pending
 
-**Priority:** P0 for the iOS vertical slice
+**Priority:** P0 for the Windows x64 and iOS vertical slices
 
 **Related scenarios:** `SCN-INPUT-001` through `SCN-INPUT-012`,
-`SCN-IOS-INPUT-001`
+`SCN-WIN-INPUT-001`, `SCN-WIN-INPUT-002`, `SCN-IOS-INPUT-001`
 
 ## Goals
 
-- Make the entire single-player game usable with touch alone.
-- Support Bluetooth/USB controllers through iOS Game Controller capabilities,
+- Make the entire single-player game usable with keyboard/mouse on Windows and
+  touch alone on iOS.
+- Support controllers through separate Windows and iOS platform adapters,
   including hot connection and disconnection.
 - Keep the simulation independent from physical device names and platform APIs.
 - Preserve original input semantics while allowing mobile-friendly layouts,
@@ -34,7 +35,7 @@ profiles, remapping, haptics, menu UI, and device acceptance pending
 flowchart LR
     T["Touch controls"] --> A["Input sources"]
     G["Game controller"] --> A
-    K["Keyboard and mouse test input"] --> A
+    K["Windows keyboard and mouse"] --> A
     M["Optional motion/gyro"] --> A
     A --> B["Normalization and calibration"]
     B --> C["Bindings and context router"]
@@ -43,7 +44,7 @@ flowchart LR
     E --> F["Game simulation"]
     D --> U["UI prompts and control visibility"]
     F --> H["Feedback events"]
-    H --> I["iPhone haptics"]
+    H --> I["Platform haptics"]
     H --> J["Controller rumble"]
 ```
 
@@ -62,11 +63,17 @@ context changes, and lifecycle reset synthesize releases, and reset requires two
 consecutive neutral ticks before gameplay input is admitted again.
 
 Default semantic bindings cover touch, an extended controller, and minimal
-desktop keyboard testing. The native iOS layer feeds the complete current
-gameplay-action surface from a safe-area-aware UIKit overlay and Apple's Game
-Controller framework; none of those platform types enter `InputFrame`. Profile
-persistence/remapping, controller glyphs, finished menu UI, and haptic adapters
-remain follow-up layers.
+desktop keyboard testing. That keyboard path is a portable validation
+foundation, not the Windows product adapter. The Windows x64 application uses
+SDL3 for keyboard/mouse focus and controller discovery/hot-plug, then applies
+the project's calibration, bindings, glyphs, and rumble policy before emitting
+the same normalized events.
+
+The native iOS layer feeds the complete current gameplay-action surface from a
+safe-area-aware UIKit overlay and Apple's Game Controller framework; none of
+those platform types enter `InputFrame`. Profile persistence/remapping,
+controller glyphs, finished menu UI, Windows product adapters, and haptic
+adapters remain follow-up layers.
 
 The portable simulation consumer is also implemented.
 `airfix::simulation::PlayerAircraftState` accepts one eligible `InputFrame` at

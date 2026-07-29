@@ -8,8 +8,15 @@
 - Planning and documentation system established.
 - Original installation inventoried without executing binaries.
 - Port strategy recorded in ADR-0001.
-- Complete iOS port checklist and input/control/haptics system specified;
-  semantic input architecture recorded in ADR-0002.
+- Playable Windows x64 and private iOS ARM64 are accepted as parallel products
+  over one portable C++20 core. Windows is the primary rapid-debug/parity
+  environment and owns separate window, renderer, input, audio, and filesystem
+  adapters; ADR-0007 and both product checklists define the boundary.
+- ADR-0008 selects SDL3 for the Windows window/events/keyboard/mouse/controllers
+  and D3D11/DXGI with HLSL for the Windows renderer. SDL3 does not own game
+  rendering; iOS remains on its native Metal backend.
+- Cross-platform input/control/haptics system specified; semantic input
+  architecture recorded in ADR-0002.
 - Local Git repository initialized on branch `main`; planning baseline committed
   as `59828ed`.
 - GitHub remote `tryk016/airfix-dogfighter` connected and the planning baseline
@@ -729,10 +736,17 @@
 - The iOS control baseline requires full touch-only play plus controller-only
   play, hot-plug recovery, remapping, deterministic input frames, safe-area
   layouts, and optional haptics.
-- Accepted v1.0 scope: private sideload only, iOS 16.4 minimum deployment target,
-  iPhone 17 Pro Max/iOS 26.6 and iPhone SE 3/iOS 26.3 runtime devices, Apple
-  Developer account available, single-player only, no editors/multiplayer, and
-  no original CD music.
+- Accepted v1.0 scope: a playable native Windows x64 product plus a private iOS
+  ARM64 sideload over shared C++20 game, physics, resource, save, and semantic
+  input code. Windows is the primary rapid-debug and controlled
+  original-comparison environment; each product owns separate platform,
+  renderer, physical-input, audio, and filesystem adapters.
+- The iOS product retains its iOS 16.4 minimum deployment target, iPhone 17 Pro
+  Max/iOS 26.6 and iPhone SE 3/iOS 26.3 runtime devices, available Apple
+  Developer account, and no-App-Store policy. Version 1 remains single-player
+  only, with no editors, multiplayer, or original CD music.
+- Original and converted game data remains owner-private and outside Git,
+  public Actions logs, caches, artifacts, and public packages for both products.
 - GitHub Actions hosted macOS/Xcode currently provides unsigned iOS compile
   validation. Interactive device debugging and profiling later use local Apple
   tooling; private signing must keep original data local in an imported
@@ -740,14 +754,18 @@
 
 ## Next
 
-1. Obtain controlled runtime traces for free flight and the ground, inverted,
+1. Implement the native Windows x64 data-less shell with SDL3 window/events/
+   input and D3D11/DXGI/HLSL rendering, select the separate audio adapter,
+   preserve strict ADR-0007/0008 boundaries, and make it the primary synthetic
+   smoke/debug host. The current portable Windows build is not yet this product.
+2. Obtain controlled runtime traces for free flight and the ground, inverted,
    water, collision, engine-transition, and too-high branches; establish
    x87-versus-portable numeric tolerances and deterministic replacement PRNG
    sequencing before composing the statically recovered 12 ms flight law.
-2. Add persistent layout/visibility profiles, calibration and remapping,
+3. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-3. Connect the implemented weak camera-runtime endpoint to the recovered live
+4. Connect the implemented weak camera-runtime endpoint to the recovered live
    AirCraft producer once it supplies distinct chase position, world anchor,
    vehicle rotation, live health, inactive state, and the confirmed scheduler
    delta in seconds without resampling the separate 60 Hz input pump. Replace the
@@ -755,11 +773,11 @@
    scalar clip, reciprocal-depth, and parity-first 4:3 behavior through device
    acceptance; dynamic-object and transparent collision-portal paths remain
    separate.
-4. Validate the implemented runtime portal-to-room-state proposal against
+5. Validate the implemented runtime portal-to-room-state proposal against
    controlled multi-room executable traces when the isolated runtime is ready.
-5. Keep BSP render culling disabled until its separate runtime semantics are
+6. Keep BSP render culling disabled until its separate runtime semantics are
    proven against executable evidence.
-6. Feed the runtime-owned player collider and concrete resolver from the
+7. Feed the runtime-owned player collider and concrete resolver from the
    recovered changing actor producer. Extend the same generation-matched
    publication/resolution to other live actors, then connect the implemented
    creator BSP guard callbacks and already reduced terminal damage/surface
@@ -770,6 +788,8 @@
 
 ## Open questions
 
+- Which Windows audio API, D3D feature-level floor, minimum Windows version, and
+  private packaging procedure will be used?
 - Which Windows-compatible method will install the signed Actions IPA on both
   registered phones?
 - Which optional widescreen/Hor+ design should follow the parity-first 4:3
@@ -779,10 +799,10 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
-- Merged creator BSP guard main commit `d26dee0` passes the exact-main Ubuntu,
-  Windows, ARM64 macOS, clangd/code-intelligence, `iphoneos`, and
+- Merged projectile runtime-pool main commit `bfde965` passes the exact-main
+  Ubuntu, Windows, ARM64 macOS, clangd/code-intelligence, `iphoneos`, and
   `iphonesimulator` Actions jobs.
-- The current portable projectile runtime-pool slice passes a fresh 268-step
+- The portable projectile runtime-pool slice passes a fresh 268-step
   Windows GCC 15.2 Release build and separate code-intelligence build plus
   83/83 tests in both. Its compilation database has 171 portable entries and
   no Apple-only source; clangd 22.1.8 reports zero errors in all three affected
@@ -793,11 +813,14 @@ These questions do not block static analysis or the archive work.
   missing references, `actionlint`, the 19-file local-path scan, and
   `git diff --check` pass. Exact commit `6c5d386` compiles all 268 steps with
   GCC 13.3 and passes 83/83 tests in 26.23 seconds in a fresh isolated
-  `Airfix-Dev` WSL clone. GitHub Actions remains the publication gate.
+  `Airfix-Dev` WSL clone. The exact-main GitHub Actions publication gate passed
+  all six jobs.
 
 ## Blockers
 
 - None for Phase 1 static analysis.
+- No owner action is required to begin the Windows x64 product spike. The
+  platform API/minimum-OS choices are engineering decisions, not blockers.
 - The connected repository is public. Before the first signed device spike,
   signed IPA artifacts must be encrypted/protected (or repository visibility
   deliberately changed), because provisioning data must not be published.

@@ -1,17 +1,24 @@
-# Airfix Dogfighter — reconstruction and private iOS port
+# Airfix Dogfighter — native reconstruction for Windows and iOS
 
 [![Portable C++ CI](https://github.com/tryk016/airfix-dogfighter/actions/workflows/portable-ci.yml/badge.svg)](https://github.com/tryk016/airfix-dogfighter/actions/workflows/portable-ci.yml) [![Unsigned iOS](https://github.com/tryk016/airfix-dogfighter/actions/workflows/ios-unsigned.yml/badge.svg)](https://github.com/tryk016/airfix-dogfighter/actions/workflows/ios-unsigned.yml)
 
 An evidence-driven, native reimplementation of **Airfix Dogfighter v1.01
-(2000)**, with a private iOS port as its first target. The project reconstructs
-observable formats and behaviour as maintainable C++20 and Objective-C++ code;
-it does not attempt to run or translate the original x86 executable on iOS.
-The goal is to preserve the single-player experience on modern Apple hardware,
-with faithful behaviour first and optional visual enhancements kept separate.
+(2000)** with two parallel product targets: a playable Windows x64 application
+and a private iOS ARM64 port. The project reconstructs observable formats and
+behaviour as maintainable C++20 with narrow platform adapters; it does not run,
+translate, or redistribute the original x86 executable.
+
+Windows is the primary environment for rapid debugging and controlled
+side-by-side comparison with the original. iOS remains a native private
+sideload for the owner's devices. Both products share one game, physics,
+resource, save, input-action, and platform-neutral presentation core. Faithful
+behaviour comes first; optional visual enhancements remain independently
+switchable and testable.
 
 > **Project status:** active research and development. The repository builds
-> and tests its portable core and an unsigned, data-less UIKit/Metal shell, but
-> it is **not yet a playable or device-validated port**.
+> and tests its portable core and an unsigned, data-less UIKit/Metal shell. The
+> native Windows product layer is specified but not yet implemented. Neither
+> target is **yet a complete playable release**.
 
 **Lawfully owned original game data is required for private use and is not
 included in this repository.**
@@ -22,12 +29,14 @@ included in this repository.**
 
 | Area | Target |
 |---|---|
-| Distribution | Private sideloading on the owner's registered devices; no App Store release |
-| Platform | Native ARM64 iOS application using UIKit, Metal, and Game Controller |
-| Minimum OS | iOS 16.4 |
-| Validation devices | iPhone 17 Pro Max (iOS 26.6) and iPhone SE, 3rd generation (iOS 26.3) |
+| Products | Native playable Windows x64 desktop application and private native ARM64 iOS application |
+| Product role | Windows is the primary rapid-debug/parity environment; iOS is the private mobile port |
+| Distribution | Original and converted data remain owner-private; no App Store release or public content-bearing package |
+| Platform layers | SDL3 window/input plus D3D11/DXGI/HLSL rendering on Windows; UIKit, Metal, touch, Game Controller, and Apple audio adapters on iOS |
+| OS targets | Windows x64 baseline selected during the platform spike; iOS 16.4 minimum |
+| iOS validation devices | iPhone 17 Pro Max (iOS 26.6) and iPhone SE, 3rd generation (iOS 26.3) |
 | Gameplay | Single-player campaign and required menus |
-| Controls | Complete touch controls and Bluetooth/USB extended controllers |
+| Controls | Windows keyboard/mouse and controllers; iOS touch and Bluetooth/USB extended controllers |
 | Rendering | Faithful presentation first; optional higher-resolution and lighting enhancements later |
 | Not in version 1 | Multiplayer, House Editor, Paint Room, and unavailable CD audio |
 
@@ -165,45 +174,60 @@ compilation database for Objective-C++, UIKit, and Metal, see
 
 ## Architecture
 
-The portable core owns parsing, content identity, deterministic state, and
-platform-neutral render data. Apple-specific code stays at the outer boundary.
+The portable core owns parsing, content identity, game state, physics, semantic
+input, and platform-neutral render/audio commands. Operating-system APIs stay
+at the outer boundary and cannot redefine simulation behaviour.
 
 ```mermaid
-flowchart LR
+flowchart TD
     A["Owner-local source content"] --> B["Offline AFPACK conversion"]
-    B --> C["Validation and atomic install"]
+    B --> C["Shared validation and runtime format"]
     C --> D["Authenticated content session"]
-    D --> E["Portable C++20 assets and simulation"]
-    T["Touch controls"] --> I["Semantic input"]
-    G["Game Controller"] --> I
-    I --> E
-    E --> M["Objective-C++ / UIKit / Metal"]
+    D --> E["Portable C++20 game, physics, assets, saves"]
+    I["Semantic input frames"] --> E
+    E --> R["API-neutral render and audio commands"]
+    W["Windows keyboard / mouse / controller"] --> I
+    T["iOS touch / Game Controller"] --> I
+    E --> X["Windows x64 app"]
+    R --> X
+    E --> Y["iOS ARM64 app"]
+    R --> Y
+    X --> WX["SDL3 / D3D11 + DXGI + HLSL / Windows audio + files"]
+    Y --> IY["UIKit / Metal / Apple audio / sandbox"]
 ```
 
+The Windows backend reproduces the original's observable render result through
+modern D3D11 pipeline state; it does not recreate or expose the DirectX 7 API.
+
 Read the [architecture](docs/ARCHITECTURE.md), the
-[port strategy ADR](docs/adr/0001-port-strategy.md), and the
-[reverse-engineering workflow](docs/RE-WORKFLOW.md) for the detailed contracts.
+[port strategy ADR](docs/adr/0001-port-strategy.md), the
+[Windows x64 product decision](docs/adr/0007-windows-x64-parallel-target.md),
+the [Windows platform stack decision](docs/adr/0008-windows-rendering-and-platform-stack.md),
+and the [reverse-engineering workflow](docs/RE-WORKFLOW.md) for the detailed
+contracts.
 
 ## Controls
 
-The target is complete playability with either the landscape touch overlay or a
-supported extended controller.
+Every platform adapter maps physical devices into the same deterministic
+semantic action model.
 
-The current native slice routes touch and controller input through the same
-deterministic action model. It covers flight axes, throttle, weapons, camera,
-mission status, and pause semantics, including multitouch and safe
-neutralization across disconnects and lifecycle changes. Bluetooth pairing is
-managed by iOS. Remapping, calibration, controller glyphs, haptics, polished
-controller-only menus, and physical-device usability testing are still pending.
+SDL3 will supply Windows keyboard/mouse and controller events, including
+focus-loss neutralization, hot-plug, remapping, calibration, and controller
+glyphs. It does not own rendering. iOS targets complete landscape touch and
+controller play, with safe neutralization across disconnects and lifecycle
+changes. The current native slice implements the iOS touch/controller
+transport; Windows product adapters, polished menus, and end-to-end usability
+acceptance remain pending.
 
 See [Input, controls, and haptics](docs/systems/INPUT.md).
 
 ## Private content and AFPACK
 
 AFPACK is the bounded private container used to move owner-local converted
-content into the iOS sandbox. Packages are authenticated before activation,
-installed transactionally, and consumed through a verified session so a
-mission cannot silently mix content revisions or source handles.
+content into either product. Packages are authenticated before activation,
+installed transactionally, and consumed through the same verified session so a
+mission cannot silently mix content revisions or source handles. Windows uses
+an owner-local import/storage adapter; iOS imports into its sandbox.
 
 Public source and tests remain data-less. AFPACK v1 deliberately contains no
 mission-launch metadata.
@@ -211,12 +235,14 @@ mission-launch metadata.
 See the [AFPACK format and trust boundary](docs/formats/AFPACK.md) and
 [GitHub Actions iOS design](docs/ci/GITHUB-ACTIONS-IOS.md).
 
-## iOS and CI
+## Platform builds and CI
 
 Public workflows validate portable C++ and compile the data-less UIKit/Metal
 shell for `iphoneos` and `iphonesimulator` with deployment target 16.4 and no
-code signing. Pull-request workflows do not read private content configuration
-or signing secrets.
+code signing. The existing Windows CI job validates portable code and tools; it
+will also build and smoke-test the native x64 product after that shell exists.
+Pull-request workflows do not read private content configuration or signing
+secrets.
 
 Optional private launch inputs, signing, and installation belong to a
 protected, manually approved workflow. Signed IPAs, credentials, profiles,
@@ -226,6 +252,8 @@ original assets, and AFPACK content must never be public artifacts.
 
 - [Project plan](docs/PROJECT-PLAN.md)
 - [Version 1 scope](docs/design/V1-SCOPE.md)
+- [Windows x64 product requirements](docs/design/WINDOWS-X64-REQUIREMENTS.md)
+- [iOS product requirements](docs/design/IOS-PORT-REQUIREMENTS.md)
 - [Private content installation](docs/systems/CONTENT-INSTALL.md)
 - [Player reconstruction](docs/re/systems/PLAYER-SPAWN.md)
 - [Reverse-engineering workbench](docs/toolchain/RE-WORKBENCH.md)

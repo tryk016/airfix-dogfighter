@@ -1,29 +1,33 @@
 # Detailed project plan
 
 **Baseline:** Airfix Dogfighter v1.01  
-**Target:** behavior-compatible desktop reconstruction followed by a private,
-native iOS ARM64 sideload
-**Plan date:** 2026-07-21
+**Target:** parallel playable Windows x64 reconstruction and private native iOS
+ARM64 sideload over one portable C++20 core
+**Plan dates:** 2026-07-21; Windows x64 product revision 2026-07-29
 
 ## Definition of the outcome
 
 The first complete release candidate must:
 
-1. Start on a physical iPhone/iPad without original x86 code.
+1. Start as a native Windows x64 application and on both accepted iPhones
+   without original x86 code.
 2. Load legally supplied/converted game data with validation and useful errors.
 3. Support the main menu, at least the complete single-player path, flight,
    weapons, collision, AI, mission completion, audio, localization, and saves.
 4. Match the reference build closely enough that recorded scenarios stay within
    defined simulation and visual tolerances.
-5. Support touch and external controllers, iOS lifecycle, safe areas, storage,
-   interruptions, and resume.
-6. Render at device-native presentation resolution with a stable performance
-   budget.
-7. Keep visual modernization optional and independently testable.
+5. Support Windows keyboard/mouse/controllers and iOS touch/controllers through
+   the same semantic input model.
+6. Own separate Windows and iOS window/lifecycle, renderer, physical-input,
+   audio, and filesystem adapters over the shared game.
+7. Support iOS lifecycle, safe areas, storage, interruptions, and resume.
+8. Render at native presentation resolution with stable platform performance
+   budgets.
+9. Keep visual modernization optional and independently testable.
 
 Dogfight/multiplayer, House Editor, Paint Room, App Store distribution, and
 original CD music are excluded from version 1.0. Exact legacy intro playback is
-P2. See `docs/design/V1-SCOPE.md` and ADR-0003.
+P2. See `docs/design/V1-SCOPE.md`, ADR-0003, and ADR-0007.
 
 ## Critical path
 
@@ -39,7 +43,8 @@ immutable baseline
   -> combat and collision
   -> one complete mission
   -> menus/audio/save
-  -> iOS shell and controls
+  -> playable Windows x64 product shell
+  -> iOS product shell and controls
   -> full content parity
   -> optional modern graphics
 ```
@@ -58,8 +63,8 @@ Tasks:
 - Record edition/version, language packs, patches, disc contents, and whether CD
   audio tracks are available.
 - Keep original files and original-derived private fixtures outside Git.
-- Record that the output is a private signed build and prevent redistribution of
-  the application, original assets, or converted packages.
+- Record that original and converted content remains private for both products
+  and prevent its redistribution in applications, installers, or packages.
 
 Exit gate:
 
@@ -79,7 +84,8 @@ Tasks:
 - Create a version lock document with download source, version, hash, and license.
 - Create one Ghidra project per immutable build; enable versioned symbol/export
   scripts, but ignore the database itself.
-- Connect a private GitHub repository and add a portable validation workflow.
+- Connect the public data-less GitHub repository and add a portable validation
+  workflow; keep signing and proprietary content outside public jobs/artifacts.
 - Reserve an explicit GitHub-hosted macOS runner/Xcode selection for iOS jobs;
   PR jobs remain unsigned and secret-free.
 - Add scripts for hashes, PE headers, imports, exports, sections, strings, RTTI,
@@ -168,8 +174,8 @@ Tasks:
 - Prefer lossless intermediate representations and retain original coordinate,
   unit, color-space, alpha, and winding metadata.
 - Define the versioned private `.afpack` runtime package. It is built locally on
-  Windows, transferred separately, and imported/validated by the data-less iOS
-  app; it is never uploaded to GitHub Actions.
+  Windows, imported/validated by the data-less Windows and iOS applications,
+  and never uploaded to GitHub Actions.
 
 Exit gate:
 
@@ -197,14 +203,17 @@ Exit gate:
 - Headless deterministic tests produce the same state hash across repeated runs
   and supported development compilers.
 
-## Phase 6 — desktop vertical slice
+## Phase 6 — playable Windows x64 vertical slice
 
-**Goal:** complete one narrow, end-to-end playable scenario before broadening
-the rewrite.
+**Goal:** complete one narrow, end-to-end playable scenario in the native
+Windows x64 product before broadening the reconstruction.
 
 Slice contents:
 
 - Bootstrap converted resources.
+- Implement the SDL3 x64 window/events and keyboard/mouse/controller adapters,
+  the D3D11/DXGI faithful renderer with HLSL, and separate audio and owner-local
+  content adapters behind the portable interfaces.
 - Load one room/level and one aircraft.
 - Draw geometry, textures, depth, transparency, and faithful basic lighting.
 - Support camera, thrust, pitch, bank, one primary weapon, collision, one target,
@@ -214,7 +223,8 @@ Slice contents:
 Exit gate:
 
 - A five-minute Windows run is playable, leak-checked, repeatable, and satisfies
-  documented parity tolerances.
+  documented parity tolerances. The product is a native x64 build and exercises
+  no Windows-specific gameplay or physics implementation.
 
 ## Phase 7 — gameplay and content parity
 
@@ -262,7 +272,8 @@ Exit gate:
 
 ## Phase 9 — native iOS productization
 
-**Goal:** ship the proven core through an iOS-native shell.
+**Goal:** ship the same core proven by the Windows product through an
+iOS-native shell.
 
 Tasks:
 
@@ -334,19 +345,28 @@ Exit gate:
 - Reference mode remains within parity tolerances; enhanced mode meets visual
   and sustained device budgets.
 
-## Phase 11 — verification and private sideload readiness
+## Phase 11 — Windows x64 and private iOS release readiness
 
-**Goal:** prove completeness, ownership readiness, and reproducibility.
+**Goal:** prove completeness, cross-platform consistency, ownership readiness,
+and reproducibility for both products.
 
 Tasks:
 
 - Full campaign soak tests, save compatibility/migration, malformed asset tests,
-  localization sweeps, controller matrix, lifecycle torture tests, and device
-  performance matrix.
-- Rebuild from a clean checkout plus separately supplied legal asset input.
+  localization sweeps, Windows keyboard/mouse/controller and iOS
+  touch/controller matrices, lifecycle/focus/device-transition torture tests,
+  and platform performance matrices.
+- Rebuild both products from a clean checkout plus separately supplied legal
+  asset input.
+- Compare shared deterministic scenario hashes and tolerances across headless,
+  Windows, and iOS execution; investigate every product-specific simulation
+  divergence.
 - Produce dependency licenses, local diagnostic instructions, provisioning
-  notes, Actions workflow/version manifest, and a reproducible private Windows
-  installation procedure.
+  notes, Actions workflow/version manifest, a private Windows x64 packaging and
+  installation procedure, and a Windows-compatible iOS installation procedure.
+- Verify the native Windows x64 architecture, data-less public package, private
+  content import, symbols/diagnostics, input devices, audio devices, display
+  transitions, and faithful-reference capture path.
 - Verify signature, provisioning, entitlements, ARM64 slice, iOS 16.4 minimum,
   IPA checksum, and forbidden-file scan in CI.
 - Verify that the signed application and converted assets are not placed in any
@@ -354,8 +374,9 @@ Tasks:
 
 Exit gate:
 
-- Private-release checklist is fully evidenced and a clean signed build installs
-  and passes acceptance on the owner's iPhone 17 Pro Max.
+- Both product checklists are fully evidenced: a clean Windows x64 build passes
+  campaign and parity acceptance, and a clean signed iOS build installs and
+  passes acceptance on both owner devices.
 
 ## Verification strategy
 
@@ -367,6 +388,7 @@ Exit gate:
 | Rendering | Key-frame and perceptual image comparison | reference/enhanced screenshots |
 | Audio | Event/timing comparison, not waveform identity by default | event log |
 | Game flow | Scripted end-to-end scenario | mission transition log |
+| Windows x64 | Native product smoke, debugger/parity capture, focus/display/input/audio transitions | state hashes, logs, frame capture |
 | iOS | Physical-device lifecycle/performance suite | metric capture |
 
 No subsystem is called “done” merely because it compiles. It is done when its
@@ -386,6 +408,8 @@ contract, evidence, implementation, tests, parity result, and documentation agre
 | Signed IPA cannot be installed from Windows | Blocks device tests | Prove the installation path in the first signed device spike |
 | No iOS 16.4 runtime device | Minimum-version behavior can regress | Treat 16.4 as build/availability coverage only and state the limitation |
 | Cloud build/device loop slows interactive tuning | Delays UI/Metal/debug work | Move interactive profiling and debugging to local Xcode |
+| Platform code forks gameplay or physics | Windows/iOS behavior diverges | One portable core, narrow adapters, cross-platform state hashes, and identical replay scenarios |
+| Windows APIs leak into the core | Expensive platform lock-in | Keep SDL3 and D3D11/DXGI/HLSL behind ADR-0007/0008 adapters and test the API-neutral command boundary |
 | Private artifacts are accidentally shared | Unauthorized redistribution | Ignore originals/converted assets and audit every packaged/staged artifact |
 | Scope expansion into enhancements | Delays playability | Lock faithful vertical slice before modern rendering work |
 
@@ -412,7 +436,11 @@ contract, evidence, implementation, tests, parity result, and documentation agre
 8. Establish the isolated reference runtime and record the first deterministic
    flight/control/render scenarios; this remains independent of host static
    analysis until the isolated environment is available.
-9. **In progress:** the bounded blueprint and placed-scene graphs, seam-safe
+9. Implement the native Windows x64 product boundary with SDL3 window/events/
+   input and D3D11/DXGI/HLSL rendering, create the data-less shell, select the
+   separate audio adapter, and connect the first synthetic smoke scene without
+   moving gameplay into the platform layer.
+10. **In progress:** the bounded blueprint and placed-scene graphs, seam-safe
    draw-model payload, and multi-instance diagnostic have assembled and
    rendered a complete grouped aircraft. Parent-relative local derivation, the
    public synthetic Metal smoke path, placed-record decoder, and flat bounded
@@ -425,5 +453,5 @@ contract, evidence, implementation, tests, parity result, and documentation agre
    separately recover the gameplay room-selection rule; the structurally
    different World `ROOM` catalog is not treated as a join. BSP culling remains
    disabled until its traversal semantics are proven.
-10. Implement native UIKit touch capture and Apple Game Controller adapters,
+11. Implement native UIKit touch capture and Apple Game Controller adapters,
     followed by the configurable visual overlay and on-device usability tests.

@@ -1,24 +1,27 @@
-# ADR-0001: Reconstruct portable native source, then port to iOS
+# ADR-0001: Reconstruct portable native source, then build native products
 
 **Status:** Accepted as working baseline; local Mac consequence amended by
-ADR-0004
+ADR-0004 and product targets extended by ADR-0007
 **Date:** 2026-07-21  
 **Deciders:** project owner and implementation lead
 
 ## Context
 
 Airfix Dogfighter v1.01 is available as 32-bit x86 Windows binaries and custom
-resource packages, but not as source code. The target is iOS/ARM64 with room for
-higher resolution and modern lighting. Direct translation of machine code does
-not recover maintainable source, while shipping an x86 emulator or Windows
-compatibility layer would preserve obsolete APIs and complicate iOS distribution.
+resource packages, but not as source code. The targets are a playable native
+Windows x64 reconstruction and a private iOS/ARM64 port, with room for higher
+resolution and modern lighting. Direct translation of machine code does not
+recover maintainable source, while shipping an x86 emulator or Windows
+compatibility layer would preserve obsolete APIs and complicate both products.
 
 ## Decision
 
 Build a behavior-compatible reimplementation in portable C++20. Use Ghidra and
 controlled runtime experiments to recover contracts and algorithms. Use offline
-tools to decode assets. Keep platform and renderer interfaces narrow, develop a
-Windows reference harness first, and implement a native Metal backend for iOS.
+tools to decode assets. Keep platform and renderer interfaces narrow. Deliver a
+native Windows x64 application for play, rapid debugging, and reference
+comparison, and a native Metal-backed iOS application. ADR-0007 defines the
+parallel product boundary.
 
 Modern effects are added only after the relevant faithful path passes parity
 tests. They remain optional so regressions can be isolated.
@@ -91,10 +94,10 @@ large semantic rewrite; engine lifecycle and licensing become new constraints.
 ## Trade-off analysis
 
 The selected approach is slower before the first playable build but is the only
-option that simultaneously supports reliable behavioral comparison, native iOS
-execution, maintainable source, and deliberate renderer upgrades. The Windows
-reference harness shortens the feedback loop before macOS/iPhone hardware enters
-every iteration.
+option that simultaneously supports reliable behavioral comparison, native
+Windows and iOS execution, maintainable source, and deliberate renderer
+upgrades. The playable Windows x64 product is the primary fast feedback and
+comparison environment; iPhone hardware remains essential for iOS acceptance.
 
 ## Consequences
 
@@ -115,4 +118,5 @@ every iteration.
 3. [ ] Determine the `UDSP` directory and compression layout.
 4. [ ] Establish a safe, recordable Windows reference runtime.
 5. [ ] Build the first archive-listing tool.
-6. [ ] Produce a desktop vertical slice before beginning the iOS shell.
+6. [ ] Produce a playable Windows x64 vertical slice and keep the shared core
+   usable by the iOS shell.

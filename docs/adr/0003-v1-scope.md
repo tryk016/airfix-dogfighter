@@ -1,6 +1,7 @@
-# ADR-0003: Private single-player sideload for version 1.0
+# ADR-0003: Private iOS single-player sideload for version 1.0
 
-**Status:** Accepted; build-host/device matrix amended by ADR-0004
+**Status:** Accepted for the iOS deliverable; build-host/device matrix amended
+by ADR-0004 and the product matrix extended by ADR-0007
 
 **Date:** 2026-07-21
 
@@ -20,6 +21,12 @@ are not required for v1.0.
 Version 1.0 is a private signed sideload containing the single-player game path,
 touch and physical-controller support, saves, presentation, audio available in
 the installed packages, and the required iOS lifecycle behavior.
+
+ADR-0007 adds a playable Windows x64 application as a parallel version 1
+product. It shares the same C++20 game, physics, resource, save, and semantic
+input implementation while owning separate window, renderer, physical-input,
+audio, and filesystem adapters. This does not change the private/no-App-Store
+iOS distribution decision.
 
 Set `IPHONEOS_DEPLOYMENT_TARGET` to 16.4. Use both listed iOS 26.x phones for the
 accepted runtime matrix. Build through GitHub Actions per ADR-0004. Do not

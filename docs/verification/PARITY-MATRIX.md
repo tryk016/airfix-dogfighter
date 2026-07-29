@@ -28,6 +28,14 @@ Statuses: `not-investigated`, `observed`, `specified`, `implemented`, `verified`
 | House Editor | P3 | deferred | SCN-EDITOR-001 | Out of v1.0 scope |
 | Paint Room | P3 | deferred | SCN-PAINT-001 | Out of v1.0 scope |
 | Semantic actions and deterministic input frames | P0 | implemented | SCN-INPUT-001 | Bounded multi-source router plus immutable fixed-tick frames |
+| Cross-product portable simulation contract | P0 | specified | SCN-PLATFORM-001 | Windows x64 and iOS must use one C++20 game, physics, resource, save, input-frame, render-command, and audio-command implementation |
+| Windows x64 native product shell | P0 | specified | SCN-WIN-001 | SDL3 window/events/input, D3D11/DXGI/HLSL rendering, and separate audio/filesystem/private-content adapters; current portable Windows build is not the product shell |
+| Windows keyboard/mouse gameplay | P0 | specified | SCN-WIN-INPUT-001 | SDL3 events feed the shared semantic action model, including focus-loss neutralization and remapping |
+| Windows controller gameplay and menus | P0 | specified | SCN-WIN-INPUT-002 | SDL3 controller-only campaign after selection, hot-plug, calibration, glyphs, and disconnect recovery |
+| Windows faithful renderer and presentation | P0 | specified | SCN-WIN-RENDER-001 | D3D11/DXGI backend with HLSL over shared draw/camera commands; windowed/fullscreen and reference/enhanced separation |
+| Windows audio and device transitions | P0 | specified | SCN-WIN-AUDIO-001 | Native backend over shared audio commands; device/focus/pause and absent-music behavior |
+| Windows parity/debug capture | P0 | specified | SCN-WIN-PARITY-001 | Primary rapid-debug path with replay, state hashes, frame/draw/input/audio capture, and controlled external-original comparison |
+| Windows private `.afpack` import | P0 | specified | SCN-WIN-DATA-001 | Owner-local validated package; original and converted data remain outside Git and public CI |
 | iOS touch flight controls | P0 | implemented | SCN-IOS-002 | Full baseline action transport and adaptive overlay; physical-device acceptance pending |
 | Touch layout profiles/editor | P1 | specified | SCN-INPUT-004 | Phone/tablet/handedness |
 | Controller gameplay and menus | P1 | implemented | SCN-IOS-003 | Baseline extended-gamepad action transport; finished menu UI and device acceptance pending |
