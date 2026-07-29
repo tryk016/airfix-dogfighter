@@ -1,5 +1,6 @@
 #import "AirfixGameViewController.h"
 
+#include "AirfixAVAudioEngineBackend.hpp"
 #import "AirfixContentCoordinator.h"
 #import "AirfixIOSInputCoordinator.h"
 #import "AirfixMetalRenderer.h"
@@ -81,6 +82,7 @@ namespace {
     std::optional<airfix::simulation::PlayerSpawnPose> _playerSpawnPose;
     AirfixPlayerActorPoseRuntimeEndpoint _playerActorPoseRuntime;
     AirfixGameplayCameraMissionRuntimeEndpoint _gameplayCameraRuntime;
+    std::unique_ptr<airfix::ios::AirfixAVAudioEngineBackend> _audioBackend;
     dispatch_queue_t _rendererPreparationQueue;
 }
 @property(nonatomic, strong) AirfixMetalRenderer* renderer;
@@ -94,6 +96,8 @@ namespace {
 
 - (void)updateDiagnosticsLabelWithInputDiagnostics:
     (AirfixInputDiagnostics*)diagnostics;
+- (void)handleAudioForcedPause:
+    (airfix::ios::AirfixIOSAudioPauseReason)reason;
 @end
 
 @implementation AirfixGameViewController
@@ -226,8 +230,18 @@ namespace {
         initWithTouchControlsView:touchControlsView];
     self.inputCoordinator.delegate = self;
     self.simulationPipelineReady = YES;
+    _audioBackend =
+        std::make_unique<airfix::ios::AirfixAVAudioEngineBackend>();
 
     __weak AirfixGameViewController* weakSelf = self;
+    _audioBackend->setForcedPauseHandler(
+        [weakSelf](
+            const airfix::ios::AirfixIOSAudioPauseReason reason) {
+            AirfixGameViewController* strongSelf = weakSelf;
+            if (strongSelf != nil) {
+                [strongSelf handleAudioForcedPause:reason];
+            }
+        });
     self.inputPipelineReady = airfix::ios::setInputFrameConsumer(
         self.inputCoordinator,
         [weakSelf](const airfix::input::InputFrame& frame) noexcept {
@@ -289,6 +303,7 @@ namespace {
             // controller instance. Keep the last accepted world state intact,
             // neutralize physical input, and refuse later pause-button resume.
             strongSelf.simulationPipelineReady = NO;
+            strongSelf->_audioBackend->setActive(false);
             strongSelf->_session.pause();
             [strongSelf.inputCoordinator resetForGameplayBoundary];
             ((MTKView*)strongSelf.view).paused = YES;
@@ -346,6 +361,7 @@ namespace {
 
 - (void)viewDidDisappear:(BOOL)animated {
     const bool wasRunning = _session.simulationRunning();
+    _audioBackend->setActive(false);
     _session.pause();
     ((MTKView*)self.view).paused = YES;
     if (wasRunning) {
@@ -368,6 +384,7 @@ namespace {
 - (void)applicationWillResignActive {
     [self.inputCoordinator applicationWillResignActive];
     [self.contentCoordinator applicationWillResignActive];
+    _audioBackend->setActive(false);
     _session.enterInactive();
     ((MTKView*)self.view).paused = YES;
 }
@@ -375,6 +392,7 @@ namespace {
 - (void)applicationDidEnterBackground {
     [self.inputCoordinator applicationDidEnterBackground];
     [self.contentCoordinator applicationDidEnterBackground];
+    _audioBackend->setActive(false);
     _session.enterBackground();
     ((MTKView*)self.view).paused = YES;
 }
@@ -382,6 +400,7 @@ namespace {
 - (void)applicationWillEnterForeground {
     [self.inputCoordinator applicationWillEnterForeground];
     [self.contentCoordinator applicationWillEnterForeground];
+    _audioBackend->setActive(false);
     _session.enterForeground();
     ((MTKView*)self.view).paused = YES;
 }
@@ -429,6 +448,7 @@ namespace {
     }
     _session.setContentState(contentState);
     if (contentState != airfix::runtime::ContentState::ready) {
+        _audioBackend->setActive(false);
         [self.inputCoordinator resetForGameplayBoundary];
         ((MTKView*)self.view).paused = YES;
         self.touchControlsView.hidden = YES;
@@ -438,6 +458,7 @@ namespace {
 - (void)contentCoordinatorDidBeginLoadingMission:
     (AirfixContentCoordinator*)coordinator {
     (void)coordinator;
+    _audioBackend->setActive(false);
     _session.setContentState(airfix::runtime::ContentState::validating);
     // Keep the previously committed mission state intact until the new room,
     // spawn pose, and fresh deterministic input state commit together.
@@ -653,6 +674,7 @@ namespace {
 - (void)contentCoordinatorDidFailLoadingMission:
     (AirfixContentCoordinator*)coordinator {
     (void)coordinator;
+    _audioBackend->setActive(false);
     _session.setContentState(airfix::runtime::ContentState::rejected);
     [self.inputCoordinator resetForGameplayBoundary];
     ((MTKView*)self.view).paused = YES;
@@ -669,6 +691,7 @@ namespace {
 
     MTKView* metalView = (MTKView*)self.view;
     if (reason != AirfixInputPauseReasonUserControl) {
+        _audioBackend->setActive(false);
         _session.pause();
         metalView.paused = YES;
         if (reason == AirfixInputPauseReasonInputPipelineFailure) {
@@ -691,6 +714,7 @@ namespace {
     }
 
     if (_session.lifecycleState() == airfix::runtime::LifecycleState::running) {
+        _audioBackend->setActive(false);
         _session.pause();
         metalView.paused = YES;
         self.statusLabel.text =
@@ -709,9 +733,32 @@ namespace {
     const bool resumed = mayResume && _session.resume();
     metalView.paused = !resumed;
     if (resumed) {
+        _audioBackend->setActive(true);
         self.statusLabel.text =
             @"Airfix Dogfighter reconstruction\nGameplay running";
     }
+}
+
+- (void)handleAudioForcedPause:
+    (const airfix::ios::AirfixIOSAudioPauseReason)reason {
+    _session.pause();
+    [self.inputCoordinator resetForGameplayBoundary];
+    ((MTKView*)self.view).paused = YES;
+
+    NSString* detail = @"Audio interrupted; gameplay paused";
+    switch (reason) {
+    case airfix::ios::AirfixIOSAudioPauseReason::interruption:
+        detail = @"Audio interrupted; gameplay paused";
+        break;
+    case airfix::ios::AirfixIOSAudioPauseReason::outputRouteLost:
+        detail = @"Audio output changed; gameplay paused";
+        break;
+    case airfix::ios::AirfixIOSAudioPauseReason::mediaServicesReset:
+        detail = @"Audio services restarted; gameplay paused";
+        break;
+    }
+    self.statusLabel.text = [@"Airfix Dogfighter reconstruction\n"
+        stringByAppendingString:detail];
 }
 
 - (void)inputCoordinator:(AirfixIOSInputCoordinator*)coordinator
