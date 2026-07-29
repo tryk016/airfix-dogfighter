@@ -584,6 +584,12 @@ A future implementation must keep input sampling and physics stepping as
 separate clocks; changing the recovered step to 60 Hz would not be a
 parity-preserving shortcut.
 
+The portable simulation now preserves the ordered health-gated
+target/apply/clamp followed by unconditional smoothing as one pure transition.
+Calling that helper represents an already-selected active slot-45 invocation:
+it owns no scheduler, `dt`, sleep gate, Q15 conversion, or event sampling and
+remains unwired from `PlayerAircraftState`.
+
 Until the runtime evidence exists, `PlayerAircraftState` remains a frozen-pose
 transport. It must not encode these equations as claimed gameplay behavior
 merely because the static algebra is complete.

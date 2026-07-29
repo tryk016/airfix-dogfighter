@@ -288,9 +288,11 @@
   Slot 44's counter now also proves the five-call engine-audio cadence, exact
   start/running/stop command order, five sound roles, and the speed/thrust/
   orientation pitch-volume equations. Isolated allocation-free C++20 helpers
-  specify sleep, smoothing, collision degradation, recovery/clamp, and the
-  bounded engine-only command stream without pretending the frozen player
-  simulation owns rigid-body integration or audio playback. Physical units,
+  specify sleep; the ordered health-gated target/apply/clamp followed by
+  unconditional smoothing in an executed slot-45 step; collision degradation;
+  recovery/clamp; and the bounded engine-only command stream without pretending
+  the frozen player simulation owns scheduling, event sampling, rigid-body
+  integration, or audio playback. Physical units, Q15-to-native event timing,
   runtime contact/audio traces, deterministic PRNG ownership, x87 numeric
   tolerance, mixer integration, and dynamic actor-to-render publication remain
   unknown.
@@ -853,10 +855,11 @@
    payload policy, then publish one coherent changing pose/health/inactive/
    kinematic sample to Windows and iOS before connecting live camera and audio.
    The backend-neutral runtime planner and one-lease-per-frame Metal/D3D11
-   consumers are complete. The next evidence-backed code slice may isolate the
-   native-payload throttle target and smoothing transition, but it must remain
-   unwired from `PlayerAircraftState` until controlled traces prove the
-   Q15/event timing.
+   consumers plus the isolated native-field target/apply/clamp/smoothing step
+   are complete. Next isolate the already-formed signed native
+   `THRUST_SET/APPLY` event-write reducer from the 12 ms clock, then keep both
+   layers unwired from `PlayerAircraftState` until controlled traces prove the
+   Q15-to-event and sample-and-hold timing.
 2. Obtain controlled runtime traces for free flight and the ground, inverted,
    water, collision, engine-transition, and too-high branches; establish
    x87-versus-portable numeric tolerances and deterministic replacement PRNG

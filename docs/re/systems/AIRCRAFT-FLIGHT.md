@@ -416,12 +416,15 @@ Until those unknowns are resolved, the portable simulation may:
 - produce a canonical cross-compiler diagnostic hash.
 
 Separate pure helpers may also preserve already confirmed local contracts for
-the vehicle sleep gate, smoothed thrust, collision-driven thrust-integrity
-degradation, later recovery/clamping, and the bounded engine-only audio command
-stream plus the destroyed-dive sample state. The primary `WpMGun` helper may
-also preserve its recovered technology profiles, shot accumulator, trigger,
-barrel, ammunition, and one-projectile-request-per-refresh transition. These
-helpers remain unwired until a
+the vehicle sleep gate; the ordered slot-45 target/apply/clamp/smoothing
+prefix; collision-driven thrust-integrity degradation; later
+recovery/clamping; and the bounded engine-only audio command stream plus the
+destroyed-dive sample state. The thrust-control transition treats invocation
+as the already-decided active slot-45 call and owns no scheduler, `dt`, Q15
+conversion, or event timing. The primary `WpMGun` helper may also preserve its
+recovered technology profiles, shot accumulator, trigger, barrel, ammunition,
+and one-projectile-request-per-refresh transition. These helpers remain
+unwired until a
 runtime owns the native 12 ms scheduler, rigid-body/collision state, engine
 phase, deterministic random sequence, and audio backend. The eventual audio
 coordinator must place destroyed-dive commands after phase transitions and
