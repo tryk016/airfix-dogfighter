@@ -118,6 +118,8 @@ tracer are optional `ExtractFunction` feature probes. The three RE wrapper
 suites, 12 Rizin/public-boundary Python tests, 391-file public scan, 263-row
 function catalogue with its two pre-existing missing references, `actionlint`,
 changed-scope local-path scan, and `git diff --check` pass.
+The exact committed tree `457ed6b` also compiles all 256 steps with GCC 13.3
+and passes 79/79 tests in a new isolated `Airfix-Dev` WSL clone.
 
 ## Remaining boundary
 

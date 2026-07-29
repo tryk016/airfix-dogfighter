@@ -2776,3 +2776,6 @@ superseded evidence.
   12 Rizin/public-boundary Python tests, public-boundary check and 391-file
   scan, 263-row catalogue with only its two pre-existing missing references,
   `actionlint`, 22-file local-path scan, and `git diff --check` pass.
+- The exact committed tree `457ed6b` compiles all 256 steps with GCC 13.3 and
+  passes 79/79 tests in a new isolated `Airfix-Dev` WSL clone. GitHub Actions
+  remains the final publication gate.

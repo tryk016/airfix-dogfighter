@@ -750,8 +750,9 @@ These questions do not block static analysis or the archive work.
   12 Rizin/public-boundary Python tests, public-boundary check and 391-file
   scan, 263-row catalogue validation with only the two pre-existing missing
   references, `actionlint`, 22-file changed-scope local-path scan, and
-  `git diff --check` pass. Exact-commit WSL and GitHub Actions remain the final
-  publication gates.
+  `git diff --check` pass. The exact committed tree `457ed6b` also compiles all
+  256 steps with GCC 13.3 and passes 79/79 tests in a new isolated
+  `Airfix-Dev` WSL clone. GitHub Actions remains the final publication gate.
 
 ## Blockers
 
