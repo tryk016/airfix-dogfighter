@@ -590,6 +590,13 @@ Calling that helper represents an already-selected active slot-45 invocation:
 it owns no scheduler, `dt`, sleep gate, Q15 conversion, or event sampling and
 remains unwired from `PlayerAircraftState`.
 
+The separate portable thrust-event decoder now preserves the immediately
+upstream `THRUST_SET/APPLY` field writes for already-formed signed native
+payloads. It emits one typed write and the nonzero rest-clear directive but
+owns no input conversion, event clock, queue, rest counter, slot-45 invocation,
+or state commit. The two helpers may be composed by tests; their real temporal
+join still requires controlled traces.
+
 Until the runtime evidence exists, `PlayerAircraftState` remains a frozen-pose
 transport. It must not encode these equations as claimed gameplay behavior
 merely because the static algebra is complete.
