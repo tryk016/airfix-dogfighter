@@ -288,14 +288,15 @@
   Slot 44's counter now also proves the five-call engine-audio cadence, exact
   start/running/stop command order, five sound roles, and the speed/thrust/
   orientation pitch-volume equations. Isolated allocation-free C++20 helpers
-  specify sleep; the ordered health-gated target/apply/clamp followed by
-  unconditional smoothing in an executed slot-45 step; collision degradation;
-  recovery/clamp; and the bounded engine-only command stream without pretending
-  the frozen player simulation owns scheduling, event sampling, rigid-body
-  integration, or audio playback. Physical units, Q15-to-native event timing,
-  runtime contact/audio traces, deterministic PRNG ownership, x87 numeric
-  tolerance, mixer integration, and dynamic actor-to-render publication remain
-  unknown.
+  specify sleep; already-formed native `THRUST_SET/APPLY` typed writes and
+  nonzero rest-clear directives; the ordered health-gated target/apply/clamp followed
+  by unconditional smoothing in an executed slot-45 step; collision
+  degradation; recovery/clamp; and the bounded engine-only command stream
+  without pretending the frozen player simulation owns scheduling, event
+  sampling, rigid-body integration, or audio playback. Physical units,
+  Q15-to-native event timing, runtime contact/audio traces, deterministic PRNG
+  ownership, full x87 numeric tolerance, mixer integration, and dynamic
+  actor-to-render publication remain unknown.
 - Recovered the complete player spawn/type/primary-actor event chain and the
   fixed 16-entry mission start table. The selector uses requested index modulo
   count, with the primary receiving CCF room as the empty-table fallback.
@@ -856,10 +857,11 @@
    kinematic sample to Windows and iOS before connecting live camera and audio.
    The backend-neutral runtime planner and one-lease-per-frame Metal/D3D11
    consumers plus the isolated native-field target/apply/clamp/smoothing step
-   are complete. Next isolate the already-formed signed native
-   `THRUST_SET/APPLY` event-write reducer from the 12 ms clock, then keep both
-   layers unwired from `PlayerAircraftState` until controlled traces prove the
-   Q15-to-event and sample-and-hold timing.
+   and the separate already-formed signed native `THRUST_SET/APPLY` typed-write
+   reducer are complete. Keep both layers unwired from `PlayerAircraftState`
+   until controlled traces prove the Q15-to-event and sample-and-hold timing;
+   recover pitch/bank writes to the same numeric standard before creating a
+   complete native flight-control reducer.
 2. Obtain controlled runtime traces for free flight and the ground, inverted,
    water, collision, engine-transition, and too-high branches; establish
    x87-versus-portable numeric tolerances and deterministic replacement PRNG

@@ -3457,3 +3457,29 @@ superseded evidence.
   rigid-body state, or renderer publication. It remains deliberately unwired
   until controlled traces establish the 60 Hz input-to-native-event and 12 ms
   sample-and-hold policy. No original or private data is required.
+
+## 2026-07-29 - native thrust-event typed-write reducer
+
+- Added a separate allocation-free C++20 decoder for already-formed native
+  `0x63 THRUST_SET` and `0x64 THRUST_APPLY` events. It returns exactly one
+  target/apply field write plus the proven nonzero rest-duration clear
+  directive, or an explicit inactive/unsupported/outside-evidence result.
+- The valid-event inactive gate precedes payload inspection. Active payloads
+  are conservatively bounded to `[-255, 255]`, as confirmed for command and AI
+  producers. The analog formula has no local clamp and its upstream raw-axis
+  domain remains unproven; this is a portable fail-closed evidence boundary,
+  not an invented native or universal producer range check.
+- Wider-intermediate conversion retains exact distinguishing vectors:
+  `APPLY(249) = 0x3C9FFC25` and `APPLY(255) = 0x3CA3D70B`.
+  Synthetic tests cover nine exact vectors, all 511 admitted values against an
+  independent integer-product/RNE32 oracle, inactive/out-of-range precedence,
+  both misleading `THROTTLE_*` values, typed single-field writes, explicit
+  last-write-wins/rest semantics, and composition with the separate slot-45
+  transition.
+- The decoder owns no Q15 mapping, input or event clock, queue, scheduler,
+  state commit, force step, or renderer publication. It remains deliberately
+  unwired until controlled traces establish the 60 Hz-to-12 ms sample-and-hold
+  policy. No original or private data is required.
+- Clean GCC 15.2 and MSVC 19.51 portable builds each pass 94/94 tests. A clean
+  native MSVC Windows product build passes 98/98 tests, including both D3D11
+  product smoke paths.

@@ -299,6 +299,23 @@ skipped while the inactive latch at vehicle offset `+0x460` is nonzero.
 successful nonzero control write also clears the signed 64-bit rest duration
 whose low and high DWORDs occupy `+0x458` and `+0x45C`.
 
+The two thrust cases now have a separate portable typed-write decoder. It
+accepts only an already-formed signed native payload and returns a write for
+exactly `+0x444` or `+0x440`, plus the proven rest-clear directive. The native
+wire type is a full signed `int32`. Recovered command bindings and the AI map
+establish `[-255, 255]`; the analog formula has no local clamp and its upstream
+raw-axis domain remains unproven. The portable boundary conservatively admits
+that range and fails closed outside it. This added validation must not be
+misreported as a native dispatcher or universal producer check. A recognized
+inactive event is accepted before payload validation, matching the native
+gate.
+
+The conversion preserves the recovered wider-intermediate store vectors:
+`THRUST_APPLY(249)` is `0x3C9FFC25` and `THRUST_APPLY(255)` is
+`0x3CA3D70B`. The decoder owns no state, scheduler, Q15 conversion, or slot-45
+call and remains unwired. See
+[EXP-20260729-054](../../experiments/EXP-20260729-054-native-thrust-event-reducer.md).
+
 The apparent `APPLY` alternatives for pitch/bank and both `THROTTLE` events
 fall through the complete `AirCraft -> AfVehicle -> NfActor ->
 NfTypeInstance` dispatch chain without modifying the control fields. This is
@@ -416,12 +433,15 @@ Until those unknowns are resolved, the portable simulation may:
 - produce a canonical cross-compiler diagnostic hash.
 
 Separate pure helpers may also preserve already confirmed local contracts for
-the vehicle sleep gate; the ordered slot-45 target/apply/clamp/smoothing
-prefix; collision-driven thrust-integrity degradation; later
+the vehicle sleep gate; the typed already-formed native thrust-event write;
+the ordered slot-45 target/apply/clamp/smoothing prefix; collision-driven
+thrust-integrity degradation; later
 recovery/clamping; and the bounded engine-only audio command stream plus the
 destroyed-dive sample state. The thrust-control transition treats invocation
 as the already-decided active slot-45 call and owns no scheduler, `dt`, Q15
-conversion, or event timing. The primary `WpMGun` helper may also preserve its
+conversion, or event timing. The event decoder owns neither the 60 Hz producer
+nor 12 ms sample-and-hold policy and only returns a typed write plus a
+rest-clear directive. The primary `WpMGun` helper may also preserve its
 recovered technology profiles, shot accumulator, trigger, barrel, ammunition,
 and one-projectile-request-per-refresh transition. These helpers remain
 unwired until a
