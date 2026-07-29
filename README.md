@@ -20,6 +20,8 @@ switchable and testable.
 > and an unsigned data-less UIKit/Metal iOS shell. The Windows product now
 > exercises shared synthetic draw commands through HLSL and bounded synthetic
 > PCM through the reconstructed AirCraft audio coordinator and XAudio2 2.9.
+> The iOS shell now consumes the same audio contract through AVAudioEngine and
+> enforces explicit-resume interruption and route-loss handling.
 > Neither target is **yet a complete playable release**.
 
 **Lawfully owned original game data is required for private use and is not
@@ -58,7 +60,9 @@ Implemented foundations include:
   game-thread recovery, safe no-output operation, and a muted synthetic smoke
   path; the recovered engine start/running/stop and destroyed-dive state
   machines are now composed in their original order and translated into this
-  shared command stream;
+  shared command stream; iOS consumes the same stream through bounded
+  AVAudioEngine player/varispeed nodes, standard Float32 conversion, retained
+  loop recovery, and lifecycle/interruption-safe session activation;
 - one proprietary-data-free render scene and validated draw plan shared by the
   Windows D3D11 and iOS Metal bring-up paths;
 - bounded UDSP, CCF, GTI, and related legacy-format parsing;

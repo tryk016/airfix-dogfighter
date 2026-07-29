@@ -16,7 +16,8 @@
   and D3D11/DXGI with HLSL for the Windows renderer. SDL3 does not own game
   rendering; iOS remains on its native Metal backend. ADR-0009 selects inbox
   XAudio2 2.9 for the Windows native audio backend and keeps SDL3 audio
-  disabled.
+  disabled. ADR-0010 selects AVAudioEngine for iOS over the same portable
+  command/PCM contract.
 - The native Windows x64 product foundation is implemented. A statically
   linked SDL3 shell owns the window and lifecycle events; a separate
   D3D11/DXGI backend compiles HLSL, uploads the same public scene used by Metal,
@@ -33,6 +34,15 @@
   clip/voice bindings into this backend; the product smoke executes the whole
   synthetic state sequence. It remains a data-less product shell, not a
   playable build.
+- The native iOS audio adapter consumes the same monotonic command batches.
+  It converts bounded PCM16 registrations once into AVAudioEngine's standard
+  deinterleaved Float32 representation, uses one player/varispeed graph per
+  voice, retains only looping state across graph recovery, and rejects stale
+  completion callbacks through voice generations. Ambient-session activation
+  occurs only after deliberate gameplay resume. Pause/background paths
+  deactivate it; interruption, route loss, and media-service reset force
+  gameplay pause and never auto-resume. Owner-local sample binding and
+  physical-device audible/route acceptance remain pending.
 - Cross-platform input/control/haptics system specified; semantic input
   architecture recorded in ADR-0002.
 - Local Git repository initialized on branch `main`; planning baseline committed
@@ -776,12 +786,13 @@
 
 ## Next
 
-1. Extend the implemented native Windows x64 renderer/input/audio shell with
-   owner-local authenticated content, persistent
-   remapping/calibration profiles and controller glyphs; replace the public
-   smoke scene and synthetic audio clip with shared reconstructed world/audio
-   commands and validated private bindings without weakening its data-less CI
-   path.
+1. Bind authenticated owner-local samples and verified loop metadata to the
+   shared reconstructed audio roles on both products. Extend the implemented
+   native Windows x64 renderer/input/audio shell with owner-local authenticated
+   content, persistent remapping/calibration profiles and controller glyphs;
+   replace the public smoke scene and synthetic audio clip with shared
+   reconstructed world/audio commands and validated private bindings without
+   weakening either data-less CI path.
 2. Obtain controlled runtime traces for free flight and the ground, inverted,
    water, collision, engine-transition, and too-high branches; establish
    x87-versus-portable numeric tolerances and deterministic replacement PRNG
@@ -823,6 +834,14 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The native iOS audio slice passes a fresh 281-step MinGW GCC 15.2 Release
+  build and all 87 portable tests. Xcode 26.6 compiles both ARM64 `iphoneos`
+  and `iphonesimulator` data-less bundles with deployment target 16.4 after
+  compiling the AVAudioEngine Objective-C++ backend. The synthetic and actual
+  441-file public-boundary scans, changed-source formatting, changed-scope
+  local-path scan, and `git diff --check` pass. Audible output, interruption
+  timing, and wired/Bluetooth route behavior remain explicitly unverified
+  until physical-device acceptance.
 - The AirCraft audio-composition slice passes a fresh 281-step MinGW GCC 15.2
   Release build and all 87 portable tests; the code-intelligence build also
   passes 87/87. The native product build passes 89/89 tests. Its hidden app

@@ -69,6 +69,8 @@ add_executable(airfix_ios MACOSX_BUNDLE
     main.mm
     AirfixAppDelegate.h
     AirfixAppDelegate.mm
+    AirfixAVAudioEngineBackend.hpp
+    AirfixAVAudioEngineBackend.mm
     AirfixContentCoordinator.h
     AirfixContentCoordinator.mm
     AirfixMissionWorldRoomSnapshot.h
@@ -104,11 +106,13 @@ target_compile_options(airfix_ios PRIVATE
 )
 target_link_libraries(airfix_ios PRIVATE
     airfix::afpack
+    airfix::audio
     airfix::content
     airfix::input
     airfix::render
     airfix::runtime
     airfix::simulation
+    "-framework AVFAudio"
     "-framework UIKit"
     "-framework CoreGraphics"
     "-framework GameController"

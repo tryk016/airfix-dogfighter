@@ -19,7 +19,7 @@ Statuses: `not-investigated`, `observed`, `specified`, `implemented`, `verified`
 | AI | P1 | observed | SCN-AI-001 | Eight-channel control mapping and event dispatch recovered; behavior logic incomplete |
 | Mission triggers and progression | P0 | not-investigated | SCN-MISSION-001 | |
 | HUD and mission status | P1 | not-investigated | SCN-HUD-001 | |
-| Sound effects and voices | P1 | observed | SCN-AUDIO-001 | AirCraft five-call engine cadence, strict start/running/stop phases, five engine roles, ordered pitch-volume stream, and health-gated `enginedive` state with vertical-speed volume are recovered as pure bounded transitions; their exact phase/dive/modulation composition now produces the generic bounded command stream consumed by Windows XAudio2 2.9, while live aircraft scheduling, private clips, spatial parameters, broader effects, iOS playback, and device acceptance remain pending |
+| Sound effects and voices | P1 | observed | SCN-AUDIO-001 | AirCraft five-call engine cadence, strict start/running/stop phases, five engine roles, ordered pitch-volume stream, and health-gated `enginedive` state with vertical-speed volume are recovered as pure bounded transitions; their exact phase/dive/modulation composition now produces the generic bounded command stream consumed by Windows XAudio2 2.9 and iOS AVAudioEngine, while live aircraft scheduling, private clips, spatial parameters, broader effects, audible parity, and device acceptance remain pending |
 | Music subsystem with content absent | P1 | specified | SCN-AUDIO-002 | Original CD/audio unavailable |
 | Save/load and rosters | P1 | not-investigated | SCN-SAVE-001 | |
 | Localization | P1 | observed | SCN-LOC-001 | EN/DA/NO/SV packages found |
@@ -42,7 +42,8 @@ Statuses: `not-investigated`, `observed`, `specified`, `implemented`, `verified`
 | Controller hot-plug/disconnect | P1 | implemented | SCN-IOS-004 | Generation-gated reset, release, pause, and touch recovery; device acceptance pending |
 | Input remapping/calibration | P1 | specified | SCN-INPUT-006 | Deadzone/curve/invert/conflicts |
 | Phone/controller haptics | P1 | specified | SCN-INPUT-007 | Capability fallback and stop rules |
-| iOS lifecycle/interruption recovery | P0 | implemented | SCN-IOS-005 | Input cancellation and explicit resume implemented; audio path pending |
+| iOS lifecycle/interruption recovery | P0 | implemented | SCN-IOS-005 | Input cancellation plus audio pause/deactivation and explicit resume implemented; physical-device acceptance pending |
+| iOS audio and route transitions | P1 | implemented | SCN-IOS-007 | AVAudioEngine consumes the shared command/PCM contract through bounded player/varispeed graphs; interruption, route loss, media-service reset, loop-only recovery, and no-automatic-resume policy implemented; private clips and physical-output acceptance pending |
 | iOS atomic saves and migration | P0 | specified | SCN-IOS-006 | Recovery from interrupted write |
 | iOS safe-area and adaptive UI | P0 | implemented | SCN-IOS-011 | Compact/large landscape overlay implemented; target-device acceptance pending |
 | iOS performance/thermal behavior | P1 | specified | SCN-IOS-009 | Sustained device test |
