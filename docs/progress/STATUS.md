@@ -814,8 +814,10 @@ These questions do not block static analysis or the archive work.
   verifies a second frame. The same change
   passes a separate 271-step portable build with 84/84 tests, public-boundary
   unit tests and the 422-file scan, `actionlint`, formatting validation, and
-  `git diff --check`. The Visual Studio 2026 Actions product job is the pending
-  publication gate.
+  `git diff --check`. Pull-request Actions run `30439266445` passes the
+  Visual Studio 2026 D3D11 product job and all portable Ubuntu, Windows, macOS,
+  and clangd jobs; iOS run `30439256007` passes both `iphoneos` and
+  `iphonesimulator`.
 - Merged projectile runtime-pool main commit `bfde965` passes the exact-main
   Ubuntu, Windows, ARM64 macOS, clangd/code-intelligence, `iphoneos`, and
   `iphonesimulator` Actions jobs.

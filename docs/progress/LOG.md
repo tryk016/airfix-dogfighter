@@ -3042,5 +3042,7 @@ superseded evidence.
   D3D11 GPU readback test passes before and after swap-chain target recreation.
   A separate 271-step portable build passes 84/84 tests.
   Public-boundary tests and the 422-file scan, `actionlint`, clang-format,
-  `git diff --check`, and the official SDL API/hash review pass. Visual Studio
-  Actions validation remains the publication gate.
+  `git diff --check`, and the official SDL API/hash review pass. Pull-request
+  Actions run `30439266445` passes the Visual Studio 2026 D3D11 product job and
+  the complete portable matrix; iOS run `30439256007` passes both Apple SDK
+  jobs.
