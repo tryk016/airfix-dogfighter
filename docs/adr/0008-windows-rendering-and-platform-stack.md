@@ -68,6 +68,8 @@ one shader source language.
 Do not reproduce the DirectX 7 API or fixed-function interfaces. Recover the
 observable render states and ordering as evidence, represent them in the modern
 shared command model, and implement their faithful result in D3D11 and Metal.
+ADR-0013 extends this stack decision with the binding native-resolution, Hor+,
+Classic/Enhanced, quality, and staged image-quality contract.
 
 SDL GPU is not the primary renderer abstraction. Its modern cross-platform API
 targets D3D12, Vulkan, and Metal and requires backend-appropriate shader

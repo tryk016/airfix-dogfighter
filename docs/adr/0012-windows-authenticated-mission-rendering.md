@@ -47,6 +47,11 @@ greater-or-equal, and aspect-fits the shared 640x480 logical canvas into the
 current drawable. D3D11 and DXGI execute the result; no DirectX 7 API is
 emulated.
 
+ADR-0013 subsequently classifies this 640x480 aspect-fit as a temporary
+parity/reference presentation. It is not the target render resolution or the
+default widescreen policy. The production path must render at the selected
+physical extent at 100% render scale and use Hor+ by default.
+
 `--smoke-test` remains exclusive, synthetic, and proprietary-data-free. The
 private hidden validator additionally renders one authenticated mission frame,
 reads the actual D3D11 back buffer, and requires visible non-clear geometry.

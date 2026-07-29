@@ -17,7 +17,9 @@
   production-ready source.
 - Original assets are in custom `UDSP` packages and must be understood before a
   complete vertical slice can load.
-- Fidelity and modernization are separate acceptance dimensions.
+- Fidelity and modernization are separate acceptance dimensions, but native
+  3D resolution, Hor+ widescreen, and independently scaled sharp UI are common
+  requirements of both visual profiles rather than optional polish.
 - The iOS version 1 product is a private signed sideload with deployment target
   iOS 16.4. Runtime tests use iPhone 17 Pro Max/iOS 26.6 and iPhone SE
   3/iOS 26.3.
@@ -107,9 +109,27 @@ Windows product and the iOS product own separate renderer backends over that
 same contract. Windows uses D3D11/DXGI with HLSL and is the primary rapid-debug
 and reference-capture path; iOS uses native Metal. SDL3 does not own rendering.
 The faithful pipeline models observed output and render-state semantics without
-recreating DirectX 7 interfaces. Modern lighting, shadows, post-processing,
-higher-resolution textures, and upscaling are optional feature layers with
-independent toggles and performance budgets.
+recreating DirectX 7 interfaces. The recovered 640x480 canvas is reference
+camera evidence, never a physical render-target ceiling. The render contract
+keeps reference camera coordinates, UI design coordinates, output/backbuffer
+pixels, 3D render-target pixels, viewport/safe area, and render scale explicit.
+At 100% scale the 3D target exactly matches the output extent.
+
+Standard widescreen presentation is Hor+ with reference vertical FOV; Original
+4:3 remains an aspect-fitted comparison mode. UI, text, hit regions, and
+pointer/touch mapping use the presentation viewport and safe area independently
+of 3D render scale. `Classic` is the faithful high-resolution visual policy,
+while `Enhanced` adds modern lights, shadows, materials, HDR, atmosphere,
+particles, and post-processing. `Low` through `Ultra` quality tiers and
+individual effect controls are orthogonal to those profiles. Optional
+upscaling is available only as an explicit render-scale technique, never as a
+substitute for native rendering at 100%. See ADR-0013.
+
+The portable front end owns camera, geometry, material, light, pass, draw, and
+diagnostic descriptions. D3D11/HLSL and Metal translate those descriptions
+without changing simulation. Render timing, quality policy, exposure, dynamic
+resolution, interpolation, and visual randomness cannot feed back into
+deterministic gameplay or physics.
 
 Static room payloads and GPU resources remain immutable after publication.
 Future actor motion enters through a separate bounded

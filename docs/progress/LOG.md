@@ -3240,3 +3240,32 @@ superseded evidence.
   boundary scan, `actionlint`, changed-source formatting, changed-scope
   local-path scanning, and `git diff --check` pass. Hosted Windows, portable,
   clangd, and iOS gates remain mandatory before merge.
+
+## 2026-07-29 - native-resolution modern rendering contract
+
+- Accepted ADR-0013 as the binding cross-product rendering contract. At 100%
+  render scale, the 3D target must equal the physical output extent; 3840x2160
+  therefore means actual 3840x2160 scene rasterization, never an upscale from
+  640x480, 1120x480, or another logical canvas.
+- Distinguished reference camera coordinates, UI design space, output pixels,
+  3D render-target pixels, viewport/safe area, and render scale. Standard
+  widescreen is Hor+ with reference vertical FOV; Original 4:3 remains an
+  aspect-fitted comparison mode.
+- Defined orthogonal Classic/Enhanced visual profiles and
+  Low/Medium/High/Ultra quality tiers. Both native backends consume the same
+  C++20 camera/geometry/material/light/command contract, while D3D11/HLSL and
+  Metal implement platform-specific passes without feeding visual state into
+  deterministic simulation.
+- Ordered implementation so exact native targets, projection, safe-area/UI and
+  input transforms, tests, and diagnostics land before linear/sRGB sampling,
+  lights, shadows, materials, HDR, atmosphere, particles, and post-processing.
+  This foundation advances alongside gameplay reconstruction; costly effects
+  do not block the active playable slice.
+- Added the required aspect-ratio matrix, platform FPS goals, render-scale
+  controls, diagnostic counters, and matched 1080p/1440p/4K/ultrawide capture
+  policy. Owner-content screenshots and all original or converted assets remain
+  outside Git and public CI.
+- The portable Ninja/code-intelligence build is current and passes 89/89 tests.
+  The 454-file public-boundary scan, local-path scan, local Markdown-link check,
+  `actionlint`, and `git diff --check` pass; hosted platform builds remain the
+  merge gate.

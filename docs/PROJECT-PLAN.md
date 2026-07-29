@@ -3,7 +3,8 @@
 **Baseline:** Airfix Dogfighter v1.01  
 **Target:** parallel playable Windows x64 reconstruction and private native iOS
 ARM64 sideload over one portable C++20 core
-**Plan dates:** 2026-07-21; Windows x64 product revision 2026-07-29
+**Plan dates:** 2026-07-21; Windows x64 and native-resolution rendering
+revisions 2026-07-29
 
 ## Definition of the outcome
 
@@ -21,9 +22,12 @@ The first complete release candidate must:
 6. Own separate Windows and iOS window/lifecycle, renderer, physical-input,
    audio, and filesystem adapters over the shared game.
 7. Support iOS lifecycle, safe areas, storage, interruptions, and resume.
-8. Render at native presentation resolution with stable platform performance
-   budgets.
-9. Keep visual modernization optional and independently testable.
+8. Render 3D directly at the selected physical resolution when render scale is
+   100%, with Hor+ widescreen, an optional Original 4:3 comparison mode, and
+   UI resolution independent of the scene render target.
+9. Provide separately selectable `Classic` and `Enhanced` visual profiles plus
+   scalable quality settings without changing deterministic gameplay or
+   physics.
 
 Dogfight/multiplayer, House Editor, Paint Room, App Store distribution, and
 original CD music are excluded from version 1.0. Exact legacy intro playback is
@@ -38,16 +42,25 @@ immutable baseline
   -> asset inventory and viewers
   -> reference runtime captures
   -> portable engine bootstrap
-  -> one rendered room
-  -> one controllable aircraft
-  -> combat and collision
-  -> one complete mission
-  -> menus/audio/save
-  -> playable Windows x64 product shell
-  -> iOS product shell and controls
-  -> full content parity
-  -> optional modern graphics
+       +-> one rendered room
+       |    -> one controllable aircraft
+       |    -> combat and collision
+       |    -> one complete mission
+       |    -> menus/audio/save
+       |    -> playable Windows x64 product shell
+       |    -> iOS product shell and controls
+       |    -> full content parity
+       `-> native-resolution foundation
+            -> Hor+ + scalable UI
+            -> lighting/materials/shadows
+            -> HDR/atmosphere/post-processing
+  -> cross-product release readiness
 ```
+
+The native-resolution foundation, projection tests, and renderer API are
+cross-cutting work and may advance alongside reconstruction. Costly visual
+effects follow the playable parity slice. ADR-0013 is the authoritative
+rendering contract.
 
 ## Phase 0 — provenance and immutable baseline
 
@@ -322,28 +335,65 @@ Exit gate:
   Dynamic-Island, high-refresh, and high-quality scenarios pass on iPhone 17 Pro
   Max/iOS 26.6.
 
-## Phase 10 — visual modernization
+## Phase 10 — native-resolution and modern rendering
 
-**Goal:** enhance presentation without losing the reference mode.
+**Goal:** deliver a genuinely modern native renderer while preserving the
+game's model-kit character and a high-resolution faithful comparison profile.
+ADR-0013 defines the binding architecture and acceptance criteria.
 
-Order:
+This phase is split into ordered, independently shippable stages:
 
-1. Native presentation resolution, correct aspect ratios, UI scaling, mipmaps,
-   filtering, gamma/color-space correctness.
-2. Higher precision transforms, depth handling, particles, and transparency.
-3. Dynamic lights and improved light attenuation.
-4. Shadow maps/contact shadows with quality tiers.
-5. Physically informed materials only where source textures can support them.
-6. Ambient occlusion, bloom, tone mapping, anti-aliasing, and optional MetalFX.
-7. Higher-resolution asset replacements only with separately cleared content.
+1. **Resolution foundation:** separate reference camera coordinates, UI design
+   space, output/backbuffer pixels, 3D render-target pixels, and render scale.
+   At 100%, the 3D scene renders at the exact output extent. Add resize,
+   50-200% render scale, telemetry, and sharp output-resolution UI.
+2. **Projection and layout:** make Hor+ the standard widescreen behavior while
+   preserving reference vertical FOV. Add Original 4:3 comparison, safe FOV
+   adjustment, safe-area layout, HUD/reticle/weapon/effect projection, and
+   correct input transforms.
+3. **Sampling and color:** linear rendering, explicit sRGB handling, adequate
+   depth precision, mipmaps, filtering, anisotropy, MSAA, and appropriate
+   final-image anti-aliasing.
+4. **Lighting and materials:** directional, point, and spot lights; adjustable
+   shadows; physically informed materials suited to painted plastic and
+   domestic locations; optional normal maps when supported by suitable data.
+5. **HDR and atmosphere:** internal HDR, tone mapping, exposure, controlled
+   bloom, fog, atmosphere, and performance-qualified ambient occlusion.
+6. **Effects:** scalable particles, smoke, fire, explosions, projectile trails,
+   and individually switchable post-processing.
+7. **Performance closure:** `Low`, `Medium`, `High`, and `Ultra` defaults;
+   separate shadow/MSAA/effects/render-scale controls; dynamic render scale
+   where useful; device profiling and memory budgets.
 
-Each feature has `off/reference/enhanced` modes where meaningful, screenshot
-baselines, GPU timing, memory cost, and a fallback tier.
+`Classic` and `Enhanced` are visual-intent profiles independent of the quality
+tier. Classic renders faithfully at the chosen high resolution; Enhanced adds
+the modern lighting/material/effect path. Neither may change simulation state.
+Higher-resolution replacement assets are admitted only when separately cleared
+and are never required for native geometry rendering.
+
+Validation at every major stage includes portable projection/viewport/safe-area
+tests for 4:3, 16:10, 16:9, 19.5:9, 21:9, and 32:9; Windows and iOS build gates;
+and matched 1080p, 1440p, 4K, and ultrawide captures for the original reference,
+Classic, and Enhanced where available. Material comparison captures are shown
+in the active project work chat. Owner-content captures remain private.
+
+Performance targets:
+
+- iPhone 17 Pro Max: 60 FPS at native resolution or a controlled dynamic render
+  scale;
+- iPhone SE 3: stable 30 FPS minimum and 60 FPS target with an appropriate
+  quality profile; and
+- Windows x64: 60 FPS at 1080p/1440p on reasonable contemporary hardware, with
+  scalable 4K settings.
 
 Exit gate:
 
-- Reference mode remains within parity tolerances; enhanced mode meets visual
-  and sustained device budgets.
+- a 3840x2160 output at 100% render scale demonstrably rasterizes the 3D scene
+  into a 3840x2160 target rather than upscaling a historical framebuffer;
+- Hor+, Original 4:3, UI/input transforms, profiles, quality controls, and the
+  diagnostic overlay meet ADR-0013; and
+- Classic remains within parity tolerances while Enhanced meets the stated
+  sustained platform budgets.
 
 ## Phase 11 — Windows x64 and private iOS release readiness
 
@@ -411,7 +461,7 @@ contract, evidence, implementation, tests, parity result, and documentation agre
 | Platform code forks gameplay or physics | Windows/iOS behavior diverges | One portable core, narrow adapters, cross-platform state hashes, and identical replay scenarios |
 | Platform APIs leak into the core | Expensive platform lock-in | Keep SDL3, D3D11/DXGI/HLSL, XAudio2, and AVAudioEngine behind ADR-0007/0008/0009/0010 adapters and test API-neutral command boundaries |
 | Private artifacts are accidentally shared | Unauthorized redistribution | Ignore originals/converted assets and audit every packaged/staged artifact |
-| Scope expansion into enhancements | Delays playability | Lock faithful vertical slice before modern rendering work |
+| Unbounded visual feature work | Delays playability | Implement ADR-0013 in gated stages: native resolution/projection/UI first, costly effects after the playable parity slice |
 
 ## Immediate ordered backlog
 
@@ -456,3 +506,7 @@ contract, evidence, implementation, tests, parity result, and documentation agre
    disabled until its traversal semantics are proven.
 11. Implement native UIKit touch capture and Apple Game Controller adapters,
     followed by the configurable visual overlay and on-device usability tests.
+12. Introduce the ADR-0013 resolution domains and tests without blocking the
+    active player/gameplay reconstruction: exact native 3D targets at 100%,
+    Hor+ projection, Original 4:3 comparison, independent UI/safe-area/input
+    transforms, and renderer telemetry come before lighting or post-effects.

@@ -1,7 +1,8 @@
 # ADR-0003: Private iOS single-player sideload for version 1.0
 
 **Status:** Accepted for the iOS deliverable; build-host/device matrix amended
-by ADR-0004 and the product matrix extended by ADR-0007
+by ADR-0004, product matrix extended by ADR-0007, and rendering acceptance
+extended by ADR-0013
 
 **Date:** 2026-07-21
 
