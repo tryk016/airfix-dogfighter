@@ -1,8 +1,8 @@
 # Audio system
 
-**Status:** portable command boundary, AirCraft engine/dive composition, and
-Windows XAudio2 2.9 backend implemented; private content and iOS playback
-pending
+**Status:** portable command boundary, AirCraft engine/dive composition,
+Windows XAudio2 2.9, and iOS AVAudioEngine backends implemented; private
+content and physical-output acceptance pending
 
 ## Product boundary
 
@@ -14,7 +14,7 @@ Recovered AirCraft state (portable C++20)
     -> exact phase / destroyed-dive / modulation composition
     -> bounded monotonic AudioCommandBatch
         -> XAudio2 2.9 on Windows
-        -> native Apple audio backend on iOS (pending)
+        -> AVAudioEngine on iOS
 ```
 
 No original file name, decoded sample, device handle, Windows header, Apple
@@ -106,15 +106,41 @@ IDs. It performs:
 
 This proves the portable-to-native path, not audible parity.
 
+## iOS execution
+
+The iOS backend converts each bounded interleaved PCM16 registration once into
+AVAudioEngine's standard deinterleaved Float32 representation. Every active
+voice uses its own `AVAudioPlayerNode -> AVAudioUnitVarispeed -> main mixer`
+chain. The varispeed node's documented `0.25...4.0` rate range is identical to
+the portable pitch contract and preserves coupled rate/pitch behavior.
+
+`AVAudioSessionCategoryAmbient` respects the Ring/Silent switch, mixes with
+user audio, requests no microphone, and has no background mode. The session is
+activated only after deliberate gameplay resume. Pause, inactive, background,
+and view-loss paths pause the engine and deactivate the session.
+
+Interruption start, loss of the current output route, and media-services reset
+force the portable game session to pause and neutralize input. Notification
+delivery never resumes gameplay. Graph recovery retains only desired looping
+voices; one-shot effects are discarded because their presentation time has
+already passed. Completion callbacks only enqueue main-thread graph cleanup,
+and generation tags prevent an old callback from removing a replacement voice.
+
+Unsigned `iphoneos` and `iphonesimulator` builds validate the Objective-C++ API,
+iOS 16.4 availability, linkage, and data-less bundle. They do not prove audible
+output, route timing, or physical-device recovery.
+
 ## Pending acceptance
 
 - bind and decode owner-local samples without publishing them;
 - feed the coordinator from the live 12 ms AirCraft producer;
-- retain/restart desired looping voices across output-device recreation;
+- retain/restart desired looping voices across Windows output-device
+  recreation;
 - recover listener/emitter position, attenuation, priority, and broader sound
   effects;
-- implement the native iOS audio session/device backend;
-- test Windows default-device changes and both iPhones with real output;
+- test Windows default-device changes plus iOS interruptions, silent mode,
+  wired/Bluetooth route changes, media-service reset, and real output on both
+  iPhones;
 - compare event timing against controlled original-runtime traces.
 
 Waveform identity is not required by default; timing, role, gain, pitch,

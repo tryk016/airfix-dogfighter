@@ -180,6 +180,12 @@ public:
       lastErrorCode_ = graphCreationError;
       return AirfixIOSAudioClipRegistrationResult::allocationFailed;
     }
+    for (std::uint16_t channel = 0U; channel < clip.channelCount; ++channel) {
+      if (channelData[channel] == nullptr) {
+        lastErrorCode_ = graphCreationError;
+        return AirfixIOSAudioClipRegistrationResult::allocationFailed;
+      }
+    }
     buffer.frameLength = static_cast<AVAudioFrameCount>(frameCount);
     for (std::size_t frame = 0U; frame < frameCount; ++frame) {
       for (std::uint16_t channel = 0U; channel < clip.channelCount; ++channel) {
@@ -255,10 +261,15 @@ public:
       if (lastErrorCode_ == 0) {
         lastErrorCode_ = graphCreationError;
       }
-    } else if (!desiredActive_) {
-      // Simulation is not expected to publish effects while paused.
-      // Consume any such one-shot command instead of replaying it later.
+    } else if (outputState_ != AirfixIOSAudioOutputState::ready) {
+      // A one-shot's presentation time has passed whenever output is paused
+      // or unavailable. Consume it instead of replaying it after recovery.
       discardOneShotVoices();
+    }
+    if (!graphFailed &&
+        outputState_ != AirfixIOSAudioOutputState::outputUnavailable &&
+        outputState_ != AirfixIOSAudioOutputState::initializationFailed) {
+      lastErrorCode_ = 0;
     }
 
     return {
@@ -775,11 +786,13 @@ private:
     const bool wasActive = desiredActive_;
     forcePause(AirfixIOSAudioPauseReason::mediaServicesReset);
     destroyGraph(true);
-    (void)configureSession();
-    (void)createEmptyGraph();
-    if (!wasActive) {
-      outputState_ = AirfixIOSAudioOutputState::inactive;
+    if (!configureSession() || !createEmptyGraph()) {
+      outputState_ = AirfixIOSAudioOutputState::outputUnavailable;
+      return;
     }
+    outputState_ = wasActive ? AirfixIOSAudioOutputState::interrupted
+                             : AirfixIOSAudioOutputState::inactive;
+    lastErrorCode_ = 0;
   }
 
   void handleConfigurationChange() {

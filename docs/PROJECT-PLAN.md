@@ -409,7 +409,7 @@ contract, evidence, implementation, tests, parity result, and documentation agre
 | No iOS 16.4 runtime device | Minimum-version behavior can regress | Treat 16.4 as build/availability coverage only and state the limitation |
 | Cloud build/device loop slows interactive tuning | Delays UI/Metal/debug work | Move interactive profiling and debugging to local Xcode |
 | Platform code forks gameplay or physics | Windows/iOS behavior diverges | One portable core, narrow adapters, cross-platform state hashes, and identical replay scenarios |
-| Windows APIs leak into the core | Expensive platform lock-in | Keep SDL3, D3D11/DXGI/HLSL, and XAudio2 behind ADR-0007/0008/0009 adapters and test API-neutral command boundaries |
+| Platform APIs leak into the core | Expensive platform lock-in | Keep SDL3, D3D11/DXGI/HLSL, XAudio2, and AVAudioEngine behind ADR-0007/0008/0009/0010 adapters and test API-neutral command boundaries |
 | Private artifacts are accidentally shared | Unauthorized redistribution | Ignore originals/converted assets and audit every packaged/staged artifact |
 | Scope expansion into enhancements | Delays playability | Lock faithful vertical slice before modern rendering work |
 

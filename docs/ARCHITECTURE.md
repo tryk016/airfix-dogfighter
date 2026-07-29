@@ -132,8 +132,8 @@ device state.
 The owner-local content/runtime layer binds each recovered sound role to a
 validated clip ID and a voice ID unique to one aircraft instance. Platform
 backends register owned decoded PCM for those clip IDs and consume the same
-monotonic command batches. Windows currently uses XAudio2 2.9; iOS will use a
-native Apple audio adapter. See `docs/systems/AUDIO.md`.
+monotonic command batches. Windows uses XAudio2 2.9; iOS uses AVAudioEngine
+with one player/varispeed chain per active voice. See `docs/systems/AUDIO.md`.
 
 ### `platform`
 
@@ -149,9 +149,10 @@ video. The products implement separate outer layers:
   behind small Objective-C++ bridges.
 
 ADR-0008 selects the Windows window/input and renderer stack. ADR-0009 selects
-XAudio2 2.9 and a native backend over the shared audio command contract. The
-exact minimum Windows release, D3D feature-level floor, and packaging remain
-bounded follow-up decisions. ADR-0002 records the staged input decision.
+XAudio2 2.9; ADR-0010 selects AVAudioEngine and the explicit-resume iOS audio
+session policy over the same shared command contract. The exact minimum Windows
+release, D3D feature-level floor, and packaging remain bounded follow-up
+decisions. ADR-0002 records the staged input decision.
 
 Input is a distinct subsystem: platform adapters produce normalized physical
 events, a context/binding router resolves semantic actions, and the simulation
@@ -167,8 +168,9 @@ optional motion never enter the game core as platform key/button codes. See
   D3D11/DXGI/HLSL, input, and XAudio2 2.9 platform shell is implemented;
   owner-local content and reconstructed gameplay integration remain.
 - `airfix-ios`: CMake-generated Objective-C++/UIKit/Metal application target.
-  The first shell is data-less, iPhone-landscape only, and delegates lifecycle
-  state to portable `airfix::runtime`; see ADR-0006.
+  The first shell is data-less, iPhone-landscape only, delegates lifecycle
+  state to portable `airfix::runtime`, and owns native AVAudioEngine/session
+  handling without original samples; see ADR-0006 and ADR-0010.
 - Optional diagnostic viewers for archives, models, levels, and effects.
 
 ## Dependency direction

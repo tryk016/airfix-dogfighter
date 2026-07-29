@@ -3136,3 +3136,30 @@ superseded evidence.
   normalization tests, synthetic and 438-file public-boundary scans,
   `actionlint`, new-source formatting, the 17-file local-path scan, and
   `git diff --check` pass. GitHub Actions publication remains pending.
+
+## 2026-07-29 - native iOS AVAudioEngine command backend
+
+- ADR-0010 selects AVAudioEngine with one player/varispeed chain per portable
+  voice and an Ambient, foreground-only audio session. SDL audio and
+  third-party middleware remain outside the iOS product.
+- Added a main-thread Objective-C++ backend for the same bounded monotonic
+  `AudioCommandBatch` and PCM16 registration contract used by Windows. It
+  converts source PCM once into standard deinterleaved Float32, accounts for
+  converted memory, bounds clips/voices, preflights clip IDs, capacity, and
+  generation exhaustion, and treats missing-voice updates as safe no-ops.
+- Looping voices retain their desired clip/gain/pitch state through engine
+  configuration and media-service recovery. One-shot effects are consumed
+  whenever output is paused or unavailable and are never replayed late.
+  Completion callbacks enqueue main-thread cleanup and cannot erase a newer
+  same-ID voice because each start receives a nonwrapping generation token.
+- Integrated session activation with deliberate gameplay resume. Pause,
+  inactive, background, view loss, content replacement, and terminal
+  simulation failure deactivate audio. Interruption start, current-route loss,
+  and media-service reset force gameplay pause and input neutralization; no
+  notification may resume gameplay.
+- A fresh 281-step GCC 15.2 Release build passes all 87 portable tests. Public
+  boundary tests and the 441-file scan, changed-source formatting,
+  changed-scope local-path scanning, and `git diff --check` pass. Xcode 26.6
+  compiles and verifies data-less ARM64 `iphoneos` and `iphonesimulator`
+  bundles with the iOS 16.4 deployment target. Audible output and the route/
+  interruption matrix remain physical-device acceptance work.
