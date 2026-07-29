@@ -27,6 +27,9 @@ contract are recorded in
 The separate health-gated `enginedive` state and vertical-speed volume
 contract are recorded in
 [EXP-20260728-029](../../experiments/EXP-20260728-029-aircraft-destroyed-dive-audio.md).
+The exact `PITCH_SET`/`BANK_SET` branch boundaries, signed payload, x87
+vectors, producer-specific bounds, and timing limits are recorded in
+[EXP-20260729-056](../../experiments/EXP-20260729-056-native-pitch-bank-event-research.md).
 
 The player spawn, primary-actor, mission start-room, and selected-skin
 hierarchy contract is maintained in `PLAYER-SPAWN.md`. That static identity
@@ -362,6 +365,16 @@ events in its three analog cases:
 - thrust: emission threshold `abs(previous - raw) > 9`, payload
   `255 - (raw + 255) / 2`, sent as `EVENT_THRUST_SET`.
 
+The joystick setup at `[0x00414DE0,0x00415092)` installs an absolute-axis
+`DIJOYSTATE` format and a required `DIPROP_RANGE` of `[0,10000]` for the X
+and Y offsets. The poller at `[0x00415210,0x004154BD)` consequently maps X to
+bank raw `(lX-5000)*255/5000` and Y to pitch raw
+`(5000-lY)*255/5000`. Successful setup therefore proves a separate upstream
+raw range of `[-255,+255]` and a final pitch/bank payload range of
+`[-32,+32]`; it is not assumed from the consumer. There is no post-read
+clamp, so the proof remains conditional on DirectInput honoring the
+successfully installed range property.
+
 No explicit local clamp was found on the thrust analog payload. The downstream
 flight step clamps the resulting `+0x444` value to `[0,1]` in its gated update.
 Ghidra and Rizin independently agree on this function's exact range and all
@@ -376,8 +389,8 @@ raw interval linearly into the configured per-channel range and caches the
 mapped value. `HasChanged` compares the cached and newly mapped floats by exact
 equality; there is no epsilon or dead zone in this layer.
 
-The AirCraft AI instance contains this object at `+0x364`. Its constructor and
-dispatcher at `0x1000C420` establish these exact routes:
+The AirCraft AI instance contains this object at `+0x364`. Its constructor at
+`0x10009440` and dispatcher at `0x1000C420` establish these exact routes:
 
 | Control index | Configured range | Emitted event |
 |---:|---:|---|

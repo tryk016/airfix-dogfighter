@@ -3538,3 +3538,33 @@ superseded evidence.
   Enhanced policy snapshot. A clean MSVC 19.51/Ninja build passes all 100
   Windows tests; the portable preset remains at 95/95. Hosted CI and the
   equivalent Metal transaction remain pending.
+
+## 2026-07-29 - native pitch/bank SET static contract
+
+- `EV-20260729-007` / `EXP-20260729-056` cross-checks
+  `PITCH_SET (0x5F)` and `BANK_SET (0x65)` in Ghidra 12.1.2 and Rizin 0.9.1.
+  Both tools agree on the owning `AfVehicle::ProcessEvent` range, the exact
+  local branches, signed `int32` payload, target fields `+0x448`/`+0x44C`, and
+  the inactive-gate/store/extended-compare/rest-clear instruction order.
+- The report records the exact binary32 scale bits `0x3D3020C5`, the startup
+  PC53 observation, and 11 discriminating stored-binary32/x87 vectors under
+  the explicit condition `PC=53, RC=nearest-even`. Independent review
+  recomputed all 11 conditional stored binary32 results successfully; the
+  static session's binary32 and PC53 validators each pass 11/11. Neither the
+  live precision nor rounding control is claimed without a branch-time trace.
+- Producer evidence remains separate from the native consumer: keyboard emits
+  exactly `{-32,0,+32}`, AI is bounded to `[-32,+32]`, and DirectInput is
+  bounded to `[-32,+32]` after the required X/Y `DIPROP_RANGE [0,10000]`
+  setup, conditional on API/driver conformance.
+- Active zero overwrites the selected field with positive zero without
+  clearing the rest duration; active nonzero clears it; inactive events do not
+  mutate state; repeated writes are not suppressed; and the last processed SET
+  wins per axis. APPLY is a no-op only for the inspected AirCraft inheritance
+  chain.
+- This is a static behavioral contract and synthetic test plan, not a timing
+  or implementation claim. Cross-producer ordering, event/refresh phase,
+  process-wide live x87 precision and rounding control, and real nominal-12-ms
+  clock behavior remain unknown. No reducer was implemented or wired.
+  Public-boundary checks pass for 483 files, Rizin export tests pass 12/12, and
+  no binary, analysis database, private asset, dump, trace, or local path is
+  committed.
