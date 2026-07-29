@@ -74,11 +74,11 @@ This split keeps four responsibilities explicit:
 
 - the mission runtime owns and executes the combined static/dynamic `PhLine`
   equivalent;
-- a future live adapter maps world-room indices, bound material values, actor
-  identity, and actor gates into the callback result;
+- the implemented live adapter maps world-room indices, bound material values,
+  actor identity, and actor gates into the callback result;
 - this coordinator owns only the repeated projectile portal state; and
-- the live adapter owns the creator guard plus terminal actor/surface callback
-  dispatch.
+- the higher guarded transaction owns the creator BSP lifetime plus terminal
+  actor/surface callback reduction.
 
 The operation is allocation-free and `noexcept`. It defaults to 64 completed
 projectile-level transitions and rejects a configured limit above the
@@ -126,9 +126,13 @@ now binds the published runtime trace, signed room mapping, exact collision
 material, and generation-matched primary-player actor state to this loop. The
 explicit callback form remains available for later non-player actors. The
 current collision frame still contains only the authenticated player and
-placed objects. Other actor publication/resolution, creator collision
-guard/callback dispatch, private projectile allocation/event dispatch, effects,
-and controlled executable traces remain separate.
+placed objects. The creator `DisableBsp`/conditional `EnableBsp` transaction
+in
+[EXP-20260729-046](EXP-20260729-046-projectile-creator-bsp-guard.md)
+now brackets this complete loop and its terminal reducer. Other actor
+publication/resolution, concrete live callback dispatch, private projectile
+allocation/event dispatch, effects, and controlled executable traces remain
+separate.
 
 ## Confidence
 
@@ -136,7 +140,7 @@ Confidence is **3/3** for query repetition, room/start/end state, terminal
 swaps, creator-guard lifetime, and the bounded coordinator structure.
 
 Confidence remains **2/3** for bitwise x87 interpolation and complete live
-behavior until controlled traces and the actor guard/callback transaction are
+behavior until controlled traces and concrete actor/effect adapters are
 available.
 
 ## Related material
@@ -145,3 +149,4 @@ available.
 - [Combined line portal continuation](EXP-20260728-036-combined-line-portal-continuation.md)
 - [Mission-runtime dynamic collision](EXP-20260729-041-mission-runtime-dynamic-collision-ownership.md)
 - [Projectile runtime query adapter](EXP-20260729-043-projectile-runtime-query-adapter.md)
+- [Projectile creator BSP guard](EXP-20260729-046-projectile-creator-bsp-guard.md)

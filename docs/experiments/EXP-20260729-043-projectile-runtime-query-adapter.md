@@ -95,8 +95,10 @@ The adapter, trace, mapper, and coordinator allocate no memory internally.
 The follow-up terminal reducer in
 [EXP-20260729-045](EXP-20260729-045-projectile-terminal-collision-commit.md)
 now commits machine-gun state and bounded actor/surface command data. Creator
-collision-guard entry/exit and live consumption of those commands remain one
-higher-level transaction around the complete native loop.
+BSP lifetime is now implemented by the higher transaction in
+[EXP-20260729-046](EXP-20260729-046-projectile-creator-bsp-guard.md).
+Concrete private actor calls and live consumption of the reduced commands
+remain outside this data-only adapter.
 
 ## Validation
 
@@ -133,8 +135,8 @@ The project still needs:
 
 - publication of other live actor colliders and their changing state;
 - resolvers backed by those future non-player producers;
-- creator collision-guard lifetime around the complete loop;
-- live actor/effect consumption of the terminal command data;
+- concrete creator BSP and actor/effect adapters that consume the existing
+  callback contracts and terminal command data;
 - private projectile allocation/event dispatch and live muzzle transforms; and
 - controlled executable traces for final numeric/runtime comparison.
 
@@ -145,7 +147,7 @@ Confidence is **3/3** for room mapping, static/dynamic owner mapping,
 behavior.
 
 Confidence remains **2/3** for complete live behavior until the actor producer,
-guard/live-dispatch transaction, and controlled executable traces exist.
+private live-dispatch adapters, and controlled executable traces exist.
 
 ## Related material
 
@@ -153,3 +155,4 @@ guard/live-dispatch transaction, and controlled executable traces exist.
 - [Combined portal line](EXP-20260728-036-combined-line-portal-continuation.md)
 - [Mission runtime ownership](EXP-20260729-041-mission-runtime-dynamic-collision-ownership.md)
 - [Projectile portal loop](EXP-20260729-042-projectile-collision-portal-loop.md)
+- [Projectile creator BSP guard](EXP-20260729-046-projectile-creator-bsp-guard.md)

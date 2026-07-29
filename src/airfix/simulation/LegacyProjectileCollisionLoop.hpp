@@ -69,9 +69,9 @@ struct LegacyProjectileCollisionLoopResult final {
 //
 // The callback and this loop are noexcept and allocation-free. Malformed
 // callback states, unsafe hit metadata, and excessive/cyclic portal chains
-// fail closed without exposing a terminal decision. The future live adapter
-// still owns the creator collision guard and terminal actor/surface callback
-// dispatch, which bracket the complete native loop rather than one query.
+// fail closed without exposing a terminal decision. The higher content/runtime
+// transaction owns creator BSP bracketing and terminal actor/surface reduction,
+// which surround the complete native loop rather than one query.
 [[nodiscard]] LegacyProjectileCollisionLoopResult
 resolveLegacyProjectileCollisionLoop(
     const LegacyProjectileCollisionQueryInput& input,

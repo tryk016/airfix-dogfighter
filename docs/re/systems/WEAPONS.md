@@ -356,6 +356,8 @@ the concrete primary-player resolver is recorded in
 [EXP-20260729-044](../../experiments/EXP-20260729-044-projectile-player-actor-resolver.md);
 and terminal machine-gun state/command reduction is recorded in
 [EXP-20260729-045](../../experiments/EXP-20260729-045-projectile-terminal-collision-commit.md).
+Creator BSP bracketing is recorded in
+[EXP-20260729-046](../../experiments/EXP-20260729-046-projectile-creator-bsp-guard.md).
 
 ## Actor damage and surface reaction
 
@@ -411,7 +413,10 @@ fields, and the effect-creation request without owning an effect runtime.
   selected nearest collision; and
 - a fail-closed terminal commit that updates endpoint, room, activity, and the
   recovered material-15 water flag while returning bounded damage or
-  surface/ricochet command data.
+  surface/ricochet command data; and
+- a synchronous creator `DisableBsp`/conditional `EnableBsp` transaction that
+  brackets the complete runtime query, projectile-level portal loop, and
+  terminal reducer while preserving missing and already-disabled actors.
 
 `LegacyMachineGunShotCoordinator` composes the timing request with the selected
 already-rotated muzzle, capped technology ammo profile, and complete payload.
@@ -428,9 +433,9 @@ primary-player resolver and the terminal machine-gun state/command reducer.
 Ownerless retained-room contacts deactivate but deliberately suppress the
 optional ricochet request when no owner-backed material provenance exists.
 The remaining live transaction must resolve private types and authored muzzle
-transforms, publish and resolve other actor geometry/state, bracket the query
-with the creator guard, dispatch the reduced terminal events/effects, and honor
-allocation failure without inventing a projectile or effect.
+transforms, publish and resolve other actor geometry/state, provide the
+concrete creator BSP callbacks, dispatch the reduced terminal events/effects,
+and honor allocation failure without inventing a projectile or effect.
 
 ## Remaining work
 
@@ -438,9 +443,9 @@ allocation failure without inventing a projectile or effect.
   event dispatch without rolling back fire state on allocation failure.
 - Feed the implemented player collider and concrete resolver from the changing
   actor producer, extend the same authenticated publication/resolution to
-  other live actors and dynamic portal objects, then provide the creator guard
-  around the implemented runtime projectile query and consume its terminal
-  command data through live actor/effect adapters.
+  other live actors and dynamic portal objects, then connect the implemented
+  creator BSP guard and terminal command data to private live actor/effect
+  adapters.
 - Recreate the optional `mguntracer` and `FxRicochet` visual/effect adapters.
 - Trace sample/effect commands associated with a shot.
 - Recover secondary weapon selection and each secondary projectile family.

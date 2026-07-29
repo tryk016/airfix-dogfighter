@@ -111,8 +111,8 @@ The project still needs:
 - the changing primary-player producer that supplies pose, room, identity,
   activity, and both gates each accepted simulation generation;
 - authenticated geometry/state publication and resolvers for other actors;
-- creator collision-guard lifetime around the complete projectile query;
-- live consumption of the implemented terminal damage/surface command data;
+- concrete creator BSP and actor/effect adapters for the implemented guard and
+  terminal damage/surface command contracts;
 - private projectile allocation/event dispatch and live muzzle transforms; and
 - controlled executable traces for final runtime comparison.
 
@@ -122,8 +122,8 @@ Confidence is **3/3** for transaction retention, lookup outcomes, native actor
 gate order, and allocation-free primary-player resolution.
 
 Confidence remains **2/3** for complete live weapon behavior until the
-changing producer, other actors, creator guard, live dispatch, and controlled
-runtime traces exist.
+changing producer, other actors, private live dispatch, and controlled runtime
+traces exist.
 
 ## Related material
 
@@ -132,3 +132,4 @@ runtime traces exist.
 - [Mission runtime ownership](EXP-20260729-041-mission-runtime-dynamic-collision-ownership.md)
 - [Projectile runtime query adapter](EXP-20260729-043-projectile-runtime-query-adapter.md)
 - [Projectile terminal collision commit](EXP-20260729-045-projectile-terminal-collision-commit.md)
+- [Projectile creator BSP guard](EXP-20260729-046-projectile-creator-bsp-guard.md)

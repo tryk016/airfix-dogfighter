@@ -2924,3 +2924,28 @@ superseded evidence.
   compiles all 265 steps with GCC 13.3 and passes 82/82 tests in 44.80 seconds
   in a new isolated `Airfix-Dev` WSL clone. GitHub Actions remains the
   publication gate.
+
+## 2026-07-29 - projectile creator BSP guard
+
+- `EXP-20260729-046` closes the statically recovered creator-collision lifetime
+  around `NfProjectile::DetectCollisions`. Fresh Ghidra instructions and
+  decompilation plus an independent Rizin report confirm one creator lookup,
+  virtual `DisableBsp`, the complete query/portal/terminal path, and a
+  conditional virtual `EnableBsp` using the retained actor.
+- Added a typed, synchronous, allocation-free live-actor transaction. Missing
+  creators and already-disabled BSP preserve the native no-enable path.
+  Rejected or malformed disable results stop before tracing; rejected enable
+  retains collision diagnostics but suppresses terminal commit/command data.
+- Focused tests cover exact callback order and actor identity, a two-room
+  portal path under one guard pair, missing/zero/already-disabled creators,
+  malformed callback results, endpoint/room mismatch before live access, and
+  4,096 complete guarded actor transactions with zero observed allocations.
+- A fresh Windows GCC 15.2 Release build and regenerated code-intelligence
+  build compile all 265 steps and pass 82/82 tests. The compilation database
+  has 169 portable entries and no Apple-only source. Clangd 22.1.8 reports zero
+  errors in the three affected production/test translation units. The Ghidra,
+  working-copy, and Rizin wrapper suites, 12 Rizin normalization tests,
+  synthetic public-boundary tests and the 406-file public scan, the 265-row
+  unique function catalogue with no bad paths and only its two known missing
+  references, `actionlint`, the 16-file local-path scan, and `git diff --check`
+  pass. Exact-commit Linux and GitHub Actions remain the publication gate.
