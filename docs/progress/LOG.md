@@ -3201,5 +3201,7 @@ superseded evidence.
   548-step MSVC 19.51/Ninja build and the independent MinGW product build each
   pass all 91 tests, including native D3D11/XAudio2 smoke. The synthetic and
   449-file public-boundary scans, `actionlint`, changed-source clang-format,
-  changed-scope local-path scan, and `git diff --check` pass. Hosted Xcode and
-  Visual Studio generator validation remain the publication gates.
+  changed-scope local-path scan, and `git diff --check` pass. GitHub Actions
+  runs `30457131783` and `30457131656` pass all seven hosted Visual Studio,
+  Windows/Ubuntu/macOS portable, clangd, `iphoneos`, and `iphonesimulator`
+  jobs.

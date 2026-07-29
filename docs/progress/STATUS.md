@@ -843,8 +843,10 @@ These questions do not block static analysis or the archive work.
   the same 91/91 suite. Synthetic public-boundary tests and the 449-file scan,
   `actionlint`, changed-source clang-format, changed-scope local-path scanning,
   and `git diff --check` pass. A complete owner-local AFPACK also passes the
-  hidden authenticated load/register path outside Git. Xcode/iOS and hosted
-  Visual Studio generator validation remain the publication gates.
+  hidden authenticated load/register path outside Git. GitHub Actions runs
+  `30457131783` and `30457131656` pass the hosted Visual Studio product,
+  Windows/Ubuntu/macOS portable, clangd, `iphoneos`, and `iphonesimulator`
+  publication gates.
 - The native iOS audio slice passes a fresh 281-step MinGW GCC 15.2 Release
   build and all 87 portable tests. Xcode 26.6 compiles both ARM64 `iphoneos`
   and `iphonesimulator` data-less bundles with deployment target 16.4 after
