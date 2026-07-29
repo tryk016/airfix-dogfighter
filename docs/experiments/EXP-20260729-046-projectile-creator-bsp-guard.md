@@ -139,8 +139,9 @@ A fresh Windows GCC 15.2 Release build and the regenerated code-intelligence
 build compile all 265 steps and pass 82/82 tests. The compilation database has
 169 portable entries and no Apple-only source. Clangd 22.1.8 reports zero
 errors in the adapter, collision-loop, and focused test translation units.
-The exact-commit Linux and GitHub Actions results are recorded in the progress
-log when this slice is published.
+Exact commit `71eaca1` also compiles all 265 steps with GCC 13.3 and passes
+82/82 tests in 27.15 seconds in a fresh isolated `Airfix-Dev` WSL clone.
+GitHub Actions remains the publication gate.
 
 ## Remaining boundary
 

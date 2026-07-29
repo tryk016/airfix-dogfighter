@@ -783,8 +783,9 @@ These questions do not block static analysis or the archive work.
   normalization tests, synthetic public-boundary tests and the 406-file public
   scan, the 265-row unique function catalogue with no bad source paths and
   only its two known missing references, `actionlint`, the 16-file local-path
-  scan, and `git diff --check` pass. Exact-commit Linux and GitHub Actions
-  validation remain the publication gate.
+  scan, and `git diff --check` pass. Exact commit `71eaca1` compiles all 265
+  steps with GCC 13.3 and passes 82/82 tests in 27.15 seconds in a fresh
+  isolated `Airfix-Dev` WSL clone. GitHub Actions remains the publication gate.
 
 ## Blockers
 
