@@ -998,7 +998,7 @@ traceMissionWorldRuntimeCombinedLine(
     const std::size_t worldRoomIndex,
     const Vec3& runtimeStart,
     const Vec3& runtimeEnd,
-    const std::span<const LegacyDynamicBspMesh> dynamicMeshes,
+    const LegacyDynamicBspMeshView& dynamicMeshes,
     const std::span<const LegacyDynamicBspLineObject> dynamicObjects,
     const MissionWorldRuntimeCombinedLineTraceOptions& options) noexcept {
     if (!finite(runtimeStart) || !finite(runtimeEnd)) {
@@ -1109,13 +1109,13 @@ traceMissionWorldRuntimeCombinedLine(
                 MissionWorldRuntimeCombinedLineTraceStatus::
                     invalidDynamicObject);
         }
-        if (object.meshIndex >= dynamicMeshes.size()) {
+        const auto* mesh = dynamicMeshes.tryGet(object.meshIndex);
+        if (mesh == nullptr) {
             return failure(
                 MissionWorldRuntimeCombinedLineTraceStatus::
                     invalidDynamicObject);
         }
-        const auto& mesh = dynamicMeshes[object.meshIndex];
-        if (!mesh.complete()) {
+        if (!mesh->complete()) {
             return failure(
                 MissionWorldRuntimeCombinedLineTraceStatus::
                     invalidDynamicMesh);
@@ -1130,7 +1130,7 @@ traceMissionWorldRuntimeCombinedLine(
         const auto midpointDelta =
             subtract(midpoint, object.runtimeTranslation);
         const double broadRadius =
-            static_cast<double>(mesh.localBoundingRadius) +
+            static_cast<double>(mesh->localBoundingRadius) +
             halfLength;
         if (!std::isfinite(broadRadius) ||
             dot(midpointDelta, midpointDelta) >
@@ -1153,7 +1153,7 @@ traceMissionWorldRuntimeCombinedLine(
         }
         const auto localResult =
             assets::traceMissionWorldSpatialLine(
-                mesh.localArena,
+                mesh->localArena,
                 0U,
                 assets::CcfBspTreeKind::staticTree,
                 sourceVector(localStart),
@@ -1171,9 +1171,9 @@ traceMissionWorldRuntimeCombinedLine(
         const auto& localHit = *localResult.hit;
         if (!std::isfinite(localHit.fraction) ||
             localHit.polygonIndex >=
-                mesh.localArena.polygons.size() ||
+                mesh->localArena.polygons.size() ||
             localHit.polygonIndex >=
-                mesh.polygonMaterialReferences.size()) {
+                mesh->polygonMaterialReferences.size()) {
             return failure(
                 MissionWorldRuntimeCombinedLineTraceStatus::
                     invalidDynamicMesh);
@@ -1202,7 +1202,7 @@ traceMissionWorldRuntimeCombinedLine(
                     invalidDynamicObject);
         }
         const auto& polygon =
-            mesh.localArena.polygons[
+            mesh->localArena.polygons[
                 localHit.polygonIndex];
         nearestFraction = localHit.fraction;
         nearest = MissionWorldRuntimeCombinedLineHit{
@@ -1224,7 +1224,7 @@ traceMissionWorldRuntimeCombinedLine(
             .dynamicMeshIndex = object.meshIndex,
             .sourceTriangleIndex = polygon.polygonIndex,
             .sourceMaterialReference =
-                mesh.polygonMaterialReferences[
+                mesh->polygonMaterialReferences[
                     localHit.polygonIndex],
             .actorObjectId = object.actorObjectId,
             .portalType = object.portalType,
@@ -1271,13 +1271,37 @@ traceMissionWorldRuntimeCombinedLine(
 }
 
 MissionWorldRuntimeCombinedLineTraceResult
-traceMissionWorldRuntimeCombinedPortalLine(
+traceMissionWorldRuntimeCombinedLine(
     const assets::MissionWorldSpatialArena& staticArena,
     const BasisTransform& runtimeBasis,
     const std::size_t worldRoomIndex,
     const Vec3& runtimeStart,
     const Vec3& runtimeEnd,
     const std::span<const LegacyDynamicBspMesh> dynamicMeshes,
+    const std::span<const LegacyDynamicBspLineObject> dynamicObjects,
+    const MissionWorldRuntimeCombinedLineTraceOptions& options) noexcept {
+    return traceMissionWorldRuntimeCombinedLine(
+        staticArena,
+        runtimeBasis,
+        worldRoomIndex,
+        runtimeStart,
+        runtimeEnd,
+        LegacyDynamicBspMeshView{
+            .primary = dynamicMeshes,
+            .secondary = {},
+        },
+        dynamicObjects,
+        options);
+}
+
+MissionWorldRuntimeCombinedLineTraceResult
+traceMissionWorldRuntimeCombinedPortalLine(
+    const assets::MissionWorldSpatialArena& staticArena,
+    const BasisTransform& runtimeBasis,
+    const std::size_t worldRoomIndex,
+    const Vec3& runtimeStart,
+    const Vec3& runtimeEnd,
+    const LegacyDynamicBspMeshView& dynamicMeshes,
     const std::span<const LegacyDynamicBspLineObject> dynamicObjects,
     const std::span<const LegacyDynamicBspRoomObjectRange>
         roomObjectRanges,
@@ -1417,6 +1441,34 @@ traceMissionWorldRuntimeCombinedPortalLine(
         currentRoom = *hit.portalWorldRoomIndex;
         ++transitionCount;
     }
+}
+
+MissionWorldRuntimeCombinedLineTraceResult
+traceMissionWorldRuntimeCombinedPortalLine(
+    const assets::MissionWorldSpatialArena& staticArena,
+    const BasisTransform& runtimeBasis,
+    const std::size_t worldRoomIndex,
+    const Vec3& runtimeStart,
+    const Vec3& runtimeEnd,
+    const std::span<const LegacyDynamicBspMesh> dynamicMeshes,
+    const std::span<const LegacyDynamicBspLineObject> dynamicObjects,
+    const std::span<const LegacyDynamicBspRoomObjectRange>
+        roomObjectRanges,
+    const MissionWorldRuntimeCombinedPortalLineTraceOptions& options)
+    noexcept {
+    return traceMissionWorldRuntimeCombinedPortalLine(
+        staticArena,
+        runtimeBasis,
+        worldRoomIndex,
+        runtimeStart,
+        runtimeEnd,
+        LegacyDynamicBspMeshView{
+            .primary = dynamicMeshes,
+            .secondary = {},
+        },
+        dynamicObjects,
+        roomObjectRanges,
+        options);
 }
 
 } // namespace airfix::render

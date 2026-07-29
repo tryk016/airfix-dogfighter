@@ -58,6 +58,8 @@ makeIssue(const MissionWorldRoomLoadIssueKind kind) noexcept {
         .textureAssetId = std::nullopt,
         .catalogIssue = std::nullopt,
         .spatialArenaIssue = std::nullopt,
+        .placedCollisionAssemblyIssue = std::nullopt,
+        .placedCollisionSceneIssue = std::nullopt,
         .roomSceneIssue = std::nullopt,
         .startIssue = std::nullopt,
         .textureBindingIssue = std::nullopt,
@@ -1314,6 +1316,84 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             return result;
         }
 
+        if (!report(
+                result,
+                stopToken,
+                guardedProgress,
+                MissionWorldRoomLoadPhase::assemblingPlacedCollision,
+                0U,
+                1U)) {
+            return result;
+        }
+        auto placedCollisionLimits = limits.placedCollision;
+        placedCollisionLimits.maximumSources = std::min(
+            placedCollisionLimits.maximumSources,
+            limits.maximumCcfSources);
+        placedCollisionLimits.maximumWorldRooms = std::min(
+            placedCollisionLimits.maximumWorldRooms,
+            catalogLimits.maximumRuntimeRooms);
+        placedCollisionLimits.maximumRetainedBytes = std::min(
+            placedCollisionLimits.maximumRetainedBytes,
+            limits.maximumPublishedCpuBytes);
+        placedCollisionLimits.catalogAuthentication = catalogLimits;
+        render::MissionPlacedDynamicBspAssembly placedDynamicCollision;
+        try {
+            placedDynamicCollision =
+                render::buildMissionPlacedDynamicBspAssembly(
+                    loadSources,
+                    catalog,
+                    request.basis,
+                    placedCollisionLimits);
+        } catch (const std::bad_alloc &) {
+            throw;
+        } catch (...) {
+            addIssue(
+                result,
+                MissionWorldRoomLoadIssueKind::
+                    placedCollisionAssemblyFailure);
+            return result;
+        }
+        if (!placedDynamicCollision.complete()) {
+            for (const auto& upstream :
+                 placedDynamicCollision.issues) {
+                if (upstream.kind ==
+                    render::MissionPlacedDynamicBspIssueKind::
+                        allocationFailure) {
+                    addIssue(
+                        result,
+                        MissionWorldRoomLoadIssueKind::allocationFailure);
+                    return result;
+                }
+                auto issue = makeIssue(
+                    MissionWorldRoomLoadIssueKind::
+                        placedCollisionAssemblyFailure);
+                issue.sourceIndex = upstream.sourceIndex;
+                issue.physicalRoomIndex =
+                    upstream.physicalRoomIndex;
+                issue.worldRoomIndex = upstream.worldRoomIndex;
+                issue.placedCollisionAssemblyIssue = upstream.kind;
+                issue.placedCollisionSceneIssue =
+                    upstream.placedSceneIssue;
+                addIssue(result, std::move(issue));
+            }
+            if (placedDynamicCollision.issues.empty()) {
+                addIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::
+                        placedCollisionAssemblyFailure);
+            }
+            return result;
+        }
+        if (!report(
+                result,
+                stopToken,
+                guardedProgress,
+                MissionWorldRoomLoadPhase::assemblingPlacedCollision,
+                1U,
+                1U)) {
+            return result;
+        }
+
         if (!report(result, stopToken, guardedProgress,
                     MissionWorldRoomLoadPhase::resolvingStart, 0U, 1U)) {
             return result;
@@ -1612,6 +1692,9 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             !checkedMissionWorldRoomByteAdd(
                 publishedCpuBytes,
                 spatialArena.retainedPayloadBytes) ||
+            !checkedMissionWorldRoomByteAdd(
+                publishedCpuBytes,
+                placedDynamicCollision.retainedPayloadBytes) ||
             publishedCpuBytes > limits.maximumPublishedCpuBytes ||
             (selectedStart.has_value() &&
              (!checkedMissionWorldRoomByteAdd(publishedCpuBytes,
@@ -1635,6 +1718,8 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             .runtimeBasis = request.basis,
             .playerSpawnPose = *playerSpawnPose.pose,
             .spatialArena = std::move(spatialArena),
+            .placedDynamicCollision =
+                std::move(placedDynamicCollision),
             .model = {},
             .meshProvenance = {},
             .instanceProvenance = {},

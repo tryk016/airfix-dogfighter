@@ -1,6 +1,6 @@
 # Project status
 
-**Updated:** 2026-07-28
+**Updated:** 2026-07-29
 **Stage:** Phase 1 — static analysis and archive recovery in progress
 
 ## Now
@@ -671,9 +671,13 @@
   emits exact ranges consumed directly by the allocation-free combined line
   query. The later cached-object no-relink branch is preserved as observed;
   the selected corpus has no repeated serialized cache key, so that branch
-  remains a controlled-runtime-trace target. Mission ownership, composition
-  with live player/non-player frames, and dynamic sphere collision remain
-  separate.
+  remains a controlled-runtime-trace target. The authenticated mission
+  snapshot now owns this assembly, charges its exact nested bytes to the global
+  CPU budget, and validates its room/source provenance at publication.
+  A two-owner mesh view plus a two-pass frame adapter compose the live player
+  ahead of each room's unchanged placed list without copying geometry,
+  allocation, or partial output. Other live actors, gameplay buffer ownership,
+  controlled traces, and dynamic sphere collision remain separate.
 
 ## Confirmed
 
@@ -719,14 +723,12 @@
    controlled multi-room executable traces when the isolated runtime is ready.
 5. Keep BSP render culling disabled until its separate runtime semantics are
    proven against executable evidence.
-6. Install the material-bound placed `0x4101` assembly in the authenticated
-   mission snapshot, then compose its immutable native-order room lists with
-   the allocation-free live player publication without duplicating meshes or
-   weakening the global CPU budget. Extend beyond the authenticated player and
-   join `WpMGun` timing, event `0xE2`, motion, damage, and ricochet contracts to
-   the remaining projectile-level portal loop, private type allocation/event
-   dispatch, live muzzle transforms, and tracer/effect adapters before wiring
-   primary-fire intent into runtime.
+6. Extend the composed authenticated placed/player dynamic-collision frame to
+   other live actors and give the mission runtime ownership of its preallocated
+   frame buffers. Then join `WpMGun` timing, event `0xE2`, motion, damage, and
+   ricochet contracts to the remaining projectile-level portal loop, private
+   type allocation/event dispatch, live muzzle transforms, and tracer/effect
+   adapters before wiring primary-fire intent into runtime.
 
 ## Open questions
 
@@ -736,6 +738,20 @@
   presentation after physical-device acceptance?
 
 These questions do not block static analysis or the archive work.
+
+## Latest validation
+
+- A fresh clean Release Ninja/GCC 15.2 build compiles all 256 steps; both
+  Release and regenerated Debug/code-intelligence builds pass 79/79 tests.
+  The compilation database contains 163 portable entries. Clangd 22.1.8
+  reports zero code diagnostics in the new frame, test, loader, and
+  publication units; its seven failures in the large existing tracer are
+  optional `ExtractFunction` feature probes. The three RE wrapper suites,
+  12 Rizin/public-boundary Python tests, public-boundary check and 391-file
+  scan, 263-row catalogue validation with only the two pre-existing missing
+  references, `actionlint`, 22-file changed-scope local-path scan, and
+  `git diff --check` pass. Exact-commit WSL and GitHub Actions remain the final
+  publication gates.
 
 ## Blockers
 

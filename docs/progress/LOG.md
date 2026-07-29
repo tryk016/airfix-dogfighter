@@ -2743,3 +2743,36 @@ superseded evidence.
   `a531e663a5d4ffa87ccd459686b5d67fc39680c9` also compiles all 253 steps
   with GCC 13.3 and passes 78/78 tests in a new isolated `Airfix-Dev` WSL
   clone. GitHub Actions remains the final publication gate.
+
+## 2026-07-29 - mission dynamic-collision ownership and composition
+
+- `EXP-20260729-040` installs the previously authenticated placed-object
+  dynamic BSP assembly in `LoadedMissionWorldRoom`. Empty missions retain one
+  empty range per world room; populated missions retain the exact native
+  object lists after the parsed CCF cache is destroyed.
+- Added a distinct placed-collision load phase, bounded configuration, typed
+  failure context, exact retained-byte charge, and final publication checks
+  for completeness, world-room cardinality, semantic-source provenance, and
+  the independently recalculated global CPU ledger.
+- Added `LegacyDynamicBspMeshView`, which maps an immutable placed span followed
+  by an immutable player span into one logical mesh index space. Both combined
+  line-query variants consume it directly; existing single-span callers remain
+  source-compatible and copy no mesh records or nested arenas.
+- Added a two-pass `noexcept` mission-frame publisher. It validates all
+  transforms, offsets, ranges, and exact output sizes before writing, then
+  prepends the live player instances to the current room and copies each
+  placed range unchanged. Inactive players retain stable slots with their
+  active gate cleared. Failure leaves both caller buffers unchanged.
+- Synthetic tests cover real loader ownership, exact and one-under placed
+  budgets, typed publication tampering, two disjoint mesh owners, native-order
+  exact-fraction ties, inactive fallback, no-player missions, atomic failures,
+  and zero observed frame-publication allocations. Full cross-platform
+  validation and Actions publication follow in this slice.
+- Fresh clean Release and regenerated Debug/code-intelligence builds compile
+  256 portable steps and pass 79/79 tests. The compilation database contains
+  163 entries. Clangd 22.1.8 reports zero code diagnostics in the new frame,
+  test, loader, and publication units; seven failures in the large existing
+  tracer are optional `ExtractFunction` probes. The three RE wrapper suites,
+  12 Rizin/public-boundary Python tests, public-boundary check and 391-file
+  scan, 263-row catalogue with only its two pre-existing missing references,
+  `actionlint`, 22-file local-path scan, and `git diff --check` pass.
