@@ -92,9 +92,11 @@ latest published combined portal-line trace, maps its result, and lets the
 bounded simulation coordinator handle any later projectile-level portal.
 
 The adapter, trace, mapper, and coordinator allocate no memory internally.
-Creator collision-guard entry/exit and terminal actor/surface callback
-dispatch are not performed here because they form one higher-level live actor
-transaction around the complete native loop.
+The follow-up terminal reducer in
+[EXP-20260729-045](EXP-20260729-045-projectile-terminal-collision-commit.md)
+now commits machine-gun state and bounded actor/surface command data. Creator
+collision-guard entry/exit and live consumption of those commands remain one
+higher-level transaction around the complete native loop.
 
 ## Validation
 
@@ -132,7 +134,7 @@ The project still needs:
 - publication of other live actor colliders and their changing state;
 - resolvers backed by those future non-player producers;
 - creator collision-guard lifetime around the complete loop;
-- terminal actor/surface callback and damage/effect dispatch;
+- live actor/effect consumption of the terminal command data;
 - private projectile allocation/event dispatch and live muzzle transforms; and
 - controlled executable traces for final numeric/runtime comparison.
 
@@ -143,7 +145,7 @@ Confidence is **3/3** for room mapping, static/dynamic owner mapping,
 behavior.
 
 Confidence remains **2/3** for complete live behavior until the actor producer,
-guard/callback transaction, and controlled executable traces exist.
+guard/live-dispatch transaction, and controlled executable traces exist.
 
 ## Related material
 

@@ -2891,3 +2891,36 @@ superseded evidence.
   pass. Exact commit `0796d98` compiles all 262 steps with GCC 13.3 and passes
   81/81 tests in a new isolated `Airfix-Dev` WSL clone. GitHub Actions remains
   the publication gate.
+
+## 2026-07-29 - terminal machine-gun projectile collision commit
+
+- `EXP-20260729-045` composes the previously cross-checked shared collision,
+  `WpMGunAmmoActorHit`, and `WpMGunAmmoSurfaceContact` contracts without a new
+  binary assumption or private runtime dependency.
+- Added a fail-closed allocation-free reducer for completed projectile loops.
+  It commits endpoint/room state, preserves no-hit/material/actor-gate flight,
+  applies actor damage and creator/self deactivation, sets the persistent
+  material-15 water flag before surface handling, and returns bounded
+  surface/ricochet command data.
+- Ownerless retained-room contact still deactivates, but an optional ricochet
+  request is suppressed when no owner-backed material provenance exists.
+  Failed actor lookup does not promote a raw object ID to a resolved actor UID.
+- Added explicit and generation-matched primary-player runtime wrappers that
+  join the published query to the reducer. Flight endpoint/room mismatch
+  rejects before tracing. No live actor event or private effect is dispatched.
+- Focused tests cover no-hit, actor damage, self-hit, ordinary and water
+  surfaces, creator surfaces, ownerless material policy, typed failures, the
+  published player path, a two-room portal/surface path, and 4,096 repeated
+  transactions on each hot path with zero observed allocations.
+- A fresh Windows GCC 15.2 Release configuration compiles all 265 steps; it and
+  the regenerated code-intelligence build pass 82/82 tests. The compilation
+  database has 169 portable entries and no Apple-only source. Clangd 22.1.8
+  reports zero errors in all five changed production/test translation units
+  with the trusted GCC query driver. The Ghidra, working-copy, and Rizin
+  wrapper suites, 12 Rizin normalization tests, synthetic public-boundary
+  tests and the 405-file public scan, the 263-row unique function catalogue
+  with no bad paths and only its two known missing references, `actionlint`,
+  19-file local-path scan, and `git diff --check` pass. Exact commit `b355415`
+  compiles all 265 steps with GCC 13.3 and passes 82/82 tests in 44.80 seconds
+  in a new isolated `Airfix-Dev` WSL clone. GitHub Actions remains the
+  publication gate.

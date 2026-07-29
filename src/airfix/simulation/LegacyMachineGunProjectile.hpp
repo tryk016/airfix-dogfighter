@@ -82,6 +82,9 @@ struct LegacyMachineGunProjectileState final {
     std::uint32_t creatorUid{};
     std::uint32_t targetUid{};
     bool active{};
+    // NfProjectile's persistent water flag is set by a material-15 terminal
+    // surface decision before the subclass surface callback runs.
+    bool waterContacted{};
 
     [[nodiscard]] friend constexpr bool operator==(
         const LegacyMachineGunProjectileState&,
@@ -162,8 +165,9 @@ struct LegacyProjectileCollisionDecision final {
     float collisionFraction{};
     LegacyMachineGunVector3 normal{};
     std::optional<std::int32_t> material;
-    // Present only for actorContact. A failed server actor lookup follows the
-    // native surface path without claiming that identity as resolved.
+    // Present for actorContact and for the surface fallback only when its
+    // actor owner was resolved. A failed server actor lookup follows the
+    // native surface path without promoting the raw object ID to an actor UID.
     std::optional<std::uint32_t> actorUid;
     // Material 15 sets NfProjectile's water flag before the surface callback.
     bool marksWater{};
@@ -220,7 +224,10 @@ struct LegacyMachineGunSurfaceContactInput final {
     LegacyMachineGunVector3 previousPosition{};
     float collisionFraction{};
     LegacyMachineGunVector3 normal{};
-    std::int32_t material{};
+    // Ownerless retained-room polygons do not expose owner-backed material.
+    // Absence suppresses only the optional ricochet request; contact and
+    // deactivation still commit.
+    std::optional<std::int32_t> material;
     std::optional<std::int32_t> roomId;
 };
 

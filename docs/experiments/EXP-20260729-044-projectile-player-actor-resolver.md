@@ -112,7 +112,7 @@ The project still needs:
   activity, and both gates each accepted simulation generation;
 - authenticated geometry/state publication and resolvers for other actors;
 - creator collision-guard lifetime around the complete projectile query;
-- terminal actor/surface callback and damage/effect dispatch;
+- live consumption of the implemented terminal damage/surface command data;
 - private projectile allocation/event dispatch and live muzzle transforms; and
 - controlled executable traces for final runtime comparison.
 
@@ -122,7 +122,7 @@ Confidence is **3/3** for transaction retention, lookup outcomes, native actor
 gate order, and allocation-free primary-player resolution.
 
 Confidence remains **2/3** for complete live weapon behavior until the
-changing producer, other actors, creator guard, callbacks, and controlled
+changing producer, other actors, creator guard, live dispatch, and controlled
 runtime traces exist.
 
 ## Related material
@@ -131,3 +131,4 @@ runtime traces exist.
 - [Authenticated player collision publication](EXP-20260728-037-authenticated-player-collision-publication.md)
 - [Mission runtime ownership](EXP-20260729-041-mission-runtime-dynamic-collision-ownership.md)
 - [Projectile runtime query adapter](EXP-20260729-043-projectile-runtime-query-adapter.md)
+- [Projectile terminal collision commit](EXP-20260729-045-projectile-terminal-collision-commit.md)

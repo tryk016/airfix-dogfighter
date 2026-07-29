@@ -64,6 +64,10 @@ Implemented foundations include:
   collision frame to that coordinator, including room-ID, material and
   generation-matched primary-player actor gates, while retaining an explicit
   callback seam for future non-player actors;
+- an allocation-free terminal machine-gun projectile reducer that commits
+  endpoint/room/water state and produces bounded actor-damage or
+  surface/ricochet command data, plus a runtime wrapper joining it to the
+  published collision query without dispatching private effects;
 - validated, allocation-free reconstructions of the legacy world-to-camera
   point transform and camera-space screen projection, including the recovered
   reverse-depth scalar, four depth presets, gameplay camera preset selection,

@@ -2,9 +2,10 @@
 
 #include "airfix/assets/MissionWorldRooms.hpp"
 #include "airfix/render/LegacyGameplayCameraMissionRuntime.hpp"
-#include "airfix/simulation/LegacyProjectileCollisionLoop.hpp"
+#include "airfix/simulation/LegacyMachineGunProjectileCollisionCommit.hpp"
 
 #include <cstdint>
+#include <optional>
 
 namespace airfix::content {
 
@@ -30,6 +31,19 @@ using LegacyProjectileLiveActorQuery =
 struct LegacyPublishedProjectileCollisionOptions final {
     render::MissionWorldRuntimeCombinedPortalLineTraceOptions lineTrace{};
     simulation::LegacyProjectileCollisionLoopOptions collisionLoop{};
+};
+
+struct LegacyPublishedMachineGunProjectileCollisionResult final {
+    simulation::LegacyProjectileCollisionLoopResult collision{};
+    std::optional<
+        simulation::LegacyMachineGunProjectileCollisionCommitResult>
+        commit;
+
+    [[nodiscard]] constexpr bool committed() const noexcept {
+        return collision.completed() &&
+            commit.has_value() &&
+            commit->committed();
+    }
 };
 
 // Resolves the primary player from the actor state published atomically with
@@ -78,6 +92,35 @@ resolvePublishedLegacyProjectileCollisionLoop(
 resolvePublishedLegacyProjectileCollisionLoop(
     const assets::MissionWorldRoomCatalog& catalog,
     const render::LegacyGameplayCameraMissionRuntime& runtime,
+    const simulation::LegacyProjectileCollisionQueryInput& input,
+    bool projectileIsServer,
+    const LegacyPublishedProjectileCollisionOptions& options = {}) noexcept;
+
+// Runs the published collision loop and reduces its terminal result into a
+// new portable WpMGunAmmo state plus bounded damage/surface command data.
+// The current state must be the already-integrated flight state at
+// input.segmentEnd in input.roomId. No private actor event or effect is
+// dispatched here.
+[[nodiscard]] LegacyPublishedMachineGunProjectileCollisionResult
+resolvePublishedLegacyMachineGunProjectileCollision(
+    const assets::MissionWorldRoomCatalog& catalog,
+    const render::LegacyGameplayCameraMissionRuntime& runtime,
+    const simulation::LegacyMachineGunProjectileState& current,
+    const simulation::LegacyMachineGunAmmoProfile& profile,
+    const simulation::LegacyProjectileCollisionQueryInput& input,
+    bool projectileIsServer,
+    LegacyProjectileLiveActorQuery actorQuery,
+    void* actorQueryContext,
+    const LegacyPublishedProjectileCollisionOptions& options = {}) noexcept;
+
+// Primary-player convenience overload using the actor state committed with
+// the published collision frame.
+[[nodiscard]] LegacyPublishedMachineGunProjectileCollisionResult
+resolvePublishedLegacyMachineGunProjectileCollision(
+    const assets::MissionWorldRoomCatalog& catalog,
+    const render::LegacyGameplayCameraMissionRuntime& runtime,
+    const simulation::LegacyMachineGunProjectileState& current,
+    const simulation::LegacyMachineGunAmmoProfile& profile,
     const simulation::LegacyProjectileCollisionQueryInput& input,
     bool projectileIsServer,
     const LegacyPublishedProjectileCollisionOptions& options = {}) noexcept;
