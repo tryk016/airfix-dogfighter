@@ -1,17 +1,24 @@
 #include "AirfixD3D11Renderer.hpp"
+#include "AirfixSdlInputAdapter.hpp"
 
 #include "airfix/runtime/AppSession.hpp"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
+#include <algorithm>
+#include <cstdint>
 #include <exception>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string_view>
 
 namespace {
+
+constexpr std::uint64_t inputStepNanoseconds = 1'000'000'000ULL / 60ULL;
+constexpr std::uint64_t maximumFrameNanoseconds = 250'000'000ULL;
 
 struct SdlWindowDeleter {
   void operator()(SDL_Window *window) const noexcept {
@@ -75,10 +82,25 @@ int run(const int argumentCount, char *arguments[]) {
     throw std::runtime_error(SDL_GetError());
   }
 
+  airfix::windows::AirfixSdlInputAdapter input;
+  std::uint64_t inputTick = 0U;
+  std::uint64_t inputAccumulator = 0U;
+  std::uint64_t previousTime = SDL_GetTicksNS();
   bool running = true;
   while (running) {
     SDL_Event event{};
     while (SDL_PollEvent(&event)) {
+      const auto inputResult = input.handleEvent(event);
+      if (!inputResult.accepted) {
+        throw std::runtime_error("SDL3 input pipeline failed closed");
+      }
+      if (inputResult.meaningfulInput) {
+        session.noteInputActivity();
+      }
+      if (inputResult.controllerDisconnected) {
+        session.pause();
+      }
+
       switch (event.type) {
       case SDL_EVENT_QUIT:
         running = false;
@@ -87,21 +109,36 @@ int run(const int argumentCount, char *arguments[]) {
         renderer.resize();
         break;
       case SDL_EVENT_WINDOW_FOCUS_LOST:
+        input.focusLost();
         session.enterInactive();
         break;
       case SDL_EVENT_WINDOW_FOCUS_GAINED:
-        session.enterForeground();
-        break;
-      case SDL_EVENT_KEY_DOWN:
-        if (event.key.key == SDLK_ESCAPE) {
-          running = false;
-        } else {
-          session.noteInputActivity();
+        if (!input.focusGained()) {
+          throw std::runtime_error(
+              "SDL3 controller state failed after focus regain");
         }
+        session.enterForeground();
         break;
       default:
         break;
       }
+    }
+
+    const std::uint64_t currentTime = SDL_GetTicksNS();
+    const std::uint64_t elapsed =
+        currentTime >= previousTime ? currentTime - previousTime : 0U;
+    previousTime = currentTime;
+    inputAccumulator += std::min(elapsed, maximumFrameNanoseconds);
+    while (inputAccumulator >= inputStepNanoseconds) {
+      if (inputTick == std::numeric_limits<std::uint64_t>::max()) {
+        throw std::runtime_error("SDL3 input tick counter exhausted");
+      }
+      ++inputTick;
+      const auto inputFrame = input.tick(inputTick);
+      if (!inputFrame.accepted) {
+        throw std::runtime_error("SDL3 input frame generation failed");
+      }
+      inputAccumulator -= inputStepNanoseconds;
     }
 
     (void)renderer.renderFrame(false);

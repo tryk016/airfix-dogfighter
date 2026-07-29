@@ -3046,3 +3046,31 @@ superseded evidence.
   Actions run `30439266445` passes the Visual Studio 2026 D3D11 product job and
   the complete portable matrix; iOS run `30439256007` passes both Apple SDK
   jobs.
+
+## 2026-07-29 - baseline native Windows SDL3 input adapter
+
+- Added portable `DesktopInputBridge` ownership of keyboard, mouse, and one
+  standardized controller above the existing semantic `InputRouter`. It
+  preserves complete controller taps through `ControllerInputBatchBridge`,
+  rejects generation rollback and invalid Q15, resets relative mouse look after
+  one fixed input frame, and fails closed on bounded queue/edge exhaustion.
+- Expanded the default fallback profile to full baseline keyboard/mouse flight,
+  combat, camera, pause, and menu actions. SDL physical scancodes remain stable
+  USB HID IDs; mouse and controller platform types stay outside the C++ core.
+- Added `AirfixSdlInputAdapter` with first-controller assignment, startup
+  discovery, hot-plug/remap, disconnect release and pause request, full-state
+  resampling after focus regain, SDL Y-axis normalization, trigger thresholds,
+  and filtering of touch/pointer-synthesized mouse events.
+- Replaced the renderer-only event loop with a fixed 60 Hz semantic-input pump.
+  The public app still renders only the synthetic scene and discards frames
+  until reconstructed gameplay is connected; no playability claim is made.
+- A fresh 274-step Debug/code-intelligence build passes all 85 portable tests.
+  A fresh 269-step MinGW Release product build against the pinned SDL 3.4.12
+  source passes all 87 tests, including lifecycle/hot-plug/dead-zone/tap
+  coverage, SDL mapping, and the real D3D11 GPU readback/resize smoke test.
+  The 428-file public-boundary scan, `actionlint`, clang-format dry run,
+  changed-scope local-path scan, and `git diff --check` pass. The local MSVC
+  preset is unavailable because Visual Studio 2026 is not installed.
+  Pull-request Actions run `30443041305` passes the Visual Studio 2026 D3D11
+  product job, Windows/Ubuntu/macOS portable jobs, and clangd; iOS run
+  `30443041280` passes both `iphoneos` and `iphonesimulator`.

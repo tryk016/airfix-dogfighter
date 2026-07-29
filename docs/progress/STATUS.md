@@ -15,13 +15,15 @@
 - ADR-0008 selects SDL3 for the Windows window/events/keyboard/mouse/controllers
   and D3D11/DXGI with HLSL for the Windows renderer. SDL3 does not own game
   rendering; iOS remains on its native Metal backend.
-- The first native Windows x64 product slice is implemented. A statically
+- The native Windows x64 product foundation is implemented. A statically
   linked SDL3 shell owns the window and lifecycle events; a separate
   D3D11/DXGI backend compiles HLSL, uploads the same public scene used by Metal,
   preserves shared draw-command order, supports resize, and falls back from
   hardware D3D11 to WARP. Its hidden CTest mode reads the real back buffer and
-  rejects a clear-only frame. It remains a data-less renderer shell, not a
-  playable build.
+  rejects a clear-only frame. SDL3 keyboard/mouse/standardized-gamepad events
+  now feed the shared 60 Hz semantic input path with ordered tap preservation,
+  dead-zone/trigger normalization, hot-plug, disconnect release, and focus
+  neutralization. It remains a data-less product shell, not a playable build.
 - Cross-platform input/control/haptics system specified; semantic input
   architecture recorded in ADR-0002.
 - Local Git repository initialized on branch `main`; planning baseline committed
@@ -761,11 +763,11 @@
 
 ## Next
 
-1. Extend the implemented native Windows x64 renderer shell with the complete
-   SDL3 keyboard/mouse/controller adapter, select and implement the separate
-   audio adapter, connect owner-local authenticated content, and replace the
-   public smoke scene with shared reconstructed world commands without
-   weakening its data-less CI path.
+1. Extend the implemented native Windows x64 renderer/input shell with the
+   separate audio adapter, owner-local authenticated content, persistent
+   remapping/calibration profiles and controller glyphs; replace the public
+   smoke scene with shared reconstructed world commands without weakening its
+   data-less CI path.
 2. Obtain controlled runtime traces for free flight and the ground, inverted,
    water, collision, engine-transition, and too-high branches; establish
    x87-versus-portable numeric tolerances and deterministic replacement PRNG

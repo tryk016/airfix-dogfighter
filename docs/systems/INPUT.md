@@ -62,17 +62,17 @@ claims an axis without allowing idle drift to steal it. Device cancellation,
 context changes, and lifecycle reset synthesize releases, and reset requires two
 consecutive neutral ticks before gameplay input is admitted again.
 
-Default semantic bindings cover touch, an extended controller, and minimal
-desktop keyboard testing. That keyboard path is a portable validation
-foundation, not the Windows product adapter. The Windows x64 application uses
-SDL3 for keyboard/mouse focus and controller discovery/hot-plug, then applies
-the project's calibration, bindings, glyphs, and rumble policy before emitting
-the same normalized events.
+Default semantic bindings cover touch, an extended controller, and the baseline
+Windows keyboard/mouse profile. The Windows x64 application now uses SDL3 for
+keyboard/mouse focus and standardized-controller discovery/hot-plug, converts
+those native values into stable USB HID/control IDs and Q15 values, and emits
+the same normalized events as iOS. Persistent profiles, configurable
+calibration, glyphs, and rumble policy remain pending.
 
 The native iOS layer feeds the complete current gameplay-action surface from a
 safe-area-aware UIKit overlay and Apple's Game Controller framework; none of
 those platform types enter `InputFrame`. Profile persistence/remapping,
-controller glyphs, finished menu UI, Windows product adapters, and haptic
+controller glyphs, finished menu UI, physical device acceptance, and haptic
 adapters remain follow-up layers.
 
 The portable simulation consumer is also implemented.
@@ -144,6 +144,34 @@ This completes action transport, not control-system acceptance. Remapping,
 calibration UI, persistent layout/visibility profiles, prompt glyphs, haptics,
 finished touch/controller menus, and runtime validation on both target iPhones
 remain pending.
+
+### Implemented native Windows slice
+
+`AirfixSdlInputAdapter` owns one SDL3 standardized gamepad while preserving
+keyboard and mouse as simultaneous independent sources. It maps physical SDL
+scancodes directly to stable USB HID usage IDs, maps relative mouse motion and
+buttons without accepting touch/pointer-synthesized mouse events, and samples
+all sources through `DesktopInputBridge` at a fixed 60 Hz.
+
+`DesktopInputBridge` is portable C++20. It accumulates one-tick relative mouse
+look, preserves complete press/release taps, rejects invalid Q15 and generation
+rollback, reuses `ControllerInputBatchBridge` for the same dead-zone and trigger
+policy as iOS, and submits only stable physical events to `InputRouter`. A newly
+assigned, remapped, or replacement gamepad must be neutral for two input ticks.
+Disconnect releases its held actions and requests pause. Focus loss resets all
+sources; focus regain starts a fresh lifecycle gate and full controller sample.
+
+The fallback keyboard/mouse layout uses arrows for bank/pitch, `W`/`S` for
+thrust adjustment, left/right mouse or `Space`/left `Ctrl` for weapons, relative
+mouse motion for camera look, mouse wheel or `Tab` for next weapon, `R` for rear
+view, `C`/`F` for camera cycle/recenter, `M` for mission status, and `Escape`
+for pause. Menu bindings use arrows, `Enter`, `Escape`, and `Q`/`E` tabs.
+Standard gamepad bindings match the implemented controller table below.
+
+This is the tested physical transport baseline, not finished input acceptance.
+Persistent remapping/calibration, selected-device UI, glyphs, digital menu
+repeat, rumble, and physical Xbox/PlayStation/generic-controller testing remain
+pending.
 
 ## Input contexts
 

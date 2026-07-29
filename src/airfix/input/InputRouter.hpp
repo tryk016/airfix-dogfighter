@@ -384,7 +384,16 @@ inline constexpr ControlId faceSecondary{16U};
 
 namespace keyboard {
 // USB HID usage IDs keep this adapter-independent while remaining recognizable.
+inline constexpr ControlId c{0x06U};
+inline constexpr ControlId e{0x08U};
+inline constexpr ControlId f{0x09U};
+inline constexpr ControlId m{0x10U};
+inline constexpr ControlId q{0x14U};
+inline constexpr ControlId r{0x15U};
+inline constexpr ControlId s{0x16U};
+inline constexpr ControlId w{0x1aU};
 inline constexpr ControlId escape{0x29U};
+inline constexpr ControlId tab{0x2bU};
 inline constexpr ControlId space{0x2cU};
 inline constexpr ControlId arrowRight{0x4fU};
 inline constexpr ControlId arrowLeft{0x50U};
@@ -393,6 +402,18 @@ inline constexpr ControlId arrowUp{0x52U};
 inline constexpr ControlId leftControl{0xe0U};
 inline constexpr ControlId enter{0x28U};
 } // namespace keyboard
+
+namespace mouse {
+inline constexpr ControlId leftButton{1U};
+inline constexpr ControlId rightButton{2U};
+inline constexpr ControlId middleButton{3U};
+inline constexpr ControlId extraButtonOne{4U};
+inline constexpr ControlId extraButtonTwo{5U};
+inline constexpr ControlId relativeX{6U};
+inline constexpr ControlId relativeY{7U};
+inline constexpr ControlId wheelUp{8U};
+inline constexpr ControlId wheelDown{9U};
+} // namespace mouse
 
 } // namespace controls
 

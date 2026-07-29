@@ -61,6 +61,7 @@ endif()
 
 add_library(airfix_input
     src/airfix/input/ControllerInputBatchBridge.cpp
+    src/airfix/input/DesktopInputBridge.cpp
     src/airfix/input/InputRouter.cpp
 )
 add_library(airfix::input ALIAS airfix_input)
@@ -481,6 +482,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::input)
     add_test(NAME airfix_controller_input_batch_bridge_tests
         COMMAND airfix_controller_input_batch_bridge_tests)
+
+    add_executable(airfix_desktop_input_bridge_tests
+        tests/DesktopInputBridgeTests.cpp)
+    target_link_libraries(airfix_desktop_input_bridge_tests
+        PRIVATE airfix::input)
+    add_test(NAME airfix_desktop_input_bridge_tests
+        COMMAND airfix_desktop_input_bridge_tests)
 
     add_executable(airfix_simulation_tests
         tests/PlayerAircraftSimulationTests.cpp)

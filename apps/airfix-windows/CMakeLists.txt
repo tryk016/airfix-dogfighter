@@ -25,6 +25,28 @@ FetchContent_Declare(SDL3
 )
 FetchContent_MakeAvailable(SDL3)
 
+add_library(airfix_windows_input STATIC
+    AirfixSdlInputAdapter.cpp
+    AirfixSdlInputAdapter.hpp
+)
+target_include_directories(airfix_windows_input PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+target_compile_features(airfix_windows_input PUBLIC cxx_std_20)
+if(MSVC)
+    target_compile_options(airfix_windows_input PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(airfix_windows_input PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+endif()
+target_link_libraries(airfix_windows_input PUBLIC
+    airfix::input
+    SDL3::SDL3-static
+)
+
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/AirfixSmoke.hlsl")
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/AirfixSmoke.hlsl"
@@ -62,9 +84,9 @@ else()
     )
 endif()
 target_link_libraries(airfix_windows PRIVATE
+    airfix_windows_input
     airfix::render
     airfix::runtime
-    SDL3::SDL3-static
     d3d11
     d3dcompiler
     dxgi
@@ -86,6 +108,25 @@ add_custom_command(TARGET airfix_windows POST_BUILD
 )
 
 if(AIRFIX_BUILD_TESTS)
+    add_executable(airfix_windows_input_mapping_tests
+        AirfixSdlInputMappingTests.cpp)
+    target_compile_features(airfix_windows_input_mapping_tests
+        PRIVATE cxx_std_20)
+    if(MSVC)
+        target_compile_options(airfix_windows_input_mapping_tests
+            PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(airfix_windows_input_mapping_tests PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+    endif()
+    target_link_libraries(airfix_windows_input_mapping_tests PRIVATE
+        airfix_windows_input)
+    add_test(NAME airfix_windows_input_mapping_tests
+        COMMAND airfix_windows_input_mapping_tests)
+
     add_test(NAME airfix_windows_gpu_smoke_tests
         COMMAND airfix_windows --smoke-test)
     set_tests_properties(airfix_windows_gpu_smoke_tests PROPERTIES

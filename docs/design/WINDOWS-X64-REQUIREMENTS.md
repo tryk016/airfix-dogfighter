@@ -1,7 +1,7 @@
 # Windows x64 product requirements
 
-**Status:** accepted product direction; first data-less renderer shell
-implemented; playable integration pending
+**Status:** accepted product direction; data-less renderer and baseline physical
+input shells implemented; playable integration pending
 
 **Scope:** requirements unique to the playable Windows x64 product. Shared
 gameplay scope and parity requirements are defined in `V1-SCOPE.md`.
@@ -16,10 +16,13 @@ original PE32 executable, and it does not recreate the DirectX 7 API.
 The repository now builds a native data-less SDL3/D3D11 shell. It creates a
 Win32 window through SDL, executes a shared synthetic draw plan through HLSL
 and D3D11/DXGI, handles focus and resize, falls back from hardware D3D11 to
-WARP, and verifies the rendered back buffer in a hidden CTest smoke mode. This
-proves the product and renderer boundary but is not a playable game. Product
-status becomes playable only after physical input, audio, owner-local content,
-and reconstructed gameplay are integrated.
+WARP, and verifies the rendered back buffer in a hidden CTest smoke mode. A
+separate SDL3 adapter now feeds fixed-rate semantic frames from the baseline
+keyboard/mouse and standardized-controller layout, including focus loss,
+hot-plug, disconnect, ordered taps, dead-zone handling, and lifecycle neutral
+gates. This proves the product, renderer, and physical-input boundaries but is
+not a playable game. Product status becomes playable only after audio,
+owner-local content, and reconstructed gameplay are integrated.
 
 ## Shared-core contract
 
@@ -62,6 +65,28 @@ The complete campaign must be playable with:
 Both paths map to the same actions used by touch and controllers on iOS.
 Remapping, calibration/deadzones, controller hot-plug, controller glyphs, focus
 loss, and synthetic release of held actions are release requirements.
+
+### Implemented baseline layout
+
+| Action | Keyboard/mouse | Standard gamepad |
+|---|---|---|
+| Bank / pitch | arrow keys | left stick |
+| Increase / decrease thrust | `W` / `S` | D-pad up / down |
+| Camera look | relative mouse motion | right stick |
+| Primary / secondary fire | left / right mouse button or `Space` / left `Ctrl` | right / left trigger |
+| Next weapon | mouse wheel or `Tab` | right shoulder |
+| Rear view | `R` or mouse X1 | left shoulder |
+| Camera cycle / recenter | `C` / `F`, middle mouse cycles | west face / right-stick click |
+| Mission status | `M` or mouse X2 | north face |
+| Pause | `Escape` | Start/Menu |
+| Menu navigation | arrows, `Enter`, `Escape`, `Q` / `E` tabs | left stick, south/east face, shoulders |
+
+SDL scancodes are converted to stable USB HID control IDs. Controller Y axes
+are normalized so positive pitch/look means up, matching the shared semantic
+contract. Relative mouse look is a one-input-tick pulse and returns to neutral
+on the next 60 Hz sample. Persistent remapping, configurable calibration,
+device selection, and glyph presentation are deliberately follow-up layers;
+the table above is the tested fallback profile.
 
 ## Debug and parity facilities
 
