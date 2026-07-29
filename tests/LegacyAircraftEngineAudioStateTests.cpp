@@ -114,6 +114,9 @@ void testFiveCallCadenceAndStart() {
         require(!skipped->cadenceUpdate, "cadence ran too early");
         require(skipped->commandCount == 0U, "skipped cadence emitted audio");
         require(
+            skipped->phaseCommandCount == 0U,
+            "skipped cadence exposed a phase boundary");
+        require(
             skipped->state.cadenceCounter == expected,
             "skipped cadence counter changed");
         state = skipped->state;
@@ -134,6 +137,9 @@ void testFiveCallCadenceAndStart() {
         started->state.engineStartElapsedSeconds == 0.0F,
         "start transition timer was not reset");
     require(started->commandCount == 10U, "start command count changed");
+    require(
+        started->phaseCommandCount == 2U,
+        "start phase boundary changed");
 
     requireCommand(
         *started,
@@ -234,6 +240,9 @@ void testStrictThresholdsAndDelayedCompletion() {
     require(
         threshold->commandCount == 8U,
         "exact threshold did not emit only common updates");
+    require(
+        threshold->phaseCommandCount == 0U,
+        "exact threshold exposed phase commands");
 
     LegacyAircraftEngineAudioState exactDuration{
         .engineStartElapsedSeconds =
@@ -252,6 +261,9 @@ void testStrictThresholdsAndDelayedCompletion() {
             !atDuration->state.engineRunning &&
             atDuration->commandCount == 8U,
         "exact four-second duration completed the start transition");
+    require(
+        atDuration->phaseCommandCount == 0U,
+        "exact duration exposed phase commands");
 
     LegacyAircraftEngineAudioState starting{
         .engineStartElapsedSeconds =
@@ -294,6 +306,9 @@ void testStrictThresholdsAndDelayedCompletion() {
             !completed->state.engineStartTransitionActive,
         "strict four-second completion did not enter running state");
     require(completed->commandCount == 13U, "completion command count changed");
+    require(
+        completed->phaseCommandCount == 5U,
+        "completion phase boundary changed");
     requireCommand(
         *completed,
         0U,
@@ -354,6 +369,9 @@ void testStopOrderAndTimerResetOnFollowingCall() {
         stopped->commandCount ==
             legacyAircraftMaximumEngineAudioCommands,
         "maximum stop command sequence changed");
+    require(
+        stopped->phaseCommandCount == 6U,
+        "shutdown phase boundary changed");
 
     constexpr LegacyAircraftEngineSound stoppedSounds[]{
         LegacyAircraftEngineSound::engineStart,

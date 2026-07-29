@@ -155,6 +155,8 @@ legacyAircraftAdvanceEngineAudio(
         step.state.engineStartTransitionActive = false;
     }
 
+    step.phaseCommandCount = step.commandCount;
+
     const float throttleWeightedLoad =
         step.smoothedThrust *
             legacyAircraftEngineAudioLoadThrottleScale +

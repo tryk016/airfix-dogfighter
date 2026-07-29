@@ -120,6 +120,21 @@ renderer. The exchange is tied to one scene identity, never mutates
 override. It deliberately does not decide which instances belong to a player;
 that binding awaits the recovered dynamic actor/spawn pipeline.
 
+### `audio`
+
+Recovered gameplay state produces semantic sound operations in `simulation`.
+`LegacyAircraftAudioCoordinator` joins the AirCraft engine and destroyed-dive
+transitions at the exact recovered fifth-call boundary, then translates play,
+stop, gain, and pitch operations into bounded `airfix::audio` command batches.
+The coordinator contains no platform API, decoded sample, file path, mixer, or
+device state.
+
+The owner-local content/runtime layer binds each recovered sound role to a
+validated clip ID and a voice ID unique to one aircraft instance. Platform
+backends register owned decoded PCM for those clip IDs and consume the same
+monotonic command batches. Windows currently uses XAudio2 2.9; iOS will use a
+native Apple audio adapter. See `docs/systems/AUDIO.md`.
+
 ### `platform`
 
 Narrow interfaces for input, audio, timing, files, localization, lifecycle, and
@@ -148,8 +163,9 @@ optional motion never enter the game core as platform key/button codes. See
 ### `apps`
 
 - `airfix-windows`: native x64 playable application, primary debug/parity
-  environment, and faithful-reference capture host. Its platform shell is
-  specified but not yet implemented.
+  environment, and faithful-reference capture host. Its data-less SDL3,
+  D3D11/DXGI/HLSL, input, and XAudio2 2.9 platform shell is implemented;
+  owner-local content and reconstructed gameplay integration remain.
 - `airfix-ios`: CMake-generated Objective-C++/UIKit/Metal application target.
   The first shell is data-less, iPhone-landscape only, and delegates lifecycle
   state to portable `airfix::runtime`; see ADR-0006.

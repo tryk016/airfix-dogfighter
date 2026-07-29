@@ -64,6 +64,9 @@ struct LegacyAircraftEngineAudioStep final {
     std::array<
         LegacyAircraftEngineAudioCommand,
         legacyAircraftMaximumEngineAudioCommands> commands{};
+    // Commands before this index are phase transitions. The destroyed-dive
+    // block belongs at this boundary; common engine modulation follows it.
+    std::size_t phaseCommandCount{};
     std::size_t commandCount{};
 };
 

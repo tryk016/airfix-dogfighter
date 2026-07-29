@@ -438,8 +438,9 @@ contract, evidence, implementation, tests, parity result, and documentation agre
    analysis until the isolated environment is available.
 9. **Foundation complete:** the native Windows x64 boundary now has SDL3
    window/events/input, D3D11/DXGI/HLSL rendering, XAudio2 2.9 audio, and a
-   data-less synthetic product smoke without platform gameplay. Owner-local
-   content and the first playable vertical slice remain.
+   data-less product smoke that drives shared reconstructed AirCraft audio
+   commands without platform gameplay. Owner-local content, live aircraft
+   state, and the first playable vertical slice remain.
 10. **In progress:** the bounded blueprint and placed-scene graphs, seam-safe
    draw-model payload, and multi-instance diagnostic have assembled and
    rendered a complete grouped aircraft. Parent-relative local derivation, the

@@ -90,6 +90,7 @@ target_link_libraries(airfix_windows PRIVATE
     airfix::audio
     airfix::render
     airfix::runtime
+    airfix::simulation
     d3d11
     d3dcompiler
     dxgi
