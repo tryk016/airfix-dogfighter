@@ -3438,3 +3438,22 @@ superseded evidence.
   and iOS still publish the authenticated frozen spawn until controlled traces
   justify the separate 12 ms AirCraft producer. No private content, logical
   names, checksums, paths, or derived assets enter the repository.
+
+## 2026-07-29 - isolated slot-45 thrust-control prefix
+
+- Extended the existing portable thrust-state helper with one caller-owned
+  state for persistent apply, target thrust, and smoothed thrust. An executed
+  step updates and clamps the target only for positive health, then always
+  delegates smoothing to the already implemented engine-start-aware
+  recurrence.
+- The transition preserves native branch visibility: non-positive health does
+  not inspect the apply field, while target and smoothing remain live.
+  Persistent apply is never cleared by the force step. Invalid active inputs or
+  non-finite arithmetic fail closed without returning a partial state.
+- Synthetic tests cover same-step ordering, persistent apply, upper/lower
+  clamp, both smoothing branches, zero/negative-health gating, skipped invalid
+  apply, later active rejection, and overflow/non-finite failures.
+- The helper owns no `dt`, sleep gate, input clock, event reducer, Q15 mapping,
+  rigid-body state, or renderer publication. It remains deliberately unwired
+  until controlled traces establish the 60 Hz input-to-native-event and 12 ms
+  sample-and-hold policy. No original or private data is required.

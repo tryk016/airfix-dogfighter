@@ -28,6 +28,47 @@ std::optional<float> legacyAircraftAdvanceSmoothedThrust(
     return next;
 }
 
+std::optional<LegacyAircraftThrustControlState>
+legacyAircraftAdvanceThrustControl(
+    LegacyAircraftThrustControlState current,
+    const LegacyAircraftThrustControlInput input) noexcept {
+    if (!std::isfinite(input.health) ||
+        !std::isfinite(current.targetThrust) ||
+        !std::isfinite(current.smoothedThrust)) {
+        return std::nullopt;
+    }
+
+    float nextTarget = current.targetThrust;
+    if (input.health > 0.0F) {
+        if (!std::isfinite(current.thrustApply)) {
+            return std::nullopt;
+        }
+        nextTarget = current.targetThrust + current.thrustApply;
+        if (!std::isfinite(nextTarget)) {
+            return std::nullopt;
+        }
+        if (nextTarget > 1.0F) {
+            nextTarget = 1.0F;
+        } else if (nextTarget < 0.0F) {
+            nextTarget = 0.0F;
+        }
+    }
+
+    const auto nextSmoothed = legacyAircraftAdvanceSmoothedThrust(
+        current.smoothedThrust,
+        nextTarget,
+        input.engineStartTransitionActive);
+    if (!nextSmoothed.has_value()) {
+        return std::nullopt;
+    }
+
+    return LegacyAircraftThrustControlState{
+        .thrustApply = current.thrustApply,
+        .targetThrust = nextTarget,
+        .smoothedThrust = *nextSmoothed,
+    };
+}
+
 std::optional<float> legacyAircraftApplyCollisionThrustDamage(
     const float currentThrustIntegrity,
     const std::span<const LegacyAircraftCollisionSample> samples) noexcept {

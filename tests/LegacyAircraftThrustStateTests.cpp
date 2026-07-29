@@ -1,4 +1,5 @@
 #include "airfix/simulation/LegacyAircraftThrustState.hpp"
+#include "airfix/simulation/LegacyVehicleSleepState.hpp"
 
 #include <array>
 #include <bit>
@@ -6,13 +7,19 @@
 #include <cstdint>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
 namespace {
 
 using airfix::simulation::LegacyAircraftCollisionSample;
+using airfix::simulation::LegacyAircraftThrustControlInput;
+using airfix::simulation::LegacyAircraftThrustControlState;
+using airfix::simulation::LegacyVehicleSleepStepInput;
 using airfix::simulation::legacyAircraftAdvanceSmoothedThrust;
+using airfix::simulation::legacyAircraftAdvanceThrustControl;
+using airfix::simulation::legacyVehicleAdvanceSleepStep;
 using airfix::simulation::legacyAircraftApplyCollisionThrustDamage;
 using airfix::simulation::legacyAircraftCollisionDamageScale;
 using airfix::simulation::legacyAircraftCollisionImpulseThreshold;
@@ -26,6 +33,8 @@ using airfix::simulation::legacyAircraftRecoverThrustIntegrity;
 using airfix::simulation::legacyAircraftThrottleResponseFactor;
 using airfix::simulation::legacyAircraftThrottleResponseOffset;
 using airfix::simulation::legacyAircraftThrustRecoveryRandomScale;
+
+static_assert(noexcept(legacyAircraftAdvanceThrustControl({}, {})));
 
 void require(const bool condition, const std::string& message) {
     if (!condition) {
@@ -42,6 +51,17 @@ void requireNear(
         std::fabs(actual - expected) <= tolerance,
         message + ": expected " + std::to_string(expected) +
             ", got " + std::to_string(actual));
+}
+
+void requireBits(
+    const float actual,
+    const std::uint32_t expected,
+    const std::string& message) {
+    const auto actualBits = std::bit_cast<std::uint32_t>(actual);
+    require(
+        actualBits == expected,
+        message + ": expected bits " + std::to_string(expected) +
+            ", got " + std::to_string(actualBits));
 }
 
 void testRecoveredConstants() {
@@ -108,6 +128,297 @@ void testSmoothedThrustBranches() {
     require(
         unclamped.has_value() && *unclamped > 1.0F,
         "a non-native final clamp was added to smoothed thrust");
+}
+
+void testOrderedThrustControlStep() {
+    constexpr LegacyAircraftThrustControlState initial{
+        .thrustApply = 0.1F,
+        .targetThrust = 0.5F,
+        .smoothedThrust = 0.2F,
+    };
+    const auto first = legacyAircraftAdvanceThrustControl(
+        initial,
+        {
+            .health = 1.0F,
+            .engineStartTransitionActive = false,
+        });
+    const auto expectedFirstSmoothed =
+        legacyAircraftAdvanceSmoothedThrust(0.2F, 0.6F, false);
+    require(
+        first.has_value() && expectedFirstSmoothed.has_value() &&
+            first->thrustApply == 0.1F &&
+            first->targetThrust == 0.6F &&
+            first->smoothedThrust == *expectedFirstSmoothed,
+        "target update did not precede same-step smoothing");
+
+    const auto second = legacyAircraftAdvanceThrustControl(
+        *first,
+        {
+            .health = 1.0F,
+            .engineStartTransitionActive = false,
+        });
+    const float expectedSecondTarget =
+        first->targetThrust + first->thrustApply;
+    const auto expectedSecondSmoothed =
+        legacyAircraftAdvanceSmoothedThrust(
+            first->smoothedThrust,
+            expectedSecondTarget,
+            false);
+    require(
+        second.has_value() && expectedSecondSmoothed.has_value() &&
+            second->thrustApply == 0.1F &&
+            second->targetThrust == expectedSecondTarget &&
+            second->smoothedThrust == *expectedSecondSmoothed,
+        "persistent thrust apply did not advance the next force step");
+
+    const auto starting = legacyAircraftAdvanceThrustControl(
+        initial,
+        {
+            .health = 1.0F,
+            .engineStartTransitionActive = true,
+        });
+    const auto expectedStarting =
+        legacyAircraftAdvanceSmoothedThrust(0.2F, 0.6F, true);
+    require(
+        starting.has_value() && expectedStarting.has_value() &&
+            starting->targetThrust == 0.6F &&
+            starting->smoothedThrust == *expectedStarting,
+        "engine-start smoothing did not consume the updated target");
+}
+
+void testThrustControlClampAndHealthGate() {
+    const auto clampedHigh = legacyAircraftAdvanceThrustControl(
+        {
+            .thrustApply = 0.2F,
+            .targetThrust = 0.9F,
+            .smoothedThrust = 0.2F,
+        },
+        {
+            .health = 1.0F,
+            .engineStartTransitionActive = false,
+        });
+    require(
+        clampedHigh.has_value() &&
+            clampedHigh->targetThrust == 1.0F,
+        "positive target update did not clamp to one");
+
+    const auto clampedLow = legacyAircraftAdvanceThrustControl(
+        {
+            .thrustApply = -0.2F,
+            .targetThrust = 0.1F,
+            .smoothedThrust = 0.2F,
+        },
+        {
+            .health = 1.0F,
+            .engineStartTransitionActive = false,
+        });
+    require(
+        clampedLow.has_value() &&
+            clampedLow->targetThrust == 0.0F,
+        "negative target update did not clamp to zero");
+
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const LegacyAircraftThrustControlState gated{
+        .thrustApply = nan,
+        .targetThrust = 0.8F,
+        .smoothedThrust = 0.2F,
+    };
+    const auto zeroHealth = legacyAircraftAdvanceThrustControl(
+        gated,
+        {
+            .health = 0.0F,
+            .engineStartTransitionActive = false,
+        });
+    const auto expected =
+        legacyAircraftAdvanceSmoothedThrust(0.2F, 0.8F, false);
+    require(
+        zeroHealth.has_value() && expected.has_value() &&
+            std::isnan(zeroHealth->thrustApply) &&
+            zeroHealth->targetThrust == 0.8F &&
+            zeroHealth->smoothedThrust == *expected,
+        "zero health did not skip apply while retaining smoothing");
+
+    const auto negativeHealth = legacyAircraftAdvanceThrustControl(
+        gated,
+        {
+            .health = -1.0F,
+            .engineStartTransitionActive = true,
+        });
+    const auto expectedStarting =
+        legacyAircraftAdvanceSmoothedThrust(0.2F, 0.8F, true);
+    require(
+        negativeHealth.has_value() &&
+            expectedStarting.has_value() &&
+            negativeHealth->targetThrust == 0.8F &&
+            negativeHealth->smoothedThrust ==
+                *expectedStarting,
+        "negative health skipped the unconditional smoothing path");
+
+    require(
+        !legacyAircraftAdvanceThrustControl(
+             gated,
+             {
+                 .health = 1.0F,
+                 .engineStartTransitionActive = false,
+             })
+             .has_value(),
+        "positive health accepted a non-finite apply field");
+}
+
+void testThrustControlPortableVectors() {
+    constexpr LegacyAircraftThrustControlState initial{
+        .thrustApply = std::bit_cast<float>(0x3CA3D70BU),
+        .targetThrust = std::bit_cast<float>(0x3F4CCCCDU),
+        .smoothedThrust = std::bit_cast<float>(0x3E4CCCCDU),
+    };
+
+    const auto healthZero = legacyAircraftAdvanceThrustControl(
+        initial,
+        {
+            .health = 0.0F,
+            .engineStartTransitionActive = false,
+        });
+    require(healthZero.has_value(), "health-zero vector was rejected");
+    requireBits(
+        healthZero->targetThrust,
+        0x3F4CCCCDU,
+        "health-zero vector changed target");
+    requireBits(
+        healthZero->smoothedThrust,
+        0x3E52F1AAU,
+        "health-zero smoothing vector changed");
+
+    const auto normal = legacyAircraftAdvanceThrustControl(
+        initial,
+        {
+            .health = 1.0F,
+            .engineStartTransitionActive = false,
+        });
+    require(normal.has_value(), "normal portable vector was rejected");
+    requireBits(
+        normal->targetThrust,
+        0x3F51EB85U,
+        "normal target vector changed");
+    requireBits(
+        normal->smoothedThrust,
+        0x3E532618U,
+        "normal smoothing vector changed");
+
+    const auto starting = legacyAircraftAdvanceThrustControl(
+        initial,
+        {
+            .health = 1.0F,
+            .engineStartTransitionActive = true,
+        });
+    require(starting.has_value(), "starting portable vector was rejected");
+    requireBits(
+        starting->targetThrust,
+        0x3F51EB85U,
+        "starting target vector changed");
+    requireBits(
+        starting->smoothedThrust,
+        0x3E4D0DD0U,
+        "starting smoothing vector changed");
+
+    constexpr LegacyAircraftThrustControlState phaseOrdering{
+        .thrustApply = 0.0F,
+        .targetThrust = 1.0F,
+        .smoothedThrust = 0.0F,
+    };
+    const auto beforeSlot44 = legacyAircraftAdvanceThrustControl(
+        phaseOrdering,
+        {
+            .health = 1.0F,
+            .engineStartTransitionActive = false,
+        });
+    require(beforeSlot44.has_value(), "phase-order vector was rejected");
+    requireBits(
+        beforeSlot44->smoothedThrust,
+        0x3BC49BA6U,
+        "slot 45 did not use the entry engine phase");
+    const auto afterSlot44 = legacyAircraftAdvanceThrustControl(
+        *beforeSlot44,
+        {
+            .health = 1.0F,
+            .engineStartTransitionActive = true,
+        });
+    require(afterSlot44.has_value(), "next phase-order vector was rejected");
+    requireBits(
+        afterSlot44->smoothedThrust,
+        0x3BD1A2F6U,
+        "next slot 45 did not observe the updated engine phase");
+}
+
+void testSleepThresholdCompositionUsesEntryDecision() {
+    constexpr LegacyVehicleSleepStepInput input{
+        .wakeControlValues = {},
+        .linearVelocitySquared = 0.0F,
+        .onGround = true,
+        .waterUnit = false,
+        .refreshDeltaMilliseconds = 12,
+    };
+    const auto threshold = legacyVehicleAdvanceSleepStep(1999, input);
+    require(
+        threshold.has_value() &&
+            threshold->restDurationMilliseconds == 2011 &&
+            threshold->integratePhysics &&
+            threshold->clearDynamics && threshold->sleeping(),
+        "sleep threshold fixture did not preserve the entry decision");
+
+    constexpr LegacyAircraftThrustControlState initial{
+        .thrustApply = 0.0F,
+        .targetThrust = 0.0F,
+        .smoothedThrust = std::bit_cast<float>(0x3E4CCCCDU),
+    };
+    const auto thresholdStep =
+        threshold->integratePhysics
+        ? legacyAircraftAdvanceThrustControl(
+              initial,
+              {
+                  .health = 1.0F,
+                  .engineStartTransitionActive = false,
+              })
+        : std::optional<LegacyAircraftThrustControlState>{initial};
+    require(
+        thresholdStep.has_value(),
+        "threshold-crossing slot 45 was rejected");
+    requireBits(
+        thresholdStep->smoothedThrust,
+        0x3E4AC083U,
+        "post-threshold sleeping state incorrectly skipped current slot 45");
+
+    const auto sleeping =
+        legacyVehicleAdvanceSleepStep(
+            threshold->restDurationMilliseconds,
+            {
+                .wakeControlValues =
+                    {
+                        std::numeric_limits<float>::quiet_NaN(),
+                    },
+                .linearVelocitySquared =
+                    std::numeric_limits<float>::quiet_NaN(),
+                .onGround = false,
+                .waterUnit = false,
+                .refreshDeltaMilliseconds =
+                    std::numeric_limits<std::int64_t>::max(),
+            });
+    require(
+        sleeping.has_value() && !sleeping->integratePhysics,
+        "next sleeping refresh did not skip the active path");
+    auto skippedState = *thresholdStep;
+    if (sleeping->integratePhysics) {
+        const auto unexpected = legacyAircraftAdvanceThrustControl(
+            skippedState,
+            {
+                .health = 1.0F,
+                .engineStartTransitionActive = false,
+            });
+        require(unexpected.has_value(), "unexpected active step failed");
+        skippedState = *unexpected;
+    }
+    require(
+        skippedState == *thresholdStep,
+        "skipped slot 45 changed the caller-owned state");
 }
 
 void testCollisionQualificationAndDamage() {
@@ -247,6 +558,47 @@ void testValidation() {
         !legacyAircraftAdvanceSmoothedThrust(0.5F, infinity, false)
              .has_value(),
         "non-finite target thrust was accepted");
+    require(
+        !legacyAircraftAdvanceThrustControl(
+             {
+                 .thrustApply = 0.0F,
+                 .targetThrust = 0.5F,
+                 .smoothedThrust = 0.2F,
+             },
+             {
+                 .health = nan,
+                 .engineStartTransitionActive = false,
+             })
+             .has_value(),
+        "non-finite health was accepted");
+    require(
+        !legacyAircraftAdvanceThrustControl(
+             {
+                 .thrustApply = 0.0F,
+                 .targetThrust = infinity,
+                 .smoothedThrust = 0.2F,
+             },
+             {
+                 .health = 1.0F,
+                 .engineStartTransitionActive = false,
+             })
+             .has_value(),
+        "non-finite target state was accepted");
+    require(
+        !legacyAircraftAdvanceThrustControl(
+             {
+                 .thrustApply =
+                     std::numeric_limits<float>::max(),
+                 .targetThrust =
+                     std::numeric_limits<float>::max(),
+                 .smoothedThrust = 0.2F,
+             },
+             {
+                 .health = 1.0F,
+                 .engineStartTransitionActive = false,
+             })
+             .has_value(),
+        "overflowing target update was accepted");
 
     constexpr std::array invalidCollision{
         LegacyAircraftCollisionSample{
@@ -288,6 +640,10 @@ int main() {
     try {
         testRecoveredConstants();
         testSmoothedThrustBranches();
+        testOrderedThrustControlStep();
+        testThrustControlClampAndHealthGate();
+        testThrustControlPortableVectors();
+        testSleepThresholdCompositionUsesEntryDecision();
         testCollisionQualificationAndDamage();
         testRecoveryAndOrdering();
         testValidation();
