@@ -37,7 +37,7 @@ offline workflow.
 | Windows x64 product compiler | MSVC in the official preset and CI; MinGW GCC is an additional local compatibility check; clang-cl remains a later sanitizer/tooling candidate |
 | Windows window/input | Pinned SDL3 for window, events, keyboard, mouse, and controllers; not game rendering |
 | Windows graphics | Direct3D 11 plus DXGI with HLSL |
-| Windows audio | Separate native adapter selected by a focused spike |
+| Windows audio | Inbox XAudio2 2.9 loaded from the system directory; X3DAudio planned for spatialization |
 | Tests | lightweight C++ test runner selected with the skeleton |
 | iOS platform/input/controller | UIKit and Game Controller behind Objective-C++ adapters |
 | iOS graphics | Metal with MetalKit/Objective-C++ bridge as needed |
@@ -57,9 +57,13 @@ The `windows-product` configure preset creates an x64 Visual Studio 2026 build,
 enables the native Windows shell, disables tools, and leaves every portable
 test enabled. `windows-product-release` build/test presets compile the static,
 hash-pinned SDL dependency and run the complete data-less suite, including a
-hidden D3D11 back-buffer readback. SDL rendering and GPU subsystems are disabled:
-SDL owns only the Windows window/events/input boundary, while the application
-links D3D11, DXGI, and the HLSL compiler directly.
+hidden D3D11 back-buffer readback. SDL rendering and GPU subsystems are
+disabled: SDL owns only the Windows window/events/input boundary, while the
+application links D3D11, DXGI, and the HLSL compiler directly. SDL audio is
+also disabled: the application loads the inbox XAudio2 2.9 runtime dynamically
+so MinGW compatibility builds cannot silently bind to an older import library.
+The product smoke test submits muted synthetic PCM and accepts a headless
+runner with no output endpoint.
 
 ## Installation policy
 

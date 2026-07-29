@@ -31,10 +31,10 @@ or redistributed.
 | Architecture | Native x86-64; no original x86 code, emulator, or compatibility layer |
 | Product role | Playable desktop reconstruction and primary debug/parity environment |
 | Game implementation | Shared portable C++20 core used by iOS |
-| Platform implementation | SDL3 window/events/input; D3D11/DXGI renderer with HLSL; separate Windows audio and filesystem adapters |
+| Platform implementation | SDL3 window/events/input; D3D11/DXGI renderer with HLSL; XAudio2 2.9 audio; separate Windows filesystem/content adapter |
 | Build | CMake-based x64 product target and data-less GitHub Actions validation |
 | Content | Owner-local validated package; no proprietary content in source or public CI |
-| Minimum Windows version | Selected during the Windows platform spike |
+| Minimum Windows API family | Windows 10/11 for inbox XAudio2 2.9; exact Windows 10 release floor remains an acceptance decision |
 
 The existing Windows portable build and command-line tools validate common
 code, but do not yet constitute the playable product. The full platform
@@ -155,8 +155,8 @@ Version 1.0 is complete when:
 
 ## Remaining platform decisions
 
-- Which Windows audio API, D3D feature-level floor, minimum Windows version, and
-  private packaging procedure will be supported?
+- Which D3D feature-level floor, exact Windows 10 release floor, and private
+  packaging procedure will be supported?
 - Which Windows-compatible IPA installation method will be used after Actions
   produces the signed artifact?
 

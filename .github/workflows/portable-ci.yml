@@ -100,7 +100,7 @@ jobs:
         run: ctest --test-dir build --build-config Release --output-on-failure
 
   windows-product:
-    name: Windows x64 product / D3D11 GPU smoke
+    name: Windows x64 product / D3D11 + XAudio2 smoke
     runs-on: windows-2025
     timeout-minutes: 15
 

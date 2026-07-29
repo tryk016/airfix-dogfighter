@@ -59,6 +59,23 @@ else()
     target_compile_options(airfix_runtime PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+add_library(airfix_audio
+    src/airfix/audio/AudioCommand.cpp
+)
+add_library(airfix::audio ALIAS airfix_audio)
+
+target_include_directories(airfix_audio
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+)
+target_compile_features(airfix_audio PUBLIC cxx_std_20)
+
+if(MSVC)
+    target_compile_options(airfix_audio PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(airfix_audio PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
 add_library(airfix_input
     src/airfix/input/ControllerInputBatchBridge.cpp
     src/airfix/input/DesktopInputBridge.cpp
@@ -471,6 +488,10 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_runtime_tests tests/AppSessionTests.cpp)
     target_link_libraries(airfix_runtime_tests PRIVATE airfix::runtime)
     add_test(NAME airfix_runtime_tests COMMAND airfix_runtime_tests)
+
+    add_executable(airfix_audio_command_tests tests/AudioCommandTests.cpp)
+    target_link_libraries(airfix_audio_command_tests PRIVATE airfix::audio)
+    add_test(NAME airfix_audio_command_tests COMMAND airfix_audio_command_tests)
 
     add_executable(airfix_input_tests tests/InputRouterTests.cpp)
     target_link_libraries(airfix_input_tests PRIVATE airfix::input)

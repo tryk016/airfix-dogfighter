@@ -46,7 +46,7 @@ flowchart TD
     I --> L["iOS ARM64 app"]
     J --> K
     J --> L
-    K --> M["SDL3 window/input + D3D11/DXGI/HLSL + Windows audio"]
+    K --> M["SDL3 window/input + D3D11/DXGI/HLSL + XAudio2 2.9"]
     L --> N["UIKit / Metal / touch / Game Controller / audio"]
     G --> O["Deterministic and parity tests"]
     Q["GitHub Actions macOS runner"] --> L
@@ -126,15 +126,17 @@ Narrow interfaces for input, audio, timing, files, localization, lifecycle, and
 video. The products implement separate outer layers:
 
 - Windows uses SDL3 for its window, operating-system events, keyboard, mouse,
-  and game controllers; D3D11/DXGI with HLSL for rendering; and separate
-  adapters for audio, owner-local content import, saves, and diagnostics.
+  and game controllers; D3D11/DXGI with HLSL for rendering; XAudio2 2.9 for
+  native audio; and separate adapters for owner-local content import, saves,
+  and diagnostics.
 - iOS owns UIKit lifecycle, touch and Game Controller input, Metal, Apple audio
   session/device integration, sandboxed content import, saves, and safe areas
   behind small Objective-C++ bridges.
 
-ADR-0008 selects the Windows window/input and renderer stack. The exact Windows
-audio API, minimum OS, D3D feature-level floor, and packaging remain bounded
-follow-up decisions. ADR-0002 records the staged input decision.
+ADR-0008 selects the Windows window/input and renderer stack. ADR-0009 selects
+XAudio2 2.9 and a native backend over the shared audio command contract. The
+exact minimum Windows release, D3D feature-level floor, and packaging remain
+bounded follow-up decisions. ADR-0002 records the staged input decision.
 
 Input is a distinct subsystem: platform adapters produce normalized physical
 events, a context/binding router resolves semantic actions, and the simulation
@@ -194,8 +196,8 @@ private-fixtures/         # original-derived fixtures; ignored by Git
 
 ## Decisions deliberately deferred
 
-- Exact Windows audio API, minimum-OS, D3D feature-level floor, and packaging:
-  decide through focused product spikes while preserving ADR-0007 and ADR-0008.
+- Exact minimum Windows release, D3D feature-level floor, and packaging: decide
+  through focused product spikes while preserving ADR-0007 through ADR-0009.
 - Runtime intermediate model/level formats: decide after `UDSP` contents are
   inventoried.
 - Post-v1 multiplayer/editor scope: preserve useful shared-interface findings,

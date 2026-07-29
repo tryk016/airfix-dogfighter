@@ -39,8 +39,8 @@ Use this Windows x64 stack:
 
 SDL3 does not issue game draw calls and is not a renderer abstraction. The
 Windows renderer owns D3D11/DXGI resources, pipeline state, command submission,
-presentation, resize, and device-loss handling. The Windows audio backend
-remains a separate platform decision.
+presentation, resize, and device-loss handling. Audio remains a separate
+platform boundary; ADR-0009 subsequently selects XAudio2 2.9 for Windows.
 
 The shared renderer is portable C++20 and owns:
 
@@ -112,8 +112,9 @@ project's diagnostic needs materially change.
 - D3D11 debug-layer diagnostics, graphics capture, device-removal tests, resize,
   fullscreen/windowed presentation, and frame pacing become Windows acceptance
   work.
-- The exact minimum Windows version, D3D feature-level floor, Windows audio API,
-  and private packaging procedure remain separate implementation decisions.
+- The exact minimum Windows release, D3D feature-level floor, and private
+  packaging procedure remain separate implementation decisions. ADR-0009
+  selects XAudio2 2.9 for Windows audio.
 
 ## Official references
 

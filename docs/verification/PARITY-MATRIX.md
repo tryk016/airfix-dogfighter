@@ -19,7 +19,7 @@ Statuses: `not-investigated`, `observed`, `specified`, `implemented`, `verified`
 | AI | P1 | observed | SCN-AI-001 | Eight-channel control mapping and event dispatch recovered; behavior logic incomplete |
 | Mission triggers and progression | P0 | not-investigated | SCN-MISSION-001 | |
 | HUD and mission status | P1 | not-investigated | SCN-HUD-001 | |
-| Sound effects and voices | P1 | observed | SCN-AUDIO-001 | AirCraft five-call engine cadence, strict start/running/stop phases, five engine roles, ordered pitch-volume stream, and health-gated `enginedive` state with vertical-speed volume are recovered as pure bounded transitions; command-stream composition, mixer, spatial parameters, broader effects, iOS playback, and device acceptance remain pending |
+| Sound effects and voices | P1 | observed | SCN-AUDIO-001 | AirCraft five-call engine cadence, strict start/running/stop phases, five engine roles, ordered pitch-volume stream, and health-gated `enginedive` state with vertical-speed volume are recovered as pure bounded transitions; a generic bounded command/PCM16 contract and Windows XAudio2 2.9 consumer are implemented, while gameplay composition, spatial parameters, broader effects, iOS playback, and device acceptance remain pending |
 | Music subsystem with content absent | P1 | specified | SCN-AUDIO-002 | Original CD/audio unavailable |
 | Save/load and rosters | P1 | not-investigated | SCN-SAVE-001 | |
 | Localization | P1 | observed | SCN-LOC-001 | EN/DA/NO/SV packages found |
@@ -29,11 +29,11 @@ Statuses: `not-investigated`, `observed`, `specified`, `implemented`, `verified`
 | Paint Room | P3 | deferred | SCN-PAINT-001 | Out of v1.0 scope |
 | Semantic actions and deterministic input frames | P0 | implemented | SCN-INPUT-001 | Bounded multi-source router plus immutable fixed-tick frames |
 | Cross-product portable simulation contract | P0 | specified | SCN-PLATFORM-001 | Windows x64 and iOS must use one C++20 game, physics, resource, save, input-frame, render-command, and audio-command implementation |
-| Windows x64 native product shell | P0 | specified | SCN-WIN-001 | SDL3 window/events/input, D3D11/DXGI/HLSL rendering, and separate audio/filesystem/private-content adapters; current portable Windows build is not the product shell |
+| Windows x64 native product shell | P0 | implemented | SCN-WIN-001 | Data-less native SDL3 window/events/input, D3D11/DXGI/HLSL rendering, and XAudio2 2.9 audio shells are implemented; filesystem/private-content and playable integration remain pending |
 | Windows keyboard/mouse gameplay | P0 | implemented | SCN-WIN-INPUT-001 | Baseline SDL3 keyboard/mouse transport, fixed-rate semantic frames, relative-look reset, focus-loss neutralization, and data-less tests implemented; remapping and campaign acceptance pending |
 | Windows controller gameplay and menus | P0 | implemented | SCN-WIN-INPUT-002 | Baseline standardized-gamepad mapping, ordered taps, hot-plug, disconnect recovery, generation and neutral gates implemented; selection UI, calibration, glyphs, and controller-only campaign acceptance pending |
 | Windows faithful renderer and presentation | P0 | specified | SCN-WIN-RENDER-001 | D3D11/DXGI backend with HLSL over shared draw/camera commands; windowed/fullscreen and reference/enhanced separation |
-| Windows audio and device transitions | P0 | specified | SCN-WIN-AUDIO-001 | Native backend over shared audio commands; device/focus/pause and absent-music behavior |
+| Windows audio and device transitions | P0 | implemented | SCN-WIN-AUDIO-001 | XAudio2 2.9 consumes bounded monotonic shared commands and copied PCM16, uses the virtualized default device, pauses on focus loss, recreates outside the callback, tolerates no endpoint, and has a muted synthetic product smoke; default-device/physical-output acceptance, spatialization, streaming, and gameplay composition remain |
 | Windows parity/debug capture | P0 | specified | SCN-WIN-PARITY-001 | Primary rapid-debug path with replay, state hashes, frame/draw/input/audio capture, and controlled external-original comparison |
 | Windows private `.afpack` import | P0 | specified | SCN-WIN-DATA-001 | Owner-local validated package; original and converted data remain outside Git and public CI |
 | iOS touch flight controls | P0 | implemented | SCN-IOS-002 | Full baseline action transport and adaptive overlay; physical-device acceptance pending |
