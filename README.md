@@ -32,7 +32,7 @@ included in this repository.**
 | Products | Native playable Windows x64 desktop application and private native ARM64 iOS application |
 | Product role | Windows is the primary rapid-debug/parity environment; iOS is the private mobile port |
 | Distribution | Original and converted data remain owner-private; no App Store release or public content-bearing package |
-| Platform layers | Separate Windows window/render/input/audio adapters; UIKit, Metal, touch, Game Controller, and Apple audio adapters on iOS |
+| Platform layers | SDL3 window/input plus D3D11/DXGI/HLSL rendering on Windows; UIKit, Metal, touch, Game Controller, and Apple audio adapters on iOS |
 | OS targets | Windows x64 baseline selected during the platform spike; iOS 16.4 minimum |
 | iOS validation devices | iPhone 17 Pro Max (iOS 26.6) and iPhone SE, 3rd generation (iOS 26.3) |
 | Gameplay | Single-player campaign and required menus |
@@ -192,27 +192,32 @@ flowchart TD
     R --> X
     E --> Y["iOS ARM64 app"]
     R --> Y
-    X --> WX["Windows window / renderer / audio / files"]
+    X --> WX["SDL3 / D3D11 + DXGI + HLSL / Windows audio + files"]
     Y --> IY["UIKit / Metal / Apple audio / sandbox"]
 ```
+
+The Windows backend reproduces the original's observable render result through
+modern D3D11 pipeline state; it does not recreate or expose the DirectX 7 API.
 
 Read the [architecture](docs/ARCHITECTURE.md), the
 [port strategy ADR](docs/adr/0001-port-strategy.md), the
 [Windows x64 product decision](docs/adr/0007-windows-x64-parallel-target.md),
-and the
-[reverse-engineering workflow](docs/RE-WORKFLOW.md) for the detailed contracts.
+the [Windows platform stack decision](docs/adr/0008-windows-rendering-and-platform-stack.md),
+and the [reverse-engineering workflow](docs/RE-WORKFLOW.md) for the detailed
+contracts.
 
 ## Controls
 
 Every platform adapter maps physical devices into the same deterministic
 semantic action model.
 
-Windows will support complete keyboard/mouse and controller play, including
+SDL3 will supply Windows keyboard/mouse and controller events, including
 focus-loss neutralization, hot-plug, remapping, calibration, and controller
-glyphs. iOS targets complete landscape touch and controller play, with safe
-neutralization across disconnects and lifecycle changes. The current native
-slice implements the iOS touch/controller transport; Windows product adapters,
-polished menus, and end-to-end usability acceptance remain pending.
+glyphs. It does not own rendering. iOS targets complete landscape touch and
+controller play, with safe neutralization across disconnects and lifecycle
+changes. The current native slice implements the iOS touch/controller
+transport; Windows product adapters, polished menus, and end-to-end usability
+acceptance remain pending.
 
 See [Input, controls, and haptics](docs/systems/INPUT.md).
 

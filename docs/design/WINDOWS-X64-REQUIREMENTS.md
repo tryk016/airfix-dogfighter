@@ -10,7 +10,7 @@ gameplay scope and parity requirements are defined in `V1-SCOPE.md`.
 Windows x64 is both a playable desktop reconstruction and the project's primary
 environment for rapid debugging and comparison with the original. It runs
 native 64-bit reconstructed code; it is not a wrapper, emulator, or port of the
-original PE32 executable.
+original PE32 executable, and it does not recreate the DirectX 7 API.
 
 The current portable CMake build and command-line tools validate the common
 core, but they are not the Windows game product. Product status becomes
@@ -37,17 +37,16 @@ translate operating-system events; it may not redefine gameplay behavior.
 
 | Area | P0 requirement |
 |---|---|
-| Window and lifecycle | Native x64 window, clean startup/shutdown, focus loss, resize, windowed/fullscreen presentation, display changes, and recoverable device recreation |
-| Rendering | Faithful reference backend consuming the shared draw/camera commands, with resolution-independent presentation and optional enhancements kept behind explicit modes |
-| Input | Keyboard/mouse and supported game controllers mapped into the shared semantic action model, including disconnect and focus-loss neutralization |
+| Window and lifecycle | SDL3 x64 window/events, clean startup/shutdown, focus loss, resize, windowed/fullscreen presentation, display changes, and recoverable device recreation |
+| Rendering | D3D11/DXGI faithful backend with HLSL, consuming shared draw/camera commands with resolution-independent presentation and optional enhancements kept behind explicit modes |
+| Input | SDL3 keyboard/mouse and supported game controllers mapped into the shared semantic action model, including disconnect and focus-loss neutralization |
 | Audio | Native output backend consuming shared audio commands, with device change, focus, pause, and absent-music behavior |
 | Files and content | Owner-local import, validation, activation, rollback, saves, and diagnostics without persisting source installation paths |
 
-The exact APIs and third-party dependencies are selected by a focused technical
-spike. The choice must support Windows x64, C++20/CMake, data-less CI, debug
-tooling, controller input, and the faithful renderer without leaking into the
-core. Minimum supported Windows version and final packaging format are also
-deferred until that spike.
+ADR-0008 selects SDL3 for window/events/input and D3D11/DXGI with HLSL for
+rendering. SDL3 must not issue game draw calls. Minimum supported Windows
+version, D3D feature-level floor, Windows audio API, and final packaging format
+remain focused follow-up decisions.
 
 ## Controls
 

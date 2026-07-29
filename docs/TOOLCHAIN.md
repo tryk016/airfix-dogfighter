@@ -35,17 +35,19 @@ offline workflow.
 | Build | CMake plus Ninja |
 | Editor/LSP | clangd with a generated CMake compilation database |
 | Windows x64 product compiler | MSVC or clang-cl, selected after warning/sanitizer spike |
-| Windows product platform | Native window/render/input/audio APIs selected by a bounded spike; portable GCC/MinGW validation is not the product shell |
+| Windows window/input | Pinned SDL3 for window, events, keyboard, mouse, and controllers; not game rendering |
+| Windows graphics | Direct3D 11 plus DXGI with HLSL |
+| Windows audio | Separate native adapter selected by a focused spike |
 | Tests | lightweight C++ test runner selected with the skeleton |
 | iOS platform/input/controller | UIKit and Game Controller behind Objective-C++ adapters |
-| Optional desktop adapter candidate | SDL3 technical spike only if it satisfies the Windows x64 product boundary |
 | iOS graphics | Metal with MetalKit/Objective-C++ bridge as needed |
 | iOS build/signing | Pinned Xcode on explicit GitHub-hosted macOS runner |
 
 Windows x64 and iOS are parallel products over the same portable core. Windows
 is the primary rapid-debug and reference-comparison environment; iOS retains
-native Apple adapters. SDL3 remains only an adapter candidate, and neither
-Windows, Apple, nor SDL types may leak into the portable game core.
+native Apple adapters. SDL3 owns Windows window/input plumbing but does not
+render the game; D3D11/DXGI/HLSL is the Windows renderer. Windows, Apple, SDL,
+COM, D3D, and Metal types may not leak into the portable game core.
 
 The shared `code-intelligence` CMake preset and editor setup are documented in
 [toolchain/CODE-INTELLIGENCE.md](toolchain/CODE-INTELLIGENCE.md). Generated

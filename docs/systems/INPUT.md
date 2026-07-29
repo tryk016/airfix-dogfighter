@@ -64,9 +64,10 @@ consecutive neutral ticks before gameplay input is admitted again.
 
 Default semantic bindings cover touch, an extended controller, and minimal
 desktop keyboard testing. That keyboard path is a portable validation
-foundation, not the Windows product adapter. The Windows x64 application will
-own keyboard/mouse focus, controller discovery/hot-plug, device calibration,
-glyphs, and rumble before emitting the same normalized events.
+foundation, not the Windows product adapter. The Windows x64 application uses
+SDL3 for keyboard/mouse focus and controller discovery/hot-plug, then applies
+the project's calibration, bindings, glyphs, and rumble policy before emitting
+the same normalized events.
 
 The native iOS layer feeds the complete current gameplay-action surface from a
 safe-area-aware UIKit overlay and Apple's Game Controller framework; none of

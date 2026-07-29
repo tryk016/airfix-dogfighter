@@ -12,6 +12,9 @@
   over one portable C++20 core. Windows is the primary rapid-debug/parity
   environment and owns separate window, renderer, input, audio, and filesystem
   adapters; ADR-0007 and both product checklists define the boundary.
+- ADR-0008 selects SDL3 for the Windows window/events/keyboard/mouse/controllers
+  and D3D11/DXGI with HLSL for the Windows renderer. SDL3 does not own game
+  rendering; iOS remains on its native Metal backend.
 - Cross-platform input/control/haptics system specified; semantic input
   architecture recorded in ADR-0002.
 - Local Git repository initialized on branch `main`; planning baseline committed
@@ -751,10 +754,10 @@
 
 ## Next
 
-1. Implement the native Windows x64 product spike and data-less shell: select
-   window/render/input/audio APIs against ADR-0007, preserve strict platform
-   boundaries, and make it the primary synthetic smoke/debug host. The current
-   portable Windows build is not yet this product.
+1. Implement the native Windows x64 data-less shell with SDL3 window/events/
+   input and D3D11/DXGI/HLSL rendering, select the separate audio adapter,
+   preserve strict ADR-0007/0008 boundaries, and make it the primary synthetic
+   smoke/debug host. The current portable Windows build is not yet this product.
 2. Obtain controlled runtime traces for free flight and the ground, inverted,
    water, collision, engine-transition, and too-high branches; establish
    x87-versus-portable numeric tolerances and deterministic replacement PRNG
@@ -785,6 +788,8 @@
 
 ## Open questions
 
+- Which Windows audio API, D3D feature-level floor, minimum Windows version, and
+  private packaging procedure will be used?
 - Which Windows-compatible method will install the signed Actions IPA on both
   registered phones?
 - Which optional widescreen/Hor+ design should follow the parity-first 4:3

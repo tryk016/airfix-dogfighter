@@ -2995,6 +2995,12 @@ superseded evidence.
   semantic-input, render-command, and audio-command implementation. Windows and
   iOS own separate window/lifecycle, renderer, physical-input, audio, and
   filesystem/private-content adapters.
+- ADR-0008 selects SDL3 for the Windows window, operating-system events,
+  keyboard, mouse, and controllers, plus D3D11/DXGI with HLSL for the renderer.
+  SDL3 does not own draw submission; iOS remains on native Metal. Official
+  Microsoft and SDL documentation confirms the desktop D3D11/DXGI/HLSL path,
+  SDL's zlib license, and the current lack of SDL GPU support for the iOS
+  Simulator, so SDL GPU remains a revisit option rather than the base.
 - Added explicit Windows product requirements and cross-product acceptance
   gates. The current portable Windows compiler/test configuration remains a
   core validation path and is not represented as a playable product shell.
@@ -3006,5 +3012,5 @@ superseded evidence.
   to reflect the two-product architecture.
 - Regenerated the code-intelligence preset from the current source, completed
   the incremental Windows build, and passed all 83 tests. Public-boundary unit
-  tests, the 412-file repository scan, `actionlint`, links in all 15 changed
+  tests, the 413-file repository scan, `actionlint`, links in all 16 final PR
   documentation files, the local-path review, and `git diff --check` pass.

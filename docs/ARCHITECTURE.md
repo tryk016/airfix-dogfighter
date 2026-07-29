@@ -46,7 +46,7 @@ flowchart TD
     I --> L["iOS ARM64 app"]
     J --> K
     J --> L
-    K --> M["Windows window / renderer / input / audio"]
+    K --> M["SDL3 window/input + D3D11/DXGI/HLSL + Windows audio"]
     L --> N["UIKit / Metal / touch / Game Controller / audio"]
     G --> O["Deterministic and parity tests"]
     Q["GitHub Actions macOS runner"] --> L
@@ -104,10 +104,12 @@ caches, logs, or artifacts.
 
 The game emits API-neutral draw commands and lighting data. The playable
 Windows product and the iOS product own separate renderer backends over that
-same contract. Windows is the primary rapid-debug and reference-capture path;
-iOS uses Metal. The faithful pipeline is implemented first. Modern lighting,
-shadows, post-processing, higher-resolution textures, and upscaling are
-optional feature layers with independent toggles and performance budgets.
+same contract. Windows uses D3D11/DXGI with HLSL and is the primary rapid-debug
+and reference-capture path; iOS uses native Metal. SDL3 does not own rendering.
+The faithful pipeline models observed output and render-state semantics without
+recreating DirectX 7 interfaces. Modern lighting, shadows, post-processing,
+higher-resolution textures, and upscaling are optional feature layers with
+independent toggles and performance budgets.
 
 Static room payloads and GPU resources remain immutable after publication.
 Future actor motion enters through a separate bounded
@@ -123,17 +125,16 @@ that binding awaits the recovered dynamic actor/spawn pipeline.
 Narrow interfaces for input, audio, timing, files, localization, lifecycle, and
 video. The products implement separate outer layers:
 
-- Windows owns the native window/display lifecycle, keyboard/mouse/controller
-  input, renderer, audio device/session, owner-local content import, saves, and
-  diagnostics.
+- Windows uses SDL3 for its window, operating-system events, keyboard, mouse,
+  and game controllers; D3D11/DXGI with HLSL for rendering; and separate
+  adapters for audio, owner-local content import, saves, and diagnostics.
 - iOS owns UIKit lifecycle, touch and Game Controller input, Metal, Apple audio
   session/device integration, sandboxed content import, saves, and safe areas
   behind small Objective-C++ bridges.
 
-The exact Windows platform APIs are selected by a bounded technical spike;
-ADR-0007 fixes the boundary without prematurely fixing the implementation.
-SDL3 remains an optional candidate for an adapter rather than an architectural
-dependency. ADR-0002 records the staged input decision.
+ADR-0008 selects the Windows window/input and renderer stack. The exact Windows
+audio API, minimum OS, D3D feature-level floor, and packaging remain bounded
+follow-up decisions. ADR-0002 records the staged input decision.
 
 Input is a distinct subsystem: platform adapters produce normalized physical
 events, a context/binding router resolves semantic actions, and the simulation
@@ -193,9 +194,8 @@ private-fixtures/         # original-derived fixtures; ignored by Git
 
 ## Decisions deliberately deferred
 
-- Exact Windows windowing, graphics, controller, audio, minimum-OS, and
-  packaging choices: decide through the Windows product spike while preserving
-  the ADR-0007 boundaries.
+- Exact Windows audio API, minimum-OS, D3D feature-level floor, and packaging:
+  decide through focused product spikes while preserving ADR-0007 and ADR-0008.
 - Runtime intermediate model/level formats: decide after `UDSP` contents are
   inventoried.
 - Post-v1 multiplayer/editor scope: preserve useful shared-interface findings,

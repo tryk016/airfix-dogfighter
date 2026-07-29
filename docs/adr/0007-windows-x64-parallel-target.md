@@ -50,15 +50,16 @@ Each product owns separate outer adapters:
 
 | Boundary | Windows x64 | iOS |
 |---|---|---|
-| Window and lifecycle | native desktop window, focus, display, and shutdown | UIKit scene and application lifecycle |
-| Rendering | native Windows renderer backend | Metal renderer |
-| Physical input | keyboard, mouse, and game controller | touch and Game Controller |
+| Window and lifecycle | SDL3 window/events plus Windows product lifecycle | UIKit scene and application lifecycle |
+| Rendering | Direct3D 11, DXGI, and HLSL | Metal renderer |
+| Physical input | SDL3 keyboard, mouse, and game controller | touch and Game Controller |
 | Audio | native Windows device/session backend | Apple audio session and device backend |
 | Files and private content | owner-local desktop import and storage | sandboxed document import and storage |
 
-The exact Windows windowing, graphics, controller, and audio APIs are deferred
-to a bounded implementation spike. That choice may change adapters, but not the
-interfaces or the ownership split above.
+ADR-0008 selects SDL3 for the Windows window/events/physical input and
+D3D11/DXGI with HLSL for rendering. SDL3 does not own game rendering. The exact
+Windows audio API remains deferred; no implementation choice may change the
+interfaces or ownership split above.
 
 The original executable may run only as an external, read-only reference in a
 controlled environment. The reconstructed Windows application must not load,
