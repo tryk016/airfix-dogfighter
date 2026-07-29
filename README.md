@@ -62,7 +62,9 @@ The device list is the intended validation matrix, not a compatibility claim
 for the unfinished application. See the [version 1 scope](docs/design/V1-SCOPE.md)
 for acceptance criteria and
 [ADR-0013](docs/adr/0013-native-resolution-modern-rendering.md) for the binding
-modern-rendering contract.
+modern-rendering contract. The versioned, cross-platform presentation-settings
+model and its safe application rules are defined by
+[ADR-0014](docs/adr/0014-render-presentation-settings.md).
 
 ## Current state
 
