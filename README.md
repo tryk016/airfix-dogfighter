@@ -180,7 +180,7 @@ compilation database for Objective-C++, UIKit, and Metal, see
 
 ### Windows x64 product shell
 
-The official Windows preset requires Visual Studio 2022 Build Tools with the
+The official Windows preset requires Visual Studio 2026 Build Tools with the
 Desktop C++ workload and a Windows SDK. Its first configure downloads the
 hash-pinned SDL 3.4.12 source archive; it never downloads game data.
 

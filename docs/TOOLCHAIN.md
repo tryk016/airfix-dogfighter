@@ -32,7 +32,7 @@ offline workflow.
 | Capability | Proposed tool |
 |---|---|
 | Language | C++20 |
-| Build | CMake plus Ninja for portable work; Visual Studio 2022 generator for the official Windows product preset |
+| Build | CMake plus Ninja for portable work; Visual Studio 2026 generator for the official Windows product preset |
 | Editor/LSP | clangd with a generated CMake compilation database |
 | Windows x64 product compiler | MSVC in the official preset and CI; MinGW GCC is an additional local compatibility check; clang-cl remains a later sanitizer/tooling candidate |
 | Windows window/input | Pinned SDL3 for window, events, keyboard, mouse, and controllers; not game rendering |
@@ -53,7 +53,7 @@ The shared `code-intelligence` CMake preset and editor setup are documented in
 [toolchain/CODE-INTELLIGENCE.md](toolchain/CODE-INTELLIGENCE.md). Generated
 compilation databases and machine-specific compiler paths remain local.
 
-The `windows-product` configure preset creates an x64 Visual Studio 2022 build,
+The `windows-product` configure preset creates an x64 Visual Studio 2026 build,
 enables the native Windows shell, disables tools, and leaves every portable
 test enabled. `windows-product-release` build/test presets compile the static,
 hash-pinned SDL dependency and run the complete data-less suite, including a

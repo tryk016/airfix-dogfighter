@@ -814,7 +814,7 @@ These questions do not block static analysis or the archive work.
   verifies a second frame. The same change
   passes a separate 271-step portable build with 84/84 tests, public-boundary
   unit tests and the 422-file scan, `actionlint`, formatting validation, and
-  `git diff --check`. The Visual Studio 2022 Actions product job is the pending
+  `git diff --check`. The Visual Studio 2026 Actions product job is the pending
   publication gate.
 - Merged projectile runtime-pool main commit `bfde965` passes the exact-main
   Ubuntu, Windows, ARM64 macOS, clangd/code-intelligence, `iphoneos`, and

@@ -23,14 +23,14 @@
     },
     {
       "name": "windows-product",
-      "displayName": "Windows x64 product (Visual Studio 2022)",
+      "displayName": "Windows x64 product (Visual Studio 2026)",
       "description": "Data-less SDL3 and Direct3D 11 application shell with tests",
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Windows"
       },
-      "generator": "Visual Studio 17 2022",
+      "generator": "Visual Studio 18 2026",
       "architecture": {
         "value": "x64",
         "strategy": "set"

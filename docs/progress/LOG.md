@@ -3019,7 +3019,7 @@ superseded evidence.
 
 - Added the `AIRFIX_BUILD_WINDOWS_APP` product boundary and reproducible
   `windows-product`/`windows-product-release` CMake presets. The official path
-  is an x64 Visual Studio 2022 build; portable and iOS configurations leave the
+  is an x64 Visual Studio 2026 build; portable and iOS configurations leave the
   target disabled and do not fetch SDL.
 - Pinned official SDL 3.4.12 source by release URL and SHA-256, built it
   statically, staged its zlib license, and explicitly disabled SDL render/GPU,
