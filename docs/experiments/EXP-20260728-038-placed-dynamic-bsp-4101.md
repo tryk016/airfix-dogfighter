@@ -6,8 +6,9 @@
 
 **Scenarios:** `SCN-WEAPON-001`, `SCN-CAMERA-001`
 
-**Status:** bounded semantic CCF decoding implemented; runtime publication
-deferred
+**Status:** bounded semantic CCF decoding implemented; runtime assembly
+continued in
+[EXP-20260728-039](EXP-20260728-039-placed-dynamic-bsp-assembly.md)
 
 ## Question
 
@@ -115,8 +116,9 @@ This slice intentionally stops at authenticated metadata. It does not yet:
 - publish placed dynamic portals or live object transforms; or
 - connect these trees to line or sphere collision.
 
-Those operations require a separate atomic assembly with reference, room,
-material, transform, cache, and retained-byte validation.
+Those operations are implemented by the separate atomic assembly in
+[EXP-20260728-039](EXP-20260728-039-placed-dynamic-bsp-assembly.md). Mission
+ownership and live composition remain later integration boundaries.
 
 ## Confidence
 
