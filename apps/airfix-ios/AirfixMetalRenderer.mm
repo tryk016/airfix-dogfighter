@@ -15,6 +15,7 @@
 #include "airfix/render/PlayerActorPoseRuntimePreparation.hpp"
 #include "airfix/render/PublicRenderSmokeScene.hpp"
 #include "airfix/render/RenderFrameDiagnostics.hpp"
+#include "airfix/render/RenderPresentationTransaction.hpp"
 #include "airfix/render/SnapshotGpuBudgetLedger.hpp"
 
 #include <algorithm>
@@ -53,6 +54,9 @@ enum class RendererError : NSInteger {
     mipGeneration,
     invalidPreparedRoom,
     preparedRoomAlreadyPublished,
+    presentationSurfaceUnavailable,
+    presentationTargetPreparation,
+    stalePresentationCandidate,
     unexpectedFailure,
 };
 
@@ -386,6 +390,25 @@ outputPixelExtent(id<MTLTexture> texture) noexcept {
     };
 }
 
+[[nodiscard]] std::optional<airfix::render::OutputPixelExtent>
+outputPixelExtent(const CGSize size) noexcept {
+    constexpr auto maximum =
+        static_cast<CGFloat>(
+            std::numeric_limits<std::uint32_t>::max());
+    if (!std::isfinite(size.width) ||
+        !std::isfinite(size.height) ||
+        size.width <= 0.0 || size.height <= 0.0 ||
+        size.width > maximum || size.height > maximum ||
+        std::floor(size.width) != size.width ||
+        std::floor(size.height) != size.height) {
+        return std::nullopt;
+    }
+    return airfix::render::OutputPixelExtent{
+        .width = static_cast<std::uint32_t>(size.width),
+        .height = static_cast<std::uint32_t>(size.height),
+    };
+}
+
 [[nodiscard]] airfix::render::ConvertedNodeTransform actorWorldFrom(
     const airfix::simulation::PlayerSpawnPose& pose) noexcept {
     const auto vectorAt = [](const std::array<float, 3U>& value) {
@@ -565,6 +588,60 @@ gameplayCameraInitializeInput(
 @implementation AirfixGpuBudgetReservationHolder
 @end
 
+@interface AirfixMetalScaledSceneTargetBundle : NSObject {
+@public
+    __strong id<MTLTexture> _colorTexture;
+    __strong id<MTLTexture> _depthTexture;
+    __strong AirfixGpuBudgetReservationHolder*
+        _gpuBudgetReservationHolder;
+    airfix::render::RenderTargetPixelExtent _extent;
+}
+@end
+
+@implementation AirfixMetalScaledSceneTargetBundle
+
+- (void)dealloc {
+    AirfixGpuBudgetReservationHolder* reservationHolder =
+        _gpuBudgetReservationHolder;
+    _gpuBudgetReservationHolder = nil;
+    @autoreleasepool {
+        id<MTLTexture> __attribute__((objc_precise_lifetime)) color =
+            _colorTexture;
+        id<MTLTexture> __attribute__((objc_precise_lifetime)) depth =
+            _depthTexture;
+        _colorTexture = nil;
+        _depthTexture = nil;
+        (void)color;
+        (void)depth;
+    }
+    if (reservationHolder != nil) {
+        reservationHolder->_reservation.reset();
+    }
+}
+
+@end
+
+@interface AirfixMetalPresentationTransactionHolder : NSObject {
+@public
+    airfix::render::RenderPresentationTransaction _transaction;
+    airfix::render::RenderPresentationRetrySchedule _retrySchedule;
+    airfix::render::RenderPresentationSettings _desiredSettings;
+    std::uint64_t _surfaceGeneration;
+}
+@end
+
+@implementation AirfixMetalPresentationTransactionHolder
+
+- (instancetype)init {
+    self = [super init];
+    if (self != nil) {
+        _surfaceGeneration = 1U;
+    }
+    return self;
+}
+
+@end
+
 @interface AirfixMetalRoomSnapshot : NSObject {
 @public
     __strong AirfixMetalRoomResources* _resources;
@@ -658,6 +735,180 @@ gameplayCameraInitializeInput(
 @end
 
 namespace {
+
+struct MetalPresentationTargetFactoryContext final {
+    __unsafe_unretained AirfixSnapshotGpuBudgetLedgerHolder*
+        gpuBudgetHolder;
+};
+
+[[nodiscard]] airfix::render::RenderPresentationSurfaceStamp
+presentationSurfaceStamp(
+    MTKView* view,
+    const airfix::render::OutputPixelExtent outputExtent,
+    const std::uint64_t generation) noexcept {
+    return {
+        .viewIdentity = (__bridge const void*)view,
+        .deviceIdentity = (__bridge const void*)view.device,
+        .outputExtent = outputExtent,
+        .generation = generation,
+    };
+}
+
+[[nodiscard]] airfix::render::RenderPresentationTargetBundle
+prepareMetalPresentationTarget(
+    void* opaqueContext,
+    const airfix::render::RenderPresentationSurfaceStamp& surface,
+    const airfix::render::RenderTargetPixelExtent targetExtent,
+    const std::size_t minimumAccountedBytes) noexcept {
+    try {
+        auto* context =
+            static_cast<MetalPresentationTargetFactoryContext*>(
+                opaqueContext);
+        AirfixSnapshotGpuBudgetLedgerHolder* gpuBudgetHolder =
+            context != nullptr ? context->gpuBudgetHolder : nil;
+        id<MTLDevice> device =
+            (__bridge id<MTLDevice>)
+                const_cast<void*>(surface.deviceIdentity);
+        if (gpuBudgetHolder == nil ||
+            gpuBudgetHolder->_ledger == nullptr ||
+            device == nil ||
+            targetExtent.width == 0U ||
+            targetExtent.height == 0U ||
+            targetExtent.width > kMaximumScaledSceneDimension ||
+            targetExtent.height > kMaximumScaledSceneDimension ||
+            minimumAccountedBytes == 0U ||
+            minimumAccountedBytes >
+                kMaximumScaledSceneTargetBytes) {
+            return {};
+        }
+
+        auto reservation =
+            gpuBudgetHolder->_ledger->tryReserve(
+                minimumAccountedBytes);
+        if (!reservation.has_value()) {
+            return {};
+        }
+
+        const NSUInteger width =
+            static_cast<NSUInteger>(targetExtent.width);
+        const NSUInteger height =
+            static_cast<NSUInteger>(targetExtent.height);
+        MTLTextureDescriptor* colorDescriptor =
+            [MTLTextureDescriptor
+                texture2DDescriptorWithPixelFormat:
+                    MTLPixelFormatBGRA8Unorm
+                                         width:width
+                                        height:height
+                                     mipmapped:NO];
+        MTLTextureDescriptor* depthDescriptor =
+            [MTLTextureDescriptor
+                texture2DDescriptorWithPixelFormat:
+                    MTLPixelFormatDepth32Float
+                                         width:width
+                                        height:height
+                                     mipmapped:NO];
+        if (colorDescriptor == nil || depthDescriptor == nil) {
+            return {};
+        }
+        colorDescriptor.storageMode = MTLStorageModePrivate;
+        colorDescriptor.hazardTrackingMode =
+            MTLHazardTrackingModeTracked;
+        colorDescriptor.usage =
+            MTLTextureUsageRenderTarget |
+            MTLTextureUsageShaderRead;
+        depthDescriptor.storageMode = MTLStorageModePrivate;
+        depthDescriptor.hazardTrackingMode =
+            MTLHazardTrackingModeTracked;
+        depthDescriptor.usage = MTLTextureUsageRenderTarget;
+
+        id<MTLTexture> colorTexture =
+            [device newTextureWithDescriptor:colorDescriptor];
+        if (colorTexture == nil) {
+            return {};
+        }
+        id<MTLTexture> depthTexture =
+            [device newTextureWithDescriptor:depthDescriptor];
+        if (depthTexture == nil ||
+            colorTexture.allocatedSize == 0U ||
+            depthTexture.allocatedSize == 0U) {
+            return {};
+        }
+        colorTexture.label = @"Airfix scaled 3D scene color";
+        depthTexture.label = @"Airfix scaled 3D scene depth";
+
+        std::size_t actualBytes = 0U;
+        if (!checkedAdd(
+                static_cast<std::size_t>(
+                    colorTexture.allocatedSize),
+                static_cast<std::size_t>(
+                    depthTexture.allocatedSize),
+                actualBytes) ||
+            actualBytes > kMaximumScaledSceneTargetBytes ||
+            !finalizeHeapAllocationReservation(
+                *gpuBudgetHolder->_ledger,
+                *reservation,
+                actualBytes)) {
+            return {};
+        }
+
+        AirfixGpuBudgetReservationHolder* reservationHolder =
+            [[AirfixGpuBudgetReservationHolder alloc] init];
+        AirfixMetalScaledSceneTargetBundle* bundle =
+            [[AirfixMetalScaledSceneTargetBundle alloc] init];
+        if (reservationHolder == nil || bundle == nil) {
+            return {};
+        }
+        reservationHolder->_reservation.emplace(
+            std::move(*reservation));
+        bundle->_colorTexture = colorTexture;
+        bundle->_depthTexture = depthTexture;
+        bundle->_gpuBudgetReservationHolder = reservationHolder;
+        bundle->_extent = targetExtent;
+
+        void* retainedBundle =
+            (__bridge_retained void*)bundle;
+        std::shared_ptr<const void> owner(
+            retainedBundle,
+            [](const void* pointer) noexcept {
+                @autoreleasepool {
+                    id __attribute__((objc_precise_lifetime)) object =
+                        (__bridge_transfer id)
+                            const_cast<void*>(pointer);
+                    (void)object;
+                }
+            });
+        return {
+            std::move(owner),
+            (__bridge const void*)colorTexture,
+            (__bridge const void*)depthTexture,
+            actualBytes,
+        };
+    } catch (...) {
+        return {};
+    }
+}
+
+[[nodiscard]] AirfixMetalScaledSceneTargetBundle*
+metalPresentationTargetBundle(
+    const airfix::render::RenderPresentationTargetBundle&
+        targetBundle) noexcept {
+    if (!targetBundle.complete()) {
+        return nil;
+    }
+    AirfixMetalScaledSceneTargetBundle* bundle =
+        (__bridge AirfixMetalScaledSceneTargetBundle*)
+            const_cast<void*>(targetBundle.owner().get());
+    if (bundle == nil ||
+        bundle->_colorTexture == nil ||
+        bundle->_depthTexture == nil ||
+        (__bridge const void*)bundle->_colorTexture !=
+            targetBundle.colorIdentity() ||
+        (__bridge const void*)bundle->_depthTexture !=
+            targetBundle.depthIdentity()) {
+        return nil;
+    }
+    return bundle;
+}
 
 bool hasActiveGpuBudgetReservation(
     AirfixMetalRoomSnapshot* snapshot) noexcept {
@@ -989,20 +1240,16 @@ bool preflightPrivateRoom(
     id<MTLRenderPipelineState> overlayPipelineState;
 @property(nonatomic, strong)
     id<MTLSamplerState> presentationSamplerState;
-@property(nonatomic, strong) id<MTLTexture> scaledSceneColorTexture;
-@property(nonatomic, strong) id<MTLTexture> scaledSceneDepthTexture;
-@property(nonatomic) NSUInteger scaledSceneWidth;
-@property(nonatomic) NSUInteger scaledSceneHeight;
 @property(nonatomic, strong) id<MTLTexture> diagnosticsOverlayTexture;
 @property(nonatomic) NSUInteger diagnosticsOverlayWidth;
 @property(nonatomic) NSUInteger diagnosticsOverlayHeight;
 @property(nonatomic) NSUInteger diagnosticsOverlayPixelScale;
-@property(nonatomic, readwrite) float renderScalePercent;
-@property(nonatomic, readwrite)
-    BOOL originalFourByThreePresentationEnabled;
-@property(nonatomic, readwrite) BOOL diagnosticsOverlayEnabled;
 @property(nonatomic, strong) AirfixBudgetedMetalTexture* fallbackResource;
 @property(atomic, strong) AirfixMetalRoomSnapshot* roomSnapshot;
+@property(nonatomic, weak) MTKView* metalView;
+@property(nonatomic, strong)
+    AirfixMetalPresentationTransactionHolder*
+        presentationTransactionHolder;
 @property(nonatomic, strong) NSObject* preparationOwnerToken;
 @property(nonatomic, strong) dispatch_queue_t resourceReleaseQueue;
 @property(nonatomic, strong)
@@ -1010,9 +1257,6 @@ bool preflightPrivateRoom(
 @property(nonatomic, strong)
     AirfixMetalDiagnosticsState* diagnosticsState;
 
-- (BOOL)ensureScaledSceneTargetsWithDevice:(id<MTLDevice>)device
-                                     width:(NSUInteger)width
-                                    height:(NSUInteger)height;
 - (BOOL)updateDiagnosticsOverlayTextureWithDevice:(id<MTLDevice>)device;
 @end
 
@@ -1077,11 +1321,15 @@ bool preflightPrivateRoom(
         [[AirfixSnapshotGpuBudgetLedgerHolder alloc] init];
     AirfixMetalDiagnosticsState* diagnosticsState =
         [[AirfixMetalDiagnosticsState alloc] init];
-    if (gpuBudgetHolder == nil || diagnosticsState == nil) {
+    AirfixMetalPresentationTransactionHolder*
+        presentationTransactionHolder =
+            [[AirfixMetalPresentationTransactionHolder alloc] init];
+    if (gpuBudgetHolder == nil || diagnosticsState == nil ||
+        presentationTransactionHolder == nil) {
         if (error != nullptr) {
             *error = makeError(
                 RendererError::unexpectedFailure,
-                @"Metal GPU accounting or diagnostics could not be created.");
+                @"Metal GPU accounting, diagnostics, or presentation state could not be created.");
         }
         return nil;
     }
@@ -1827,17 +2075,41 @@ bool preflightPrivateRoom(
     self.presentationPipelineState = presentationPipelineState;
     self.overlayPipelineState = overlayPipelineState;
     self.presentationSamplerState = presentationSamplerState;
-    self.renderScalePercent =
-        airfix::render::native_render_policy::
-            defaultRenderScalePercent;
-    self.originalFourByThreePresentationEnabled = NO;
-    self.diagnosticsOverlayEnabled = NO;
     self.fallbackResource = fallbackResource;
     self.roomSnapshot = roomSnapshot;
+    self.metalView = metalView;
+    self.presentationTransactionHolder =
+        presentationTransactionHolder;
     self.preparationOwnerToken = preparationOwnerToken;
     self.resourceReleaseQueue = resourceReleaseQueue;
     self.gpuBudgetHolder = gpuBudgetHolder;
     self.diagnosticsState = diagnosticsState;
+
+    const auto initialExtent =
+        outputPixelExtent(metalView.drawableSize);
+    if (initialExtent.has_value()) {
+        const auto surface = presentationSurfaceStamp(
+            metalView,
+            *initialExtent,
+            presentationTransactionHolder->_surfaceGeneration);
+        auto prepared =
+            presentationTransactionHolder->_transaction.prepare(
+                presentationTransactionHolder->_desiredSettings,
+                surface);
+        if (!prepared.complete() ||
+            presentationTransactionHolder->_transaction
+                .finalValidate(*prepared.prepared, surface)
+                .has_value()) {
+            if (error != nullptr) {
+                *error = makeError(
+                    RendererError::unexpectedFailure,
+                    @"The initial Metal presentation snapshot could not be prepared.");
+            }
+            return nil;
+        }
+        presentationTransactionHolder->_transaction
+            .commitValidated(std::move(*prepared.prepared));
+    }
 
     return self;
     }
@@ -1856,77 +2128,112 @@ bool preflightPrivateRoom(
     return snapshot != nil && snapshot->_worldRoomInstalled;
 }
 
-- (BOOL)updateRenderScalePercent:(float)renderScalePercent
-                           error:(NSError* _Nullable* _Nullable)error {
+- (BOOL)prepareAndPublishRenderPresentationSettings:
+    (const airfix::render::RenderPresentationSettings&)candidate
+    forView:(MTKView*)view
+    outputExtent:(airfix::render::OutputPixelExtent)outputExtent
+    error:(NSError* _Nullable* _Nullable)error {
     if (error != nullptr) {
         *error = nil;
     }
-    if (!NSThread.isMainThread) {
+    AirfixMetalPresentationTransactionHolder* holder =
+        self.presentationTransactionHolder;
+    AirfixSnapshotGpuBudgetLedgerHolder* gpuBudgetHolder =
+        self.gpuBudgetHolder;
+    MTKView* ownedView = self.metalView;
+    id<MTLDevice> rendererDevice =
+        self.commandQueue.device;
+    if (holder == nil || gpuBudgetHolder == nil ||
+        gpuBudgetHolder->_ledger == nullptr ||
+        view == nil || ownedView == nil ||
+        view != ownedView ||
+        view.device == nil ||
+        view.device != rendererDevice) {
         if (error != nullptr) {
             *error = makeError(
-                RendererError::wrongThread,
-                @"Metal presentation settings must be changed on the main thread.");
-        }
-        return NO;
-    }
-    if (!std::isfinite(renderScalePercent) ||
-        renderScalePercent <
-            airfix::render::native_render_policy::
-                minimumRenderScalePercent ||
-        renderScalePercent >
-            airfix::render::native_render_policy::
-                maximumRenderScalePercent) {
-        if (error != nullptr) {
-            *error = makeError(
-                RendererError::invalidPayload,
-                @"Render scale must be finite and between 50 and 200 percent.");
+                RendererError::presentationSurfaceUnavailable,
+                @"The Metal presentation surface is unavailable.");
         }
         return NO;
     }
 
-    if (self.renderScalePercent != renderScalePercent) {
-        self.renderScalePercent = renderScalePercent;
-        self.scaledSceneColorTexture = nil;
-        self.scaledSceneDepthTexture = nil;
-        self.scaledSceneWidth = 0U;
-        self.scaledSceneHeight = 0U;
+    const auto surface = presentationSurfaceStamp(
+        view, outputExtent, holder->_surfaceGeneration);
+    const auto* active = holder->_transaction.activeState();
+    if (active != nullptr &&
+        active->settings() == candidate &&
+        active->surface() == surface) {
+        holder->_desiredSettings = candidate;
+        return YES;
     }
-    return YES;
-}
 
-- (BOOL)updateOriginalFourByThreePresentationEnabled:(BOOL)enabled
-                                               error:(NSError* _Nullable*
-                                                          _Nullable)error {
-    if (error != nullptr) {
-        *error = nil;
-    }
-    if (!NSThread.isMainThread) {
+    MetalPresentationTargetFactoryContext factoryContext{
+        .gpuBudgetHolder = gpuBudgetHolder,
+    };
+    auto prepared = holder->_transaction.prepare(
+        candidate,
+        surface,
+        {
+            .callback = prepareMetalPresentationTarget,
+            .context = &factoryContext,
+        });
+    if (!prepared.complete()) {
         if (error != nullptr) {
+            const auto kind = prepared.issue->kind;
+            const bool invalidCandidate =
+                kind ==
+                    airfix::render::
+                        RenderPresentationTransactionIssueKind::
+                            invalidSettings ||
+                kind ==
+                    airfix::render::
+                        RenderPresentationTransactionIssueKind::
+                            invalidLayout;
             *error = makeError(
-                RendererError::wrongThread,
-                @"Metal presentation settings must be changed on the main thread.");
+                invalidCandidate
+                    ? RendererError::invalidPayload
+                    : RendererError::
+                          presentationTargetPreparation,
+                invalidCandidate
+                    ? @"The Metal presentation settings are invalid."
+                    : @"The complete Metal scene target pair could not be prepared within the GPU budget.");
         }
         return NO;
     }
-    self.originalFourByThreePresentationEnabled = enabled;
-    return YES;
-}
 
-- (BOOL)updateDiagnosticsOverlayEnabled:(BOOL)enabled
-                                  error:(NSError* _Nullable* _Nullable)error {
-    if (error != nullptr) {
-        *error = nil;
-    }
-    if (!NSThread.isMainThread) {
+    const auto currentExtent =
+        outputPixelExtent(ownedView.drawableSize);
+    if (!currentExtent.has_value()) {
         if (error != nullptr) {
             *error = makeError(
-                RendererError::wrongThread,
-                @"Metal diagnostics settings must be changed on the main thread.");
+                RendererError::stalePresentationCandidate,
+                @"The Metal presentation surface changed before publication.");
         }
         return NO;
     }
-    self.diagnosticsOverlayEnabled = enabled;
-    if (!enabled) {
+    const auto currentSurface = presentationSurfaceStamp(
+        ownedView,
+        *currentExtent,
+        holder->_surfaceGeneration);
+
+    // No callback, allocation, or dispatch is permitted between this fresh
+    // validation and the move publication.
+    const auto finalIssue =
+        holder->_transaction.finalValidate(
+            *prepared.prepared, currentSurface);
+    if (finalIssue.has_value()) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::stalePresentationCandidate,
+                @"The Metal presentation surface changed before publication.");
+        }
+        return NO;
+    }
+    holder->_transaction.commitValidated(
+        std::move(*prepared.prepared));
+    holder->_desiredSettings = candidate;
+    holder->_retrySchedule.recordSuccess();
+    if (!candidate.diagnosticsOverlayEnabled) {
         self.diagnosticsOverlayTexture = nil;
         self.diagnosticsOverlayWidth = 0U;
         self.diagnosticsOverlayHeight = 0U;
@@ -1935,73 +2242,47 @@ bool preflightPrivateRoom(
     return YES;
 }
 
-- (BOOL)ensureScaledSceneTargetsWithDevice:(id<MTLDevice>)device
-                                     width:(NSUInteger)width
-                                    height:(NSUInteger)height {
-    if (device == nil || width == 0U || height == 0U ||
-        width > kMaximumScaledSceneDimension ||
-        height > kMaximumScaledSceneDimension) {
+- (BOOL)applyRenderPresentationSettings:
+    (const airfix::render::RenderPresentationSettings&)candidate
+    error:(NSError* _Nullable* _Nullable)error {
+    if (error != nullptr) {
+        *error = nil;
+    }
+    if (!NSThread.isMainThread) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::wrongThread,
+                @"Metal presentation settings must be changed on the main thread.");
+        }
         return NO;
     }
-    if (self.scaledSceneColorTexture != nil &&
-        self.scaledSceneDepthTexture != nil &&
-        self.scaledSceneWidth == width &&
-        self.scaledSceneHeight == height) {
-        return YES;
+    MTKView* view = self.metalView;
+    std::optional<airfix::render::OutputPixelExtent> extent;
+    if (view != nil) {
+        extent = outputPixelExtent(view.drawableSize);
     }
-
-    std::size_t pixelCount = 0U;
-    std::size_t targetBytes = 0U;
-    if (!checkedMultiply(
-            static_cast<std::size_t>(width),
-            static_cast<std::size_t>(height),
-            pixelCount) ||
-        !checkedMultiply(pixelCount, 8U, targetBytes) ||
-        targetBytes > kMaximumScaledSceneTargetBytes) {
+    if (!extent.has_value()) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::presentationSurfaceUnavailable,
+                @"Metal presentation settings cannot be published while the drawable has no positive pixel extent.");
+        }
         return NO;
     }
+    return [self
+        prepareAndPublishRenderPresentationSettings:candidate
+                                            forView:view
+                                       outputExtent:*extent
+                                              error:error];
+}
 
-    MTLTextureDescriptor* colorDescriptor =
-        [MTLTextureDescriptor
-            texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-                                         width:width
-                                        height:height
-                                     mipmapped:NO];
-    MTLTextureDescriptor* depthDescriptor =
-        [MTLTextureDescriptor
-            texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float
-                                         width:width
-                                        height:height
-                                     mipmapped:NO];
-    if (colorDescriptor == nil || depthDescriptor == nil) {
-        return NO;
-    }
-    colorDescriptor.storageMode = MTLStorageModePrivate;
-    colorDescriptor.hazardTrackingMode = MTLHazardTrackingModeTracked;
-    colorDescriptor.usage =
-        MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
-    depthDescriptor.storageMode = MTLStorageModePrivate;
-    depthDescriptor.hazardTrackingMode = MTLHazardTrackingModeTracked;
-    depthDescriptor.usage = MTLTextureUsageRenderTarget;
-
-    id<MTLTexture> colorTexture =
-        [device newTextureWithDescriptor:colorDescriptor];
-    id<MTLTexture> depthTexture =
-        [device newTextureWithDescriptor:depthDescriptor];
-    if (colorTexture == nil || depthTexture == nil) {
-        return NO;
-    }
-    colorTexture.label = @"Airfix scaled 3D scene color";
-    depthTexture.label = @"Airfix scaled 3D scene depth";
-
-    // Publish the new pair only after both allocations succeed. A frame that
-    // cannot allocate its requested target fails closed without exposing a
-    // partially replaced color/depth pair.
-    self.scaledSceneColorTexture = colorTexture;
-    self.scaledSceneDepthTexture = depthTexture;
-    self.scaledSceneWidth = width;
-    self.scaledSceneHeight = height;
-    return YES;
+- (airfix::render::RenderPresentationSettings)
+    renderPresentationSettings {
+    AirfixMetalPresentationTransactionHolder* holder =
+        self.presentationTransactionHolder;
+    return holder != nil
+        ? holder->_desiredSettings
+        : airfix::render::RenderPresentationSettings{};
 }
 
 - (BOOL)updateDiagnosticsOverlayTextureWithDevice:(id<MTLDevice>)device {
@@ -2854,12 +3135,24 @@ bool preflightPrivateRoom(
 }
 
 - (void)mtkView:(MTKView*)view drawableSizeWillChange:(CGSize)size {
-    (void)view;
-    (void)size;
-    self.scaledSceneColorTexture = nil;
-    self.scaledSceneDepthTexture = nil;
-    self.scaledSceneWidth = 0U;
-    self.scaledSceneHeight = 0U;
+    if (!NSThread.isMainThread) {
+        return;
+    }
+    if (view == nil || view != self.metalView ||
+        view.device == nil ||
+        view.device != self.commandQueue.device) {
+        return;
+    }
+    AirfixMetalPresentationTransactionHolder* holder =
+        self.presentationTransactionHolder;
+    if (holder == nil) {
+        return;
+    }
+    holder->_surfaceGeneration =
+        holder->_surfaceGeneration ==
+                std::numeric_limits<std::uint64_t>::max()
+        ? 1U
+        : holder->_surfaceGeneration + 1U;
     self.diagnosticsOverlayTexture = nil;
     self.diagnosticsOverlayWidth = 0U;
     self.diagnosticsOverlayHeight = 0U;
@@ -2869,9 +3162,91 @@ bool preflightPrivateRoom(
     if (diagnosticsState != nil) {
         diagnosticsState->_lastOverlayRefresh.reset();
     }
+
+    holder->_retrySchedule.resetForExplicitResize();
+    const auto extent = outputPixelExtent(size);
+    if (!extent.has_value()) {
+        if (size.width <= 0.0 || size.height <= 0.0) {
+            holder->_retrySchedule.resetForZeroExtent();
+        }
+        else {
+            holder->_retrySchedule.recordExplicitFailure();
+        }
+        return;
+    }
+
+    NSError* ignoredError = nil;
+    if (![self
+            prepareAndPublishRenderPresentationSettings:
+                holder->_desiredSettings
+                                                forView:view
+                                           outputExtent:*extent
+                                                  error:&ignoredError]) {
+        holder->_retrySchedule.recordExplicitFailure();
+    }
 }
 
 - (void)drawInMTKView:(MTKView*)view {
+    if (!NSThread.isMainThread) {
+        return;
+    }
+    if (view == nil || view != self.metalView ||
+        view.device == nil ||
+        view.device != self.commandQueue.device) {
+        return;
+    }
+    AirfixMetalPresentationTransactionHolder* presentationHolder =
+        self.presentationTransactionHolder;
+    const auto viewExtent = outputPixelExtent(view.drawableSize);
+    if (presentationHolder == nil || !viewExtent.has_value()) {
+        return;
+    }
+    const auto currentSurface = presentationSurfaceStamp(
+        view,
+        *viewExtent,
+        presentationHolder->_surfaceGeneration);
+    const auto* currentPresentation =
+        presentationHolder->_transaction.activeState();
+    if (currentPresentation == nullptr ||
+        currentPresentation->surface() != currentSurface) {
+        bool attemptIsAutomatic = false;
+        bool shouldAttempt = true;
+        if (presentationHolder->_retrySchedule.pending()) {
+            shouldAttempt =
+                presentationHolder->_retrySchedule
+                    .beginFrameRetry();
+            attemptIsAutomatic = shouldAttempt;
+        }
+        if (shouldAttempt) {
+            NSError* ignoredError = nil;
+            if (![self
+                    prepareAndPublishRenderPresentationSettings:
+                        presentationHolder->_desiredSettings
+                                                    forView:view
+                                               outputExtent:*viewExtent
+                                                      error:&ignoredError]) {
+                if (attemptIsAutomatic) {
+                    presentationHolder->_retrySchedule
+                        .recordAutomaticFailure();
+                }
+                else {
+                    presentationHolder->_retrySchedule
+                        .recordExplicitFailure();
+                }
+            }
+        }
+        currentPresentation =
+            presentationHolder->_transaction.activeState();
+    }
+    if (currentPresentation == nullptr ||
+        currentPresentation->surface() != currentSurface) {
+        return;
+    }
+    const airfix::render::RenderPresentationActiveState
+        presentationSnapshot = *currentPresentation;
+    const auto presentationSettings =
+        presentationSnapshot.settings();
+
     AirfixMetalRoomSnapshot* snapshot = self.roomSnapshot;
     if (snapshot == nil) {
         return;
@@ -2944,19 +3319,18 @@ bool preflightPrivateRoom(
         renderPass.depthAttachment.texture;
     const auto outputExtent =
         outputPixelExtent(drawable.texture);
-    if (!outputExtent.has_value()) {
+    if (!outputExtent.has_value() ||
+        *outputExtent !=
+            presentationSnapshot.surface().outputExtent) {
         return;
     }
     auto layoutConfig =
         airfix::render::NativeRenderLayoutConfig{
             .outputExtent = *outputExtent,
-            .renderScalePercent = self.renderScalePercent,
+            .renderScalePercent =
+                presentationSettings.renderScalePercent,
             .scenePresentation =
-                self.originalFourByThreePresentationEnabled
-                    ? airfix::render::ScenePresentationMode::
-                          originalFourByThree
-                    : airfix::render::ScenePresentationMode::
-                          widescreenHorPlus,
+                presentationSettings.scenePresentation,
         };
     if (gameplayCameraActive) {
         layoutConfig.referenceCameraCanvas = {
@@ -2977,29 +3351,32 @@ bool preflightPrivateRoom(
         *builtLayout.layout;
     const auto renderTargetExtent = layout.renderTargetExtent();
     const bool usesScaledSceneTarget =
-        renderTargetExtent.width != outputExtent->width ||
-        renderTargetExtent.height != outputExtent->height;
+        presentationSettings.renderScalePercent !=
+            airfix::render::native_render_policy::
+                defaultRenderScalePercent;
+    if (renderTargetExtent !=
+        presentationSnapshot.targetExtent()) {
+        return;
+    }
 
     MTLRenderPassDescriptor* sceneRenderPass = renderPass;
     id<MTLTexture> retainedScaledSceneColor = nil;
     id<MTLTexture> retainedScaledSceneDepth = nil;
     if (usesScaledSceneTarget) {
-        if (![self
-                ensureScaledSceneTargetsWithDevice:self.commandQueue.device
-                                             width:static_cast<NSUInteger>(
-                                                       renderTargetExtent.width)
-                                            height:static_cast<NSUInteger>(
-                                                       renderTargetExtent.height)]) {
+        if (!presentationSnapshot.targetBundle().has_value()) {
+            return;
+        }
+        AirfixMetalScaledSceneTargetBundle* targetBundle =
+            metalPresentationTargetBundle(
+                *presentationSnapshot.targetBundle());
+        if (targetBundle == nil ||
+            targetBundle->_extent != renderTargetExtent) {
             return;
         }
         retainedScaledSceneColor =
-            self.scaledSceneColorTexture;
+            targetBundle->_colorTexture;
         retainedScaledSceneDepth =
-            self.scaledSceneDepthTexture;
-        if (retainedScaledSceneColor == nil ||
-            retainedScaledSceneDepth == nil) {
-            return;
-        }
+            targetBundle->_depthTexture;
 
         sceneRenderPass =
             [MTLRenderPassDescriptor renderPassDescriptor];
@@ -3211,8 +3588,6 @@ bool preflightPrivateRoom(
         };
     accountResource(drawable.texture);
     accountResource(drawableDepthTexture);
-    accountResource(retainedScaledSceneColor);
-    accountResource(retainedScaledSceneDepth);
     accountResource(self.diagnosticsOverlayTexture);
 
     const auto cpuSampled =
@@ -3230,7 +3605,8 @@ bool preflightPrivateRoom(
         diagnosticsState->_accumulator.record({
             .outputExtent = *outputExtent,
             .renderTargetExtent = renderTargetExtent,
-            .renderScalePercent = self.renderScalePercent,
+            .renderScalePercent =
+                presentationSettings.renderScalePercent,
             .frameIntervalMilliseconds =
                 frameIntervalMilliseconds,
             .cpuFrameMilliseconds = cpuFrameMilliseconds,
@@ -3248,7 +3624,8 @@ bool preflightPrivateRoom(
                     backendReported,
         });
     id<MTLTexture> retainedDiagnosticsOverlay = nil;
-    if (diagnosticAccepted && self.diagnosticsOverlayEnabled) {
+    if (diagnosticAccepted &&
+        presentationSettings.diagnosticsOverlayEnabled) {
         constexpr auto refreshInterval =
             std::chrono::milliseconds(250);
         if (!diagnosticsState->_lastOverlayRefresh.has_value() ||
@@ -3361,6 +3738,7 @@ bool preflightPrivateRoom(
         // Retain the immutable resource owner explicitly until this GPU
         // submission no longer references its buffers or textures.
         (void)snapshot;
+        (void)presentationSnapshot;
         (void)fallbackResource;
         (void)retainedScaledSceneColor;
         (void)retainedScaledSceneDepth;

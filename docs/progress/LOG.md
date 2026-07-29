@@ -3568,3 +3568,37 @@ superseded evidence.
   Public-boundary checks pass for 483 files, Rizin export tests pass 12/12, and
   no binary, analysis database, private asset, dump, trace, or local path is
   committed.
+
+## 2026-07-29 - transactional Metal presentation snapshot
+
+- Added a portable C++20 presentation transaction above the semantic settings
+  value. Prepared and active states carry the exact view/device identities,
+  positive output extent, surface generation, revision, derived target extent,
+  and an optional copyable opaque target owner. Final validation reports stale
+  revision, view, device, extent, and generation separately before a no-fail
+  move commit.
+- Replaced Metal's three independently mutable presentation settings and lazy
+  target allocation with one complete-snapshot apply boundary. Exactly 100%
+  owns no intermediate scene target. Every non-100% candidate must prepare both
+  private BGRA8 color and Depth32 textures before publication, even when rounded
+  dimensions could equal the output.
+- Each Metal target pair now obtains and reconciles a reservation from the
+  existing 384 MiB snapshot GPU ledger. Failed or partial preparation releases
+  the candidate reservation and preserves the active settings and exact old
+  target owner. Diagnostics no longer double-count those ledger-owned targets.
+- A draw copies one immutable active state and command-buffer completion retains
+  that lease. Positive resize publishes only a complete matching surface;
+  failure suppresses presentation to a mismatched drawable and retries
+  immediately, then after 1, 2, 4, ... up to 120 frames. Zero extent retains
+  settings and the last complete pair. Explicit resize, success, and zero reset
+  retry state.
+- Removed the iOS shell's forced diagnostics enable so the canonical default is
+  honored. Enhanced remains a stored selector only and changes no Metal pixels
+  in this slice.
+- Synthetic transaction tests cover 100 -> 50 -> 200 -> 100, exact target
+  identities, orthogonal 4:3/diagnostics/profile reuse, consecutive late
+  failures, every stale-surface category, resize/zero recovery, backoff,
+  accounting, and in-flight owner lifetime. The local portable build and all
+  96 CTests pass. Both independent reviews report GO with no remaining P0-P2.
+  All seven hosted checks pass, including Xcode 26.6 iPhoneOS and
+  iPhoneSimulator builds plus the native Windows D3D11/XAudio2 smoke.

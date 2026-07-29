@@ -136,10 +136,30 @@ and preserves the previous effective state. Once the gate accepts, publication
 contains only no-fail unbinding, resource exchange, resource release, and value
 assignment. Session-only launch and smoke changes omit the gate.
 
-Metal requires the same ordering but may not block the main thread on storage.
-Its backend therefore remains responsible for an equivalent prepared candidate
-whose identity and drawable extent can be revalidated before a no-fail main-
-thread commit.
+Metal uses the same ordering through a single-executor portable transaction.
+Each prepared candidate records the exact view identity, device identity,
+positive drawable extent, surface generation, active revision, derived scene
+target extent, and an optional immutable target bundle. Final validation rejects
+a stale revision or any changed surface field immediately before a no-fail
+main-thread move publication.
+
+The target bundle owns both Metal color/depth textures and their exact
+`SnapshotGpuBudgetLedger` reservation. A copied active snapshot is the frame
+lease and remains captured through command-buffer completion, so replacing the
+active bundle cannot release resources still referenced by the GPU. Exactly
+100% owns no intermediate bundle; every non-100% value requires a complete pair
+even if integer rounding happens to produce the output extent.
+
+Positive resize prepares and publishes a complete replacement before the next
+matching drawable is rendered. Failed preparation retains the last good
+snapshot, suppresses rendering to the mismatched drawable, and retries
+immediately, then after 1, 2, 4, ... up to 120 frames. Zero extent suspends
+rendering without deleting settings or the retained target bundle.
+
+This completed renderer transaction is session-only. Metal still may not block
+the main thread on future storage I/O; the iOS persistence slice must prepare a
+candidate token, save on its serialized settings queue, then revalidate its
+revision and surface on the main thread before the same no-fail commit.
 
 ### User interface boundary
 
@@ -217,7 +237,7 @@ area, orientation, memory pressure, and target-allocation fallback on iPhone SE
   semantic-record mapping.
 - [x] Replace the independent D3D11 setters with transactional complete-
   snapshot application and a pre-publication persistence gate.
-- [ ] Replace the independent Metal setters with an equivalent prepared
+- [x] Replace the independent Metal setters with an equivalent prepared
   complete-snapshot transaction.
 - [ ] Add Windows private storage, launch-override precedence, recovery, and
   synthetic restart tests.

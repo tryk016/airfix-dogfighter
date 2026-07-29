@@ -46,16 +46,23 @@
   4:3, diagnostics, and the Classic/Enhanced selector form one validated
   snapshot; sparse overrides reject atomically; a deterministic delta
   identifies target/layout/overlay/profile work; and a versioned semantic
-  record fails closed on future schemas or malformed values. D3D11 now applies
-  the full snapshot as one prepare-before-publish transaction. Exact old color,
-  RTV, SRV, depth, and DSV identities survive invalid candidates, unavailable
-  surfaces, late allocation failure, failed scaled resize, and a rejected
-  pre-publication persistence gate. Minimize retains the scaled bundle, restore
-  retries safely with bounded exponential frame backoff, 100% remains a direct
-  backbuffer path, and startup override failure falls back to the active
-  snapshot. Enhanced remains a selector only, not a claim that modern passes
-  exist. The equivalent Metal transaction, native persistence, sparse CLI
-  precedence, and final settings UI remain pending.
+  record fails closed on future schemas or malformed values. A second portable
+  layer now prepares immutable active/candidate states against exact
+  view/device/extent/generation stamps, validates stale candidates, owns an
+  optional copyable target lease, and supplies bounded 0, 1, 2, 4, ...,
+  120-frame retry policy. D3D11 applies the full snapshot as one prepare-before-
+  publish transaction. Exact old color, RTV, SRV, depth, and DSV identities
+  survive invalid candidates, unavailable surfaces, late allocation failure,
+  failed scaled resize, and a rejected pre-publication persistence gate.
+  Metal now also replaces its independent setters with one complete snapshot:
+  non-100% prepares both private color/depth textures under the shared GPU
+  ledger, final validation rejects a changed drawable surface, and one immutable
+  lease survives through command-buffer completion. Failed positive resize
+  retains the last good pair but does not render it to a mismatched drawable;
+  zero extent retains it for restore. Exactly 100% remains a direct native
+  target on both backends, diagnostics now defaults off on iOS, and Enhanced
+  remains a selector only, not a claim that modern passes exist. Native
+  persistence, sparse CLI precedence, and final settings UI remain pending.
 - The native Windows x64 product foundation is implemented. A statically
   linked SDL3 shell owns the window and lifecycle events; a separate
   D3D11/DXGI backend compiles HLSL, uploads the same public scene used by Metal,

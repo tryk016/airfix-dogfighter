@@ -1,6 +1,8 @@
 #import <MetalKit/MetalKit.h>
 
 #ifdef __cplusplus
+#include "airfix/render/RenderPresentationSettings.hpp"
+
 #include <memory>
 #include <optional>
 
@@ -27,27 +29,22 @@ NS_ASSUME_NONNULL_BEGIN
 @interface AirfixMetalRenderer : NSObject <MTKViewDelegate>
 
 @property(nonatomic, readonly) BOOL missionWorldRoomInstalled;
-@property(nonatomic, readonly) float renderScalePercent;
-@property(nonatomic, readonly)
-    BOOL originalFourByThreePresentationEnabled;
-@property(nonatomic, readonly) BOOL diagnosticsOverlayEnabled;
 
 - (nullable instancetype)initWithMetalView:(MTKView*)metalView
                                      error:(NSError* _Nullable* _Nullable)error
     NS_DESIGNATED_INITIALIZER;
 
-// Main-thread renderer settings. Invalid or non-finite render scales are
-// rejected without changing the currently published value. UI remains in the
-// Metal drawable's output domain; only the 3D scene target is scaled.
-- (BOOL)updateRenderScalePercent:(float)renderScalePercent
-                           error:(NSError* _Nullable* _Nullable)error;
-- (BOOL)updateOriginalFourByThreePresentationEnabled:(BOOL)enabled
-                                               error:(NSError* _Nullable*
-                                                          _Nullable)error;
-- (BOOL)updateDiagnosticsOverlayEnabled:(BOOL)enabled
-                                  error:(NSError* _Nullable* _Nullable)error;
-
 #ifdef __cplusplus
+// Main-thread renderer transaction. The complete settings snapshot and any
+// replacement scene targets are prepared before one no-fail publication.
+// Rejection preserves both the active settings and the last good target pair.
+- (BOOL)applyRenderPresentationSettings:
+    (const airfix::render::RenderPresentationSettings&)candidate
+    error:(NSError* _Nullable* _Nullable)error;
+
+- (airfix::render::RenderPresentationSettings)
+    renderPresentationSettings;
+
 // Builds every Metal resource without changing the renderer's published room.
 // This synchronous boundary must run on a serialized preparation queue, never
 // the main thread. On failure the old render snapshot and room stay unchanged.

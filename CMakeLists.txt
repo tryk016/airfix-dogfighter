@@ -185,6 +185,7 @@ add_library(airfix_render
     src/airfix/render/MissionWorldDynamicCollisionFrame.cpp
     src/airfix/render/NativeRenderLayout.cpp
     src/airfix/render/RenderPresentationSettings.cpp
+    src/airfix/render/RenderPresentationTransaction.cpp
     src/airfix/render/RenderFrameDiagnostics.cpp
     src/airfix/render/DiagnosticRasterizer.cpp
     src/airfix/render/DynamicInstancePose.cpp
@@ -687,6 +688,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_render_presentation_settings_tests
         COMMAND airfix_render_presentation_settings_tests)
+
+    add_executable(airfix_render_presentation_transaction_tests
+        tests/RenderPresentationTransactionTests.cpp)
+    target_link_libraries(airfix_render_presentation_transaction_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_render_presentation_transaction_tests
+        COMMAND airfix_render_presentation_transaction_tests)
 
     add_executable(airfix_render_frame_diagnostics_tests
         tests/RenderFrameDiagnosticsTests.cpp)
