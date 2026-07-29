@@ -133,11 +133,6 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     NSError* rendererError = nil;
     self.renderer = [[AirfixMetalRenderer alloc] initWithMetalView:metalView
                                                             error:&rendererError];
-    if (self.renderer != nil &&
-        ![self.renderer updateDiagnosticsOverlayEnabled:YES
-                                                  error:&rendererError]) {
-        self.renderer = nil;
-    }
     metalView.delegate = self.renderer;
 
     UILabel* label = [[UILabel alloc] initWithFrame:CGRectZero];

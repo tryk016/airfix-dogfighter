@@ -381,16 +381,19 @@ labelled GPU-memory fields; D3D11 uses non-blocking timestamp queries and Metal
 uses completed-command-buffer timing. This checkpoint does not advance the
 lighting/material/post-processing stages.
 
-ADR-0014 now supplies the first finished settings foundation: one validated
-portable snapshot for render scale, Hor+/Original 4:3, diagnostics, and the
-Classic/Enhanced selector; sparse launch/UI overrides; deterministic delta
-classification; and a versioned storage-neutral record. D3D11 now consumes the
-complete snapshot transactionally: it prepares a complete replacement target
-bundle, permits a durable-save gate before publication, and retains the exact
-previous snapshot and resources after validation, surface, allocation, resize,
-or gate rejection. The equivalent prepared Metal transaction is next, followed
-by platform persistence, sparse launch-override binding, and the final settings
-UI.
+ADR-0014 now supplies the finished cross-backend runtime settings foundation:
+one validated portable snapshot for render scale, Hor+/Original 4:3,
+diagnostics, and the Classic/Enhanced selector; sparse launch/UI overrides;
+deterministic delta classification; a versioned storage-neutral record; and a
+portable prepare/final-validate/commit transaction with immutable target
+ownership and deterministic resize retry. D3D11 prepares a complete replacement
+target bundle and permits a durable-save gate before publication. Metal records
+the exact view/device/extent/generation, charges each complete color/depth pair
+to the shared GPU ledger, and retains one immutable frame lease through command-
+buffer completion. Both retain the previous complete snapshot after validation,
+surface, allocation, or resize failure; exactly 100% remains their direct native
+output path. Platform persistence, sparse launch-override binding, and the final
+settings UI follow as separate slices.
 
 `Classic` and `Enhanced` are visual-intent profiles independent of the quality
 tier. Classic renders faithfully at the chosen high resolution; Enhanced adds
