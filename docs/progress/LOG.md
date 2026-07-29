@@ -3599,5 +3599,6 @@ superseded evidence.
   identities, orthogonal 4:3/diagnostics/profile reuse, consecutive late
   failures, every stale-surface category, resize/zero recovery, backoff,
   accounting, and in-flight owner lifetime. The local portable build and all
-  96 CTests pass. Hosted iPhoneOS/iPhoneSimulator compilation and independent
-  review are pending.
+  96 CTests pass. Both independent reviews report GO with no remaining P0-P2.
+  All seven hosted checks pass, including Xcode 26.6 iPhoneOS and
+  iPhoneSimulator builds plus the native Windows D3D11/XAudio2 smoke.

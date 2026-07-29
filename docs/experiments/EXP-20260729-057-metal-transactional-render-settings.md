@@ -1,7 +1,7 @@
 # EXP-20260729-057: transactional Metal presentation settings
 
 - Date: 2026-07-29
-- Status: implemented locally; hosted CI pending
+- Status: implemented and hosted-CI validated
 - Scope: iOS Metal render-presentation snapshot, target ownership, and resize
   recovery
 
@@ -96,10 +96,12 @@ Local validation:
 - complete local CTest suite: 96/96 passed;
 - `git diff --check`: passed apart from line-ending notices.
 
-Hosted unsigned iPhoneOS/iPhoneSimulator compilation and independent review are
-still required before merge. Runtime allocation-failure injection and physical
-device acceptance remain later work because CI does not provide deterministic
-Metal device-failure control.
+Hosted unsigned iPhoneOS and iPhoneSimulator builds pass on Xcode 26.6. The
+portable clangd, Ubuntu, macOS ARM64, Windows, and native Windows
+D3D11/XAudio2-smoke jobs pass in the same seven-check PR matrix. Two independent
+reviews reached GO with no remaining P0-P2. Runtime allocation-failure injection
+and physical-device acceptance remain later work because CI does not provide
+deterministic Metal device-failure control.
 
 ## Limits
 
