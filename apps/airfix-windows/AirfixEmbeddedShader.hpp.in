@@ -1,0 +1,9 @@
+#pragma once
+
+namespace airfix::windows {
+
+inline constexpr char smokeHlsl[] = R"AIRFIX_HLSL(
+@AIRFIX_WINDOWS_SMOKE_HLSL@
+)AIRFIX_HLSL";
+
+} // namespace airfix::windows

@@ -16,9 +16,10 @@ behaviour comes first; optional visual enhancements remain independently
 switchable and testable.
 
 > **Project status:** active research and development. The repository builds
-> and tests its portable core and an unsigned, data-less UIKit/Metal shell. The
-> native Windows product layer is specified but not yet implemented. Neither
-> target is **yet a complete playable release**.
+> and tests its portable core, a native data-less SDL3/D3D11 Windows shell,
+> and an unsigned data-less UIKit/Metal iOS shell. The Windows renderer now
+> executes shared synthetic draw commands through HLSL and verifies its real
+> GPU output. Neither target is **yet a complete playable release**.
 
 **Lawfully owned original game data is required for private use and is not
 included in this repository.**
@@ -48,6 +49,11 @@ for acceptance criteria.
 
 Implemented foundations include:
 
+- a native Windows x64 shell with SDL3 window/lifecycle events, a separate
+  D3D11/DXGI renderer, runtime-compiled HLSL, hardware-to-WARP fallback,
+  resize/focus handling, and a hidden data-less GPU readback smoke test;
+- one proprietary-data-free render scene and validated draw plan shared by the
+  Windows D3D11 and iOS Metal bring-up paths;
 - bounded UDSP, CCF, GTI, and related legacy-format parsing;
 - a private AFPACK container, strict validation, atomic installation, recovery,
   rollback, and authenticated content sessions;
@@ -114,8 +120,8 @@ for every runtime room. The actor still remains at its authenticated spawn
 transform until the recovered movement law supplies a changing world pose.
 Dynamic-object sphere collision for the camera, live event-5 camera production
 from complete AirCraft state, full gameplay simulation, campaign flow, audio,
-finished menus, physical-device rendering, and visual acceptance remain future
-milestones.
+finished menus, complete Windows input/audio/content integration,
+physical-device rendering, and visual acceptance remain future milestones.
 
 For frequently updated details, use
 [project status](docs/progress/STATUS.md) and the
@@ -171,6 +177,24 @@ ignored and must not be committed.
 For clangd, VS Code, CLion, other LSP clients, and the limits of a Windows
 compilation database for Objective-C++, UIKit, and Metal, see
 [Code intelligence with clangd](docs/toolchain/CODE-INTELLIGENCE.md).
+
+### Windows x64 product shell
+
+The official Windows preset requires Visual Studio 2026 Build Tools with the
+Desktop C++ workload and a Windows SDK. Its first configure downloads the
+hash-pinned SDL 3.4.12 source archive; it never downloads game data.
+
+```powershell
+cmake --preset windows-product
+cmake --build --preset windows-product-release --parallel
+ctest --preset windows-product-release
+```
+
+The resulting data-less `AirfixDogfighter.exe` displays only the public
+synthetic renderer scene. CTest launches it with `--smoke-test`, creates a
+hidden SDL window, compiles the embedded HLSL, submits the shared draw plan,
+reads the D3D11 back buffer, and requires visible non-clear pixels. This is a
+renderer/product-shell milestone, not yet a playable build.
 
 ## Architecture
 

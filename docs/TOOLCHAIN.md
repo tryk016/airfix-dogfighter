@@ -32,9 +32,9 @@ offline workflow.
 | Capability | Proposed tool |
 |---|---|
 | Language | C++20 |
-| Build | CMake plus Ninja |
+| Build | CMake plus Ninja for portable work; Visual Studio 2026 generator for the official Windows product preset |
 | Editor/LSP | clangd with a generated CMake compilation database |
-| Windows x64 product compiler | MSVC or clang-cl, selected after warning/sanitizer spike |
+| Windows x64 product compiler | MSVC in the official preset and CI; MinGW GCC is an additional local compatibility check; clang-cl remains a later sanitizer/tooling candidate |
 | Windows window/input | Pinned SDL3 for window, events, keyboard, mouse, and controllers; not game rendering |
 | Windows graphics | Direct3D 11 plus DXGI with HLSL |
 | Windows audio | Separate native adapter selected by a focused spike |
@@ -52,6 +52,14 @@ COM, D3D, and Metal types may not leak into the portable game core.
 The shared `code-intelligence` CMake preset and editor setup are documented in
 [toolchain/CODE-INTELLIGENCE.md](toolchain/CODE-INTELLIGENCE.md). Generated
 compilation databases and machine-specific compiler paths remain local.
+
+The `windows-product` configure preset creates an x64 Visual Studio 2026 build,
+enables the native Windows shell, disables tools, and leaves every portable
+test enabled. `windows-product-release` build/test presets compile the static,
+hash-pinned SDL dependency and run the complete data-less suite, including a
+hidden D3D11 back-buffer readback. SDL rendering and GPU subsystems are disabled:
+SDL owns only the Windows window/events/input boundary, while the application
+links D3D11, DXGI, and the HLSL compiler directly.
 
 ## Installation policy
 

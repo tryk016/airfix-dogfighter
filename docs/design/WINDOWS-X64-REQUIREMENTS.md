@@ -1,6 +1,7 @@
 # Windows x64 product requirements
 
-**Status:** accepted product direction; platform implementation pending
+**Status:** accepted product direction; first data-less renderer shell
+implemented; playable integration pending
 
 **Scope:** requirements unique to the playable Windows x64 product. Shared
 gameplay scope and parity requirements are defined in `V1-SCOPE.md`.
@@ -12,10 +13,13 @@ environment for rapid debugging and comparison with the original. It runs
 native 64-bit reconstructed code; it is not a wrapper, emulator, or port of the
 original PE32 executable, and it does not recreate the DirectX 7 API.
 
-The current portable CMake build and command-line tools validate the common
-core, but they are not the Windows game product. Product status becomes
-playable only after the window, rendering, physical-input, audio, and
-owner-local content paths below are integrated.
+The repository now builds a native data-less SDL3/D3D11 shell. It creates a
+Win32 window through SDL, executes a shared synthetic draw plan through HLSL
+and D3D11/DXGI, handles focus and resize, falls back from hardware D3D11 to
+WARP, and verifies the rendered back buffer in a hidden CTest smoke mode. This
+proves the product and renderer boundary but is not a playable game. Product
+status becomes playable only after physical input, audio, owner-local content,
+and reconstructed gameplay are integrated.
 
 ## Shared-core contract
 

@@ -3014,3 +3014,35 @@ superseded evidence.
   the incremental Windows build, and passed all 83 tests. Public-boundary unit
   tests, the 413-file repository scan, `actionlint`, links in all 16 final PR
   documentation files, the local-path review, and `git diff --check` pass.
+
+## 2026-07-29 - first native Windows D3D11 product shell
+
+- Added the `AIRFIX_BUILD_WINDOWS_APP` product boundary and reproducible
+  `windows-product`/`windows-product-release` CMake presets. The official path
+  is an x64 Visual Studio 2026 build; portable and iOS configurations leave the
+  target disabled and do not fetch SDL.
+- Pinned official SDL 3.4.12 source by release URL and SHA-256, built it
+  statically, staged its zlib license, and explicitly disabled SDL render/GPU,
+  audio, camera, dialog, haptic, power, sensor, and tray subsystems. SDL owns
+  the Windows window, events, keyboard, mouse, and controller plumbing only.
+- Implemented a native SDL3 window/lifecycle loop and a separate D3D11/DXGI
+  backend with HLSL, reusable vertex/index buffers, explicit fallback textures,
+  per-instance transforms, depth/raster/sampler state, resize handling, and
+  hardware-to-WARP device fallback. No DirectX 7 interface is reproduced.
+- Extracted the existing proprietary-data-free Metal bring-up payload into one
+  portable `PublicRenderSmokeScene`. Both native renderers now consume the same
+  two meshes, three non-monotonic instances, four validated draw commands,
+  texture bytes, and explicit one-pixel fallback.
+- Added a hidden GPU smoke mode that compiles the real HLSL, submits the shared
+  plan, reads the BGRA8 D3D11 back buffer before presentation, and rejects a
+  clear-only result. A dedicated Windows Actions job builds the MSVC preset,
+  runs all tests, and verifies third-party license staging.
+- The native Windows product locally compiles with MinGW GCC 15.2 in Release
+  mode and passes 85/85 tests; after disabling unused SDL subsystems, the
+  D3D11 GPU readback test passes before and after swap-chain target recreation.
+  A separate 271-step portable build passes 84/84 tests.
+  Public-boundary tests and the 422-file scan, `actionlint`, clang-format,
+  `git diff --check`, and the official SDL API/hash review pass. Pull-request
+  Actions run `30439266445` passes the Visual Studio 2026 D3D11 product job and
+  the complete portable matrix; iOS run `30439256007` passes both Apple SDK
+  jobs.

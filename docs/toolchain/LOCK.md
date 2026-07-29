@@ -45,6 +45,18 @@ Bucket sources at capture time:
 The installed packages are local tooling only. Production/CI dependencies must
 still be declared by the repository and must not assume these absolute paths.
 
+## Production dependencies
+
+| Dependency | Version | Use | License | Official source | SHA-256 |
+|---|---:|---|---|---|---|
+| SDL | 3.4.12 | Windows window lifecycle, events, keyboard, mouse, and controllers; rendering remains native D3D11 | Zlib | [release](https://github.com/libsdl-org/SDL/releases/tag/release-3.4.12), [source archive](https://github.com/libsdl-org/SDL/releases/download/release-3.4.12/SDL3-3.4.12.tar.gz) | `f07b958a9ac5020fb7a44cadb957f658b2149c3c8abb4f63145fac9303249db7` |
+
+The Windows product CMake target fetches the exact SDL source archive above and
+verifies its digest before configuration. It builds SDL statically and copies
+the upstream license into the build output. Neither SDL sources nor build
+products are vendored into the repository. Portable core and iOS configurations
+do not fetch or build SDL.
+
 ## Portable reverse-engineering tools
 
 **Captured and verified:** 2026-07-27

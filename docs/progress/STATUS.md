@@ -15,6 +15,13 @@
 - ADR-0008 selects SDL3 for the Windows window/events/keyboard/mouse/controllers
   and D3D11/DXGI with HLSL for the Windows renderer. SDL3 does not own game
   rendering; iOS remains on its native Metal backend.
+- The first native Windows x64 product slice is implemented. A statically
+  linked SDL3 shell owns the window and lifecycle events; a separate
+  D3D11/DXGI backend compiles HLSL, uploads the same public scene used by Metal,
+  preserves shared draw-command order, supports resize, and falls back from
+  hardware D3D11 to WARP. Its hidden CTest mode reads the real back buffer and
+  rejects a clear-only frame. It remains a data-less renderer shell, not a
+  playable build.
 - Cross-platform input/control/haptics system specified; semantic input
   architecture recorded in ADR-0002.
 - Local Git repository initialized on branch `main`; planning baseline committed
@@ -754,10 +761,11 @@
 
 ## Next
 
-1. Implement the native Windows x64 data-less shell with SDL3 window/events/
-   input and D3D11/DXGI/HLSL rendering, select the separate audio adapter,
-   preserve strict ADR-0007/0008 boundaries, and make it the primary synthetic
-   smoke/debug host. The current portable Windows build is not yet this product.
+1. Extend the implemented native Windows x64 renderer shell with the complete
+   SDL3 keyboard/mouse/controller adapter, select and implement the separate
+   audio adapter, connect owner-local authenticated content, and replace the
+   public smoke scene with shared reconstructed world commands without
+   weakening its data-less CI path.
 2. Obtain controlled runtime traces for free flight and the ground, inverted,
    water, collision, engine-transition, and too-high branches; establish
    x87-versus-portable numeric tolerances and deterministic replacement PRNG
@@ -799,6 +807,17 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The first Windows product slice passes a local MinGW GCC 15.2 Release build
+  and 85/85 CTest cases. The final test creates a hidden SDL3
+  window, compiles HLSL, renders the shared scene through D3D11/DXGI, reads the
+  back buffer, verifies visible pixels, recreates the swap-chain targets, and
+  verifies a second frame. The same change
+  passes a separate 271-step portable build with 84/84 tests, public-boundary
+  unit tests and the 422-file scan, `actionlint`, formatting validation, and
+  `git diff --check`. Pull-request Actions run `30439266445` passes the
+  Visual Studio 2026 D3D11 product job and all portable Ubuntu, Windows, macOS,
+  and clangd jobs; iOS run `30439256007` passes both `iphoneos` and
+  `iphonesimulator`.
 - Merged projectile runtime-pool main commit `bfde965` passes the exact-main
   Ubuntu, Windows, ARM64 macOS, clangd/code-intelligence, `iphoneos`, and
   `iphonesimulator` Actions jobs.
