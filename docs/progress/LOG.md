@@ -2984,3 +2984,27 @@ superseded evidence.
   and `git diff --check` pass. Exact commit `6c5d386` compiles all 268 steps
   with GCC 13.3 and passes 83/83 tests in 26.23 seconds in a fresh isolated
   `Airfix-Dev` WSL clone. GitHub Actions remains the publication gate.
+
+## 2026-07-29 - Windows x64 promoted to a parallel playable product
+
+- The project owner accepted a native playable Windows x64 application as a
+  parallel version 1 target beside the private iOS ARM64 sideload. Windows is
+  now the primary rapid-debug and controlled original-comparison environment,
+  not merely a reference harness.
+- ADR-0007 fixes one shared portable C++20 game, physics, resource, save,
+  semantic-input, render-command, and audio-command implementation. Windows and
+  iOS own separate window/lifecycle, renderer, physical-input, audio, and
+  filesystem/private-content adapters.
+- Added explicit Windows product requirements and cross-product acceptance
+  gates. The current portable Windows compiler/test configuration remains a
+  core validation path and is not represented as a playable product shell.
+- Original files, converted `.afpack` packages, content-bearing builds, private
+  traces, analysis databases, and machine-local paths remain outside Git and
+  public Actions logs, caches, artifacts, and releases for both products.
+- Updated the public project overview, architecture, version 1 scope, roadmap,
+  input contract, toolchain plan, parity matrix, iOS product note, and status
+  to reflect the two-product architecture.
+- Regenerated the code-intelligence preset from the current source, completed
+  the incremental Windows build, and passed all 83 tests. Public-boundary unit
+  tests, the 412-file repository scan, `actionlint`, links in all 15 changed
+  documentation files, the local-path review, and `git diff --check` pass.

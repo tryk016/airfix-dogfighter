@@ -1,12 +1,15 @@
 # Target architecture
 
 **Status:** active target architecture
-**Last updated:** 2026-07-24
+**Last updated:** 2026-07-29
 
 ## Constraints
 
 - The reference build is Windows PE32/x86 and uses DirectX 7-era APIs plus an
   optional Glide renderer.
+- Version 1 has a native Windows x64 playable product. It is the primary rapid
+  debugging and controlled original-comparison environment; it does not load or
+  translate original x86 executable modules.
 - iOS requires a native ARM64 application and Xcode build/signing, provided by
   an explicit GitHub-hosted macOS runner. A local Mac is required later for
   interactive device debugging and profiling.
@@ -15,8 +18,13 @@
 - Original assets are in custom `UDSP` packages and must be understood before a
   complete vertical slice can load.
 - Fidelity and modernization are separate acceptance dimensions.
-- Version 1.0 is a private signed sideload with deployment target iOS 16.4.
-  Runtime tests use iPhone 17 Pro Max/iOS 26.6 and iPhone SE 3/iOS 26.3.
+- The iOS version 1 product is a private signed sideload with deployment target
+  iOS 16.4. Runtime tests use iPhone 17 Pro Max/iOS 26.6 and iPhone SE
+  3/iOS 26.3.
+- Windows and iOS share one portable C++20 game, physics, resource, save,
+  semantic-input, and platform-neutral render/audio implementation. Their
+  window/lifecycle, renderer, physical-input, audio, and filesystem adapters
+  remain separate.
 - Multiplayer, House Editor, Paint Room, App Store services, and unavailable CD
   music are outside the v1.0 product boundary.
 
@@ -31,18 +39,20 @@ flowchart TD
     D --> F["Converted development assets"]
     E --> G["Portable C++20 game core"]
     F --> H["Runtime asset layer"]
-    G --> I["Platform services interface"]
-    G --> J["Renderer command interface"]
+    G --> I["Platform service interfaces"]
+    G --> J["Render and audio command interfaces"]
     H --> G
-    I --> K["Windows reference harness"]
-    I --> L["iOS app shell"]
-    J --> M["Windows development renderer"]
-    J --> N["Metal renderer"]
-    L --> N
+    I --> K["Windows x64 app"]
+    I --> L["iOS ARM64 app"]
+    J --> K
+    J --> L
+    K --> M["Windows window / renderer / input / audio"]
+    L --> N["UIKit / Metal / touch / Game Controller / audio"]
     G --> O["Deterministic and parity tests"]
     Q["GitHub Actions macOS runner"] --> L
     Q --> P["Signed data-less IPA"]
     D --> X["Local private .afpack"]
+    X --> K
     X --> L
 ```
 
@@ -84,18 +94,20 @@ Two layers:
 The first extractor must also support a listing-only mode so research can
 progress without copying full assets.
 
-The production iOS app is built without original data. The Windows converter
-creates a private, versioned `.afpack` imported after installation. Original and
-converted game content never enters the GitHub repository, Actions cache, logs,
-or artifacts.
+Both public product builds are data-less. An owner-local converter creates one
+private, versioned `.afpack` runtime representation consumed through
+platform-specific import/storage adapters on Windows and iOS. Original and
+converted game content never enters the GitHub repository, public Actions
+caches, logs, or artifacts.
 
 ### `render`
 
-The game emits API-neutral draw commands and lighting data. A Windows backend
-supports rapid desktop development; the shipping iOS backend uses Metal.
-The faithful pipeline is implemented first. Modern lighting, shadows,
-post-processing, higher-resolution textures, and upscaling are optional feature
-layers with independent toggles and performance budgets.
+The game emits API-neutral draw commands and lighting data. The playable
+Windows product and the iOS product own separate renderer backends over that
+same contract. Windows is the primary rapid-debug and reference-capture path;
+iOS uses Metal. The faithful pipeline is implemented first. Modern lighting,
+shadows, post-processing, higher-resolution textures, and upscaling are
+optional feature layers with independent toggles and performance budgets.
 
 Static room payloads and GPU resources remain immutable after publication.
 Future actor motion enters through a separate bounded
@@ -108,22 +120,33 @@ that binding awaits the recovered dynamic actor/spawn pipeline.
 
 ### `platform`
 
-Narrow interfaces for input, game controllers, touch, audio, timing, files,
-localization, lifecycle, and video. The first iOS vertical slice uses native
-UIKit and Game Controller adapters behind a small Objective-C++ bridge, which
-also owns lifecycle, storage, safe-area, audio-session, and Metal integration.
-SDL3 remains an optional later desktop/common adapter, not an iOS prerequisite;
-ADR-0002 records the staged decision.
+Narrow interfaces for input, audio, timing, files, localization, lifecycle, and
+video. The products implement separate outer layers:
+
+- Windows owns the native window/display lifecycle, keyboard/mouse/controller
+  input, renderer, audio device/session, owner-local content import, saves, and
+  diagnostics.
+- iOS owns UIKit lifecycle, touch and Game Controller input, Metal, Apple audio
+  session/device integration, sandboxed content import, saves, and safe areas
+  behind small Objective-C++ bridges.
+
+The exact Windows platform APIs are selected by a bounded technical spike;
+ADR-0007 fixes the boundary without prematurely fixing the implementation.
+SDL3 remains an optional candidate for an adapter rather than an architectural
+dependency. ADR-0002 records the staged input decision.
 
 Input is a distinct subsystem: platform adapters produce normalized physical
 events, a context/binding router resolves semantic actions, and the simulation
-receives immutable per-tick `InputFrame` values. Touch, controllers, desktop test
-input, and optional motion never enter the game core as platform key/button
-codes. See `docs/systems/INPUT.md` and ADR-0002.
+receives immutable per-tick `InputFrame` values. Windows keyboard/mouse and
+controller input, iOS touch and Game Controller input, desktop test input, and
+optional motion never enter the game core as platform key/button codes. See
+`docs/systems/INPUT.md` and ADR-0002.
 
 ### `apps`
 
-- `reference-win`: desktop executable used during reconstruction and comparison.
+- `airfix-windows`: native x64 playable application, primary debug/parity
+  environment, and faithful-reference capture host. Its platform shell is
+  specified but not yet implemented.
 - `airfix-ios`: CMake-generated Objective-C++/UIKit/Metal application target.
   The first shell is data-less, iPhone-landscape only, and delegates lifecycle
   state to portable `airfix::runtime`; see ADR-0006.
@@ -140,14 +163,21 @@ the shipping game unless a small, audited runtime reader is necessary.
 
 ```text
 apps/
-  reference-win/
+  airfix-windows/
   airfix-ios/
 src/
   core/
   game/
   assets/
   render/
+    windows/
+    metal/
+  audio/
+    windows/
+    ios/
   platform/
+    windows/
+    ios/
 tools/
   inventory/
   udsp/
@@ -163,7 +193,9 @@ private-fixtures/         # original-derived fixtures; ignored by Git
 
 ## Decisions deliberately deferred
 
-- Exact desktop graphics API: decide after a small draw-command spike.
+- Exact Windows windowing, graphics, controller, audio, minimum-OS, and
+  packaging choices: decide through the Windows product spike while preserving
+  the ADR-0007 boundaries.
 - Runtime intermediate model/level formats: decide after `UDSP` contents are
   inventoried.
 - Post-v1 multiplayer/editor scope: preserve useful shared-interface findings,

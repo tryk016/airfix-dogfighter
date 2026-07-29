@@ -5,6 +5,11 @@
 **Scope:** everything the private iOS sideload needs beyond reconstruction of
 the original game logic; accepted v1.0 boundary is in `V1-SCOPE.md`
 
+This is the iOS-specific contract within a two-product project. The parallel
+playable Windows target is defined in `WINDOWS-X64-REQUIREMENTS.md` and
+ADR-0007. Both products consume the same portable game, physics, resource,
+save, and semantic-input implementation.
+
 ## Priority model
 
 | Priority | Meaning |

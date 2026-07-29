@@ -34,16 +34,18 @@ offline workflow.
 | Language | C++20 |
 | Build | CMake plus Ninja |
 | Editor/LSP | clangd with a generated CMake compilation database |
-| Windows compiler | MSVC or clang-cl, selected after warning/sanitizer spike |
+| Windows x64 product compiler | MSVC or clang-cl, selected after warning/sanitizer spike |
+| Windows product platform | Native window/render/input/audio APIs selected by a bounded spike; portable GCC/MinGW validation is not the product shell |
 | Tests | lightweight C++ test runner selected with the skeleton |
 | iOS platform/input/controller | UIKit and Game Controller behind Objective-C++ adapters |
-| Optional desktop common layer | SDL3 technical spike when a desktop shell needs it |
+| Optional desktop adapter candidate | SDL3 technical spike only if it satisfies the Windows x64 product boundary |
 | iOS graphics | Metal with MetalKit/Objective-C++ bridge as needed |
 | iOS build/signing | Pinned Xcode on explicit GitHub-hosted macOS runner |
 
-The native iOS adapters are the first implementation path. SDL3 remains a later
-desktop/common-layer option; neither Apple nor SDL types may leak into the
-portable game core.
+Windows x64 and iOS are parallel products over the same portable core. Windows
+is the primary rapid-debug and reference-comparison environment; iOS retains
+native Apple adapters. SDL3 remains only an adapter candidate, and neither
+Windows, Apple, nor SDL types may leak into the portable game core.
 
 The shared `code-intelligence` CMake preset and editor setup are documented in
 [toolchain/CODE-INTELLIGENCE.md](toolchain/CODE-INTELLIGENCE.md). Generated
@@ -67,8 +69,9 @@ compilation databases and machine-specific compiler paths remain local.
 ## Apple and CI dependency
 
 The Windows workstation hosts static analysis, local conversion of private game
-data, the portable core, and desktop reference build. GitHub Actions supplies an
-ephemeral macOS runner with Xcode for simulator compilation and signed IPA
+data, the portable core, and the native Windows x64 product/debug build. GitHub
+Actions supplies an ephemeral macOS runner with Xcode for simulator compilation
+and signed IPA
 export, so no owner-operated Mac/Xcode installation is required for portable
 development and compile validation. Interactive device debugging and profiling
 later use local Xcode and Apple developer tools.

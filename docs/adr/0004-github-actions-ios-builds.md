@@ -55,9 +55,10 @@ if hosted-runner/Xcode constraints make a required build impossible.
 ## Consequences
 
 - No local Mac is a project blocker.
-- A private GitHub repository, macOS Actions minutes, signing certificate,
-  provisioning profile containing both device UDIDs, and protected secrets are
-  required before signed builds.
+- The public source repository remains data-less. macOS Actions minutes, a
+  signing certificate, a provisioning profile containing both device UDIDs,
+  protected environment secrets, and a non-public signed-artifact transfer path
+  are required before signed builds.
 - Build workflows pin runner/Xcode and record actual tool versions.
 - Signed IPA generation is manual/protected; untrusted contributions never see
   signing secrets.
