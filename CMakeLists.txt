@@ -44,6 +44,7 @@ endif()
 
 add_library(airfix_runtime
     src/airfix/runtime/AppSession.cpp
+    src/airfix/runtime/PlayerAircraftPresentationCoordinator.cpp
 )
 add_library(airfix::runtime ALIAS airfix_runtime)
 
@@ -224,6 +225,8 @@ target_include_directories(airfix_render
 )
 target_compile_features(airfix_render PUBLIC cxx_std_20)
 target_link_libraries(airfix_render PUBLIC airfix::assets)
+target_link_libraries(airfix_runtime
+    PUBLIC airfix::render airfix::simulation)
 
 if(MSVC)
     target_compile_options(airfix_render PRIVATE /W4 /permissive-)
@@ -503,6 +506,16 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_runtime_tests tests/AppSessionTests.cpp)
     target_link_libraries(airfix_runtime_tests PRIVATE airfix::runtime)
     add_test(NAME airfix_runtime_tests COMMAND airfix_runtime_tests)
+
+    add_executable(
+        airfix_player_aircraft_presentation_coordinator_tests
+        tests/PlayerAircraftPresentationCoordinatorTests.cpp)
+    target_link_libraries(
+        airfix_player_aircraft_presentation_coordinator_tests
+        PRIVATE airfix::runtime)
+    add_test(
+        NAME airfix_player_aircraft_presentation_coordinator_tests
+        COMMAND airfix_player_aircraft_presentation_coordinator_tests)
 
     add_executable(airfix_audio_command_tests tests/AudioCommandTests.cpp)
     target_link_libraries(airfix_audio_command_tests PRIVATE airfix::audio)

@@ -49,10 +49,17 @@
   rejects a clear-only frame. SDL3 keyboard/mouse/standardized-gamepad events
   now feed the shared 60 Hz semantic input path with ordered tap preservation,
   dead-zone/trigger normalization, hot-plug, disconnect release, and focus
-  neutralization. A separate XAudio2 2.9 backend consumes the new bounded
-  portable command/PCM16 contract, owns copied clips, pauses with focus,
-  recovers outside its callback, and accepts commands safely without an output
-  endpoint. The shared AirCraft audio coordinator now preserves the recovered
+  neutralization. An authenticated mission now enters an explicit paused-ready
+  session; pause/menu is the only resume path. Each eligible Windows frame is
+  consumed exactly once by the same deterministic player-state boundary as
+  iOS, and pause, focus loss, controller disconnect, or a rejected transition
+  resets every physical source and never auto-resumes. The diagnostic
+  state/hash changes, but the player remains at the authenticated spawn because
+  no flight law is inferred from input intentions. A separate XAudio2 2.9
+  backend consumes the new bounded portable command/PCM16 contract, owns
+  copied clips, pauses with focus, recovers outside its callback, and accepts
+  commands safely without an output endpoint. The shared AirCraft audio
+  coordinator now preserves the recovered
   phase-transition/destroyed-dive/modulation order. Windows can authenticate an
   owner-local AFPACK root, decode the six recovered PCM16 samples through the
   same retained content session, register the complete clip set, and derive
@@ -241,10 +248,14 @@
   intentions, primary/secondary/rear-view held state and exact edges, discrete
   weapon selection, action counters, its own completed-step count, monotonic
   source tick, and an explicit canonical hash. Invalid schema, Q15, weapon,
-  tick, and counter transitions are rejected without partial mutation. The iOS
-  bridge advances it exactly once per eligible running frame and fails closed;
-  pose, movement, throttle integration, camera behavior, and weapon spawning
-  remain intentionally absent.
+  tick, and counter transitions are rejected without partial mutation. A
+  shared presentation coordinator commits state only with a successful or
+  temporarily busy actor-pose publication; an expired endpoint or other
+  publication failure is terminal and atomic. iOS uses that endpoint, while
+  the current Windows static-pose stage uses its explicit headless path. Both
+  products advance exactly once per eligible running frame and fail closed;
+  movement, throttle integration, camera behavior, and weapon spawning remain
+  intentionally absent.
 - Recovered the 63-slot `AirCraft.type` vtable and 16 function entries missed
   by automatic analysis. The per-step method at `0x10003F40` consumes a float
   time delta and contains 15 force, five torque-only, and one force-only call
@@ -830,11 +841,12 @@
 
 ## Next
 
-1. Feed the committed authenticated aircraft-audio bindings from the live
-   12 ms producer on both products. Connect Windows semantic input and the
-   authenticated rendered room to the changing AirCraft/player pose and camera
-   runtimes; add persistent remapping/calibration profiles and controller
-   glyphs without weakening the public data-less smoke path.
+1. Build the trace-driven 12 ms AirCraft producer without treating the separate
+   60 Hz input clock as physics. Confirm the Q15-to-legacy-event timing and
+   payload policy, then publish one coherent changing pose/health/inactive/
+   kinematic sample to Windows and iOS before connecting live camera and audio.
+   Extract the existing Metal pose-runtime planner into portable C++ before
+   enabling the same per-frame pose lease in D3D11.
 2. Obtain controlled runtime traces for free flight and the ground, inverted,
    water, collision, engine-transition, and too-high branches; establish
    x87-versus-portable numeric tolerances and deterministic replacement PRNG

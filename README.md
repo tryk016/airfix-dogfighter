@@ -102,8 +102,11 @@ Implemented foundations include:
   one-shots, and publishes no partial bindings;
 - aggregate mission-room assembly, texture preparation, draw validation, and
   two-phase Metal publication;
-- a deterministic semantic input core with native touch and Apple Game
-  Controller adapters;
+- a deterministic semantic input core with native touch, Apple Game
+  Controller, and SDL3 keyboard/mouse/gamepad adapters; Windows and iOS now
+  consume eligible 60 Hz frames through one atomic player-state/presentation
+  coordinator, retain a canonical diagnostic hash, and reset fail-closed at
+  pause, focus, disconnect, or invalid transitions;
 - authenticated player selection plus bounded player-model, texture,
   scene-placement, and publication integration in the mission-world loader;
 - a preallocated per-scene pose runtime that publishes authenticated actor
