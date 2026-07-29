@@ -348,6 +348,8 @@ int run(const int argumentCount, char *arguments[]) {
 
   std::optional<LoadedPrivateContent> privateContent;
   std::optional<airfix::simulation::PlayerSpawnPose> playerSpawnPose;
+  airfix::runtime::PlayerActorPoseRuntimeEndpoint
+      playerActorPoseRuntime;
   if (options.contentRoot.has_value()) {
     privateContent.emplace(
         loadPrivateContent(*options.contentRoot, options.mission, audio));
@@ -361,6 +363,8 @@ int run(const int argumentCount, char *arguments[]) {
       throw std::runtime_error(
           "authenticated Windows mission was not published");
     }
+    playerActorPoseRuntime =
+        renderer.playerActorPoseRuntimeEndpoint();
   }
   audio.setActive(false);
   if (options.captureFrameOutput.has_value()) {
@@ -418,8 +422,9 @@ int run(const int argumentCount, char *arguments[]) {
   if (renderer.missionWorldRoomInstalled() &&
       playerSpawnPose.has_value()) {
     // Windows currently commits the authenticated room, audio clips, and
-    // frozen spawn pose as one startup transaction. Dynamic pose/camera
-    // publication remains a later trace-driven milestone.
+    // frozen spawn pose plus its replacement-safe pose runtime as one startup
+    // transaction. Changing pose/camera inputs remain a later trace-driven
+    // milestone.
     session.setContentState(airfix::runtime::ContentState::ready);
   }
   airfix::windows::AirfixSdlInputAdapter input;
@@ -521,7 +526,8 @@ int run(const int argumentCount, char *arguments[]) {
         const auto advanced =
             playerAircraftPresentation.tryAdvance(
                 inputFrame.frame,
-                actorWorldFrom(*playerSpawnPose));
+                actorWorldFrom(*playerSpawnPose),
+                playerActorPoseRuntime);
         if (!advanced.accepted()) {
           simulationPipelineReady = false;
           if (!input.resetForGameplayBoundary()) {

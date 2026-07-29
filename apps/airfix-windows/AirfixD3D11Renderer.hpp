@@ -2,6 +2,7 @@
 
 #include "airfix/content/MissionWorldRoomLoader.hpp"
 #include "airfix/render/NativeRenderLayout.hpp"
+#include "airfix/render/PlayerActorPoseRuntime.hpp"
 #include "airfix/render/RenderFrameDiagnostics.hpp"
 
 #include <filesystem>
@@ -38,6 +39,12 @@ public:
       const airfix::content::ContentRevision &expectedRevision);
 
   [[nodiscard]] bool missionWorldRoomInstalled() const noexcept;
+
+  // The renderer remains the strong owner for the installed scene. The
+  // simulation producer receives only this replacement-safe weak endpoint.
+  [[nodiscard]] std::optional<
+      std::weak_ptr<airfix::render::PlayerActorPoseRuntime>>
+  playerActorPoseRuntimeEndpoint() const noexcept;
 
   // Renders and writes one private local D3D11 frame as a top-down BGRA8 BMP.
   // Callers must keep the derived screenshot outside public source control.

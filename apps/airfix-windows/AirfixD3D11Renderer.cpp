@@ -7,6 +7,7 @@
 #include "airfix/render/LegacyDepthState.hpp"
 #include "airfix/render/LegacyGameplayCameraClipPacket.hpp"
 #include "airfix/render/NativeRenderLayout.hpp"
+#include "airfix/render/PlayerActorPoseRuntimePreparation.hpp"
 #include "airfix/render/PublicRenderSmokeScene.hpp"
 #include "airfix/render/RenderFrameDiagnostics.hpp"
 
@@ -172,11 +173,11 @@ struct CapturedBackBuffer final {
 }
 
 [[nodiscard]] std::array<float, 16U>
-modelFromLocal(const airfix::render::DrawMeshInstance &instance) {
+modelFromLocal(const airfix::render::Mat3 &linear,
+               const airfix::render::Vec3 &translation) {
   // HLSL consumes a row-vector matrix. Each mathematical column of the
   // portable column-vector transform therefore becomes one stored row.
-  const auto &columns = instance.modelLinear.columns;
-  const auto &translation = instance.modelTranslation;
+  const auto &columns = linear.columns;
   return {{
       columns[0].x,
       columns[0].y,
@@ -197,13 +198,18 @@ modelFromLocal(const airfix::render::DrawMeshInstance &instance) {
   }};
 }
 
+[[nodiscard]] std::array<float, 16U>
+modelFromLocal(const airfix::render::DrawMeshInstance &instance) {
+  return modelFromLocal(instance.modelLinear, instance.modelTranslation);
+}
+
 [[nodiscard]] SmokeUniforms
 makeSmokeUniforms(const airfix::render::DrawMeshInstance &instance) {
   return SmokeUniforms{.modelFromLocal = modelFromLocal(instance)};
 }
 
 [[nodiscard]] GameplayUniforms makeGameplayUniforms(
-    const airfix::render::DrawMeshInstance &instance,
+    const airfix::render::ResolvedInstancePose &pose,
     const airfix::render::LegacyGameplayCameraClipPacket &camera,
     const airfix::render::NativeRenderLayout &layout) {
   const auto &transform = camera.pose().worldToView();
@@ -214,7 +220,8 @@ makeSmokeUniforms(const airfix::render::DrawMeshInstance &instance) {
       {projection.centre().x, projection.centre().y});
   const auto logicalExtent = layout.cameraLogicalExtent();
   return {
-      .modelFromLocal = modelFromLocal(instance),
+      .modelFromLocal =
+          modelFromLocal(pose.modelLinear, pose.modelTranslation),
       .cameraAxisX = {linear.columns[0].x, linear.columns[0].y,
                       linear.columns[0].z, 0.0F},
       .cameraAxisY = {linear.columns[1].x, linear.columns[1].y,
@@ -228,6 +235,26 @@ makeSmokeUniforms(const airfix::render::DrawMeshInstance &instance) {
                      projection.projectScale(), 0.0F},
       .logicalCanvas = {logicalCentre.x, logicalCentre.y, logicalExtent.width,
                         logicalExtent.height},
+  };
+}
+
+[[nodiscard]] airfix::render::ConvertedNodeTransform actorWorldFrom(
+    const airfix::simulation::PlayerSpawnPose &pose) noexcept {
+  const auto vectorAt = [](const std::array<float, 3U> &value) {
+    return airfix::render::Vec3{value[0], value[1], value[2]};
+  };
+  return {
+      .linear =
+          {
+              .columns =
+                  {
+                      vectorAt(pose.runtimeWorldRotationColumns[0]),
+                      vectorAt(pose.runtimeWorldRotationColumns[1]),
+                      vectorAt(pose.runtimeWorldRotationColumns[2]),
+                  },
+          },
+      .translation = vectorAt(pose.runtimeWorldPosition),
+      .rawScalar = 1.0F,
   };
 }
 
@@ -283,15 +310,19 @@ class AirfixD3D11Renderer::Implementation final {
   struct MissionResources {
     airfix::content::LoadedMissionWorldRoom room;
     airfix::render::LegacyGameplayCameraClipPacket camera;
+    std::shared_ptr<airfix::render::PlayerActorPoseRuntime> poseRuntime;
     std::vector<MeshResources> meshes;
     std::vector<ComPtr<ID3D11ShaderResourceView>> textures;
 
     MissionResources(
         airfix::content::LoadedMissionWorldRoom &&loadedRoom,
         airfix::render::LegacyGameplayCameraClipPacket cameraPacket,
+        std::shared_ptr<airfix::render::PlayerActorPoseRuntime>
+            playerPoseRuntime,
         std::vector<MeshResources> &&meshResources,
         std::vector<ComPtr<ID3D11ShaderResourceView>> &&textureResources)
         : room(std::move(loadedRoom)), camera(std::move(cameraPacket)),
+          poseRuntime(std::move(playerPoseRuntime)),
           meshes(std::move(meshResources)),
           textures(std::move(textureResources)) {}
   };
@@ -389,17 +420,64 @@ public:
       throw std::runtime_error("authenticated mission camera bootstrap failed");
     }
 
+    const auto posePlan =
+        airfix::render::planPlayerActorPoseRuntime(
+            room.playerActorBinding, room.playerActorInstanceProvenance,
+            room.model.instances);
+    if (posePlan.status ==
+        airfix::render::PlayerActorPoseRuntimePreparationStatus::
+            resourceLimit) {
+      throw std::runtime_error(
+          "authenticated mission pose runtime exceeds its bounded resources");
+    }
+    auto posePreparation =
+        airfix::render::preparePlayerActorPoseRuntime(
+            room.playerActorBinding, room.playerActorInstanceProvenance,
+            room.model.instances, actorWorldFrom(room.playerSpawnPose),
+            posePlan);
+    if (posePreparation.status ==
+        airfix::render::PlayerActorPoseRuntimePreparationStatus::
+            resourceLimit) {
+      throw std::runtime_error(
+          "authenticated mission pose runtime allocation failed");
+    }
+    if (posePreparation.status ==
+            airfix::render::PlayerActorPoseRuntimePreparationStatus::
+                invalidPayload ||
+        (posePreparation.status ==
+             airfix::render::PlayerActorPoseRuntimePreparationStatus::
+                 ready &&
+         posePreparation.runtime == nullptr) ||
+        (posePreparation.status ==
+             airfix::render::PlayerActorPoseRuntimePreparationStatus::
+                 noPlayer &&
+         posePreparation.runtime != nullptr)) {
+      throw std::runtime_error(
+          "authenticated mission pose runtime is inconsistent");
+    }
+
     auto meshes = createGeometryResources(room.model);
     auto textures = createMissionTextures(room.textures);
     std::vector<airfix::content::LoadedTextureAsset>().swap(room.textures);
     auto candidate = std::make_unique<MissionResources>(
-        std::move(room), std::move(*cameraResult.packet), std::move(meshes),
+        std::move(room), std::move(*cameraResult.packet),
+        std::move(posePreparation.runtime), std::move(meshes),
         std::move(textures));
     mission_ = std::move(candidate);
   }
 
   [[nodiscard]] bool missionWorldRoomInstalled() const noexcept {
     return mission_ != nullptr;
+  }
+
+  [[nodiscard]] std::optional<
+      std::weak_ptr<airfix::render::PlayerActorPoseRuntime>>
+  playerActorPoseRuntimeEndpoint() const noexcept {
+    if (mission_ == nullptr || mission_->poseRuntime == nullptr) {
+      return std::nullopt;
+    }
+    return std::weak_ptr<airfix::render::PlayerActorPoseRuntime>{
+        mission_->poseRuntime};
   }
 
   [[nodiscard]] std::optional<airfix::render::RenderFrameDiagnostics>
@@ -528,6 +606,12 @@ public:
     const auto &model = gameplay ? mission_->room.model : scene_.model;
     const auto &submission = gameplay ? mission_->room.submission : plan_;
     const auto &meshes = gameplay ? mission_->meshes : meshResources_;
+    // One lease covers the complete encoded frame. A missed acquisition keeps
+    // the immutable authored pose, matching the Metal consumer contract.
+    std::optional<airfix::render::DynamicInstancePoseLease> poseLease;
+    if (gameplay && mission_->poseRuntime != nullptr) {
+      poseLease = mission_->poseRuntime->tryAcquire();
+    }
     std::uint64_t sceneTriangleCount = 0U;
     for (const auto &command : submission.commands) {
       sceneTriangleCount += command.indexCount / 3U;
@@ -548,9 +632,21 @@ public:
       context_->IASetIndexBuffer(mesh.indices.Get(), DXGI_FORMAT_R32_UINT, 0U);
 
       if (gameplay) {
+        const auto &authoredInstance =
+            model.instances[command.instanceIndex];
+        const auto resolvedPose =
+            poseLease.has_value()
+            ? poseLease->resolve(
+                  static_cast<std::uint32_t>(command.instanceIndex),
+                  authoredInstance.modelLinear,
+                  authoredInstance.modelTranslation)
+            : airfix::render::ResolvedInstancePose{
+                  .modelLinear = authoredInstance.modelLinear,
+                  .modelTranslation =
+                      authoredInstance.modelTranslation,
+              };
         const GameplayUniforms uniforms = makeGameplayUniforms(
-            model.instances[command.instanceIndex], mission_->camera,
-            *layout.layout);
+            resolvedPose, mission_->camera, *layout.layout);
         context_->UpdateSubresource(gameplayUniforms_.Get(), 0U, nullptr,
                                     &uniforms, 0U, 0U);
         ID3D11Buffer *constantBuffer = gameplayUniforms_.Get();
@@ -581,6 +677,7 @@ public:
 
       context_->DrawIndexed(command.indexCount, command.firstIndex, 0);
     }
+    poseLease.reset();
 
     if (usesScaledSceneTarget) {
       presentScaledScene();
@@ -1793,6 +1890,11 @@ void AirfixD3D11Renderer::installLoadedMissionRoom(
 
 bool AirfixD3D11Renderer::missionWorldRoomInstalled() const noexcept {
   return implementation_->missionWorldRoomInstalled();
+}
+
+std::optional<std::weak_ptr<airfix::render::PlayerActorPoseRuntime>>
+AirfixD3D11Renderer::playerActorPoseRuntimeEndpoint() const noexcept {
+  return implementation_->playerActorPoseRuntimeEndpoint();
 }
 
 void AirfixD3D11Renderer::captureFrameToBmp(

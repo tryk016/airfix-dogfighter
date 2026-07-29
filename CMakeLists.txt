@@ -209,6 +209,7 @@ add_library(airfix_render
     src/airfix/render/ObjectVisualDrawAssembly.cpp
     src/airfix/render/PlayerActorPoseFrame.cpp
     src/airfix/render/PlayerActorPoseRuntime.cpp
+    src/airfix/render/PlayerActorPoseRuntimePreparation.cpp
     src/airfix/render/PlayerActorSceneAssembly.cpp
     src/airfix/render/PlayerActorTextureBindings.cpp
     src/airfix/render/PlayerActorVisualDrawAssembly.cpp
@@ -887,6 +888,16 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_player_actor_pose_runtime_tests
         COMMAND airfix_player_actor_pose_runtime_tests)
+
+    add_executable(
+        airfix_player_actor_pose_runtime_preparation_tests
+        tests/PlayerActorPoseRuntimePreparationTests.cpp)
+    target_link_libraries(
+        airfix_player_actor_pose_runtime_preparation_tests
+        PRIVATE airfix::render)
+    add_test(
+        NAME airfix_player_actor_pose_runtime_preparation_tests
+        COMMAND airfix_player_actor_pose_runtime_preparation_tests)
 
     add_executable(airfix_player_actor_texture_bindings_tests
         tests/PlayerActorTextureBindingsTests.cpp)

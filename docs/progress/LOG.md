@@ -3413,3 +3413,28 @@ superseded evidence.
   the Codex host exposed duplicate `Path`/`PATH` entries to MSBuild; the
   official VS environment and identical MSVC toolchain compiled the complete
   product successfully.
+
+## 2026-07-29 - portable player-pose runtime preparation and D3D11 lease
+
+- Extracted the Metal-local pose-runtime planning and preparation rules into a
+  portable C++20 boundary shared by both native renderers. It distinguishes
+  no-player missions, invalid authenticated payloads, and resource-limit
+  failures; derives exact actor-only limits and retained bytes; and verifies
+  the initial published frame bit-for-bit against the authored spawn pose.
+- Metal now consumes the shared planner instead of maintaining a duplicate
+  implementation. D3D11 strongly owns the prepared runtime in its immutable
+  mission snapshot, resolves gameplay instances through one coherent lease per
+  frame, and releases that lease after the draw pass.
+- D3D11 exposes a replacement-safe weak producer endpoint matching Metal.
+  Windows supplies it to the shared player presentation coordinator whenever
+  an authenticated player runtime exists. Mission replacement expires old
+  producers safely; candidate preparation remains transactional.
+- Synthetic tests cover no-player, provenance and binding mismatches, exact
+  planning, step-zero identity, changing-pose publication, tamper rejection,
+  authored-instance mismatch, and platform-limit failure. A complete native
+  MSVC 19.51/Ninja Windows build passes 97/97 tests, including both D3D11
+  product smoke paths.
+- This is a transport and ownership milestone, not a movement claim. Windows
+  and iOS still publish the authenticated frozen spawn until controlled traces
+  justify the separate 12 ms AirCraft producer. No private content, logical
+  names, checksums, paths, or derived assets enter the repository.

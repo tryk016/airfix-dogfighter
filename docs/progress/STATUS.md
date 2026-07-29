@@ -55,10 +55,15 @@
   iOS, and pause, focus loss, controller disconnect, or a rejected transition
   resets every physical source and never auto-resumes. The diagnostic
   state/hash changes, but the player remains at the authenticated spawn because
-  no flight law is inferred from input intentions. A separate XAudio2 2.9
-  backend consumes the new bounded portable command/PCM16 contract, owns
-  copied clips, pauses with focus, recovers outside its callback, and accepts
-  commands safely without an output endpoint. The shared AirCraft audio
+  no flight law is inferred from input intentions. One portable planner now
+  validates exact pose limits, retained bytes, and bit-identical step-zero
+  publication for both native renderers. D3D11 owns that runtime with its
+  mission snapshot, retains one coherent lease through each gameplay draw
+  pass, and exposes the same replacement-safe weak producer endpoint as Metal.
+  A separate XAudio2 2.9 backend consumes the new bounded portable
+  command/PCM16 contract, owns copied clips, pauses with focus, recovers
+  outside its callback, and accepts commands safely without an output
+  endpoint. The shared AirCraft audio
   coordinator now preserves the recovered
   phase-transition/destroyed-dive/modulation order. Windows can authenticate an
   owner-local AFPACK root, decode the six recovered PCM16 samples through the
@@ -251,10 +256,12 @@
   tick, and counter transitions are rejected without partial mutation. A
   shared presentation coordinator commits state only with a successful or
   temporarily busy actor-pose publication; an expired endpoint or other
-  publication failure is terminal and atomic. iOS uses that endpoint, while
-  the current Windows static-pose stage uses its explicit headless path. Both
-  products advance exactly once per eligible running frame and fail closed;
-  movement, throttle integration, camera behavior, and weapon spawning remain
+  publication failure is terminal and atomic. Both native products use the
+  replacement-safe endpoint when an authenticated player runtime exists; a
+  mission without a player remains on the explicit headless path. Both products
+  advance exactly once per eligible running frame and fail closed. The
+  currently published pose is still the authenticated spawn: movement,
+  throttle integration, camera behavior, and weapon spawning remain
   intentionally absent.
 - Recovered the 63-slot `AirCraft.type` vtable and 16 function entries missed
   by automatic analysis. The per-step method at `0x10003F40` consumes a float
@@ -845,8 +852,11 @@
    60 Hz input clock as physics. Confirm the Q15-to-legacy-event timing and
    payload policy, then publish one coherent changing pose/health/inactive/
    kinematic sample to Windows and iOS before connecting live camera and audio.
-   Extract the existing Metal pose-runtime planner into portable C++ before
-   enabling the same per-frame pose lease in D3D11.
+   The backend-neutral runtime planner and one-lease-per-frame Metal/D3D11
+   consumers are complete. The next evidence-backed code slice may isolate the
+   native-payload throttle target and smoothing transition, but it must remain
+   unwired from `PlayerAircraftState` until controlled traces prove the
+   Q15/event timing.
 2. Obtain controlled runtime traces for free flight and the ground, inverted,
    water, collision, engine-transition, and too-high branches; establish
    x87-versus-portable numeric tolerances and deterministic replacement PRNG
