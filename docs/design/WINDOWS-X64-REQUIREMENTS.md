@@ -61,7 +61,7 @@ translate operating-system events; it may not redefine gameplay behavior.
 | Area | P0 requirement |
 |---|---|
 | Window and lifecycle | SDL3 x64 window/events, clean startup/shutdown, focus loss, resize, windowed/fullscreen presentation, display changes, and recoverable device recreation |
-| Rendering | D3D11/DXGI faithful backend with HLSL, consuming shared draw/camera commands with resolution-independent presentation and optional enhancements kept behind explicit modes |
+| Rendering | D3D11/DXGI/HLSL backend consuming shared draw/camera/light/material commands; native 3D targets at 100% scale, Hor+ widescreen, independent UI, and explicit Classic/Enhanced profiles |
 | Input | SDL3 keyboard/mouse and supported game controllers mapped into the shared semantic action model, including disconnect and focus-loss neutralization |
 | Audio | XAudio2 2.9 backend consuming shared bounded audio commands; default-device virtualization, focus/pause, recovery, no-device, and absent-music behavior |
 | Files and content | Owner-local import, validation, activation, rollback, saves, and diagnostics without persisting source installation paths |
@@ -71,6 +71,35 @@ rendering. ADR-0009 selects inbox XAudio2 2.9 for native audio; SDL3 audio stays
 disabled. SDL3 must not issue game draw calls. The exact supported Windows 10
 release, D3D feature-level floor, and final packaging format remain focused
 follow-up decisions.
+
+## Resolution and visual-quality contract
+
+ADR-0013 is mandatory for the Windows product:
+
+- the selected DXGI output/backbuffer extent, the 3D render-target extent, the
+  viewport, the reference camera canvas, and the UI design space are distinct;
+- 100% render scale means an exact one-to-one physical 3D target, including
+  3840x2160 rendering for a 3840x2160 output;
+- 1080p, 1440p, 4K, 5K, 16:10, 16:9, 21:9, and 32:9 are supported when the
+  active display and D3D11 limits allow them;
+- standard widescreen is Hor+ with the reference vertical FOV, while Original
+  4:3 is an optional aspect-fitted comparison mode;
+- render scale supports at least 50-200% independently of sharp UI/text and
+  input-coordinate mapping;
+- `Classic` preserves the original visual intent at high resolution and
+  `Enhanced` adds modern lighting/material/effect stages; and
+- `Low`, `Medium`, `High`, and `Ultra` plus separate shadow, MSAA, effect, and
+  render-scale controls provide scalable performance.
+
+The current authenticated mission renderer's aspect-fitted 640x480 presentation
+is a temporary parity baseline. It must not become a backbuffer or render-target
+limit. D3D11 remains responsible for native rasterization; neither SDL3 nor a
+legacy DirectX 7 emulation layer owns drawing.
+
+The Windows performance target is 60 FPS at 1080p and 1440p on reasonable
+contemporary hardware, with scalable settings for 4K. Native 4K at 100% render
+scale is a correctness acceptance case even when a lower quality or dynamic
+scale is needed for sustained performance on a particular GPU.
 
 ## Controls
 
@@ -113,7 +142,9 @@ The Windows product must provide:
   and crash diagnostics;
 - deterministic scenario input capture/replay and canonical state hashes;
 - frame, camera, draw-command, input-frame, and audio-event capture;
-- a faithful/reference presentation mode that can disable all modern effects;
+- separately selectable `Classic` and `Enhanced` presentation profiles;
+- a developer overlay showing output and 3D render extents, render scale, FPS,
+  CPU/GPU time, draw calls, triangles, lights, and labelled GPU-memory data;
 - repeatable screenshots and frame captures with documented viewport and
   configuration;
 - a side-by-side procedure that treats the original executable as an external
@@ -150,7 +181,10 @@ The Windows x64 target is release-ready when:
 5. window, display, focus, input-device, and audio-device transitions are safe;
 6. reference scenarios meet the same simulation tolerances used for iOS and
    the headless core; and
-7. packaged output contains no original or converted proprietary content unless
+7. the ADR-0013 native-resolution, Hor+, Original 4:3, UI/input scaling,
+   diagnostic, screenshot, quality-profile, and 3840x2160-at-100% acceptance
+   cases pass; and
+8. packaged output contains no original or converted proprietary content unless
    it is an explicitly private owner-only artifact kept outside public
    infrastructure.
 

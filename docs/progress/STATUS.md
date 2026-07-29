@@ -18,6 +18,14 @@
   XAudio2 2.9 for the Windows native audio backend and keeps SDL3 audio
   disabled. ADR-0010 selects AVAudioEngine for iOS over the same portable
   command/PCM contract.
+- ADR-0013 makes native-resolution modern rendering an official cross-product
+  requirement. At 100% render scale the 3D target must exactly match the output
+  extent; standard widescreen is Hor+, Original 4:3 is comparison-only, and UI,
+  text, safe areas, and input coordinates remain independent of scene render
+  scale. Classic/Enhanced profiles, Low-Ultra tiers, staged lighting/material/
+  HDR/effect work, platform budgets, diagnostics, aspect-ratio tests, and
+  matched screenshots are now specified. The current 640x480 aspect-fit is a
+  temporary parity baseline, not the target renderer.
 - The native Windows x64 product foundation is implemented. A statically
   linked SDL3 shell owns the window and lifecycle events; a separate
   D3D11/DXGI backend compiles HLSL, uploads the same public scene used by Metal,
@@ -790,6 +798,10 @@
   only, with no editors, multiplayer, or original CD music.
 - Original and converted game data remains owner-private and outside Git,
   public Actions logs, caches, artifacts, and public packages for both products.
+- Native-resolution 3D at 100% render scale and Hor+ widescreen are accepted
+  product requirements on both platforms. Classic preserves the original
+  model-kit art direction at high resolution; Enhanced adds modern rendering
+  features without affecting deterministic gameplay or physics.
 - GitHub Actions hosted macOS/Xcode currently provides unsigned iOS compile
   validation. Interactive device debugging and profiling later use local Apple
   tooling; private signing must keep original data local in an imported
@@ -829,6 +841,10 @@
    the fixed-capacity activation runtime, advance its active slots through the
    collision transaction, and add tracer/effect adapters before wiring
    primary-fire intent into runtime.
+8. In parallel with gameplay reconstruction, introduce the ADR-0013 resolution
+   types and mathematical tests, then implement exact native 3D targets,
+   Hor+/Original-4:3 projection, independent UI/safe-area/input transforms, and
+   diagnostics before lighting, materials, shadows, or post-processing.
 
 ## Open questions
 
@@ -836,9 +852,6 @@
   packaging procedure will be used?
 - Which Windows-compatible method will install the signed Actions IPA on both
   registered phones?
-- Which optional widescreen/Hor+ design should follow the parity-first 4:3
-  presentation after physical-device acceptance?
-
 These questions do not block static analysis or the archive work.
 
 ## Latest validation

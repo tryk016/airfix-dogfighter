@@ -12,8 +12,10 @@ Windows is the primary environment for rapid debugging and controlled
 side-by-side comparison with the original. iOS remains a native private
 sideload for the owner's devices. Both products share one game, physics,
 resource, save, input-action, and platform-neutral presentation core. Faithful
-behaviour comes first; optional visual enhancements remain independently
-switchable and testable.
+behaviour comes first, but the target renderer is not a low-resolution upscale:
+both products will render 3D at the selected physical resolution at 100% render
+scale, use Hor+ widescreen by default, and keep a separately selectable
+high-resolution `Classic` profile alongside `Enhanced`.
 
 > **Project status:** active research and development. The repository builds
 > and tests its portable core, a native data-less SDL3/D3D11 Windows shell,
@@ -46,12 +48,14 @@ included in this repository.**
 | iOS validation devices | iPhone 17 Pro Max (iOS 26.6) and iPhone SE, 3rd generation (iOS 26.3) |
 | Gameplay | Single-player campaign and required menus |
 | Controls | Windows keyboard/mouse and controllers; iOS touch and Bluetooth/USB extended controllers |
-| Rendering | Faithful presentation first; optional higher-resolution and lighting enhancements later |
+| Rendering | Native-resolution 3D at 100% scale, Hor+ widescreen, optional Original 4:3, sharp independent UI, and `Classic`/`Enhanced` profiles |
 | Not in version 1 | Multiplayer, House Editor, Paint Room, and unavailable CD audio |
 
 The device list is the intended validation matrix, not a compatibility claim
 for the unfinished application. See the [version 1 scope](docs/design/V1-SCOPE.md)
-for acceptance criteria.
+for acceptance criteria and
+[ADR-0013](docs/adr/0013-native-resolution-modern-rendering.md) for the binding
+modern-rendering contract.
 
 ## Current state
 

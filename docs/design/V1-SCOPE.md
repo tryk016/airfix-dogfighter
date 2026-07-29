@@ -79,9 +79,11 @@ and Apple developer tools when that phase begins.
   with touch profiles, remapping, calibration, hot-plug, and optional haptics.
 - A Windows reference mode with deterministic scenario, state, draw, input, and
   audio capture suitable for controlled comparison with the original.
-- Faithful renderer plus the agreed first set of resolution/lighting
-  improvements after reference parity is established. Windows and iOS use
-  separate renderer backends over the same API-neutral command model.
+- ADR-0013 native-resolution rendering on both products: exact physical 3D
+  targets at 100% render scale, Hor+ widescreen, Original 4:3 comparison,
+  independent sharp UI/safe-area/input transforms, and staged
+  `Classic`/`Enhanced` quality. Windows and iOS use separate renderer backends
+  over the same API-neutral command model.
 - Private content conversion and packaging from the available installation.
 
 ## Excluded from version 1.0
@@ -123,13 +125,16 @@ Version 1.0 is complete when:
    within the same documented simulation tolerances.
 3. Both products safely survive their applicable focus/lifecycle, controller,
    audio-device/session, display, and save interruption scenarios.
-4. Both faithful renderer backends pass documented reference scenarios before
-   optional enhancements are accepted.
+4. Both renderer backends pass the ADR-0013 native-resolution, aspect-ratio,
+   projection, UI/input, diagnostic, and Classic-reference scenarios before
+   later lighting/material/post-processing stages are accepted.
 5. Neither product depends on multiplayer, either editor, CD audio, network
    access, or App Store services.
 6. Both import the same validated private runtime package without uploading
    original or converted assets to GitHub.
 7. Public CI builds and tests data-less targets and synthetic fixtures only.
+8. A 3840x2160 output at 100% render scale is evidenced as an actual
+   3840x2160 3D render target rather than an upscale of a historical canvas.
 
 ### Windows x64 acceptance
 

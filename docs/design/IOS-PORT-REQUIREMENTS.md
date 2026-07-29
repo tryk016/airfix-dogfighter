@@ -38,7 +38,10 @@ interruption handling, packaging, diagnostics, and device matrix.
 
 ### Post-v1 optional work
 
-Modern lighting, optional higher-resolution content, and additional input modes.
+Separately cleared higher-resolution replacement content and additional input
+modes may follow v1. Native-resolution 3D, Hor+ widescreen, scalable sharp UI,
+and the staged `Classic`/`Enhanced` renderer are product requirements under
+ADR-0013, not a low-resolution upscale or an undefined post-v1 aspiration.
 Multiplayer, House Editor, Paint Room, App Store services, and public
 distribution are not part of v1.0.
 
@@ -68,8 +71,14 @@ Detailed contract: `docs/systems/INPUT.md`.
 - Keep controls/HUD clear of the Home indicator, rounded corners, camera cutout,
   Dynamic Island, and system gesture zones. (P0)
 - Separate render resolution from logical UI coordinates and touch points. (P0)
-- Preserve original 4:3 composition in reference mode using a documented crop,
-  fit, or expanded-view policy; never stretch geometry/UI. (P1)
+- Use Hor+ as the standard widescreen policy while preserving reference
+  vertical FOV. Keep Original 4:3 as an aspect-fitted comparison mode and never
+  stretch geometry/UI. (P0/P1)
+- Keep reference camera coordinates, UI design space, Metal drawable pixels,
+  3D render-target pixels, viewport/safe area, and render scale explicit. At
+  100%, the 3D target exactly matches the drawable extent. (P0)
+- Support at least 50-200% render scale subject to Metal device limits without
+  changing HUD/text size or touch hit regions. (P1)
 - Provide scalable HUD/text, phone/tablet layouts, and readable mission text.
   (P1)
 - Replace mouse-hover assumptions with visible touch focus/selection states.
@@ -117,18 +126,30 @@ ColdStart -> Loading -> Running <-> Paused
 - Native Metal renderer with validated shader/resource lifetime. (P0)
 - Faithful fixed-function-equivalent path for original texture stages,
   transparency, fog, depth, lightmaps, and blending. (P0/P1)
-- Correct aspect ratio, viewport, projection, UI scale, color space, gamma, and
-  texture alpha. (P0/P1)
+- Rasterize 3D directly at the drawable extent when render scale is 100%;
+  never enlarge a 640x480, 1120x480, or other historical framebuffer as the
+  mandatory presentation path. (P0)
+- Correct Hor+ aspect ratio, viewport, projection, safe user FOV, UI scale,
+  safe area, input mapping, weapon/HUD/reticle/effect projection, color space,
+  gamma, and texture alpha. (P0/P1)
 - Frame pacing with stable simulation timing independent of display refresh.
   Support 60 Hz target first; higher refresh is an enhancement only after logic
   remains deterministic. (P1)
-- Quality tiers selected from measured GPU, memory, and thermal capabilities;
-  settings remain user-overridable within safe bounds. (P1)
+- `Classic` renders a faithful high-resolution presentation; `Enhanced` adds
+  the modern lighting/material/effect path. Both remain independent of
+  `Low`/`Medium`/`High`/`Ultra` quality tiers and separate shadow, MSAA,
+  effect, and render-scale controls. (P1)
+- Quality defaults are selected from measured GPU, memory, and thermal
+  capabilities; settings remain user-overridable within safe bounds. (P1)
 - Shader compilation/pipeline preparation must not cause repeated combat stutter.
   (P1)
-- Reference and enhanced render modes have separate screenshot baselines. (P1)
-- Modern lighting, shadows, anti-aliasing, post-processing, MetalFX, and upgraded
-  assets follow the ordered Phase 10 plan. (P3)
+- Classic and Enhanced render modes have separate screenshot baselines. (P1)
+- Implement linear/sRGB correctness, depth precision, mipmapping, anisotropic
+  filtering and anti-aliasing before staged directional/point/spot lights,
+  adjustable shadows, physically informed materials, HDR, tone mapping,
+  exposure, controlled bloom, fog/atmosphere, performance-qualified ambient
+  occlusion, improved particles, and switchable post-processing. Optional
+  MetalFX cannot replace native rasterization at 100%. (P1/P2)
 
 ## 5. Performance, memory, storage, and power
 
@@ -145,6 +166,9 @@ optimization.
 - Provide 60 fps performance mode and a stable lower-power fallback only if
   device measurements justify it. Simulation speed cannot change with frame
   rate. (P1)
+- Target 60 FPS on iPhone 17 Pro Max at native resolution or a controlled,
+  visible dynamic render scale. On iPhone SE 3 require a stable 30 FPS minimum
+  and target 60 FPS with an appropriate quality profile. (P1)
 - Pause or reduce work when obscured/inactive and stop work in background. (P0)
 - Prevent runaway log, save, screenshot, and cache growth. (P1)
 - Test sustained play for heat/battery, not only short benchmark scenes. (P1)
@@ -286,9 +310,16 @@ optimization.
 - Crash reports/symbolication only with a documented privacy choice and retention
   policy. (P1)
 - Developer overlay for frame timings, memory, asset IDs, active input source,
-  controller state, simulation tick, and deterministic state hash. (P0/P1)
+  controller state, simulation tick, deterministic state hash, drawable and 3D
+  render extents, render scale, FPS, draw calls, triangles, lights, and clearly
+  labelled GPU-memory data. (P0/P1)
 - Automated unit, format, integration, replay, parity, screenshot, lifecycle,
   and clean-install tests. (P0/P1)
+- Projection, viewport, aspect-ratio, safe-area, UI-scale, and input-coordinate
+  tests cover 4:3, 16:10, 16:9, 19.5:9, 21:9, and 32:9. Major stages capture
+  matched 1080p, 1440p, 4K, and ultrawide scenes for the original reference,
+  Classic, and Enhanced where available; owner-content images stay outside
+  Git. (P1)
 - Physical-device matrix includes oldest/newest target phone, representative
   tablet, safe-area variants, at least three controller families, low storage,
   thermal soak, airplane mode, and interrupted audio. (P1)
@@ -337,6 +368,7 @@ optimization.
 | `SCN-IOS-010` | corrupted content/save | actionable error/recovery, no crash/out-of-bounds read |
 | `SCN-IOS-011` | phone/tablet safe areas | no required control or text overlaps system regions |
 | `SCN-IOS-012` | upgrade from prior schema | progress/settings/input migrate or recover safely |
+| `SCN-IOS-013` | native-resolution and Hor+ matrix | exact 3D target at 100%; projection, UI, safe area, and input pass required aspect ratios |
 
 ## Confirmed product decisions
 
@@ -353,7 +385,6 @@ optimization.
 
 - Which Windows-compatible method installs the signed Actions IPA on both
   registered iPhones.
-- Whether faithful 4:3 framing or an expanded widescreen camera is the default.
 - Whether the available legacy videos are retained in v1.0 after codec testing.
 
 None of these blocks executable analysis, `UDSP` work, or the portable engine
