@@ -181,12 +181,77 @@ BindingTable makeDefaultBindings() noexcept {
         DigitalAction::combatPrimaryFire, gameplay));
     add(Binding::digital(SourceKind::keyboard, controls::keyboard::leftControl,
         DigitalAction::combatSecondaryFire, gameplay));
+    add(Binding::analog(SourceKind::keyboard, controls::keyboard::arrowLeft,
+        AnalogAxis::flightBank, gameplay, PhysicalEventKind::digital,
+        q15Min, 1));
+    add(Binding::analog(SourceKind::keyboard, controls::keyboard::arrowRight,
+        AnalogAxis::flightBank, gameplay, PhysicalEventKind::digital,
+        q15One, 1));
+    add(Binding::analog(SourceKind::keyboard, controls::keyboard::arrowUp,
+        AnalogAxis::flightPitch, gameplay, PhysicalEventKind::digital,
+        q15One, 1));
+    add(Binding::analog(SourceKind::keyboard, controls::keyboard::arrowDown,
+        AnalogAxis::flightPitch, gameplay, PhysicalEventKind::digital,
+        q15Min, 1));
+    add(Binding::analog(SourceKind::keyboard, controls::keyboard::w,
+        AnalogAxis::flightThrottleDelta, gameplay, PhysicalEventKind::digital,
+        q15One, 1));
+    add(Binding::analog(SourceKind::keyboard, controls::keyboard::s,
+        AnalogAxis::flightThrottleDelta, gameplay, PhysicalEventKind::digital,
+        q15Min, 1));
+    add(Binding::digital(SourceKind::keyboard, controls::keyboard::tab,
+        DigitalAction::combatWeaponNext, gameplay));
+    add(Binding::digital(SourceKind::keyboard, controls::keyboard::r,
+        DigitalAction::cameraRearView, gameplay));
+    add(Binding::digital(SourceKind::keyboard, controls::keyboard::c,
+        DigitalAction::cameraCycle, gameplay));
+    add(Binding::digital(SourceKind::keyboard, controls::keyboard::f,
+        DigitalAction::cameraRecenter, gameplay));
+    add(Binding::digital(SourceKind::keyboard, controls::keyboard::m,
+        DigitalAction::missionStatus, gameplay));
     add(Binding::digital(SourceKind::keyboard, controls::keyboard::escape,
         DigitalAction::globalPause, gameplay));
+    add(Binding::analog(SourceKind::keyboard, controls::keyboard::arrowLeft,
+        AnalogAxis::uiNavigateX, menus, PhysicalEventKind::digital,
+        q15Min, 1));
+    add(Binding::analog(SourceKind::keyboard, controls::keyboard::arrowRight,
+        AnalogAxis::uiNavigateX, menus, PhysicalEventKind::digital,
+        q15One, 1));
+    add(Binding::analog(SourceKind::keyboard, controls::keyboard::arrowUp,
+        AnalogAxis::uiNavigateY, menus, PhysicalEventKind::digital,
+        q15One, 1));
+    add(Binding::analog(SourceKind::keyboard, controls::keyboard::arrowDown,
+        AnalogAxis::uiNavigateY, menus, PhysicalEventKind::digital,
+        q15Min, 1));
     add(Binding::digital(SourceKind::keyboard, controls::keyboard::enter,
         DigitalAction::uiConfirm, menus));
     add(Binding::digital(SourceKind::keyboard, controls::keyboard::escape,
         DigitalAction::uiCancel, menus));
+    add(Binding::digital(SourceKind::keyboard, controls::keyboard::q,
+        DigitalAction::uiTabPrevious, menus));
+    add(Binding::digital(SourceKind::keyboard, controls::keyboard::e,
+        DigitalAction::uiTabNext, menus));
+
+    add(Binding::analog(SourceKind::mouse, controls::mouse::relativeX,
+        AnalogAxis::cameraLookX, gameplay, PhysicalEventKind::analog,
+        q15One, 1));
+    add(Binding::analog(SourceKind::mouse, controls::mouse::relativeY,
+        AnalogAxis::cameraLookY, gameplay, PhysicalEventKind::analog,
+        q15One, 1));
+    add(Binding::digital(SourceKind::mouse, controls::mouse::leftButton,
+        DigitalAction::combatPrimaryFire, gameplay));
+    add(Binding::digital(SourceKind::mouse, controls::mouse::rightButton,
+        DigitalAction::combatSecondaryFire, gameplay));
+    add(Binding::digital(SourceKind::mouse, controls::mouse::middleButton,
+        DigitalAction::cameraCycle, gameplay));
+    add(Binding::digital(SourceKind::mouse, controls::mouse::extraButtonOne,
+        DigitalAction::cameraRearView, gameplay));
+    add(Binding::digital(SourceKind::mouse, controls::mouse::extraButtonTwo,
+        DigitalAction::missionStatus, gameplay));
+    add(Binding::digital(SourceKind::mouse, controls::mouse::wheelUp,
+        DigitalAction::combatWeaponNext, gameplay));
+    add(Binding::digital(SourceKind::mouse, controls::mouse::wheelDown,
+        DigitalAction::combatWeaponNext, gameplay));
 
     return table;
 }

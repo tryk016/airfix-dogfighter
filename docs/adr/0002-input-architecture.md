@@ -111,7 +111,7 @@ context and remapping, and cannot express an absolute touch throttle cleanly.
 1. [ ] Confirm action semantics and timing from the Windows reference build.
 2. [x] Implement action IDs, contexts, bindings, and deterministic input frames.
 3. [ ] Prototype custom multi-touch stick, throttle, and two-button firing.
-4. [ ] Implement Apple Game Controller hot-plug on iOS; add an SDL3 desktop
+4. [x] Implement Apple Game Controller hot-plug on iOS; add an SDL3 desktop
    adapter only when desktop parity work needs it.
 5. [ ] Validate whether an Apple bridge is required for haptics/glyph metadata.
 6. [ ] Run phone/tablet/controller usability and lifecycle tests.

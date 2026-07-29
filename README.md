@@ -235,13 +235,15 @@ contracts.
 Every platform adapter maps physical devices into the same deterministic
 semantic action model.
 
-SDL3 will supply Windows keyboard/mouse and controller events, including
-focus-loss neutralization, hot-plug, remapping, calibration, and controller
-glyphs. It does not own rendering. iOS targets complete landscape touch and
-controller play, with safe neutralization across disconnects and lifecycle
-changes. The current native slice implements the iOS touch/controller
-transport; Windows product adapters, polished menus, and end-to-end usability
-acceptance remain pending.
+SDL3 supplies Windows keyboard, mouse, focus, and standardized gamepad events;
+it does not own rendering. The implemented Windows adapter converts physical
+USB HID scancodes, relative mouse motion, buttons, wheels, sticks, triggers,
+D-pad, shoulders, and face buttons into the same fixed-rate `InputFrame` used
+by iOS. Ordered taps, controller hot-plug, disconnect release, per-source
+neutral gates, and focus-loss neutralization are covered by data-less tests.
+iOS supplies the corresponding landscape touch and Game Controller adapters.
+Persistent remapping/calibration profiles, controller glyphs, polished menus,
+and end-to-end device usability acceptance remain pending.
 
 See [Input, controls, and haptics](docs/systems/INPUT.md).
 
