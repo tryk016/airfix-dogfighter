@@ -1,7 +1,8 @@
 # Windows x64 product requirements
 
-**Status:** accepted product direction; data-less renderer, baseline physical
-input, and native audio shells implemented; playable integration pending
+**Status:** accepted product direction; data-less renderer, authenticated
+owner-local mission rendering, baseline physical input, and native audio
+shells implemented; live playable integration pending
 
 **Scope:** requirements unique to the playable Windows x64 product. Shared
 gameplay scope and parity requirements are defined in `V1-SCOPE.md`.
@@ -13,10 +14,18 @@ environment for rapid debugging and comparison with the original. It runs
 native 64-bit reconstructed code; it is not a wrapper, emulator, or port of the
 original PE32 executable, and it does not recreate the DirectX 7 API.
 
-The repository now builds a native data-less SDL3/D3D11 shell. It creates a
-Win32 window through SDL, executes a shared synthetic draw plan through HLSL
-and D3D11/DXGI, handles focus and resize, falls back from hardware D3D11 to
-WARP, and verifies the rendered back buffer in a hidden CTest smoke mode. A
+The repository now builds a native SDL3/D3D11 shell. Its public mode remains
+data-less: it creates a Win32 window through SDL, executes a shared synthetic
+draw plan through HLSL and D3D11/DXGI, handles focus and resize, falls back
+from hardware D3D11 to WARP, and verifies the rendered back buffer in a hidden
+CTest smoke mode. An explicit owner-local launch can instead authenticate one
+AFPACK revision, build a selected mission manifest and room, prepare complete
+D3D11 geometry and texture resources, bootstrap the recovered gameplay camera,
+and render through reverse depth in a parity-first aspect-fitted 4:3 viewport.
+The hidden private validator requires visible D3D11 output without exposing
+the requested logical paths. An explicit one-shot capture mode writes the same
+validated back buffer to a new owner-private BMP for local visual comparison;
+it never overwrites a file and captures remain outside Git. A
 separate SDL3 adapter now feeds fixed-rate semantic frames from the baseline
 keyboard/mouse and standardized-controller layout, including focus loss,
 hot-plug, disconnect, ordered taps, dead-zone handling, and lifecycle neutral
@@ -25,10 +34,11 @@ owns copied PCM16 data, follows focus state, recovers the engine outside its
 callback, and safely consumes commands when no output endpoint exists. The
 synthetic product smoke test exercises rendering and the shared AirCraft
 audio coordinator through start, running, shutdown, destroyed-dive, and
-recovery phases without proprietary data. These shells prove the platform
-boundaries but are not a playable game. Product status becomes playable only
-after owner-local content, live gameplay/audio inputs, and reconstructed
-gameplay are integrated.
+recovery phases without proprietary data. The authenticated room currently
+remains at its loaded spawn/camera state: input frames are not yet applied to a
+live reconstructed flight simulation. Product status therefore remains
+non-playable until changing gameplay state, runtime camera publication,
+mission logic, HUD, and menus are integrated.
 
 ## Shared-core contract
 

@@ -1,5 +1,8 @@
 #pragma once
 
+#include "airfix/content/MissionWorldRoomLoader.hpp"
+
+#include <filesystem>
 #include <memory>
 
 struct SDL_Window;
@@ -17,6 +20,18 @@ public:
   AirfixD3D11Renderer &operator=(AirfixD3D11Renderer &&) = delete;
 
   void resize();
+
+  // Builds every private GPU resource before replacing the currently visible
+  // scene. A failure leaves the public diagnostic scene installed.
+  void installLoadedMissionRoom(
+      airfix::content::LoadedMissionWorldRoom &&room,
+      const airfix::content::ContentRevision &expectedRevision);
+
+  [[nodiscard]] bool missionWorldRoomInstalled() const noexcept;
+
+  // Renders and writes one private local D3D11 frame as a top-down BGRA8 BMP.
+  // Callers must keep the derived screenshot outside public source control.
+  void captureFrameToBmp(const std::filesystem::path &outputPath);
 
   // When validation is requested, the back buffer is read before Present and
   // the result proves that non-clear pixels reached the actual D3D11 target.

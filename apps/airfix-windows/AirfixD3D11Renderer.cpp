@@ -2,7 +2,11 @@
 
 #include "AirfixEmbeddedShader.hpp"
 
+#include "airfix/content/MissionWorldRoomPublication.hpp"
 #include "airfix/render/DrawSubmissionPlan.hpp"
+#include "airfix/render/LegacyCanvasLayout.hpp"
+#include "airfix/render/LegacyDepthState.hpp"
+#include "airfix/render/LegacyGameplayCameraClipPacket.hpp"
 #include "airfix/render/PublicRenderSmokeScene.hpp"
 
 #include <SDL3/SDL.h>
@@ -17,7 +21,10 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <fstream>
 #include <limits>
+#include <memory>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -28,6 +35,9 @@ namespace airfix::windows {
 namespace {
 
 using Microsoft::WRL::ComPtr;
+
+static_assert(sizeof(BITMAPFILEHEADER) == 14U);
+static_assert(sizeof(BITMAPINFOHEADER) == 40U);
 
 [[noreturn]] void throwFailure(const char *operation, const HRESULT result) {
   std::ostringstream message;
@@ -51,6 +61,31 @@ void requireSuccess(const HRESULT result, const char *operation) {
                              " has an invalid byte width");
   }
   return static_cast<UINT>(elementCount * elementSize);
+}
+
+[[nodiscard]] UINT checkedUint(const std::uint64_t value,
+                               const char *resourceName) {
+  if (value == 0U || value > std::numeric_limits<UINT>::max()) {
+    throw std::runtime_error(std::string(resourceName) +
+                             " exceeds the D3D11 UINT contract");
+  }
+  return static_cast<UINT>(value);
+}
+
+[[nodiscard]] bool
+validTextureLevel(const airfix::render::GtiUploadLevel &plan,
+                  const airfix::assets::RgbaImage &image) noexcept {
+  if (plan.width == 0U || plan.height == 0U || image.width != plan.width ||
+      image.height != plan.height) {
+    return false;
+  }
+  const std::uint64_t expectedRowBytes =
+      static_cast<std::uint64_t>(plan.width) * 4U;
+  const std::uint64_t expectedRgbaBytes =
+      expectedRowBytes * static_cast<std::uint64_t>(plan.height);
+  return plan.bytesPerRow == expectedRowBytes &&
+         plan.rgbaBytes == expectedRgbaBytes &&
+         static_cast<std::uint64_t>(image.pixels.size()) == expectedRgbaBytes;
 }
 
 [[nodiscard]] ComPtr<ID3DBlob> compileShader(const char *entryPoint,
@@ -96,6 +131,25 @@ struct alignas(16) SmokeUniforms {
 
 static_assert(sizeof(SmokeUniforms) == 64U);
 
+struct alignas(16) GameplayUniforms {
+  std::array<float, 16U> modelFromLocal{};
+  std::array<float, 4U> cameraAxisX{};
+  std::array<float, 4U> cameraAxisY{};
+  std::array<float, 4U> cameraAxisZ{};
+  std::array<float, 4U> cameraTranslationAndInverseScaleSquared{};
+  std::array<float, 4U> projection{};
+  std::array<float, 4U> logicalCanvas{};
+};
+
+static_assert(sizeof(GameplayUniforms) == 160U);
+static_assert(alignof(GameplayUniforms) == 16U);
+
+struct CapturedBackBuffer final {
+  UINT width{};
+  UINT height{};
+  std::vector<std::uint8_t> bgra8;
+};
+
 [[nodiscard]] GpuVertex repackVertex(const airfix::render::DrawVertex &source) {
   return GpuVertex{
       .position = {source.position.x, source.position.y, source.position.z,
@@ -106,13 +160,13 @@ static_assert(sizeof(SmokeUniforms) == 64U);
   };
 }
 
-[[nodiscard]] SmokeUniforms
-makeUniforms(const airfix::render::DrawMeshInstance &instance) {
+[[nodiscard]] std::array<float, 16U>
+modelFromLocal(const airfix::render::DrawMeshInstance &instance) {
   // HLSL consumes a row-vector matrix. Each mathematical column of the
   // portable column-vector transform therefore becomes one stored row.
   const auto &columns = instance.modelLinear.columns;
   const auto &translation = instance.modelTranslation;
-  return SmokeUniforms{{
+  return {{
       columns[0].x,
       columns[0].y,
       columns[0].z,
@@ -132,6 +186,62 @@ makeUniforms(const airfix::render::DrawMeshInstance &instance) {
   }};
 }
 
+[[nodiscard]] SmokeUniforms
+makeSmokeUniforms(const airfix::render::DrawMeshInstance &instance) {
+  return SmokeUniforms{.modelFromLocal = modelFromLocal(instance)};
+}
+
+[[nodiscard]] GameplayUniforms makeGameplayUniforms(
+    const airfix::render::DrawMeshInstance &instance,
+    const airfix::render::LegacyGameplayCameraClipPacket &camera) {
+  const auto &transform = camera.pose().worldToView();
+  const auto &linear = transform.linear();
+  const auto &translation = transform.translation();
+  const auto &projection = camera.pose().projection();
+  return {
+      .modelFromLocal = modelFromLocal(instance),
+      .cameraAxisX = {linear.columns[0].x, linear.columns[0].y,
+                      linear.columns[0].z, 0.0F},
+      .cameraAxisY = {linear.columns[1].x, linear.columns[1].y,
+                      linear.columns[1].z, 0.0F},
+      .cameraAxisZ = {linear.columns[2].x, linear.columns[2].y,
+                      linear.columns[2].z, 0.0F},
+      .cameraTranslationAndInverseScaleSquared =
+          {translation.x, translation.y, translation.z,
+           transform.inverseScaleSquared()},
+      .projection = {projection.nearDistance(), projection.farDistance(),
+                     projection.projectScale(), 0.0F},
+      .logicalCanvas = {projection.centre().x, projection.centre().y,
+                        camera.logicalCanvasWidth(),
+                        camera.logicalCanvasHeight()},
+  };
+}
+
+[[nodiscard]] airfix::render::LegacyGameplayCameraBootstrapInput
+cameraBootstrapInput(
+    const airfix::content::LoadedMissionWorldRoom &room) noexcept {
+  const auto vectorAt = [](const std::array<float, 3U> &value) {
+    return airfix::render::Vec3{value[0], value[1], value[2]};
+  };
+  return {
+      .vehicleWorldPosition =
+          vectorAt(room.playerSpawnPose.runtimeWorldPosition),
+      .vehicleWorldRotation =
+          {
+              .columns =
+                  {
+                      vectorAt(
+                          room.playerSpawnPose.runtimeWorldRotationColumns[0]),
+                      vectorAt(
+                          room.playerSpawnPose.runtimeWorldRotationColumns[1]),
+                      vectorAt(
+                          room.playerSpawnPose.runtimeWorldRotationColumns[2]),
+                  },
+          },
+      .worldRoomIndex = room.playerSpawnPose.worldRoomIndex,
+  };
+}
+
 [[nodiscard]] std::pair<int, int> pixelSize(SDL_Window &window) {
   int width = 0;
   int height = 0;
@@ -144,6 +254,27 @@ makeUniforms(const airfix::render::DrawMeshInstance &instance) {
 } // namespace
 
 class AirfixD3D11Renderer::Implementation final {
+  struct MeshResources {
+    ComPtr<ID3D11Buffer> vertices;
+    ComPtr<ID3D11Buffer> indices;
+  };
+
+  struct MissionResources {
+    airfix::content::LoadedMissionWorldRoom room;
+    airfix::render::LegacyGameplayCameraClipPacket camera;
+    std::vector<MeshResources> meshes;
+    std::vector<ComPtr<ID3D11ShaderResourceView>> textures;
+
+    MissionResources(
+        airfix::content::LoadedMissionWorldRoom &&loadedRoom,
+        airfix::render::LegacyGameplayCameraClipPacket cameraPacket,
+        std::vector<MeshResources> &&meshResources,
+        std::vector<ComPtr<ID3D11ShaderResourceView>> &&textureResources)
+        : room(std::move(loadedRoom)), camera(std::move(cameraPacket)),
+          meshes(std::move(meshResources)),
+          textures(std::move(textureResources)) {}
+  };
+
 public:
   explicit Implementation(SDL_Window &window)
       : window_(&window), scene_(airfix::render::makePublicRenderSmokeScene()) {
@@ -157,7 +288,7 @@ public:
 
     createDeviceAndSwapChain();
     createPipeline();
-    createGeometry();
+    meshResources_ = createGeometryResources(scene_.model);
     createTextures();
     createSwapTargets();
   }
@@ -179,7 +310,48 @@ public:
     createSwapTargets();
   }
 
-  [[nodiscard]] bool renderFrame(const bool validateGpuOutput) {
+  void installLoadedMissionRoom(
+      airfix::content::LoadedMissionWorldRoom &&room,
+      const airfix::content::ContentRevision &expectedRevision) {
+    if (airfix::content::validateMissionWorldRoomPublication(room,
+                                                             expectedRevision)
+            .has_value()) {
+      throw std::runtime_error(
+          "authenticated mission room failed its publication contract");
+    }
+
+    const auto rebuiltSubmission = airfix::render::buildDrawSubmissionPlan(
+        room.model, room.textures.size());
+    if (!rebuiltSubmission.plan || !rebuiltSubmission.issues.empty() ||
+        rebuiltSubmission.plan->meshUploads != room.submission.meshUploads ||
+        rebuiltSubmission.plan->commands != room.submission.commands) {
+      throw std::runtime_error(
+          "authenticated mission room draw submission is inconsistent");
+    }
+
+    auto cameraResult =
+        airfix::render::buildLegacyGameplayCameraBootstrapClipPacket(
+            cameraBootstrapInput(room));
+    if (!cameraResult.complete()) {
+      throw std::runtime_error("authenticated mission camera bootstrap failed");
+    }
+
+    auto meshes = createGeometryResources(room.model);
+    auto textures = createMissionTextures(room.textures);
+    std::vector<airfix::content::LoadedTextureAsset>().swap(room.textures);
+    auto candidate = std::make_unique<MissionResources>(
+        std::move(room), std::move(*cameraResult.packet), std::move(meshes),
+        std::move(textures));
+    mission_ = std::move(candidate);
+  }
+
+  [[nodiscard]] bool missionWorldRoomInstalled() const noexcept {
+    return mission_ != nullptr;
+  }
+
+  [[nodiscard]] bool
+  renderFrame(const bool validateGpuOutput,
+              const std::filesystem::path *captureOutput = nullptr) {
     if (!renderTarget_) {
       const auto [currentWidth, currentHeight] = pixelSize(*window_);
       if (currentWidth <= 0 || currentHeight <= 0) {
@@ -194,65 +366,127 @@ public:
     }
 
     constexpr std::array<float, 4U> clearColor{0.035F, 0.055F, 0.085F, 1.0F};
+    const bool gameplay = mission_ != nullptr;
     context_->ClearRenderTargetView(renderTarget_.Get(), clearColor.data());
-    context_->ClearDepthStencilView(depthView_.Get(), D3D11_CLEAR_DEPTH, 1.0F,
-                                    0U);
+    context_->ClearDepthStencilView(
+        depthView_.Get(), D3D11_CLEAR_DEPTH,
+        gameplay ? airfix::render::legacyReverseDepthClearValue : 1.0F, 0U);
 
     ID3D11RenderTargetView *renderTarget = renderTarget_.Get();
     context_->OMSetRenderTargets(1U, &renderTarget, depthView_.Get());
-    context_->RSSetViewports(1U, &viewport_);
+    D3D11_VIEWPORT activeViewport = viewport_;
+    if (gameplay) {
+      const auto layout = airfix::render::buildLegacyCanvasAspectFitLayout({
+          .x = 0.0F,
+          .y = 0.0F,
+          .width = static_cast<float>(width_),
+          .height = static_cast<float>(height_),
+      });
+      if (!layout.complete()) {
+        throw std::runtime_error(
+            "gameplay viewport failed its 4:3 aspect-fit contract");
+      }
+      const auto fitted = layout.layout->fittedRect();
+      activeViewport = {
+          fitted.x, fitted.y, fitted.width, fitted.height, 0.0F, 1.0F,
+      };
+    }
+    context_->RSSetViewports(1U, &activeViewport);
     context_->RSSetState(rasterizer_.Get());
+    context_->OMSetDepthStencilState(
+        gameplay ? gameplayDepthState_.Get() : smokeDepthState_.Get(), 0U);
     context_->IASetInputLayout(inputLayout_.Get());
     context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    context_->VSSetShader(vertexShader_.Get(), nullptr, 0U);
-    context_->PSSetShader(pixelShader_.Get(), nullptr, 0U);
+    context_->VSSetShader(gameplay ? gameplayVertexShader_.Get()
+                                   : smokeVertexShader_.Get(),
+                          nullptr, 0U);
+    context_->PSSetShader(gameplay ? gameplayPixelShader_.Get()
+                                   : smokePixelShader_.Get(),
+                          nullptr, 0U);
 
     ID3D11SamplerState *sampler = sampler_.Get();
     context_->PSSetSamplers(0U, 1U, &sampler);
 
-    for (const auto &command : plan_.commands) {
+    const auto &model = gameplay ? mission_->room.model : scene_.model;
+    const auto &submission = gameplay ? mission_->room.submission : plan_;
+    const auto &meshes = gameplay ? mission_->meshes : meshResources_;
+    for (const auto &command : submission.commands) {
       const auto meshSlot = static_cast<std::size_t>(command.meshSlot);
-      if (meshSlot >= meshResources_.size() ||
-          command.instanceIndex >= scene_.model.instances.size()) {
+      if (meshSlot >= meshes.size() ||
+          command.instanceIndex >= model.instances.size()) {
         throw std::runtime_error("draw plan references a missing GPU resource");
       }
 
-      const auto &mesh = meshResources_[meshSlot];
+      const auto &mesh = meshes[meshSlot];
+      if (!mesh.vertices || !mesh.indices) {
+        throw std::runtime_error("draw command references an empty GPU mesh");
+      }
       constexpr UINT stride = sizeof(GpuVertex);
       constexpr UINT offset = 0U;
       ID3D11Buffer *vertexBuffer = mesh.vertices.Get();
       context_->IASetVertexBuffers(0U, 1U, &vertexBuffer, &stride, &offset);
       context_->IASetIndexBuffer(mesh.indices.Get(), DXGI_FORMAT_R32_UINT, 0U);
 
-      const SmokeUniforms uniforms =
-          makeUniforms(scene_.model.instances[command.instanceIndex]);
-      context_->UpdateSubresource(uniforms_.Get(), 0U, nullptr, &uniforms, 0U,
-                                  0U);
-      ID3D11Buffer *constantBuffer = uniforms_.Get();
-      context_->VSSetConstantBuffers(0U, 1U, &constantBuffer);
+      if (gameplay) {
+        const GameplayUniforms uniforms = makeGameplayUniforms(
+            model.instances[command.instanceIndex], mission_->camera);
+        context_->UpdateSubresource(gameplayUniforms_.Get(), 0U, nullptr,
+                                    &uniforms, 0U, 0U);
+        ID3D11Buffer *constantBuffer = gameplayUniforms_.Get();
+        context_->VSSetConstantBuffers(1U, 1U, &constantBuffer);
+      } else {
+        const SmokeUniforms uniforms =
+            makeSmokeUniforms(model.instances[command.instanceIndex]);
+        context_->UpdateSubresource(smokeUniforms_.Get(), 0U, nullptr,
+                                    &uniforms, 0U, 0U);
+        ID3D11Buffer *constantBuffer = smokeUniforms_.Get();
+        context_->VSSetConstantBuffers(0U, 1U, &constantBuffer);
+      }
 
-      ID3D11ShaderResourceView *texture =
-          command.primary.has_value() &&
-                  command.texcoordMode == airfix::render::TexcoordMode::uv0
-              ? texture_.Get()
-              : fallbackTexture_.Get();
+      ID3D11ShaderResourceView *texture = fallbackTexture_.Get();
+      if (command.primary.has_value() &&
+          command.texcoordMode == airfix::render::TexcoordMode::uv0) {
+        if (gameplay) {
+          const auto assetIndex =
+              static_cast<std::size_t>(command.primary->value);
+          if (assetIndex < mission_->textures.size()) {
+            texture = mission_->textures[assetIndex].Get();
+          }
+        } else {
+          texture = texture_.Get();
+        }
+      }
       context_->PSSetShaderResources(0U, 1U, &texture);
 
       context_->DrawIndexed(command.indexCount, command.firstIndex, 0);
     }
 
-    const bool outputValid = !validateGpuOutput || hasVisibleGpuOutput();
+    std::optional<CapturedBackBuffer> captured;
+    if (validateGpuOutput || captureOutput != nullptr) {
+      captured = captureBackBuffer();
+    }
+    const bool outputValid =
+        !validateGpuOutput || hasVisibleGpuOutput(*captured);
+    if (captureOutput != nullptr) {
+      writeBmp(*captureOutput, *captured);
+    }
     requireSuccess(swapChain_->Present(validateGpuOutput ? 0U : 1U, 0U),
                    "IDXGISwapChain::Present");
     return outputValid;
   }
 
-private:
-  struct MeshResources {
-    ComPtr<ID3D11Buffer> vertices;
-    ComPtr<ID3D11Buffer> indices;
-  };
+  void captureFrameToBmp(const std::filesystem::path &outputPath) {
+    if (!missionWorldRoomInstalled()) {
+      throw std::runtime_error(
+          "private frame capture requires an installed mission");
+    }
+    if (!renderFrame(true, &outputPath)) {
+      throw std::runtime_error(
+          "private frame capture produced no visible D3D11 output");
+    }
+  }
 
+private:
   void releaseSwapTargets() {
     context_->OMSetRenderTargets(0U, nullptr, nullptr);
     renderTarget_.Reset();
@@ -325,21 +559,35 @@ private:
   }
 
   void createPipeline() {
-    const ComPtr<ID3DBlob> vertexBytecode =
+    const ComPtr<ID3DBlob> smokeVertexBytecode =
         compileShader("AirfixSmokeVS", "vs_5_0");
-    const ComPtr<ID3DBlob> pixelBytecode =
+    const ComPtr<ID3DBlob> smokePixelBytecode =
         compileShader("AirfixSmokePS", "ps_5_0");
+    const ComPtr<ID3DBlob> gameplayVertexBytecode =
+        compileShader("AirfixGameplayVS", "vs_5_0");
+    const ComPtr<ID3DBlob> gameplayPixelBytecode =
+        compileShader("AirfixGameplayPS", "ps_5_0");
 
     requireSuccess(
-        device_->CreateVertexShader(vertexBytecode->GetBufferPointer(),
-                                    vertexBytecode->GetBufferSize(), nullptr,
-                                    vertexShader_.GetAddressOf()),
-        "ID3D11Device::CreateVertexShader");
-    requireSuccess(device_->CreatePixelShader(pixelBytecode->GetBufferPointer(),
-                                              pixelBytecode->GetBufferSize(),
-                                              nullptr,
-                                              pixelShader_.GetAddressOf()),
-                   "ID3D11Device::CreatePixelShader");
+        device_->CreateVertexShader(smokeVertexBytecode->GetBufferPointer(),
+                                    smokeVertexBytecode->GetBufferSize(),
+                                    nullptr, smokeVertexShader_.GetAddressOf()),
+        "ID3D11Device::CreateVertexShader(smoke)");
+    requireSuccess(
+        device_->CreatePixelShader(smokePixelBytecode->GetBufferPointer(),
+                                   smokePixelBytecode->GetBufferSize(), nullptr,
+                                   smokePixelShader_.GetAddressOf()),
+        "ID3D11Device::CreatePixelShader(smoke)");
+    requireSuccess(device_->CreateVertexShader(
+                       gameplayVertexBytecode->GetBufferPointer(),
+                       gameplayVertexBytecode->GetBufferSize(), nullptr,
+                       gameplayVertexShader_.GetAddressOf()),
+                   "ID3D11Device::CreateVertexShader(gameplay)");
+    requireSuccess(device_->CreatePixelShader(
+                       gameplayPixelBytecode->GetBufferPointer(),
+                       gameplayPixelBytecode->GetBufferSize(), nullptr,
+                       gameplayPixelShader_.GetAddressOf()),
+                   "ID3D11Device::CreatePixelShader(gameplay)");
 
     constexpr std::array<D3D11_INPUT_ELEMENT_DESC, 3U> inputElements{{
         {
@@ -373,17 +621,25 @@ private:
     requireSuccess(
         device_->CreateInputLayout(
             inputElements.data(), static_cast<UINT>(inputElements.size()),
-            vertexBytecode->GetBufferPointer(), vertexBytecode->GetBufferSize(),
-            inputLayout_.GetAddressOf()),
+            smokeVertexBytecode->GetBufferPointer(),
+            smokeVertexBytecode->GetBufferSize(), inputLayout_.GetAddressOf()),
         "ID3D11Device::CreateInputLayout");
 
-    D3D11_BUFFER_DESC uniformDescription{};
-    uniformDescription.ByteWidth = sizeof(SmokeUniforms);
-    uniformDescription.Usage = D3D11_USAGE_DEFAULT;
-    uniformDescription.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-    requireSuccess(device_->CreateBuffer(&uniformDescription, nullptr,
-                                         uniforms_.GetAddressOf()),
-                   "ID3D11Device::CreateBuffer(uniforms)");
+    D3D11_BUFFER_DESC smokeUniformDescription{};
+    smokeUniformDescription.ByteWidth = sizeof(SmokeUniforms);
+    smokeUniformDescription.Usage = D3D11_USAGE_DEFAULT;
+    smokeUniformDescription.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    requireSuccess(device_->CreateBuffer(&smokeUniformDescription, nullptr,
+                                         smokeUniforms_.GetAddressOf()),
+                   "ID3D11Device::CreateBuffer(smoke uniforms)");
+
+    D3D11_BUFFER_DESC gameplayUniformDescription{};
+    gameplayUniformDescription.ByteWidth = sizeof(GameplayUniforms);
+    gameplayUniformDescription.Usage = D3D11_USAGE_DEFAULT;
+    gameplayUniformDescription.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    requireSuccess(device_->CreateBuffer(&gameplayUniformDescription, nullptr,
+                                         gameplayUniforms_.GetAddressOf()),
+                   "ID3D11Device::CreateBuffer(gameplay uniforms)");
 
     D3D11_SAMPLER_DESC samplerDescription{};
     samplerDescription.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
@@ -402,11 +658,38 @@ private:
     requireSuccess(device_->CreateRasterizerState(&rasterizerDescription,
                                                   rasterizer_.GetAddressOf()),
                    "ID3D11Device::CreateRasterizerState");
+
+    D3D11_DEPTH_STENCIL_DESC smokeDepthDescription{};
+    smokeDepthDescription.DepthEnable = TRUE;
+    smokeDepthDescription.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+    smokeDepthDescription.DepthFunc = D3D11_COMPARISON_LESS;
+    requireSuccess(device_->CreateDepthStencilState(
+                       &smokeDepthDescription, smokeDepthState_.GetAddressOf()),
+                   "ID3D11Device::CreateDepthStencilState(smoke)");
+
+    D3D11_DEPTH_STENCIL_DESC gameplayDepthDescription = smokeDepthDescription;
+    gameplayDepthDescription.DepthFunc = D3D11_COMPARISON_GREATER_EQUAL;
+    requireSuccess(
+        device_->CreateDepthStencilState(&gameplayDepthDescription,
+                                         gameplayDepthState_.GetAddressOf()),
+        "ID3D11Device::CreateDepthStencilState(gameplay)");
   }
 
-  void createGeometry() {
-    meshResources_.reserve(scene_.model.meshes.size());
-    for (const auto &mesh : scene_.model.meshes) {
+  [[nodiscard]] std::vector<MeshResources>
+  createGeometryResources(const airfix::render::DrawModelPayload &model) const {
+    std::vector<MeshResources> result;
+    result.reserve(model.meshes.size());
+    for (const auto &mesh : model.meshes) {
+      MeshResources resources;
+      if (mesh.vertices.empty() && mesh.indices.empty()) {
+        result.push_back(std::move(resources));
+        continue;
+      }
+      if (mesh.vertices.empty() || mesh.indices.empty()) {
+        throw std::runtime_error(
+            "GPU mesh has only one of its required buffers");
+      }
+
       std::vector<GpuVertex> vertices;
       vertices.reserve(mesh.vertices.size());
       for (const auto &vertex : mesh.vertices) {
@@ -429,15 +712,15 @@ private:
       D3D11_SUBRESOURCE_DATA indexData{};
       indexData.pSysMem = mesh.indices.data();
 
-      MeshResources resources;
       requireSuccess(device_->CreateBuffer(&vertexDescription, &vertexData,
                                            resources.vertices.GetAddressOf()),
                      "ID3D11Device::CreateBuffer(vertices)");
       requireSuccess(device_->CreateBuffer(&indexDescription, &indexData,
                                            resources.indices.GetAddressOf()),
                      "ID3D11Device::CreateBuffer(indices)");
-      meshResources_.push_back(std::move(resources));
+      result.push_back(std::move(resources));
     }
+    return result;
   }
 
   [[nodiscard]] ComPtr<ID3D11ShaderResourceView>
@@ -467,6 +750,119 @@ private:
                                                      view.GetAddressOf()),
                    "ID3D11Device::CreateShaderResourceView");
     return view;
+  }
+
+  [[nodiscard]] ComPtr<ID3D11ShaderResourceView> createMissionTexture(
+      const airfix::content::LoadedTextureAsset &source) const {
+    const auto &upload = source.upload;
+    if (upload.allocatedMipCount == 0U || upload.uploadedMipCount == 0U ||
+        upload.uploadLevels.size() != upload.uploadedMipCount ||
+        source.uploadLevels.size() != upload.uploadLevels.size()) {
+      throw std::runtime_error(
+          "mission texture upload metadata is inconsistent");
+    }
+
+    const auto &basePlan = upload.uploadLevels.front();
+    const auto &baseImage = source.uploadLevels.front();
+    if (basePlan.level != 0U || !validTextureLevel(basePlan, baseImage)) {
+      throw std::runtime_error("mission texture base level is inconsistent");
+    }
+
+    D3D11_TEXTURE2D_DESC textureDescription{};
+    textureDescription.Width = checkedUint(baseImage.width, "texture width");
+    textureDescription.Height = checkedUint(baseImage.height, "texture height");
+    textureDescription.MipLevels = upload.allocatedMipCount;
+    textureDescription.ArraySize = 1U;
+    textureDescription.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    textureDescription.SampleDesc = {1U, 0U};
+    textureDescription.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+    ComPtr<ID3D11Texture2D> texture;
+    if (upload.mipPolicy == airfix::render::GtiMipPolicy::authoredChain) {
+      if (upload.uploadedMipCount != upload.allocatedMipCount) {
+        throw std::runtime_error(
+            "authored mission texture has an incomplete mip chain");
+      }
+
+      std::vector<D3D11_SUBRESOURCE_DATA> initialData(upload.allocatedMipCount);
+      for (std::size_t index = 0U; index < source.uploadLevels.size();
+           ++index) {
+        const auto &level = upload.uploadLevels[index];
+        const auto &image = source.uploadLevels[index];
+        if (level.level != index || !validTextureLevel(level, image)) {
+          throw std::runtime_error(
+              "authored mission texture level is inconsistent");
+        }
+        initialData[index] = {
+            .pSysMem = image.pixels.data(),
+            .SysMemPitch = checkedUint(level.bytesPerRow, "texture row pitch"),
+            .SysMemSlicePitch = 0U,
+        };
+      }
+
+      textureDescription.Usage = D3D11_USAGE_IMMUTABLE;
+      requireSuccess(device_->CreateTexture2D(&textureDescription,
+                                              initialData.data(),
+                                              texture.GetAddressOf()),
+                     "ID3D11Device::CreateTexture2D(authored mission texture)");
+    } else {
+      if (upload.mipPolicy != airfix::render::GtiMipPolicy::generateFromBase ||
+          upload.uploadedMipCount != 1U || source.uploadLevels.size() != 1U) {
+        throw std::runtime_error(
+            "generated mission texture upload is inconsistent");
+      }
+
+      UINT formatSupport = 0U;
+      requireSuccess(device_->CheckFormatSupport(DXGI_FORMAT_R8G8B8A8_UNORM,
+                                                 &formatSupport),
+                     "ID3D11Device::CheckFormatSupport(texture autogen)");
+      constexpr UINT requiredSupport =
+          D3D11_FORMAT_SUPPORT_TEXTURE2D | D3D11_FORMAT_SUPPORT_SHADER_SAMPLE |
+          D3D11_FORMAT_SUPPORT_RENDER_TARGET | D3D11_FORMAT_SUPPORT_MIP_AUTOGEN;
+      if ((formatSupport & requiredSupport) != requiredSupport) {
+        throw std::runtime_error(
+            "D3D11 device cannot generate RGBA8 texture mips");
+      }
+
+      textureDescription.Usage = D3D11_USAGE_DEFAULT;
+      textureDescription.BindFlags |= D3D11_BIND_RENDER_TARGET;
+      textureDescription.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+      requireSuccess(
+          device_->CreateTexture2D(&textureDescription, nullptr,
+                                   texture.GetAddressOf()),
+          "ID3D11Device::CreateTexture2D(generated mission texture)");
+      context_->UpdateSubresource(
+          texture.Get(), 0U, nullptr, baseImage.pixels.data(),
+          checkedUint(basePlan.bytesPerRow, "texture row pitch"), 0U);
+    }
+
+    D3D11_SHADER_RESOURCE_VIEW_DESC viewDescription{};
+    viewDescription.Format = textureDescription.Format;
+    viewDescription.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    viewDescription.Texture2D.MostDetailedMip = 0U;
+    viewDescription.Texture2D.MipLevels = upload.allocatedMipCount;
+    ComPtr<ID3D11ShaderResourceView> view;
+    requireSuccess(device_->CreateShaderResourceView(
+                       texture.Get(), &viewDescription, view.GetAddressOf()),
+                   "ID3D11Device::CreateShaderResourceView(mission texture)");
+    if (upload.mipPolicy == airfix::render::GtiMipPolicy::generateFromBase) {
+      context_->GenerateMips(view.Get());
+    }
+    return view;
+  }
+
+  [[nodiscard]] std::vector<ComPtr<ID3D11ShaderResourceView>>
+  createMissionTextures(
+      const std::vector<airfix::content::LoadedTextureAsset> &sources) const {
+    std::vector<ComPtr<ID3D11ShaderResourceView>> result;
+    result.reserve(sources.size());
+    for (std::size_t index = 0U; index < sources.size(); ++index) {
+      if (sources[index].assetId.value != index) {
+        throw std::runtime_error("mission textures do not use dense asset IDs");
+      }
+      result.push_back(createMissionTexture(sources[index]));
+    }
+    return result;
   }
 
   void createTextures() {
@@ -519,7 +915,7 @@ private:
     };
   }
 
-  [[nodiscard]] bool hasVisibleGpuOutput() {
+  [[nodiscard]] CapturedBackBuffer captureBackBuffer() {
     ComPtr<ID3D11Texture2D> backBuffer;
     requireSuccess(
         swapChain_->GetBuffer(0U, IID_PPV_ARGS(backBuffer.GetAddressOf())),
@@ -536,34 +932,115 @@ private:
     requireSuccess(
         device_->CreateTexture2D(&description, nullptr, staging.GetAddressOf()),
         "ID3D11Device::CreateTexture2D(readback)");
+
+    const std::uint64_t packedRowBytes =
+        static_cast<std::uint64_t>(description.Width) * 4U;
+    const std::uint64_t packedBytes =
+        packedRowBytes * static_cast<std::uint64_t>(description.Height);
+    if (description.Width == 0U || description.Height == 0U ||
+        packedRowBytes > std::numeric_limits<std::size_t>::max() ||
+        packedBytes > std::numeric_limits<std::size_t>::max()) {
+      throw std::runtime_error(
+          "D3D11 back-buffer readback dimensions are invalid");
+    }
+
+    CapturedBackBuffer result{
+        .width = description.Width,
+        .height = description.Height,
+        .bgra8 =
+            std::vector<std::uint8_t>(static_cast<std::size_t>(packedBytes)),
+    };
     context_->CopyResource(staging.Get(), backBuffer.Get());
 
     D3D11_MAPPED_SUBRESOURCE mapped{};
     requireSuccess(
         context_->Map(staging.Get(), 0U, D3D11_MAP_READ, 0U, &mapped),
         "ID3D11DeviceContext::Map(readback)");
-
-    std::size_t brightPixelCount = 0U;
+    if (mapped.RowPitch < packedRowBytes) {
+      context_->Unmap(staging.Get(), 0U);
+      throw std::runtime_error(
+          "D3D11 back-buffer readback row pitch is invalid");
+    }
     for (UINT y = 0U; y < description.Height; ++y) {
       const auto *row = static_cast<const std::uint8_t *>(mapped.pData) +
                         static_cast<std::size_t>(y) * mapped.RowPitch;
-      for (UINT x = 0U; x < description.Width; ++x) {
-        const auto *pixel = row + static_cast<std::size_t>(x) * 4U;
-        // Back-buffer storage is BGRA8. Every smoke texture has at
-        // least one channel well above the dark clear color.
-        if (pixel[0] > 32U || pixel[1] > 32U || pixel[2] > 32U) {
-          ++brightPixelCount;
-        }
-      }
+      const auto destinationOffset = static_cast<std::size_t>(y) *
+                                     static_cast<std::size_t>(packedRowBytes);
+      std::copy_n(row, static_cast<std::size_t>(packedRowBytes),
+                  result.bgra8.begin() + destinationOffset);
     }
     context_->Unmap(staging.Get(), 0U);
+    return result;
+  }
 
-    const std::size_t totalPixels =
-        static_cast<std::size_t>(description.Width) *
-        static_cast<std::size_t>(description.Height);
+  [[nodiscard]] bool
+  hasVisibleGpuOutput(const CapturedBackBuffer &captured) const noexcept {
+    std::size_t brightPixelCount = 0U;
+    for (std::size_t offset = 0U; offset + 3U < captured.bgra8.size();
+         offset += 4U) {
+      const auto *pixel = captured.bgra8.data() + offset;
+      // Back-buffer storage is BGRA8. Every smoke texture has at
+      // least one channel well above the dark clear color.
+      if (pixel[0] > 32U || pixel[1] > 32U || pixel[2] > 32U) {
+        ++brightPixelCount;
+      }
+    }
+
+    const std::size_t totalPixels = static_cast<std::size_t>(captured.width) *
+                                    static_cast<std::size_t>(captured.height);
     const std::size_t requiredPixels =
         std::max<std::size_t>(64U, totalPixels / 200U);
     return brightPixelCount >= requiredPixels;
+  }
+
+  void writeBmp(const std::filesystem::path &outputPath,
+                const CapturedBackBuffer &captured) const {
+    if (outputPath.empty() || std::filesystem::exists(outputPath) ||
+        captured.width > static_cast<UINT>(std::numeric_limits<LONG>::max()) ||
+        captured.height > static_cast<UINT>(std::numeric_limits<LONG>::max())) {
+      throw std::runtime_error(
+          "private BMP capture path or dimensions are invalid");
+    }
+
+    const std::uint64_t pixelBytes = captured.bgra8.size();
+    constexpr std::uint64_t headerBytes =
+        sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
+    if (pixelBytes > std::numeric_limits<DWORD>::max() - headerBytes) {
+      throw std::runtime_error(
+          "private BMP capture exceeds the file format limit");
+    }
+
+    BITMAPFILEHEADER fileHeader{};
+    fileHeader.bfType = 0x4D42U;
+    fileHeader.bfSize = static_cast<DWORD>(headerBytes + pixelBytes);
+    fileHeader.bfOffBits = static_cast<DWORD>(headerBytes);
+
+    BITMAPINFOHEADER infoHeader{};
+    infoHeader.biSize = sizeof(BITMAPINFOHEADER);
+    infoHeader.biWidth = static_cast<LONG>(captured.width);
+    infoHeader.biHeight = -static_cast<LONG>(captured.height);
+    infoHeader.biPlanes = 1U;
+    infoHeader.biBitCount = 32U;
+    infoHeader.biCompression = BI_RGB;
+    infoHeader.biSizeImage = static_cast<DWORD>(pixelBytes);
+
+    std::ofstream output(outputPath, std::ios::binary | std::ios::out);
+    if (!output) {
+      throw std::runtime_error("private BMP capture file could not be created");
+    }
+    output.write(reinterpret_cast<const char *>(&fileHeader),
+                 sizeof(fileHeader));
+    output.write(reinterpret_cast<const char *>(&infoHeader),
+                 sizeof(infoHeader));
+    output.write(reinterpret_cast<const char *>(captured.bgra8.data()),
+                 static_cast<std::streamsize>(captured.bgra8.size()));
+    output.close();
+    if (!output) {
+      std::error_code removeError;
+      std::filesystem::remove(outputPath, removeError);
+      throw std::runtime_error(
+          "private BMP capture file could not be completed");
+    }
   }
 
   SDL_Window *window_{};
@@ -576,15 +1053,21 @@ private:
   ComPtr<IDXGISwapChain> swapChain_;
   ComPtr<ID3D11RenderTargetView> renderTarget_;
   ComPtr<ID3D11DepthStencilView> depthView_;
-  ComPtr<ID3D11VertexShader> vertexShader_;
-  ComPtr<ID3D11PixelShader> pixelShader_;
+  ComPtr<ID3D11VertexShader> smokeVertexShader_;
+  ComPtr<ID3D11PixelShader> smokePixelShader_;
+  ComPtr<ID3D11VertexShader> gameplayVertexShader_;
+  ComPtr<ID3D11PixelShader> gameplayPixelShader_;
   ComPtr<ID3D11InputLayout> inputLayout_;
-  ComPtr<ID3D11Buffer> uniforms_;
+  ComPtr<ID3D11Buffer> smokeUniforms_;
+  ComPtr<ID3D11Buffer> gameplayUniforms_;
   ComPtr<ID3D11SamplerState> sampler_;
   ComPtr<ID3D11RasterizerState> rasterizer_;
+  ComPtr<ID3D11DepthStencilState> smokeDepthState_;
+  ComPtr<ID3D11DepthStencilState> gameplayDepthState_;
   ComPtr<ID3D11ShaderResourceView> texture_;
   ComPtr<ID3D11ShaderResourceView> fallbackTexture_;
   std::vector<MeshResources> meshResources_;
+  std::unique_ptr<MissionResources> mission_;
   D3D11_VIEWPORT viewport_{};
   int width_{};
   int height_{};
@@ -596,6 +1079,21 @@ AirfixD3D11Renderer::AirfixD3D11Renderer(SDL_Window &window)
 AirfixD3D11Renderer::~AirfixD3D11Renderer() = default;
 
 void AirfixD3D11Renderer::resize() { implementation_->resize(); }
+
+void AirfixD3D11Renderer::installLoadedMissionRoom(
+    airfix::content::LoadedMissionWorldRoom &&room,
+    const airfix::content::ContentRevision &expectedRevision) {
+  implementation_->installLoadedMissionRoom(std::move(room), expectedRevision);
+}
+
+bool AirfixD3D11Renderer::missionWorldRoomInstalled() const noexcept {
+  return implementation_->missionWorldRoomInstalled();
+}
+
+void AirfixD3D11Renderer::captureFrameToBmp(
+    const std::filesystem::path &outputPath) {
+  implementation_->captureFrameToBmp(outputPath);
+}
 
 bool AirfixD3D11Renderer::renderFrame(const bool validateGpuOutput) {
   return implementation_->renderFrame(validateGpuOutput);

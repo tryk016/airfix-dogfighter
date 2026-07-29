@@ -47,6 +47,25 @@ target_link_libraries(airfix_windows_input PUBLIC
     SDL3::SDL3-static
 )
 
+add_library(airfix_windows_command_line STATIC
+    AirfixWindowsCommandLine.cpp
+    AirfixWindowsCommandLine.hpp
+)
+target_include_directories(airfix_windows_command_line PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+target_compile_features(airfix_windows_command_line PUBLIC cxx_std_20)
+if(MSVC)
+    target_compile_options(airfix_windows_command_line PRIVATE
+        /W4 /permissive-)
+else()
+    target_compile_options(airfix_windows_command_line PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+endif()
+
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/AirfixSmoke.hlsl")
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/AirfixSmoke.hlsl"
@@ -86,6 +105,7 @@ else()
     )
 endif()
 target_link_libraries(airfix_windows PRIVATE
+    airfix_windows_command_line
     airfix_windows_input
     airfix::audio
     airfix::content
@@ -114,6 +134,25 @@ add_custom_command(TARGET airfix_windows POST_BUILD
 )
 
 if(AIRFIX_BUILD_TESTS)
+    add_executable(airfix_windows_command_line_tests
+        AirfixWindowsCommandLineTests.cpp)
+    target_compile_features(airfix_windows_command_line_tests
+        PRIVATE cxx_std_20)
+    if(MSVC)
+        target_compile_options(airfix_windows_command_line_tests
+            PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(airfix_windows_command_line_tests PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+    endif()
+    target_link_libraries(airfix_windows_command_line_tests PRIVATE
+        airfix_windows_command_line)
+    add_test(NAME airfix_windows_command_line_tests
+        COMMAND airfix_windows_command_line_tests)
+
     add_executable(airfix_windows_input_mapping_tests
         AirfixSdlInputMappingTests.cpp)
     target_compile_features(airfix_windows_input_mapping_tests
