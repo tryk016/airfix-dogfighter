@@ -606,6 +606,15 @@ then exposes the five controls to the sleep helper in native order. The
 this AirCraft force law; it is not treated as yaw. The owner remains unwired
 from producers, the 12 ms scheduler, slot 45, and live player state.
 
+A pitch/bank-only one-event step now composes an already-formed `PITCH_SET` or
+`BANK_SET` through that decoder and owner. It provides the canonical
+allocation-free state transition for the immediate producer boundary proved
+by `EXP-20260730-067`: the caller invokes it once per event, and invocation
+order is the complete ordering contract. It owns no batch, source identity,
+producer cache, retry, replay, Q15 conversion, scheduler, or clock. In
+particular, the adapter itself cannot replay an inactive drop and cannot
+strengthen the conditional startup-compatible PC53/RNE model into live parity.
+
 Until the runtime evidence exists, `PlayerAircraftState` remains a frozen-pose
 transport. It must not encode these equations as claimed gameplay behavior
 merely because the static algebra is complete.

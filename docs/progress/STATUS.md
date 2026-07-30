@@ -358,7 +358,14 @@
   callback flag update when an inactive event is ignored or an active
   reconstruction policy is rejected, while control-event state changes only
   after a typed write commits. It owns no batch, replay format, producer,
-  source order, Q15 conversion, or clock.
+  source order, Q15 conversion, or clock. A separate pitch/bank-only step now
+  gives already-formed analog or AI `PITCH_SET`/`BANK_SET` events the same
+  one-event decoder-to-owner boundary without passing through the discrete
+  callback flags. Its only order is call order: it preserves joystick
+  BANK-before-PITCH, AI PITCH-before-BANK, keyboard arrival order, equal
+  repeats, active zero, inactive drops, and last-processed SET per axis. It
+  deliberately exposes no collection, producer tag, retry, replay, timing, or
+  generalized turn/thrust API.
   Live producer, scheduler, force-law, and player-state wiring remains
   intentionally absent.
 - Recovered the scheduler-visible aircraft order:
@@ -955,7 +962,10 @@
    simulation-thread-confined owner commits typed control writes and their
    shared rest clear transactionally, but owns no producer ordering or clock.
    A separate single-invocation step now composes the discrete command reducer,
-   typed decoder, and that owner without adding a batch or scheduler.
+   typed decoder, and that owner without adding a batch or scheduler. The
+   pitch/bank-only one-event step separately accepts already-formed analog/AI
+   events and preserves caller order without a queue, producer cache, replay,
+   or source identity.
    Keep all control reducers and that owner unwired from
    `PlayerAircraftState` until controlled traces prove
    numeric mode, Q15-to-event ordering, and sample-and-hold timing; do not
@@ -1004,6 +1014,14 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The one-event pitch/bank step passes fresh complete Windows GCC 15.2/Ninja
+  and MSVC 19.51/Ninja builds plus 107/107 CTests in each. Independent review
+  reports GO with no P0-P3 findings after its own clean GCC build and Clang 22
+  warnings-enabled syntax check. Clang-format, all three reverse-engineering
+  wrapper suites, 12 Rizin exporter tests, changed-document links,
+  changed-scope local-path scanning, the 553-file public-boundary scan, and
+  `git diff --check` pass. Hosted platform and Apple SDK builds remain the
+  publication gate.
 - The bootstrap/module-loading cross-check matches all nine published
   representative function boundaries exactly between Ghidra 12.1.2 and Rizin
   0.9.1. The Ghidra, working-copy, and Rizin wrapper suites, 12 normalized
