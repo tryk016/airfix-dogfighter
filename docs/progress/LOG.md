@@ -4125,3 +4125,27 @@ superseded evidence.
   failure before the fix, confirms the corrected full-state/edge behavior, and
   reports GO with no P0-P3 finding. Hosted Apple compilation remains the
   publication gate.
+
+## 2026-07-30 - private iOS controller-profile startup
+
+- Added a load-only Objective-C++ AFIP adapter that resolves the private
+  current/backup/default store off-main and delivers exactly one value-only
+  result on main before native input may start. Missing or unavailable storage
+  installs the in-memory canonical default through the same one-time seam.
+- AFIP and AFRS now share one process-wide serial persistence queue and one
+  hardened Application Support settings-directory helper. The boundary
+  requires owner-only permissions and Data Protection, rejects linked or
+  wrong-type entries, verifies the opened inode/device, and never publishes a
+  path, checksum, document byte, device identifier, or exception string.
+- Startup is gated on visible view, completed profile load, ready frame
+  consumer/profile installation, and active application state. A late profile
+  completion re-evaluates paused mission readiness without resuming gameplay.
+  It restores the menu and Resume action only when content, renderer,
+  simulation, and input are all ready; an open settings panel retains modal
+  context.
+- A portable startup-policy test covers content-before-profile,
+  completion-after-disappear, completion-in-background, complete startup,
+  late Resume availability, and failure gates. A fresh GCC 15.2/Ninja build
+  completes 362 steps and passes 113/113 CTests. Native Apple compilation and
+  physical Data Protection/lifecycle acceptance remain publication and device
+  gates.

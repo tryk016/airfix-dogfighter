@@ -2,7 +2,9 @@
 
 #include "AirfixAVAudioEngineBackend.hpp"
 #import "AirfixContentCoordinator.h"
+#import "AirfixIOSControllerInputProfileStore.h"
 #import "AirfixIOSInputCoordinator.h"
+#include "AirfixIOSInputStartupPolicy.hpp"
 #import "AirfixMetalRenderer.h"
 #import "AirfixRenderSettingsCoordinator.h"
 #import "AirfixRenderSettingsPanelViewController.h"
@@ -101,6 +103,9 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     std::optional<airfix::simulation::LegacyAircraftAudioBindings>
         _playerAircraftAudioBindings;
     dispatch_queue_t _rendererPreparationQueue;
+    BOOL _inputFrameConsumerInstalled;
+    BOOL _controllerProfileLoadCompleted;
+    BOOL _viewVisible;
 }
 @property(nonatomic, strong) AirfixMetalRenderer* renderer;
 @property(nonatomic, strong)
@@ -110,6 +115,9 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
 @property(nonatomic, strong) AirfixContentCoordinator* contentCoordinator;
 @property(nonatomic, strong) AirfixTouchControlsView* touchControlsView;
 @property(nonatomic, strong) AirfixIOSInputCoordinator* inputCoordinator;
+@property(nonatomic, strong)
+    AirfixIOSControllerInputProfileStore* controllerInputProfileStore;
+@property(nonatomic, copy) NSString* controllerInputProfileStatus;
 @property(nonatomic, strong) UIButton* resumeButton;
 @property(nonatomic, strong) UIButton* renderSettingsButton;
 @property(nonatomic, strong)
@@ -119,6 +127,9 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
 
 - (void)showRenderSettings;
 - (void)closeRenderSettingsPanel;
+- (void)beginControllerInputProfileLoad;
+- (void)startInputCoordinatorIfReady;
+- (void)refreshPausedMissionReadiness;
 - (void)resumeGameplay;
 - (void)updateDiagnosticsLabelWithInputDiagnostics:
     (AirfixInputDiagnostics*)diagnostics;
@@ -169,7 +180,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
 
     UILabel* inputDiagnosticsLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     inputDiagnosticsLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    inputDiagnosticsLabel.numberOfLines = 4;
+    inputDiagnosticsLabel.numberOfLines = 5;
     inputDiagnosticsLabel.textAlignment = NSTextAlignmentCenter;
     inputDiagnosticsLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.82];
     inputDiagnosticsLabel.font = [UIFont monospacedDigitSystemFontOfSize:12.0
@@ -179,7 +190,10 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     inputDiagnosticsLabel.userInteractionEnabled = NO;
     inputDiagnosticsLabel.isAccessibilityElement = NO;
     inputDiagnosticsLabel.accessibilityElementsHidden = YES;
-    inputDiagnosticsLabel.text = @"INPUT T0  B +0  P +0  FIRE up\nCONTROLLER none";
+    inputDiagnosticsLabel.text =
+        @"INPUT T0  B +0  P +0  FIRE up\n"
+         "CONTROLLER none\n"
+         "PROFILE starting";
     self.inputDiagnosticsLabel = inputDiagnosticsLabel;
 
     self.contentCoordinator = [[AirfixContentCoordinator alloc]
@@ -298,13 +312,9 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     self.inputCoordinator = [[AirfixIOSInputCoordinator alloc]
         initWithTouchControlsView:touchControlsView];
     self.inputCoordinator.delegate = self;
-    const auto defaultControllerProfile =
-        airfix::input::resolveControllerInputProfile(
-            airfix::input::makeDefaultControllerInputProfileRecord());
-    const bool controllerProfileReady =
-        defaultControllerProfile.complete() &&
-        airfix::ios::detail::installControllerInputProfileBeforeStart(
-            self.inputCoordinator, *defaultControllerProfile.profile);
+    self.controllerInputProfileStore =
+        [[AirfixIOSControllerInputProfileStore alloc] init];
+    self.controllerInputProfileStatus = @"PROFILE starting";
     self.simulationPipelineReady = YES;
     _audioBackend =
         std::make_unique<airfix::ios::AirfixAVAudioEngineBackend>();
@@ -318,7 +328,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
                 [strongSelf handleAudioForcedPause:reason];
             }
         });
-    self.inputPipelineReady = controllerProfileReady &&
+    _inputFrameConsumerInstalled =
         airfix::ios::setInputFrameConsumer(
         self.inputCoordinator,
         [weakSelf](const airfix::input::InputFrame& frame) noexcept {
@@ -374,10 +384,12 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
                 updateDiagnosticsLabelWithInputDiagnostics:
                     strongSelf.inputCoordinator.diagnostics];
         });
-    if (!self.inputPipelineReady) {
+    self.inputPipelineReady = NO;
+    if (!_inputFrameConsumerInstalled) {
         label.text =
             @"Airfix Dogfighter reconstruction\nInput initialization failed";
     }
+    [self beginControllerInputProfileLoad];
     [self updateDiagnosticsLabelWithInputDiagnostics:
         self.inputCoordinator.diagnostics];
 
@@ -412,13 +424,193 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     ]];
 }
 
+- (void)beginControllerInputProfileLoad {
+    NSAssert(NSThread.isMainThread,
+        @"Controller profile startup belongs to main");
+    if (_controllerProfileLoadCompleted ||
+        self.controllerInputProfileStore == nil) {
+        return;
+    }
+
+    __weak AirfixGameViewController* weakSelf = self;
+    [self.controllerInputProfileStore
+        loadWithCompletion:
+            ^(const airfix::ios::ControllerInputProfileLoadOutcome outcome) {
+                AirfixGameViewController* strongSelf = weakSelf;
+                if (strongSelf == nil ||
+                    strongSelf->_controllerProfileLoadCompleted) {
+                    return;
+                }
+
+                std::optional<
+                    airfix::input::ResolvedControllerInputProfile>
+                    selectedProfile;
+                NSString* status = @"PROFILE defaults";
+                if (outcome.result.has_value()) {
+                    selectedProfile = outcome.result->profile;
+                    switch (outcome.result->source) {
+                    case airfix::settings::
+                        ControllerInputProfileLoadSource::defaults:
+                        if (outcome.result->current.status ==
+                                airfix::settings::
+                                    ControllerInputProfileFileStatus::
+                                        malformed ||
+                            outcome.result->current.status ==
+                                airfix::settings::
+                                    ControllerInputProfileFileStatus::
+                                        oversized ||
+                            outcome.result->backup.status ==
+                                airfix::settings::
+                                    ControllerInputProfileFileStatus::
+                                        malformed ||
+                            outcome.result->backup.status ==
+                                airfix::settings::
+                                    ControllerInputProfileFileStatus::
+                                        oversized) {
+                            status = @"PROFILE defaults recovered";
+                        }
+                        else {
+                            status = @"PROFILE defaults";
+                        }
+                        break;
+                    case airfix::settings::
+                        ControllerInputProfileLoadSource::current:
+                        status = @"PROFILE current";
+                        break;
+                    case airfix::settings::
+                        ControllerInputProfileLoadSource::backup:
+                        status = @"PROFILE backup recovered";
+                        break;
+                    }
+                    if (outcome.result->persistenceBlocked) {
+                        status =
+                            [status stringByAppendingString:@"  read-only"];
+                    }
+                }
+                else {
+                    const auto fallback =
+                        airfix::input::resolveControllerInputProfile(
+                            airfix::input::
+                                makeDefaultControllerInputProfileRecord());
+                    if (fallback.complete()) {
+                        selectedProfile = *fallback.profile;
+                    }
+                    status =
+                        @"PROFILE defaults  storage unavailable";
+                }
+
+                const bool profileInstalled =
+                    selectedProfile.has_value() &&
+                    airfix::ios::detail::
+                        installControllerInputProfileBeforeStart(
+                            strongSelf.inputCoordinator,
+                            *selectedProfile);
+                strongSelf->_controllerProfileLoadCompleted = YES;
+                strongSelf.controllerInputProfileStatus =
+                    profileInstalled ? status : @"PROFILE initialization failed";
+                strongSelf.inputPipelineReady =
+                    strongSelf->_inputFrameConsumerInstalled &&
+                    profileInstalled;
+                if (!strongSelf.inputPipelineReady) {
+                    strongSelf.statusLabel.text =
+                        @"Airfix Dogfighter reconstruction\n"
+                         "Input initialization failed";
+                }
+                [strongSelf
+                    updateDiagnosticsLabelWithInputDiagnostics:
+                        strongSelf.inputCoordinator.diagnostics];
+                [strongSelf startInputCoordinatorIfReady];
+            }];
+}
+
+- (void)startInputCoordinatorIfReady {
+    NSAssert(NSThread.isMainThread,
+        @"Input coordinator startup belongs to main");
+    const bool shouldStart =
+        airfix::ios::startup_policy::shouldStartInput({
+            .viewVisible = static_cast<bool>(_viewVisible),
+            .profileLoadCompleted =
+                static_cast<bool>(_controllerProfileLoadCompleted),
+            .inputPipelineReady =
+                static_cast<bool>(self.inputPipelineReady),
+            .applicationActive =
+                UIApplication.sharedApplication.applicationState ==
+                UIApplicationStateActive,
+        });
+    if (!shouldStart) {
+        return;
+    }
+    [self.inputCoordinator start];
+    [self refreshPausedMissionReadiness];
+}
+
+- (void)refreshPausedMissionReadiness {
+    NSAssert(NSThread.isMainThread,
+        @"Paused mission readiness belongs to main");
+    if (self.renderSettingsPanel != nil) {
+        [self.inputCoordinator
+            setInputContext:AirfixNativeInputContextModal];
+        [self.inputCoordinator resetForGameplayBoundary];
+        self.touchControlsView.hidden = YES;
+        self.resumeButton.hidden = YES;
+        ((MTKView*)self.view).paused = YES;
+        return;
+    }
+
+    const bool contentReady =
+        _session.contentState() ==
+        airfix::runtime::ContentState::ready;
+    const bool rendererInstalled =
+        self.renderer.missionWorldRoomInstalled;
+    if (!contentReady || !rendererInstalled) {
+        return;
+    }
+
+    [self.inputCoordinator
+        setInputContext:AirfixNativeInputContextMenu];
+    [self.inputCoordinator resetForGameplayBoundary];
+    const bool gameplayReady =
+        airfix::ios::startup_policy::shouldOfferResume({
+            .contentReady = contentReady,
+            .rendererInstalled = rendererInstalled,
+            .inputPipelineReady =
+                static_cast<bool>(self.inputPipelineReady),
+            .simulationPipelineReady =
+                static_cast<bool>(self.simulationPipelineReady),
+            .inputOperational =
+                static_cast<bool>(
+                    self.inputCoordinator.isOperational),
+            .settingsPanelClosed = true,
+        });
+    self.touchControlsView.hidden = YES;
+    self.resumeButton.hidden = !gameplayReady;
+    if (gameplayReady) {
+        self.statusLabel.text =
+            @"Airfix Dogfighter reconstruction\n"
+             @"Private mission ready\n"
+             @"Select Resume or press controller B to start";
+    }
+    else if (!self.simulationPipelineReady) {
+        self.statusLabel.text =
+            @"Airfix Dogfighter reconstruction\n"
+             @"Simulation halted; gameplay cannot resume";
+    }
+    else {
+        self.statusLabel.text =
+            @"Airfix Dogfighter reconstruction\n"
+             @"Private mission ready; input pipeline unavailable";
+    }
+    ((MTKView*)self.view).paused = YES;
+}
+
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
+    _viewVisible = YES;
     [self.renderSettingsCoordinator start];
     [self.renderSettingsCoordinator
         notifyPresentationSurfaceAvailable];
     [self.contentCoordinator start];
-    [self.inputCoordinator start];
+    [self startInputCoordinatorIfReady];
 }
 
 - (void)viewDidLayoutSubviews {
@@ -428,6 +620,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
 }
 
 - (void)viewDidDisappear:(BOOL)animated {
+    _viewVisible = NO;
     const bool wasRunning = _session.simulationRunning();
     _audioBackend->setActive(false);
     _session.pause();
@@ -615,6 +808,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
         airfix::runtime::LifecycleState::foregroundPaused) {
         _session.enterForeground();
     }
+    [self startInputCoordinatorIfReady];
     [self.inputCoordinator applicationDidBecomeActive];
     [self.contentCoordinator applicationDidBecomeActive];
     [self.renderSettingsCoordinator
@@ -1142,11 +1336,14 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
         _playerAircraftPresentation.stateHash();
     NSString* simulationStatus =
         self.simulationPipelineReady ? @"ok" : @"failed";
+    NSString* profileStatus =
+        self.controllerInputProfileStatus ?: @"PROFILE starting";
     self.inputDiagnosticsLabel.text = [NSString stringWithFormat:
         @"INPUT T%llu  B %+d  P %+d  FIRE %@\n"
          @"CONTROLLER %@  SOURCE %@\n"
          @"SIM STEP %llu  HASH %016llX  %@\n"
-         @"INTENT B %+d  P %+d  FIRE %@  PRESS %llu  RELEASE %llu",
+         @"INTENT B %+d  P %+d  FIRE %@  PRESS %llu  RELEASE %llu\n"
+         @"%@",
         static_cast<unsigned long long>(diagnostics.tick),
         diagnostics.bank,
         diagnostics.pitch,
@@ -1162,7 +1359,8 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
         static_cast<unsigned long long>(
             simulation.primaryFirePressCount),
         static_cast<unsigned long long>(
-            simulation.primaryFireReleaseCount)];
+            simulation.primaryFireReleaseCount),
+        profileStatus];
 }
 
 @end
