@@ -79,9 +79,10 @@
   through a safe-area UIKit panel backed by a portable applied/draft/ticket
   model. Apply reports success only after durable save and Metal publication;
   touch and controller navigation use an explicit pause/menu/modal input
-  boundary and closing never auto-resumes. Hosted Apple compilation and
-  physical-device interaction/persistence acceptance remain pending, as does
-  the equivalent Windows settings UI.
+  boundary and closing never auto-resumes. Pull-request Actions compile and
+  link the complete iPhoneOS and iPhoneSimulator products successfully;
+  physical-device interaction/persistence acceptance and the equivalent
+  Windows settings UI remain pending.
 - The native Windows x64 product foundation is implemented. A statically
   linked SDL3 shell owns the window and lifecycle events; a separate
   D3D11/DXGI backend compiles HLSL, uploads the same public scene used by Metal,

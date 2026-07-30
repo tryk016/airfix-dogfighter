@@ -3859,6 +3859,8 @@ superseded evidence.
   portable request queue now owns exact identities, latest-wins superseding,
   two-phase reentrant completion, pending promotion, stale/duplicate rejection,
   and non-wrapping exhaustion under deterministic tests.
-- Focused Windows GCC/Ninja tests for the menu model and input router pass, as
-  does the public-boundary scanner. Hosted iPhoneOS/iPhoneSimulator compilation
-  and physical-device interaction/persistence acceptance remain to be recorded.
+- The full local build and 106/106 CTests pass, as do clang-format,
+  `git diff --check`, and the 536-file public-boundary scan. Pull-request
+  Actions runs `30516125990` and `30516125991` pass all seven hosted jobs,
+  including iPhoneOS and iPhoneSimulator compilation/linking. Physical-device
+  interaction/persistence acceptance remains to be recorded.

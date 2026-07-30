@@ -113,17 +113,17 @@ Portable tests cover:
 - menu/modal controller bindings, D-pad row navigation, A/B/shoulders, and
   absence of gameplay actions or axes under the overlay.
 
-Local Windows GCC/Ninja builds and the two focused CTests pass. The full public
-boundary scanner also passes. Hosted iPhoneOS and iPhoneSimulator compilation
-is the acceptance gate for Objective-C++/UIKit integration; those jobs do not
-run the UI.
+Local Windows GCC/Ninja builds and all 106 CTests pass. The full public
+boundary scanner also passes. Pull-request Actions runs `30516125990` and
+`30516125991` pass all seven hosted jobs, including iPhoneOS and
+iPhoneSimulator compilation/linking of the Objective-C++/UIKit integration.
+Those jobs do not run the UI.
 
 ## Limits and next evidence
 
 This is a reconstructed product settings panel, not evidence for the original
 game's main-menu layout or behavior. The following remain required:
 
-- hosted iPhoneOS and iPhoneSimulator build/link validation;
 - touch, controller-only, VoiceOver, largest Dynamic Type, safe-area,
   background/foreground, save/force-quit/relaunch, and failed-allocation tests
   on physical devices;
