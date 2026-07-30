@@ -131,10 +131,9 @@ durable base, never the launch overlay, is saved.
 All fixtures are synthetic. No original asset, owner preference, private path,
 or generated settings document is included.
 
-## Remaining iOS work
+## Completed iOS follow-up
 
-iOS must not block its main thread on storage. The current one-call Metal apply
-API must first be split into:
+The subsequent iOS slice split the former one-call Metal apply API into:
 
 1. main-thread immutable request capture;
 2. off-main resource preparation;
@@ -142,10 +141,12 @@ API must first be split into:
 4. main-thread revision/surface revalidation; and
 5. immediate no-fail commit.
 
-That coordinator and the `Application Support/AirfixDogfighter/settings`
-adapter remain the next ADR-0014 persistence slice. A stale surface after a
-successful save must reprepare the already durable candidate without saving it
-again.
+The coordinator and private
+`Application Support/AirfixDogfighter/settings` adapter now implement that
+sequence. A stale surface after a successful save reprepares the already
+durable candidate without saving it again. Hosted and local validation are
+recorded in
+[EXP-20260729-059](EXP-20260729-059-ios-render-settings-persistence.md).
 
 ## Related
 

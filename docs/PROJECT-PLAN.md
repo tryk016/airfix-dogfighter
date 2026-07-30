@@ -396,9 +396,12 @@ output path. A canonical checksummed AFRS store now supplies bounded exact
 reads, current/backup/default recovery, future-schema preservation, and durable
 atomic replacement. Windows binds that store to SDL's private preference
 directory and resolves defaults -> persistent snapshot -> sparse session-only
-launch overrides; CI smoke/capture modes never open the real profile. The
-equivalent nonblocking iOS Application Support coordinator and the final
-settings UI follow as separate slices.
+launch overrides; CI smoke/capture modes never open the real profile. iOS now
+binds the same store semantics to its private Application Support directory:
+Metal resources prepare off-main, the persistent base saves on a serial queue,
+and a fresh main-thread surface/revision check precedes publication. A stale
+post-save surface reprepares without saving twice. The final cross-input
+settings UI follows as a separate slice.
 
 `Classic` and `Enhanced` are visual-intent profiles independent of the quality
 tier. Classic renders faithfully at the chosen high resolution; Enhanced adds
