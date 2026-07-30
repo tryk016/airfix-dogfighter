@@ -5,11 +5,25 @@
 
 #include "airfix/settings/RenderPresentationPersistenceGate.hpp"
 
+#include <algorithm>
+#include <limits>
 #include <optional>
 
 namespace {
 
 constexpr std::uint64_t kImmediateStaleReprepareAttempts = 3U;
+constexpr std::uint64_t kInitialPreparationRetryMilliseconds = 50U;
+constexpr std::uint64_t kMaximumPreparationRetryMilliseconds = 2'000U;
+
+[[nodiscard]] std::uint64_t preparationRetryMilliseconds(
+    const std::uint32_t failureCount) noexcept {
+    const auto shift = std::min(failureCount > 0U
+        ? failureCount - 1U
+        : 0U, 5U);
+    return std::min(
+        kInitialPreparationRetryMilliseconds << shift,
+        kMaximumPreparationRetryMilliseconds);
+}
 
 } // namespace
 
@@ -26,6 +40,10 @@ constexpr std::uint64_t kImmediateStaleReprepareAttempts = 3U;
     std::optional<
         airfix::settings::RenderPresentationPersistenceTicket>
         _activeTicket;
+    std::optional<
+        airfix::settings::RenderPresentationPersistenceTicket>
+        _scheduledRetryTicket;
+    std::uint32_t _preparationFailureCount;
     BOOL _started;
     BOOL _loadCompleted;
     BOOL _startupResolved;
@@ -46,6 +64,9 @@ constexpr std::uint64_t kImmediateStaleReprepareAttempts = 3U;
 - (void)publishPrepared:
     (AirfixPreparedMetalPresentation*)prepared
     ticket:(const airfix::settings::
+        RenderPresentationPersistenceTicket&)ticket;
+- (void)schedulePreparationRetry:
+    (const airfix::settings::
         RenderPresentationPersistenceTicket&)ticket;
 - (void)finishCurrentAndStartPending;
 @end
@@ -137,6 +158,10 @@ constexpr std::uint64_t kImmediateStaleReprepareAttempts = 3U;
                 RenderPresentationPersistencePhase::preparing)) {
         return;
     }
+    if (_scheduledRetryTicket.has_value() &&
+        *_scheduledRetryTicket == *_activeTicket) {
+        _scheduledRetryTicket.reset();
+    }
     [self launchPreparation:*_activeTicket];
 }
 
@@ -175,6 +200,8 @@ constexpr std::uint64_t kImmediateStaleReprepareAttempts = 3U;
         return;
     }
     _activeTicket = ticket;
+    _scheduledRetryTicket.reset();
+    _preparationFailureCount = 0U;
     [self launchPreparation:*ticket];
 }
 
@@ -199,6 +226,7 @@ constexpr std::uint64_t kImmediateStaleReprepareAttempts = 3U;
     (void)captureError;
     if (request == nil) {
         _preparationDispatched = NO;
+        [self schedulePreparationRetry:ticket];
         return;
     }
 
@@ -225,8 +253,10 @@ constexpr std::uint64_t kImmediateStaleReprepareAttempts = 3U;
                 return;
             }
             if (prepared == nil) {
+                [strongSelf schedulePreparationRetry:ticket];
                 return;
             }
+            strongSelf->_preparationFailureCount = 0U;
             [strongSelf finishPreparation:prepared
                                    ticket:ticket];
         });
@@ -308,6 +338,51 @@ constexpr std::uint64_t kImmediateStaleReprepareAttempts = 3U;
         kImmediateStaleReprepareAttempts) {
         [self launchPreparation:*retry];
     }
+}
+
+- (void)schedulePreparationRetry:
+    (const airfix::settings::
+        RenderPresentationPersistenceTicket&)ticket {
+    if (_preparationDispatched ||
+        !_gate.isCurrent(
+            ticket,
+            airfix::settings::
+                RenderPresentationPersistencePhase::preparing)) {
+        return;
+    }
+    if (_scheduledRetryTicket.has_value() &&
+        *_scheduledRetryTicket == ticket) {
+        return;
+    }
+    if (_preparationFailureCount <
+        std::numeric_limits<std::uint32_t>::max()) {
+        ++_preparationFailureCount;
+    }
+    _scheduledRetryTicket = ticket;
+    const auto delay = preparationRetryMilliseconds(
+        _preparationFailureCount);
+    __weak AirfixRenderSettingsCoordinator* weakSelf = self;
+    dispatch_after(
+        dispatch_time(
+            DISPATCH_TIME_NOW,
+            static_cast<std::int64_t>(delay * NSEC_PER_MSEC)),
+        dispatch_get_main_queue(),
+        ^{
+            AirfixRenderSettingsCoordinator* strongSelf = weakSelf;
+            if (strongSelf == nil ||
+                !strongSelf->_scheduledRetryTicket.has_value() ||
+                *strongSelf->_scheduledRetryTicket != ticket) {
+                return;
+            }
+            strongSelf->_scheduledRetryTicket.reset();
+            if (strongSelf->_gate.isCurrent(
+                    ticket,
+                    airfix::settings::
+                        RenderPresentationPersistencePhase::
+                            preparing)) {
+                [strongSelf launchPreparation:ticket];
+            }
+        });
 }
 
 - (void)finishCurrentAndStartPending {

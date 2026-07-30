@@ -38,6 +38,47 @@ fileSystemPath(NSURL* url) noexcept {
     return ::chmod(path.c_str(), S_IRWXU) == 0;
 }
 
+[[nodiscard]] bool ensurePrivateDirectory(
+    NSFileManager* manager,
+    NSURL* url,
+    NSDictionary* attributes) noexcept {
+    const auto path = fileSystemPath(url);
+    if (manager == nil || !path.has_value()) {
+        return false;
+    }
+
+    struct stat information {};
+    if (::lstat(path->c_str(), &information) != 0) {
+        if (errno != ENOENT) {
+            return false;
+        }
+        NSError* createError = nil;
+        if (![manager
+                createDirectoryAtURL:url
+         withIntermediateDirectories:NO
+                          attributes:nil
+                               error:&createError] ||
+            createError != nil) {
+            return false;
+        }
+    }
+
+    // Reject an existing link before any chmod, protection, or backup
+    // mutation can follow it. Recheck after Foundation applies attributes so
+    // a changed component also fails closed.
+    if (!securePrivateDirectory(*path)) {
+        return false;
+    }
+    NSError* attributeError = nil;
+    if (![manager setAttributes:attributes
+                   ofItemAtPath:url.path
+                          error:&attributeError] ||
+        attributeError != nil) {
+        return false;
+    }
+    return securePrivateDirectory(*path);
+}
+
 [[nodiscard]] std::optional<std::filesystem::path>
 prepareSettingsDirectory() noexcept {
     @autoreleasepool {
@@ -65,35 +106,12 @@ prepareSettingsDirectory() noexcept {
                 NSFileProtectionKey :
                     NSFileProtectionCompleteUntilFirstUserAuthentication,
             };
-            NSError* createError = nil;
-            if (![manager
-                    createDirectoryAtURL:settings
-             withIntermediateDirectories:YES
-                              attributes:attributes
-                                   error:&createError] ||
-                createError != nil) {
-                return std::nullopt;
-            }
-
-            NSError* parentAttributeError = nil;
-            NSError* settingsAttributeError = nil;
-            if (![manager setAttributes:attributes
-                           ofItemAtPath:parent.path
-                                  error:&parentAttributeError] ||
-                parentAttributeError != nil ||
-                ![manager setAttributes:attributes
-                           ofItemAtPath:settings.path
-                                  error:&settingsAttributeError] ||
-                settingsAttributeError != nil) {
-                return std::nullopt;
-            }
-
-            const auto parentPath = fileSystemPath(parent);
             const auto settingsPath = fileSystemPath(settings);
-            if (!parentPath.has_value() ||
-                !settingsPath.has_value() ||
-                !securePrivateDirectory(*parentPath) ||
-                !securePrivateDirectory(*settingsPath)) {
+            if (!settingsPath.has_value() ||
+                !ensurePrivateDirectory(
+                    manager, parent, attributes) ||
+                !ensurePrivateDirectory(
+                    manager, settings, attributes)) {
                 return std::nullopt;
             }
 
