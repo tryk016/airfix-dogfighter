@@ -91,12 +91,12 @@ rectInsideOutput(const AirfixWindowsUiPixelRect rect,
       !std::isfinite(snapshot.layoutScale) || snapshot.layoutScale <= 0.0F ||
       screenValue >
           static_cast<std::uint8_t>(
-              AirfixWindowsRenderSettingsScreen::controllerAxisCalibration) ||
+              AirfixWindowsRenderSettingsScreen::controllerBindingConflict) ||
       selectedItemValue >=
           static_cast<std::uint8_t>(AirfixWindowsRenderSettingsItem::count) ||
       statusValue >
-          static_cast<std::uint8_t>(
-              AirfixWindowsRenderSettingsStatus::invalidControllerProfile) ||
+          static_cast<std::uint8_t>(AirfixWindowsRenderSettingsStatus::
+                                        controllerBindingActionUnavailable) ||
       static_cast<std::size_t>(snapshot.itemCount) > snapshot.items.size() ||
       !rectInsideOutput(snapshot.panelBounds, snapshot.output) ||
       !rectInsideOutput(snapshot.titleBounds, snapshot.output) ||
@@ -107,13 +107,65 @@ rectInsideOutput(const AirfixWindowsUiPixelRect rect,
       snapshot.screen ==
           AirfixWindowsRenderSettingsScreen::controllerCalibration ||
       snapshot.screen ==
-          AirfixWindowsRenderSettingsScreen::controllerAxisCalibration;
+          AirfixWindowsRenderSettingsScreen::controllerAxisCalibration ||
+      snapshot.screen ==
+          AirfixWindowsRenderSettingsScreen::controllerButtonBindings ||
+      snapshot.screen ==
+          AirfixWindowsRenderSettingsScreen::controllerBindingConflict;
   const auto axisIndex =
       static_cast<std::size_t>(snapshot.selectedControllerAxis);
+  const auto bindingActionIndex =
+      static_cast<std::size_t>(snapshot.selectedControllerBindingAction);
+  const auto bindingStatusValue =
+      static_cast<std::uint8_t>(snapshot.selectedControllerBindingStatus);
+  const auto pickerPhaseValue =
+      static_cast<std::uint8_t>(snapshot.controllerBindingPickerPhase);
   if ((controllerScreen && !snapshot.controllerProfileAvailable) ||
       axisIndex >= snapshot.controllerDraftAxes.size() ||
+      bindingActionIndex >= input::controllerDigitalGameplayActionCount ||
+      bindingStatusValue > static_cast<std::uint8_t>(
+                               input::ControllerDigitalGameplayBindingStatus::
+                                   unsupportedLayout) ||
+      snapshot.selectedControllerBindingControlIndex >
+          airfixWindowsControllerBindingNoControlIndex ||
+      pickerPhaseValue >
+          static_cast<std::uint8_t>(
+              settings::ControllerInputBindingPickerPhase::confirmingSwap) ||
       snapshot.controllerPreviewRaw < -input::q15One ||
       snapshot.controllerPreviewEffective < -input::q15One) {
+    return false;
+  }
+  if (snapshot.conflictingControllerBindingAction.has_value() &&
+      static_cast<std::size_t>(*snapshot.conflictingControllerBindingAction) >=
+          input::controllerDigitalGameplayActionCount) {
+    return false;
+  }
+  if (snapshot.screen ==
+      AirfixWindowsRenderSettingsScreen::controllerButtonBindings) {
+    const bool choosing =
+        snapshot.controllerBindingPickerPhase ==
+        settings::ControllerInputBindingPickerPhase::choosingControl;
+    const bool closed = snapshot.controllerBindingPickerPhase ==
+                        settings::ControllerInputBindingPickerPhase::closed;
+    if ((choosing &&
+         (snapshot.selectedControllerBindingStatus !=
+              input::ControllerDigitalGameplayBindingStatus::editable ||
+          snapshot.selectedControllerBindingControlIndex >=
+              input::controllerAssignableControlCount)) ||
+        (closed && snapshot.selectedControllerBindingControlIndex !=
+                       airfixWindowsControllerBindingNoControlIndex) ||
+        (!choosing && !closed) ||
+        snapshot.conflictingControllerBindingAction.has_value()) {
+      return false;
+    }
+  }
+  if (snapshot.screen ==
+          AirfixWindowsRenderSettingsScreen::controllerBindingConflict &&
+      (snapshot.controllerBindingPickerPhase !=
+           settings::ControllerInputBindingPickerPhase::confirmingSwap ||
+       snapshot.selectedControllerBindingControlIndex >=
+           input::controllerAssignableControlCount ||
+       !snapshot.conflictingControllerBindingAction.has_value())) {
     return false;
   }
   for (const auto &axis : snapshot.controllerDraftAxes) {
@@ -171,7 +223,7 @@ itemLabel(const AirfixWindowsRenderSettingsItem item) noexcept {
   case AirfixWindowsRenderSettingsItem::displaySettings:
     return L"Display settings";
   case AirfixWindowsRenderSettingsItem::controllerCalibration:
-    return L"Controller calibration";
+    return L"Controller settings";
   case AirfixWindowsRenderSettingsItem::resume:
     return L"Resume";
   case AirfixWindowsRenderSettingsItem::renderScale:
@@ -194,6 +246,8 @@ itemLabel(const AirfixWindowsRenderSettingsItem item) noexcept {
     return L"Right stick X";
   case AirfixWindowsRenderSettingsItem::rightStickY:
     return L"Right stick Y";
+  case AirfixWindowsRenderSettingsItem::buttonBindings:
+    return L"Button bindings";
   case AirfixWindowsRenderSettingsItem::innerDeadzone:
     return L"Inner deadzone";
   case AirfixWindowsRenderSettingsItem::outerSaturation:
@@ -208,6 +262,16 @@ itemLabel(const AirfixWindowsRenderSettingsItem item) noexcept {
     return L"Reset selected axis";
   case AirfixWindowsRenderSettingsItem::resetAllCalibration:
     return L"Reset all calibration";
+  case AirfixWindowsRenderSettingsItem::bindingAction:
+    return L"Action";
+  case AirfixWindowsRenderSettingsItem::bindingAssignment:
+    return L"Assignment";
+  case AirfixWindowsRenderSettingsItem::moveBinding:
+    return L"Move";
+  case AirfixWindowsRenderSettingsItem::resetAllAssignments:
+    return L"Reset all assignments";
+  case AirfixWindowsRenderSettingsItem::swapAssignments:
+    return L"Swap assignments";
   case AirfixWindowsRenderSettingsItem::saveControllerProfile:
     return L"Save for next launch";
   case AirfixWindowsRenderSettingsItem::back:
@@ -230,6 +294,8 @@ isValueItem(const AirfixWindowsRenderSettingsItem item) noexcept {
   case AirfixWindowsRenderSettingsItem::sensitivity:
   case AirfixWindowsRenderSettingsItem::responseCurve:
   case AirfixWindowsRenderSettingsItem::inversion:
+  case AirfixWindowsRenderSettingsItem::bindingAction:
+  case AirfixWindowsRenderSettingsItem::bindingAssignment:
     return true;
   case AirfixWindowsRenderSettingsItem::displaySettings:
   case AirfixWindowsRenderSettingsItem::controllerCalibration:
@@ -240,8 +306,12 @@ isValueItem(const AirfixWindowsRenderSettingsItem item) noexcept {
   case AirfixWindowsRenderSettingsItem::leftStickY:
   case AirfixWindowsRenderSettingsItem::rightStickX:
   case AirfixWindowsRenderSettingsItem::rightStickY:
+  case AirfixWindowsRenderSettingsItem::buttonBindings:
   case AirfixWindowsRenderSettingsItem::resetAxis:
   case AirfixWindowsRenderSettingsItem::resetAllCalibration:
+  case AirfixWindowsRenderSettingsItem::moveBinding:
+  case AirfixWindowsRenderSettingsItem::resetAllAssignments:
+  case AirfixWindowsRenderSettingsItem::swapAssignments:
   case AirfixWindowsRenderSettingsItem::saveControllerProfile:
   case AirfixWindowsRenderSettingsItem::back:
   case AirfixWindowsRenderSettingsItem::count:
@@ -259,11 +329,47 @@ hasChevron(const AirfixWindowsRenderSettingsItem item) noexcept {
   case AirfixWindowsRenderSettingsItem::leftStickY:
   case AirfixWindowsRenderSettingsItem::rightStickX:
   case AirfixWindowsRenderSettingsItem::rightStickY:
+  case AirfixWindowsRenderSettingsItem::buttonBindings:
   case AirfixWindowsRenderSettingsItem::back:
     return true;
   default:
     return false;
   }
+}
+
+[[nodiscard]] const wchar_t *controllerActionLabel(
+    const input::ControllerDigitalGameplayAction action) noexcept {
+  switch (action) {
+  case input::ControllerDigitalGameplayAction::primaryFire:
+    return L"Primary fire";
+  case input::ControllerDigitalGameplayAction::secondaryFire:
+    return L"Secondary fire";
+  case input::ControllerDigitalGameplayAction::weaponNext:
+    return L"Next weapon";
+  case input::ControllerDigitalGameplayAction::rearView:
+    return L"Rear view";
+  case input::ControllerDigitalGameplayAction::cameraCycle:
+    return L"Cycle camera";
+  case input::ControllerDigitalGameplayAction::cameraRecenter:
+    return L"Recenter camera";
+  case input::ControllerDigitalGameplayAction::missionStatus:
+    return L"Mission status";
+  case input::ControllerDigitalGameplayAction::count:
+    break;
+  }
+  return L"Unavailable";
+}
+
+[[nodiscard]] const wchar_t *
+controllerControlLabel(const std::uint8_t index) noexcept {
+  constexpr std::array labels{
+      L"Right trigger",    L"Left trigger",        L"Right shoulder",
+      L"Left shoulder",    L"Primary face button", L"Secondary face button",
+      L"Left face button", L"Top face button",     L"Right stick click",
+      L"D-pad up",         L"D-pad down",          L"D-pad left",
+      L"D-pad right",      L"Menu button",
+  };
+  return index < labels.size() ? labels[index] : L"Unavailable";
 }
 
 [[nodiscard]] const wchar_t *
@@ -288,6 +394,11 @@ itemValue(const AirfixWindowsRenderSettingsItem item,
                : L"Classic";
   case AirfixWindowsRenderSettingsItem::rendererStatistics:
     return draft.diagnosticsOverlayEnabled ? L"On" : L"Off";
+  case AirfixWindowsRenderSettingsItem::bindingAction:
+    return controllerActionLabel(snapshot.selectedControllerBindingAction);
+  case AirfixWindowsRenderSettingsItem::bindingAssignment:
+    return controllerControlLabel(
+        snapshot.selectedControllerBindingControlIndex);
   case AirfixWindowsRenderSettingsItem::innerDeadzone:
   case AirfixWindowsRenderSettingsItem::outerSaturation:
   case AirfixWindowsRenderSettingsItem::sensitivity:
@@ -338,8 +449,12 @@ itemValue(const AirfixWindowsRenderSettingsItem item,
   case AirfixWindowsRenderSettingsItem::leftStickY:
   case AirfixWindowsRenderSettingsItem::rightStickX:
   case AirfixWindowsRenderSettingsItem::rightStickY:
+  case AirfixWindowsRenderSettingsItem::buttonBindings:
   case AirfixWindowsRenderSettingsItem::resetAxis:
   case AirfixWindowsRenderSettingsItem::resetAllCalibration:
+  case AirfixWindowsRenderSettingsItem::moveBinding:
+  case AirfixWindowsRenderSettingsItem::resetAllAssignments:
+  case AirfixWindowsRenderSettingsItem::swapAssignments:
   case AirfixWindowsRenderSettingsItem::saveControllerProfile:
   case AirfixWindowsRenderSettingsItem::back:
   case AirfixWindowsRenderSettingsItem::count:
@@ -356,7 +471,7 @@ titleText(const AirfixWindowsRenderSettingsViewSnapshot &snapshot) noexcept {
   case AirfixWindowsRenderSettingsScreen::displaySettings:
     return L"Display settings";
   case AirfixWindowsRenderSettingsScreen::controllerCalibration:
-    return L"Controller calibration";
+    return L"Controller settings";
   case AirfixWindowsRenderSettingsScreen::controllerAxisCalibration:
     switch (snapshot.selectedControllerAxis) {
     case input::ControllerAxisElement::leftStickX:
@@ -371,6 +486,10 @@ titleText(const AirfixWindowsRenderSettingsViewSnapshot &snapshot) noexcept {
       break;
     }
     break;
+  case AirfixWindowsRenderSettingsScreen::controllerButtonBindings:
+    return L"Button bindings";
+  case AirfixWindowsRenderSettingsScreen::controllerBindingConflict:
+    return L"Assignment conflict";
   }
   return L"";
 }
@@ -385,6 +504,9 @@ statusIsWarning(const AirfixWindowsRenderSettingsStatus status) noexcept {
   case AirfixWindowsRenderSettingsStatus::
       controllerProfilePersistenceUnavailable:
   case AirfixWindowsRenderSettingsStatus::invalidControllerProfile:
+  case AirfixWindowsRenderSettingsStatus::controllerBindingConflict:
+  case AirfixWindowsRenderSettingsStatus::controllerBindingProtectedConflict:
+  case AirfixWindowsRenderSettingsStatus::controllerBindingActionUnavailable:
     return true;
   default:
     return false;
@@ -427,10 +549,10 @@ statusText(const AirfixWindowsRenderSettingsViewSnapshot &snapshot) noexcept {
       return L"Recovered profile is ready to repair";
     }
     return snapshot.controllerProfileDirty
-               ? L"Calibration changes are ready to save"
-               : L"Choose an axis to inspect or adjust";
+               ? L"Controller profile changes are ready to save"
+               : L"Choose calibration or button assignments";
   case AirfixWindowsRenderSettingsStatus::controllerProfileNoChanges:
-    return L"No controller calibration changes to save";
+    return L"No controller profile changes to save";
   case AirfixWindowsRenderSettingsStatus::controllerProfileSaving:
     return L"Saving controller profile...";
   case AirfixWindowsRenderSettingsStatus::controllerProfileSaved:
@@ -441,9 +563,15 @@ statusText(const AirfixWindowsRenderSettingsViewSnapshot &snapshot) noexcept {
     return L"Controller profile was not saved - retry is available";
   case AirfixWindowsRenderSettingsStatus::
       controllerProfilePersistenceUnavailable:
-    return L"Controller calibration cannot be saved";
+    return L"Controller profile cannot be saved";
   case AirfixWindowsRenderSettingsStatus::invalidControllerProfile:
-    return L"The selected controller calibration is invalid";
+    return L"The selected controller profile is invalid";
+  case AirfixWindowsRenderSettingsStatus::controllerBindingConflict:
+    return L"Assignment is in use - cancel or swap explicitly";
+  case AirfixWindowsRenderSettingsStatus::controllerBindingProtectedConflict:
+    return L"That assignment is protected and cannot be moved";
+  case AirfixWindowsRenderSettingsStatus::controllerBindingActionUnavailable:
+    return L"This custom or unavailable action cannot be edited";
   }
   return L"";
 }

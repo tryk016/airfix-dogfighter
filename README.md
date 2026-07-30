@@ -36,9 +36,11 @@ high-resolution `Classic` profile alongside `Enhanced`.
 > enforces explicit-resume interruption and route-loss handling. Both products
 > can now bind the six recovered aircraft roles to PCM decoded from one
 > authenticated, owner-local AFPACK transaction. Both native products also load
-> the same private AFIP controller profile before input starts and expose
-> four-axis calibration with exact raw/adjusted preview plus durable
-> save-for-next-launch semantics.
+> the same private AFIP controller profile before input starts and expose one
+> shared controller-settings draft: four-axis calibration with exact
+> raw/adjusted preview plus a bounded seven-action text picker. Conflicts cancel
+> by default, swaps require a separate confirmation, and durable changes remain
+> save-for-next-launch only.
 > Neither target is **yet a complete playable release**.
 
 **Lawfully owned original game data is required for private use and is not
@@ -256,8 +258,9 @@ supported. This is a platform-shell milestone, not yet a playable build.
 
 Interactive startup loads the owner-private AFIP controller profile before
 constructing the SDL input adapter. The pause menu exposes four-axis
-calibration with raw/adjusted live preview and an explicit
-`Save for next launch` action; it never mutates the active input pipeline.
+calibration and bounded gameplay-button assignments in one draft, with
+raw/adjusted live preview and an explicit `Save for next launch` action; it
+never mutates the active input pipeline.
 A public, synthetic screenshot can be generated without reading game data or
 the private settings store:
 
@@ -265,6 +268,10 @@ the private settings store:
 AirfixDogfighter.exe `
   --capture-controller-calibration-panel <public-output.bmp> `
   --capture-size 1920x1080
+
+AirfixDogfighter.exe `
+  --capture-controller-bindings-panel <public-output.bmp> `
+  --capture-size 640x360
 ```
 
 ### Private content for local Windows validation
@@ -370,11 +377,13 @@ release, per-source neutral gates, and focus-loss neutralization are covered
 by data-less tests.
 iOS supplies the corresponding landscape touch and Game Controller adapters.
 Both native products load persistent AFIP profiles before input starts and
-provide four-axis save-for-next-launch calibration without replacing the active
-router. The iOS safe-area panel supports touch plus controller menu navigation
-and keeps private paths, device identity, and checksums outside the UI.
-Binding-remapping UI, controller glyphs, polished menus, and end-to-end device
-usability acceptance remain pending.
+provide four-axis calibration plus bounded seven-action button remapping
+without replacing the active router. The Windows picker supports keyboard,
+mouse, and controller input; the iOS safe-area picker supports touch and
+controller navigation with Dynamic Type and VoiceOver-compatible controls.
+Both keep private paths, device identity, and checksums outside the UI.
+Controller glyphs, polished menus, live profile replacement, Windows UI
+Automation, and end-to-end device usability acceptance remain pending.
 
 See [Input, controls, and haptics](docs/systems/INPUT.md).
 

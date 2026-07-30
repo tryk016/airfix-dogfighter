@@ -162,6 +162,9 @@ and iOS remapping requirement.
 2. [x] Extend the shared profile menu model with move, cancel-first conflict,
        atomic swap, and reset-all-assignments operations.
 3. [x] Add exhaustive synthetic tests and preserve codec/store round trips.
-4. [ ] Add the iOS text-picker surface with Dynamic Type and VoiceOver.
-5. [ ] Add the Windows picker plus UI Automation exposure.
-6. [ ] Run controller-only physical acceptance before release.
+4. [x] Add the iOS text-picker surface with Dynamic Type and VoiceOver
+       semantics.
+5. [x] Add the Windows keyboard/mouse/controller text-picker surface.
+6. [ ] Add a bounded Windows UI Automation tree before claiming Narrator
+       support.
+7. [ ] Run controller-only physical acceptance before release.

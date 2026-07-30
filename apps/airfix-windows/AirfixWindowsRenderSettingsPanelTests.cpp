@@ -80,11 +80,10 @@ makePanel(const float scale = 100.0F, const bool persistenceAvailable = true,
   return *panel;
 }
 
-[[nodiscard]] AirfixWindowsRenderSettingsPanel
-makeControllerPanel(const bool persistenceAvailable = true,
-                    const bool repairRequired = false,
-                    const AirfixWindowsUiPixelExtent output = {}) {
-  const auto profile = airfix::input::makeDefaultControllerInputProfileRecord();
+[[nodiscard]] AirfixWindowsRenderSettingsPanel makeControllerPanelWithProfile(
+    const airfix::input::ControllerInputProfileRecord &profile,
+    const bool persistenceAvailable = true, const bool repairRequired = false,
+    const AirfixWindowsUiPixelExtent output = {}) {
   auto panel = AirfixWindowsRenderSettingsPanel::create(
       RenderPresentationSettings{}, true, output, 0U, true,
       AirfixWindowsControllerProfilePanelState{
@@ -98,6 +97,15 @@ makeControllerPanel(const bool persistenceAvailable = true,
       });
   require(panel.has_value(), "valid controller panel fixture was rejected");
   return *panel;
+}
+
+[[nodiscard]] AirfixWindowsRenderSettingsPanel
+makeControllerPanel(const bool persistenceAvailable = true,
+                    const bool repairRequired = false,
+                    const AirfixWindowsUiPixelExtent output = {}) {
+  return makeControllerPanelWithProfile(
+      airfix::input::makeDefaultControllerInputProfileRecord(),
+      persistenceAvailable, repairRequired, output);
 }
 
 [[nodiscard]] const AirfixWindowsRenderSettingsViewItem &
@@ -150,6 +158,31 @@ void openLeftStickXCalibration(AirfixWindowsRenderSettingsPanel &panel) {
   require(panel.screen() ==
               AirfixWindowsRenderSettingsScreen::controllerAxisCalibration,
           "left-stick X calibration did not open");
+}
+
+void openControllerButtonBindings(AirfixWindowsRenderSettingsPanel &panel) {
+  activateItem(panel, AirfixWindowsRenderSettingsItem::buttonBindings);
+  require(panel.screen() ==
+              AirfixWindowsRenderSettingsScreen::controllerButtonBindings,
+          "controller button bindings did not open");
+}
+
+[[nodiscard]] airfix::input::ControlId
+actionControl(const airfix::input::ControllerInputProfileRecord &profile,
+              const airfix::input::ControllerDigitalGameplayAction action) {
+  const auto lookup =
+      airfix::input::controllerDigitalGameplayBinding(profile, action);
+  require(lookup.editable(), "test action was not uniquely editable");
+  return profile.bindings[lookup.bindingIndex].control;
+}
+
+void incrementBindingValue(AirfixWindowsRenderSettingsPanel &panel,
+                           const AirfixWindowsRenderSettingsItem item,
+                           const std::size_t count) {
+  for (std::size_t index = 0U; index < count; ++index) {
+    const auto view = panel.snapshot();
+    static_cast<void>(panel.consumePointer(clickNext(findItem(view, item))));
+  }
 }
 
 [[nodiscard]] bool
@@ -650,6 +683,268 @@ void controllerPersistenceCapabilitiesFailClosedAndPermitRepair() {
           "repair-only save falsely required a restart");
 }
 
+void controllerBindingPickerMovesCancelsAndSwapsExplicitly() {
+  auto moved = makeControllerPanel();
+  openControllerCalibration(moved);
+  openControllerButtonBindings(moved);
+  auto snapshot = moved.snapshot();
+  require(
+      snapshot.itemCount == 5U &&
+          snapshot.selectedItem ==
+              AirfixWindowsRenderSettingsItem::bindingAction &&
+          snapshot.selectedControllerBindingAction ==
+              airfix::input::ControllerDigitalGameplayAction::primaryFire &&
+          snapshot.selectedControllerBindingStatus ==
+              airfix::input::ControllerDigitalGameplayBindingStatus::editable &&
+          snapshot.selectedControllerBindingControlIndex == 0U &&
+          snapshot.controllerBindingPickerPhase ==
+              airfix::settings::ControllerInputBindingPickerPhase::
+                  choosingControl,
+      "button picker did not expose bounded initial action/assignment "
+      "metadata");
+
+  move(moved, 1);
+  require(moved.snapshot().selectedItem ==
+              AirfixWindowsRenderSettingsItem::bindingAssignment,
+          "controller navigation did not reach Assignment");
+  static_cast<void>(
+      moved.consumeInputFrame(pressedFrame(DigitalAction::uiTabNext)));
+  require(moved.snapshot().selectedControllerBindingControlIndex == 1U,
+          "controller shoulder did not advance Assignment");
+  incrementBindingValue(
+      moved, AirfixWindowsRenderSettingsItem::bindingAssignment, 10U);
+  activateItem(moved, AirfixWindowsRenderSettingsItem::moveBinding);
+  snapshot = moved.snapshot();
+  require(moved.screen() ==
+                  AirfixWindowsRenderSettingsScreen::controllerButtonBindings &&
+              snapshot.controllerProfileDirty &&
+              snapshot.selectedControllerBindingControlIndex == 11U,
+          "unused assignment did not move or reopen the bounded picker");
+  activateItem(moved, AirfixWindowsRenderSettingsItem::back);
+  const auto save = moved.consumePointer(
+      click(findItem(moved.snapshot(),
+                     AirfixWindowsRenderSettingsItem::saveControllerProfile)));
+  require(
+      save.controllerProfileSaveTicket.has_value() &&
+          actionControl(
+              save.controllerProfileSaveTicket->candidate,
+              airfix::input::ControllerDigitalGameplayAction::primaryFire) ==
+              airfix::input::controls::controller::dpadLeft,
+      "remap was absent from the immutable controller-profile save ticket");
+  const auto saving = moved.snapshot();
+  static_cast<void>(
+      moved.consumeInputFrame(pressedFrame(DigitalAction::uiCancel)));
+  static_cast<void>(
+      moved.consumeInputFrame(pressedFrame(DigitalAction::uiConfirm)));
+  static_cast<void>(
+      moved.consumeInputFrame(pressedFrame(DigitalAction::uiTabNext)));
+  const auto stillSaving = moved.snapshot();
+  require(stillSaving.screen ==
+                  AirfixWindowsRenderSettingsScreen::controllerCalibration &&
+              stillSaving.selectedItem == saving.selectedItem &&
+              stillSaving.status ==
+                  AirfixWindowsRenderSettingsStatus::controllerProfileSaving &&
+              stillSaving.controllerProfileSaving &&
+              stillSaving.controllerProfileDirty,
+          "controller input escaped or mutated the frozen profile during save");
+  require(moved.finishControllerProfileSaveSuccess(
+              *save.controllerProfileSaveTicket) &&
+              moved.snapshot().controllerProfileRestartRequired,
+          "saved remap did not remain next-launch-only");
+
+  auto conflict = makeControllerPanel();
+  openControllerCalibration(conflict);
+  openControllerButtonBindings(conflict);
+  incrementBindingValue(conflict,
+                        AirfixWindowsRenderSettingsItem::bindingAssignment, 1U);
+  activateItem(conflict, AirfixWindowsRenderSettingsItem::moveBinding);
+  snapshot = conflict.snapshot();
+  require(
+      conflict.screen() ==
+              AirfixWindowsRenderSettingsScreen::controllerBindingConflict &&
+          snapshot.selectedItem == AirfixWindowsRenderSettingsItem::cancel &&
+          snapshot.status ==
+              AirfixWindowsRenderSettingsStatus::controllerBindingConflict &&
+          snapshot.conflictingControllerBindingAction ==
+              airfix::input::ControllerDigitalGameplayAction::secondaryFire &&
+          snapshot.controllerBindingPickerPhase ==
+              airfix::settings::ControllerInputBindingPickerPhase::
+                  confirmingSwap &&
+          !snapshot.controllerProfileDirty,
+      "cancel-first conflict mutated the draft or did not default to Cancel");
+  static_cast<void>(
+      conflict.consumeInputFrame(pressedFrame(DigitalAction::uiConfirm)));
+  require(conflict.screen() ==
+                  AirfixWindowsRenderSettingsScreen::controllerButtonBindings &&
+              !conflict.snapshot().controllerProfileDirty &&
+              conflict.snapshot().controllerBindingPickerPhase ==
+                  airfix::settings::ControllerInputBindingPickerPhase::
+                      choosingControl,
+          "default conflict Cancel did not restore the unchanged picker");
+
+  activateItem(conflict, AirfixWindowsRenderSettingsItem::moveBinding);
+  activateItem(conflict, AirfixWindowsRenderSettingsItem::swapAssignments);
+  snapshot = conflict.snapshot();
+  require(conflict.screen() ==
+                  AirfixWindowsRenderSettingsScreen::controllerButtonBindings &&
+              snapshot.controllerProfileDirty,
+          "explicit Swap assignments did not atomically edit the shared draft");
+  activateItem(conflict, AirfixWindowsRenderSettingsItem::back);
+  const auto swapped = conflict.consumePointer(
+      click(findItem(conflict.snapshot(),
+                     AirfixWindowsRenderSettingsItem::saveControllerProfile)));
+  require(
+      swapped.controllerProfileSaveTicket.has_value() &&
+          actionControl(
+              swapped.controllerProfileSaveTicket->candidate,
+              airfix::input::ControllerDigitalGameplayAction::primaryFire) ==
+              airfix::input::controls::controller::leftTrigger &&
+          actionControl(
+              swapped.controllerProfileSaveTicket->candidate,
+              airfix::input::ControllerDigitalGameplayAction::secondaryFire) ==
+              airfix::input::controls::controller::rightTrigger,
+      "explicit conflict confirmation did not swap both assignments");
+}
+
+void controllerBindingPickerProtectsCustomAndReservedAssignments() {
+  auto bounded = makeControllerPanel();
+  openControllerCalibration(bounded);
+  openControllerButtonBindings(bounded);
+  static_cast<void>(
+      bounded.consumeInputFrame(pressedFrame(DigitalAction::uiTabPrevious)));
+  require(bounded.snapshot().selectedControllerBindingAction ==
+              airfix::input::ControllerDigitalGameplayAction::primaryFire,
+          "Action carousel moved before its first typed action");
+  incrementBindingValue(bounded, AirfixWindowsRenderSettingsItem::bindingAction,
+                        20U);
+  require(bounded.snapshot().selectedControllerBindingAction ==
+              airfix::input::ControllerDigitalGameplayAction::missionStatus,
+          "Action carousel moved beyond its seventh typed action");
+  incrementBindingValue(
+      bounded, AirfixWindowsRenderSettingsItem::bindingAssignment, 30U);
+  require(bounded.snapshot().selectedControllerBindingControlIndex ==
+              airfix::input::controllerAssignableControlCount - 1U,
+          "Assignment carousel moved beyond its fourteenth typed control");
+
+  auto protectedPanel = makeControllerPanel();
+  openControllerCalibration(protectedPanel);
+  openControllerButtonBindings(protectedPanel);
+  incrementBindingValue(
+      protectedPanel, AirfixWindowsRenderSettingsItem::bindingAssignment, 13U);
+  activateItem(protectedPanel, AirfixWindowsRenderSettingsItem::moveBinding);
+  auto snapshot = protectedPanel.snapshot();
+  require(protectedPanel.screen() ==
+                  AirfixWindowsRenderSettingsScreen::controllerButtonBindings &&
+              snapshot.status == AirfixWindowsRenderSettingsStatus::
+                                     controllerBindingProtectedConflict &&
+              snapshot.controllerBindingPickerPhase ==
+                  airfix::settings::ControllerInputBindingPickerPhase::
+                      choosingControl &&
+              !snapshot.conflictingControllerBindingAction.has_value() &&
+              !snapshot.controllerProfileDirty,
+          "protected Menu assignment mutated the draft or offered Swap");
+
+  auto custom = airfix::input::makeDefaultControllerInputProfileRecord();
+  const auto mission = airfix::input::controllerDigitalGameplayBinding(
+      custom, airfix::input::ControllerDigitalGameplayAction::missionStatus);
+  require(mission.editable() &&
+              custom.bindingCount <
+                  airfix::input::controllerProfileBindingCapacity,
+          "custom binding fixture could not be constructed");
+  auto duplicate = custom.bindings[mission.bindingIndex];
+  duplicate.control = airfix::input::controls::controller::facePrimary;
+  custom.bindings[custom.bindingCount] = duplicate;
+  ++custom.bindingCount;
+
+  auto customPanel = makeControllerPanelWithProfile(custom);
+  openControllerCalibration(customPanel);
+  openControllerButtonBindings(customPanel);
+  incrementBindingValue(customPanel,
+                        AirfixWindowsRenderSettingsItem::bindingAction, 6U);
+  snapshot = customPanel.snapshot();
+  require(
+      snapshot.selectedControllerBindingAction ==
+              airfix::input::ControllerDigitalGameplayAction::missionStatus &&
+          snapshot.selectedControllerBindingStatus ==
+              airfix::input::ControllerDigitalGameplayBindingStatus::
+                  ambiguous &&
+          snapshot.selectedControllerBindingControlIndex ==
+              airfix::windows::airfixWindowsControllerBindingNoControlIndex &&
+          snapshot.controllerBindingPickerPhase ==
+              airfix::settings::ControllerInputBindingPickerPhase::closed &&
+          snapshot.status == AirfixWindowsRenderSettingsStatus::
+                                 controllerBindingActionUnavailable &&
+          !findItem(snapshot,
+                    AirfixWindowsRenderSettingsItem::bindingAssignment)
+               .enabled &&
+          !findItem(snapshot, AirfixWindowsRenderSettingsItem::moveBinding)
+               .enabled,
+      "custom multi-binding action was guessed by the native picker");
+  const auto before = customPanel.snapshot();
+  require(customPanel
+                  .consumePointer(click(findItem(
+                      before, AirfixWindowsRenderSettingsItem::moveBinding)))
+                  .empty() &&
+              !customPanel.snapshot().controllerProfileDirty &&
+              customPanel.screen() ==
+                  AirfixWindowsRenderSettingsScreen::controllerButtonBindings,
+          "disabled custom action Move mutated or left the picker");
+}
+
+void controllerBindingResetPreservesCalibrationAndOuterCancelOwnsDraft() {
+  auto panel = makeControllerPanel();
+  openControllerCalibration(panel);
+  openLeftStickXCalibration(panel);
+  static_cast<void>(panel.consumePointer(clickNext(findItem(
+      panel.snapshot(), AirfixWindowsRenderSettingsItem::sensitivity))));
+  activateItem(panel, AirfixWindowsRenderSettingsItem::back);
+  const auto editedAxes = panel.snapshot().controllerDraftAxes;
+  openControllerButtonBindings(panel);
+  incrementBindingValue(
+      panel, AirfixWindowsRenderSettingsItem::bindingAssignment, 11U);
+  activateItem(panel, AirfixWindowsRenderSettingsItem::moveBinding);
+  activateItem(panel, AirfixWindowsRenderSettingsItem::resetAllAssignments);
+  auto snapshot = panel.snapshot();
+  require(snapshot.controllerDraftAxes == editedAxes &&
+              snapshot.selectedControllerBindingControlIndex == 0U &&
+              snapshot.controllerProfileDirty,
+          "Reset all assignments changed calibration or failed to restore "
+          "defaults");
+  activateItem(panel, AirfixWindowsRenderSettingsItem::back);
+  require(panel.screen() ==
+                  AirfixWindowsRenderSettingsScreen::controllerCalibration &&
+              panel.snapshot().controllerProfileDirty,
+          "picker Back discarded the shared controller-profile draft");
+  const auto resetSave = panel.consumePointer(
+      click(findItem(panel.snapshot(),
+                     AirfixWindowsRenderSettingsItem::saveControllerProfile)));
+  const auto defaults =
+      airfix::input::makeDefaultControllerInputProfileRecord();
+  require(
+      resetSave.controllerProfileSaveTicket.has_value() &&
+          resetSave.controllerProfileSaveTicket->candidate.axes == editedAxes &&
+          resetSave.controllerProfileSaveTicket->candidate.bindings ==
+              defaults.bindings,
+      "reset save ticket did not preserve calibration and default bindings");
+
+  auto cancelled = makeControllerPanel();
+  openControllerCalibration(cancelled);
+  openControllerButtonBindings(cancelled);
+  incrementBindingValue(
+      cancelled, AirfixWindowsRenderSettingsItem::bindingAssignment, 11U);
+  activateItem(cancelled, AirfixWindowsRenderSettingsItem::moveBinding);
+  activateItem(cancelled, AirfixWindowsRenderSettingsItem::back);
+  static_cast<void>(
+      cancelled.consumeInputFrame(pressedFrame(DigitalAction::uiCancel)));
+  require(cancelled.screen() == AirfixWindowsRenderSettingsScreen::pause &&
+              !cancelled.snapshot().controllerProfileDirty,
+          "outer controller Cancel did not discard the complete shared draft");
+  openControllerCalibration(cancelled);
+  openControllerButtonBindings(cancelled);
+  require(cancelled.snapshot().selectedControllerBindingControlIndex == 0U,
+          "reopened picker retained a remap discarded by outer Cancel");
+}
+
 void controllerLayoutsFitSupportedOutputs() {
   constexpr std::array outputs{
       AirfixWindowsUiPixelExtent{
@@ -667,6 +962,13 @@ void controllerLayoutsFitSupportedOutputs() {
     openControllerCalibration(panel);
     requireSnapshotInsideOutput(panel.snapshot());
     openLeftStickXCalibration(panel);
+    requireSnapshotInsideOutput(panel.snapshot());
+    activateItem(panel, AirfixWindowsRenderSettingsItem::back);
+    openControllerButtonBindings(panel);
+    requireSnapshotInsideOutput(panel.snapshot());
+    incrementBindingValue(
+        panel, AirfixWindowsRenderSettingsItem::bindingAssignment, 1U);
+    activateItem(panel, AirfixWindowsRenderSettingsItem::moveBinding);
     requireSnapshotInsideOutput(panel.snapshot());
   }
 }
@@ -708,6 +1010,9 @@ int main() {
     controllerCalibrationUsesSharedPreviewAndSavesForNextLaunch();
     controllerCalibrationCancelFailureAndRetryAreAtomic();
     controllerPersistenceCapabilitiesFailClosedAndPermitRepair();
+    controllerBindingPickerMovesCancelsAndSwapsExplicitly();
+    controllerBindingPickerProtectsCustomAndReservedAssignments();
+    controllerBindingResetPreservesCalibrationAndOuterCancelOwnsDraft();
     controllerLayoutsFitSupportedOutputs();
     snapshotExposesOnlyBoundedOperationalMetadata();
   } catch (const std::exception &error) {

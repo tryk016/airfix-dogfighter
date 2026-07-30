@@ -1,6 +1,7 @@
 #pragma once
 
 #include "airfix/input/InputFrame.hpp"
+#include "airfix/settings/ControllerInputBindingPickerModel.hpp"
 #include "airfix/settings/ControllerInputProfileMenuModel.hpp"
 #include "airfix/settings/RenderPresentationSettingsMenuModel.hpp"
 
@@ -21,6 +22,8 @@ enum class AirfixWindowsRenderSettingsScreen : std::uint8_t {
   displaySettings,
   controllerCalibration,
   controllerAxisCalibration,
+  controllerButtonBindings,
+  controllerBindingConflict,
 };
 
 enum class AirfixWindowsRenderSettingsItem : std::uint8_t {
@@ -37,6 +40,7 @@ enum class AirfixWindowsRenderSettingsItem : std::uint8_t {
   leftStickY,
   rightStickX,
   rightStickY,
+  buttonBindings,
   innerDeadzone,
   outerSaturation,
   sensitivity,
@@ -44,6 +48,11 @@ enum class AirfixWindowsRenderSettingsItem : std::uint8_t {
   inversion,
   resetAxis,
   resetAllCalibration,
+  bindingAction,
+  bindingAssignment,
+  moveBinding,
+  resetAllAssignments,
+  swapAssignments,
   saveControllerProfile,
   back,
   count,
@@ -65,6 +74,9 @@ enum class AirfixWindowsRenderSettingsStatus : std::uint8_t {
   controllerProfileSaveFailed,
   controllerProfilePersistenceUnavailable,
   invalidControllerProfile,
+  controllerBindingConflict,
+  controllerBindingProtectedConflict,
+  controllerBindingActionUnavailable,
 };
 
 enum class AirfixWindowsRenderSettingsSessionOverride : std::uint8_t {
@@ -152,7 +164,9 @@ struct AirfixWindowsRenderSettingsViewItem final {
              const AirfixWindowsRenderSettingsViewItem &) noexcept = default;
 };
 
-inline constexpr std::size_t airfixWindowsRenderSettingsMaximumViewItems = 7U;
+inline constexpr std::size_t airfixWindowsRenderSettingsMaximumViewItems = 8U;
+inline constexpr std::uint8_t airfixWindowsControllerBindingNoControlIndex =
+    static_cast<std::uint8_t>(input::controllerAssignableControlCount);
 
 struct AirfixWindowsControllerProfilePanelState final {
   input::ControllerInputProfileRecord active;
@@ -196,6 +210,16 @@ struct AirfixWindowsRenderSettingsViewSnapshot final {
       controllerDraftAxes{};
   input::ControllerAxisElement selectedControllerAxis{
       input::ControllerAxisElement::leftStickX};
+  input::ControllerDigitalGameplayAction selectedControllerBindingAction{
+      input::ControllerDigitalGameplayAction::primaryFire};
+  input::ControllerDigitalGameplayBindingStatus selectedControllerBindingStatus{
+      input::ControllerDigitalGameplayBindingStatus::editable};
+  std::uint8_t selectedControllerBindingControlIndex{
+      airfixWindowsControllerBindingNoControlIndex};
+  settings::ControllerInputBindingPickerPhase controllerBindingPickerPhase{
+      settings::ControllerInputBindingPickerPhase::closed};
+  std::optional<input::ControllerDigitalGameplayAction>
+      conflictingControllerBindingAction;
   input::Q15 controllerPreviewRaw{};
   input::Q15 controllerPreviewEffective{};
   bool dirty{};
@@ -306,6 +330,15 @@ private:
   void closeDisplaySettings() noexcept;
   void closeControllerCalibration() noexcept;
   void openSelectedControllerAxis() noexcept;
+  void openControllerButtonBindings() noexcept;
+  void closeControllerButtonBindings() noexcept;
+  void selectControllerBindingAction(std::int32_t direction) noexcept;
+  void refreshControllerBindingPicker() noexcept;
+  void applyControllerBindingSelection() noexcept;
+  void confirmControllerBindingSwap() noexcept;
+  void cancelControllerBindingSwap() noexcept;
+  void setControllerBindingPickerStatus(
+      const settings::ControllerInputBindingPickerResult &result) noexcept;
   [[nodiscard]] AirfixWindowsRenderSettingsItem &
   selectionForCurrentScreen() noexcept;
   [[nodiscard]] const AirfixWindowsRenderSettingsItem &
@@ -314,6 +347,7 @@ private:
   settings::RenderPresentationSettingsMenuModel model_;
   std::optional<settings::ControllerInputProfileMenuModel>
       controllerProfileModel_;
+  settings::ControllerInputBindingPickerModel controllerBindingPicker_;
   AirfixWindowsUiPixelExtent output_;
   AirfixWindowsRenderSettingsSessionOverrideMask sessionOverrideMask_{};
   std::optional<settings::RenderPresentationSettingsMenuApplyTicket>
@@ -331,8 +365,14 @@ private:
       AirfixWindowsRenderSettingsItem::leftStickX};
   AirfixWindowsRenderSettingsItem selectedControllerAxisItem_{
       AirfixWindowsRenderSettingsItem::innerDeadzone};
+  AirfixWindowsRenderSettingsItem selectedControllerBindingItem_{
+      AirfixWindowsRenderSettingsItem::bindingAction};
+  AirfixWindowsRenderSettingsItem selectedControllerBindingConflictItem_{
+      AirfixWindowsRenderSettingsItem::cancel};
   input::ControllerAxisElement selectedControllerAxis_{
       input::ControllerAxisElement::leftStickX};
+  input::ControllerDigitalGameplayAction selectedControllerBindingAction_{
+      input::ControllerDigitalGameplayAction::primaryFire};
   AirfixWindowsRenderSettingsStatus status_{
       AirfixWindowsRenderSettingsStatus::ready};
   bool verticalNavigationLatched_{};

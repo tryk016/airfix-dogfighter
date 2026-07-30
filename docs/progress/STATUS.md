@@ -176,8 +176,12 @@
   moving to an unused control is atomic, conflicts cancel by default, only
   another unique supported action can be explicitly swapped, and protected or
   custom layouts fail closed. Reset restores default bindings without changing
-  calibration, and save remains next-launch-only. Native Windows/iOS remap
-  pickers, glyphs, haptics, and physical-device persistence acceptance remain.
+  calibration, and save remains next-launch-only. Native text pickers now
+  project that exact transaction through keyboard/mouse/controller input on
+  Windows and touch/controller input on iOS. The iOS surface uses Dynamic Type,
+  safe-area scrolling, accessibility labels, and a separate cancel-first
+  conflict screen. Windows UI Automation, glyphs, haptics, live replacement,
+  and physical-device persistence acceptance remain.
 - Local Git repository initialized on branch `main`; planning baseline committed
   as `59828ed`.
 - GitHub remote `tryk016/airfix-dogfighter` connected and the planning baseline
@@ -1058,14 +1062,12 @@
    storage. Preserve one already-ordered outcome call per transition; do not
    batch, sort, deduplicate, replay, or let the value-only consumer execute UI
    or disk effects.
-4. Expose the implemented ADR-0015 bounded remap transaction through explicit
-   text pickers on Windows and iOS. Preserve its cancel-first conflicts,
-   protected recovery controls, unique-supported-action-only atomic swap, and
-   full default-binding reset; do not expose the raw AFIP table or claim
-   Narrator support before Windows UI Automation exists. Before supporting
-   live replacement, add a host-owned pause transaction that prepares a fresh
-   pair. Then add persistent touch layout/visibility profiles, controller
-   glyphs, haptics, and finished menu bindings before touch-only and
+4. Complete ADR-0015 acceptance around the implemented native text pickers.
+   Add a bounded Windows UI Automation tree before claiming Narrator support,
+   then run keyboard/mouse/controller accessibility acceptance. Before
+   supporting live replacement, add a host-owned pause transaction that
+   prepares a fresh pair. Then add persistent touch layout/visibility profiles,
+   controller glyphs, haptics, and finished menu bindings before touch-only and
    controller-only acceptance on both target iPhones. Never mutate
    position-indexed active router state in place or accept a live caller's
    unauthenticated mission claim.
@@ -1105,6 +1107,17 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The native ADR-0015 text pickers expose the same bounded seven-action
+  transaction through keyboard/mouse/controller input on Windows and
+  touch/controller input on iOS, while retaining one complete AFIP draft and
+  next-launch-only save. The complete portable GCC/Ninja build passes 117/117
+  CTests; the complete MSVC 19.51/Ninja Windows product links and passes
+  127/127 CTests, including both D3D11 product smokes. Clang-format
+  warnings-as-errors, synthetic public-boundary tests, the 604-file repository
+  scan, and `git diff --check` pass. Independent review found two P2 issues,
+  verified the save-freeze and localization fixes, and returned final GO with
+  no remaining P0-P3 finding. Hosted Apple compilation and physical-device
+  acceptance remain gates.
 - The value-only mission outcome consumer preserves the exact
   `missionExists && accomplished && !failed` predicate, failure precedence,
   typed campaign side, signed maximum comparison, and always-set-thread

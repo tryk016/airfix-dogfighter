@@ -1,9 +1,9 @@
 # Input, controls, and haptics system
 
 **Status:** portable core, controller-profile V1, safe native startup seams,
-native gameplay transport, Windows/iOS calibration/save UI, and the bounded
-binding-remap model implemented; native remap pickers, haptics, glyphs, and
-device acceptance pending
+native gameplay transport, Windows/iOS calibration/remap/save UI, and the
+bounded binding-remap model implemented; live replacement, Windows UI
+Automation, haptics, glyphs, and device acceptance pending
 
 **Priority:** P0 for the Windows x64 and iOS vertical slices
 
@@ -73,8 +73,9 @@ private persisted controller profile and constructs its initial router/bridge
 pair from that immutable configuration. Its pause surface now edits the four
 stick-axis calibration records, previews raw and adjusted Q15 values through
 the exact runtime transform, and durably saves a complete AFIP for the next
-launch. The portable remap model is implemented, while its Windows picker,
-live replacement, glyphs, and rumble policy remain pending.
+launch. Its compact native text picker now projects the shared seven-action
+remap model through keyboard, mouse, and controller input. Live replacement,
+Windows UI Automation, glyphs, and rumble policy remain pending.
 
 The native iOS layer feeds the complete current gameplay-action surface from a
 safe-area-aware UIKit overlay and Apple's Game Controller framework; none of
@@ -83,9 +84,9 @@ default through a one-time pre-start seam. Its calibration panel uses the same
 portable draft/persisted/active model and exact integer runtime transform as
 Windows, saves only for the next launch, and never publishes draft state to the
 active router. Live replacement requires a future host-owned pause transaction.
-The portable remap model is implemented, while its iOS picker, controller
-glyphs, finished product menus, physical-device acceptance, and haptic
-adapters remain follow-up layers.
+The same safe-area panel now exposes the portable seven-action text picker with
+touch and controller navigation. Controller glyphs, finished product menus,
+physical-device acceptance, and haptic adapters remain follow-up layers.
 
 The portable simulation consumer is also implemented.
 `airfix::simulation::PlayerAircraftState` accepts one eligible `InputFrame` at
@@ -220,9 +221,9 @@ An explicit reset restores the complete default binding table while preserving
 all four calibration records. Remapping extends the existing single
 active/persisted/draft owner, so save failure retains the entire draft for
 retry, a successful changed save still applies only on next launch, and the
-active position-indexed router is never edited in place. The Windows and iOS
-text-picker surfaces remain follow-up work; this core does not yet expose
-remapping to players.
+active position-indexed router is never edited in place. Windows and iOS now
+project that same allocation-free picker state through native text surfaces;
+neither surface receives raw AFIP records.
 
 ### Implemented native iOS slice
 
@@ -261,12 +262,15 @@ excluded from neutral-gate blocking and is restored only after the required two
 safe ticks. Foreground activation and room publication never resume gameplay;
 the player must explicitly use pause/menu.
 
-The iOS pause surface now offers Display settings and Controller calibration as
-separate controller-selectable panels. The safe-area calibration flow edits all
+The iOS pause surface now offers Display settings and Controller settings as
+separate controller-selectable panels. The safe-area controller flow edits all
 four standardized stick axes, exposes per-axis inner deadzone, outer
 saturation, sensitivity, linear/squared/cubic response, inversion and reset,
-and refreshes a value-only raw/adjusted Q15 preview at 15 Hz. The preview uses
-the draft only; gameplay continues to use the immutable startup profile.
+and refreshes a value-only raw/adjusted Q15 preview at 15 Hz. It also lists the
+seven supported gameplay actions and fourteen assignable controls, keeps
+conflicts cancel-first, and offers only an explicit supported-action swap. The
+preview and remap both use the draft only; gameplay continues to use the
+immutable startup profile.
 
 Saving serializes the complete AFIP on the shared settings queue. Ambiguous
 publication is accepted only after a fresh valid `current` readback exactly
@@ -277,10 +281,9 @@ path, checksum, controller identity, GUID or Bluetooth address. Settings panels
 remain in the validated menu context, so a valid custom profile need not
 contain modal/control-editor bindings.
 
-This completes calibration/save transport and the portable remap transaction,
-not control-system acceptance. The iOS remap picker, persistent touch
-layout/visibility profiles, prompt glyphs, haptics, finished touch/controller
-menus, and physical validation of
+This completes calibration/remap/save transport, not control-system acceptance.
+Persistent touch layout/visibility profiles, prompt glyphs, haptics, finished
+touch/controller menus, and physical validation of
 Application Support protection, save/force-quit/relaunch and lifecycle recovery
 on both target iPhones remain pending.
 
@@ -318,9 +321,14 @@ an explicit `Save for next launch` action. A repair-only save is available
 after safe backup/default recovery. Storage errors disable saving without
 disabling input or aborting the session, and no UI/log includes a path,
 checksum, SDL identity, GUID, controller name, or Bluetooth address.
-Selected-device UI, the Windows remap picker, glyphs, digital menu repeat,
-rumble, and physical Xbox/PlayStation/generic-controller testing remain
-pending.
+The same bounded text picker supports keyboard, mouse, and controller input,
+uses a separate cancel-first conflict screen, and allows only an explicit
+supported-action swap. The data-less
+`--capture-controller-bindings-panel <output.bmp>` mode renders this exact
+surface from the canonical default profile without reading private storage.
+Selected-device UI, Windows UI Automation, glyphs, digital menu repeat, rumble,
+and physical
+Xbox/PlayStation/generic-controller testing remain pending.
 
 ## Input contexts
 

@@ -15,9 +15,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
-// Calibration-only editor for the four standardized stick axes. Saves are
-// durable for the next process launch; the active input profile is never
-// replaced while this controller exists.
+// Draft editor for the four standardized stick axes and the bounded gameplay
+// button-binding catalog. One save persists the complete controller profile
+// for the next process launch; the active input profile is never replaced
+// while this controller exists.
 @interface AirfixControllerCalibrationPanelViewController : UIViewController
 
 @property(nonatomic, weak, nullable)
@@ -33,8 +34,9 @@ NS_ASSUME_NONNULL_BEGIN
     NS_UNAVAILABLE;
 - (instancetype)initWithCoder:(NSCoder *)coder NS_UNAVAILABLE;
 
-// Main-thread controller/menu projection. Preview axes are raw standardized
-// Q15 values and are transformed with the shared portable calibration path.
+// Main-thread controller/menu projection. It routes controller navigation
+// through every settings screen. Preview axes are raw standardized Q15 values
+// and are transformed with the shared portable calibration path.
 - (void)consumeUIInputSnapshot:(AirfixUIInputSnapshot *)input;
 
 @end
