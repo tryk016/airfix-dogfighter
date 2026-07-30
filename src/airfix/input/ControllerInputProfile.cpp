@@ -46,6 +46,11 @@ expectedPhysicalKind(const ControlId control) noexcept {
   return PhysicalEventKind::digital;
 }
 
+[[nodiscard]] constexpr bool isTrigger(const ControlId control) noexcept {
+  using namespace controls::controller;
+  return control == rightTrigger || control == leftTrigger;
+}
+
 [[nodiscard]] constexpr bool activeIn(const ControllerBindingRecord &binding,
                                       const ContextMask context) noexcept {
   return (binding.contexts & context) != 0U;
@@ -229,6 +234,17 @@ validateBinding(const ControllerBindingRecord &candidate,
   if (candidate.targetKind >= BindingTargetKind::count ||
       candidate.targetKind == BindingTargetKind::weaponSelection) {
     return issue(ControllerInputProfileIssueKind::invalidTargetKind, index);
+  }
+  // V1 native adapters deliberately expose triggers as fixed-threshold binary
+  // transitions carried in an analog physical event (0 or q15One). Do not
+  // accept records that imply continuous trigger transport or a configurable
+  // actuation threshold that the platform layer cannot honor.
+  if (isTrigger(candidate.control) &&
+      (candidate.targetKind != BindingTargetKind::digital ||
+       candidate.scale != q15One ||
+       candidate.meaningfulThreshold != controllerTriggerActuationQ15)) {
+    return issue(ControllerInputProfileIssueKind::triggerRequiresBinaryBinding,
+                 index);
   }
   switch (candidate.targetKind) {
   case BindingTargetKind::digital:

@@ -24,6 +24,11 @@ validControllerControl(const ControllerDigitalControl control) noexcept {
 
 } // namespace
 
+DesktopInputBridge::DesktopInputBridge(
+    const ControllerInputRuntimeConfiguration &configuration) noexcept
+    : router_(configuration.bindings()),
+      controllerBridge_(configuration) {}
+
 bool DesktopInputBridge::key(const ControlId control, const bool pressed,
                              const std::uint64_t timestamp) noexcept {
   if (!focused_ || failed_) {

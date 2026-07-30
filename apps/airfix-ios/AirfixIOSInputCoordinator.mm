@@ -7,6 +7,7 @@
 #import <UIKit/UIKit.h>
 
 #include "airfix/input/ControllerInputBatchBridge.hpp"
+#include "airfix/input/ControllerInputRuntimeConfiguration.hpp"
 #include "airfix/input/InputRouter.hpp"
 
 #include <algorithm>
@@ -15,16 +16,23 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <type_traits>
 #include <utility>
 
 namespace {
+
+static_assert(
+    std::is_nothrow_move_assignable_v<airfix::input::InputRouter>);
+static_assert(std::is_nothrow_move_assignable_v<
+              airfix::input::ControllerInputBatchBridge>);
 
 constexpr CFTimeInterval kInputStepSeconds = 1.0 / 60.0;
 constexpr CFTimeInterval kMaximumAccumulatedSeconds =
     kInputStepSeconds * 8.0;
 constexpr std::uint64_t kDiagnosticHeartbeatTicks = 6U;
 constexpr std::int32_t kControllerStickDeadzone = 4096;
-constexpr std::int32_t kControllerTriggerActuation = 16384;
+constexpr std::int32_t kControllerTriggerActuation =
+    airfix::input::controllerTriggerActuationQ15;
 constexpr std::size_t kTouchAxisCount =
     static_cast<std::size_t>(AirfixTouchAxisCameraLookY) + 1U;
 constexpr std::size_t kTouchButtonCount =
@@ -114,6 +122,8 @@ constexpr airfix::input::SourceHandle kControllerSource{
         sample.secondaryTrigger >= kControllerTriggerActuation;
     result.throttleUpPressed = sample.dpadUpPressed;
     result.throttleDownPressed = sample.dpadDownPressed;
+    result.uiPreviousPressed = sample.dpadLeftPressed;
+    result.uiNextPressed = sample.dpadRightPressed;
     result.weaponNextPressed = sample.rightShoulderPressed;
     result.rearViewPressed = sample.leftShoulderPressed;
     result.cameraCyclePressed = sample.faceLeftPressed;
@@ -186,6 +196,12 @@ static_assert(AirfixGameControllerDigitalControlFaceSecondary ==
 static_assert(AirfixGameControllerDigitalControlRightStickClick ==
     static_cast<std::uint8_t>(
         airfix::input::ControllerDigitalControl::cameraRecenter));
+static_assert(AirfixGameControllerDigitalControlDpadLeft ==
+    static_cast<std::uint8_t>(
+        airfix::input::ControllerDigitalControl::uiPrevious));
+static_assert(AirfixGameControllerDigitalControlDpadRight ==
+    static_cast<std::uint8_t>(
+        airfix::input::ControllerDigitalControl::uiNext));
 
 } // namespace
 
@@ -303,6 +319,7 @@ static_assert(AirfixGameControllerDigitalControlRightStickClick ==
     BOOL _foreground;
     BOOL _suppressControllerLossPause;
     BOOL _resettingSources;
+    BOOL _controllerProfileInstalled;
     BOOL _handlingInputFailure;
     BOOL _terminalInputFailure;
 }
@@ -333,6 +350,8 @@ static_assert(AirfixGameControllerDigitalControlRightStickClick ==
 - (void)performOnMain:(dispatch_block_t)block;
 - (BOOL)setPrivateFrameConsumer:
     (const airfix::ios::InputFrameConsumer&)consumer;
+- (BOOL)installPrivateControllerProfileBeforeStart:
+    (const airfix::input::ResolvedControllerInputProfile&)profile;
 @end
 
 @implementation AirfixInputDisplayLinkTarget
@@ -976,6 +995,39 @@ lastMeaningfulSource:AirfixInputSourceNone];
     }
 }
 
+- (BOOL)installPrivateControllerProfileBeforeStart:
+    (const airfix::input::ResolvedControllerInputProfile&)profile {
+    NSAssert(NSThread.isMainThread,
+        @"Controller profile installation belongs to main");
+    if (_terminalInputFailure || _resettingSources || _started ||
+        _controllerProfileInstalled) {
+        return NO;
+    }
+
+    const auto prepared =
+        airfix::input::prepareControllerInputRuntimeConfiguration(profile);
+    if (!prepared.complete()) {
+        return NO;
+    }
+
+    airfix::input::InputRouter candidateRouter{
+        prepared.configuration->bindings()};
+    candidateRouter.setContext(_router.context());
+    candidateRouter.lifecycleReset();
+    airfix::input::ControllerInputBatchBridge candidateControllerBridge{
+        *prepared.configuration};
+
+    // This is deliberately a one-time pre-start publication. Both assignments
+    // are statically required to be noexcept, and no callbacks, locks,
+    // allocations, or fallible native work occur after the candidate pair has
+    // been prepared.
+    _router = std::move(candidateRouter);
+    _controllerBridge = std::move(candidateControllerBridge);
+    _controllerEmissions.fill({});
+    _controllerProfileInstalled = YES;
+    return YES;
+}
+
 #pragma mark - Touch controls
 
 - (void)touchControlsView:(AirfixTouchControlsView*)view
@@ -1174,6 +1226,20 @@ void reportInputFrameConsumerFailure(
     }
     catch (...) {
         // The bridge is noexcept even if a host callback is not.
+    }
+}
+
+bool installControllerInputProfileBeforeStart(
+    AirfixIOSInputCoordinator* coordinator,
+    const input::ResolvedControllerInputProfile& profile) noexcept {
+    if (!NSThread.isMainThread || coordinator == nil) {
+        return false;
+    }
+    try {
+        return [coordinator installPrivateControllerProfileBeforeStart:profile];
+    }
+    catch (...) {
+        return false;
     }
 }
 

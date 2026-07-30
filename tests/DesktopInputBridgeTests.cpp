@@ -1,14 +1,18 @@
 #include "airfix/input/DesktopInputBridge.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
+#include <utility>
 
 namespace {
 
 using airfix::input::AnalogAxis;
 using airfix::input::ControllerDigitalControl;
+using airfix::input::ControllerInputProfileRecord;
 using airfix::input::ControllerSample;
 using airfix::input::DesktopControllerAxis;
 using airfix::input::DesktopInputBridge;
@@ -17,6 +21,12 @@ using airfix::input::InputContext;
 using airfix::input::InputFrame;
 using airfix::input::q15Min;
 using airfix::input::q15One;
+
+static_assert(
+    std::is_nothrow_move_assignable_v<airfix::input::InputRouter>);
+static_assert(std::is_nothrow_move_assignable_v<
+              airfix::input::ControllerInputBatchBridge>);
+static_assert(std::is_nothrow_move_assignable_v<DesktopInputBridge>);
 
 void require(const bool condition, const std::string &message) {
   if (!condition) {
@@ -192,6 +202,183 @@ void testControllerReplacementRequiresNeutral() {
           "replacement controller did not recover after neutral");
 }
 
+[[nodiscard]] ControllerInputProfileRecord remappedControllerRecord() {
+  auto record = airfix::input::makeDefaultControllerInputProfileRecord();
+  bool changedAxis = false;
+  bool changedConfirm = false;
+  bool preservedConfirmRecovery = false;
+  for (std::size_t index = 0U; index < record.bindingCount; ++index) {
+    auto &binding = record.bindings[index];
+    if (binding.control == airfix::input::controls::controller::leftStickX &&
+        binding.targetKind == airfix::input::BindingTargetKind::analog &&
+        binding.target == static_cast<std::uint8_t>(AnalogAxis::flightBank)) {
+      binding.target = static_cast<std::uint8_t>(AnalogAxis::flightPitch);
+      changedAxis = true;
+    } else if (binding.control ==
+                   airfix::input::controls::controller::facePrimary &&
+               binding.targetKind ==
+                   airfix::input::BindingTargetKind::digital &&
+               binding.target ==
+                   static_cast<std::uint8_t>(DigitalAction::uiConfirm)) {
+      binding.target = static_cast<std::uint8_t>(DigitalAction::uiTabNext);
+      changedConfirm = true;
+    } else if (binding.control ==
+                   airfix::input::controls::controller::rightShoulder &&
+               binding.targetKind ==
+                   airfix::input::BindingTargetKind::digital &&
+               binding.target ==
+                   static_cast<std::uint8_t>(DigitalAction::uiTabNext)) {
+      binding.target = static_cast<std::uint8_t>(DigitalAction::uiConfirm);
+      preservedConfirmRecovery = true;
+    }
+  }
+  require(changedAxis, "default controller bank binding was not found");
+  require(changedConfirm, "default controller confirm binding was not found");
+  require(preservedConfirmRecovery,
+          "default controller tab-next binding was not found");
+  record.axes[0U].inverted = 1U;
+  return record;
+}
+
+[[nodiscard]] ControllerInputProfileRecord sparseControllerRecord() {
+  auto record = airfix::input::makeDefaultControllerInputProfileRecord();
+  std::size_t writeIndex = 0U;
+  for (std::size_t readIndex = 0U; readIndex < record.bindingCount;
+       ++readIndex) {
+    const auto &binding = record.bindings[readIndex];
+    if (binding.control == airfix::input::controls::controller::rightStickX ||
+        binding.control == airfix::input::controls::controller::faceLeft) {
+      continue;
+    }
+    record.bindings[writeIndex] = binding;
+    ++writeIndex;
+  }
+  require(writeIndex < record.bindingCount,
+          "sparse controller profile did not remove a binding");
+  for (std::size_t index = writeIndex; index < record.bindings.size();
+       ++index) {
+    record.bindings[index] = {};
+  }
+  record.bindingCount = static_cast<std::uint8_t>(writeIndex);
+  return record;
+}
+
+void testPreparedProfileOwnsFreshRouterAndCalibratedBridge() {
+  const auto record = remappedControllerRecord();
+  const auto resolved = airfix::input::resolveControllerInputProfile(record);
+  require(resolved.complete(), "remapped profile did not resolve");
+  const auto prepared =
+      airfix::input::prepareControllerInputRuntimeConfiguration(
+          *resolved.profile);
+  require(prepared.complete(),
+          "remapped runtime configuration did not prepare");
+
+  DesktopInputBridge bridge{*prepared.configuration};
+  require(bridge.controllerProfile() != nullptr &&
+              bridge.controllerProfile()->record() == record,
+          "fresh desktop bridge lost its prepared profile");
+  openControllerNeutralGate(bridge);
+  require(bridge.controllerAxis(DesktopControllerAxis::bank, 12000),
+          "configured controller axis failed");
+  const auto frame = tick(bridge, 3U);
+  require(frame.analog(AnalogAxis::flightBank) == 0,
+          "fresh router retained the replaced bank mapping");
+  require(frame.analog(AnalogAxis::flightPitch) == -12000,
+          "fresh bridge did not apply calibration before remapping");
+}
+
+void testFreshProfilePairDiscardsOldInputAndRequiresNeutralSnapshot() {
+  DesktopInputBridge active;
+  active.setContext(InputContext::menu);
+  openControllerNeutralGate(active);
+  require(active.controllerButton(ControllerDigitalControl::uiConfirm, true),
+          "old pending controller press failed");
+
+  const auto record = remappedControllerRecord();
+  const auto resolved = airfix::input::resolveControllerInputProfile(record);
+  require(resolved.complete(), "replacement profile did not resolve");
+  const auto prepared =
+      airfix::input::prepareControllerInputRuntimeConfiguration(
+          *resolved.profile);
+  require(prepared.complete(), "replacement configuration did not prepare");
+
+  DesktopInputBridge candidate{*prepared.configuration};
+  candidate.setContext(InputContext::menu);
+  candidate.resetForGameplayBoundary();
+  ControllerSample heldSnapshot{};
+  heldSnapshot.bank = 12000;
+  heldSnapshot.uiConfirmPressed = true;
+  require(candidate.connectController(41U, heldSnapshot),
+          "replacement full controller snapshot failed");
+
+  active = std::move(candidate);
+  const auto blocked = tick(active, 3U);
+  require(blocked.analog(AnalogAxis::uiNavigateX) == 0 &&
+              !blocked.pressed(DigitalAction::uiConfirm) &&
+              !blocked.held(DigitalAction::uiConfirm) &&
+              !blocked.pressed(DigitalAction::uiTabNext) &&
+              !blocked.held(DigitalAction::uiTabNext),
+          "held snapshot or old pending edge bypassed replacement gate");
+
+  require(active.controllerAxis(DesktopControllerAxis::bank, 0),
+          "replacement neutral axis failed");
+  require(active.controllerButton(ControllerDigitalControl::uiConfirm, false),
+          "replacement neutral button failed");
+  const auto firstNeutral = tick(active, 4U);
+  require(!firstNeutral.pressed(DigitalAction::uiTabNext),
+          "first neutral tick admitted replacement input");
+  const auto secondNeutral = tick(active, 5U);
+  require(!secondNeutral.pressed(DigitalAction::uiTabNext),
+          "second neutral tick synthesized replacement input");
+
+  require(active.controllerButton(ControllerDigitalControl::uiConfirm, true),
+          "fresh post-gate controller press failed");
+  const auto remapped = tick(active, 6U);
+  require(remapped.pressed(DigitalAction::uiTabNext) &&
+              remapped.held(DigitalAction::uiTabNext) &&
+              !remapped.pressed(DigitalAction::uiConfirm) &&
+              !remapped.held(DigitalAction::uiConfirm),
+          "fresh press did not use the replacement binding table");
+}
+
+void testSparseProfileIgnoresUnmappedPhysicalState() {
+  const auto record = sparseControllerRecord();
+  const auto resolved = airfix::input::resolveControllerInputProfile(record);
+  require(resolved.complete(), "sparse controller profile did not resolve");
+  const auto prepared =
+      airfix::input::prepareControllerInputRuntimeConfiguration(
+          *resolved.profile);
+  require(prepared.complete(),
+          "sparse controller configuration did not prepare");
+
+  DesktopInputBridge bridge{*prepared.configuration};
+  bridge.setContext(InputContext::menu);
+  ControllerSample heldUnmapped{};
+  heldUnmapped.lookX = 12000;
+  heldUnmapped.cameraCyclePressed = true;
+  require(bridge.connectController(71U, heldUnmapped),
+          "sparse controller snapshot failed");
+  const auto first = tick(bridge, 1U);
+  require(bridge.healthy() &&
+              first.analog(AnalogAxis::cameraLookX) == 0 &&
+              !first.held(DigitalAction::cameraCycle),
+          "unmapped full-state input reached the router");
+
+  require(bridge.controllerAxis(DesktopControllerAxis::lookX, 0),
+          "unmapped axis release failed");
+  require(bridge.controllerButton(ControllerDigitalControl::cameraCycle,
+                                  false),
+          "unmapped button release failed");
+  (void)tick(bridge, 2U);
+
+  require(bridge.controllerButton(ControllerDigitalControl::uiConfirm, true),
+          "mapped sparse-profile button press failed");
+  const auto mapped = tick(bridge, 3U);
+  require(bridge.healthy() && mapped.pressed(DigitalAction::uiConfirm) &&
+              mapped.held(DigitalAction::uiConfirm),
+          "remaining sparse-profile binding stopped working");
+}
+
 void testLifecycleNeutralization() {
   using namespace airfix::input::controls::keyboard;
 
@@ -239,8 +426,7 @@ void testGameplayBoundaryRequiresFreshNeutralInput() {
   using namespace airfix::input::controls;
 
   DesktopInputBridge bridge;
-  require(bridge.key(keyboard::space, true),
-          "pre-boundary fire press failed");
+  require(bridge.key(keyboard::space, true), "pre-boundary fire press failed");
   require(tick(bridge, 1U).held(DigitalAction::combatPrimaryFire),
           "pre-boundary fire was not held");
 
@@ -300,6 +486,9 @@ int main() {
     testMousePulsesAndAxisReset();
     testControllerDeadzoneEdgesAndDisconnect();
     testControllerReplacementRequiresNeutral();
+    testPreparedProfileOwnsFreshRouterAndCalibratedBridge();
+    testFreshProfilePairDiscardsOldInputAndRequiresNeutralSnapshot();
+    testSparseProfileIgnoresUnmappedPhysicalState();
     testLifecycleNeutralization();
     testUnfocusedControllerEventsAreIgnored();
     testGameplayBoundaryRequiresFreshNeutralInput();

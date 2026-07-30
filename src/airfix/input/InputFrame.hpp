@@ -14,6 +14,7 @@ using Q15 = std::int16_t;
 inline constexpr Q15 q15Min = static_cast<Q15>(-32767);
 inline constexpr Q15 q15Zero = 0;
 inline constexpr Q15 q15One = 32767;
+inline constexpr Q15 controllerTriggerActuationQ15 = 16384;
 inline constexpr Q15 uiNavigationActuationQ15 = 16384;
 inline constexpr Q15 uiNavigationReleaseQ15 = 8192;
 

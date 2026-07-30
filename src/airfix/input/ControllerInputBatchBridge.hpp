@@ -1,10 +1,11 @@
 #pragma once
 
-#include "airfix/input/InputRouter.hpp"
+#include "airfix/input/ControllerInputRuntimeConfiguration.hpp"
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 
 namespace airfix::input {
@@ -13,21 +14,21 @@ namespace airfix::input {
 // platform frameworks out of this contract: adapters translate their native
 // samples into these plain C++ values before reconciliation.
 enum class ControllerDigitalControl : std::uint8_t {
-  primaryTrigger = 0,
-  pause = 1,
-  secondaryTrigger = 2,
-  throttleUp = 3,
-  throttleDown = 4,
-  weaponNext = 5,
-  rearView = 6,
-  cameraCycle = 7,
-  missionStatus = 8,
-  uiConfirm = 9,
-  uiCancel = 10,
-  cameraRecenter = 11,
-  uiPrevious = 12,
-  uiNext = 13,
-  count = 14,
+    primaryTrigger = 0,
+    pause = 1,
+    secondaryTrigger = 2,
+    throttleUp = 3,
+    throttleDown = 4,
+    weaponNext = 5,
+    rearView = 6,
+    cameraCycle = 7,
+    missionStatus = 8,
+    uiConfirm = 9,
+    uiCancel = 10,
+    cameraRecenter = 11,
+    uiPrevious = 12,
+    uiNext = 13,
+    count = 14,
 };
 
 inline constexpr std::size_t controllerDigitalControlCount =
@@ -57,8 +58,8 @@ struct ControllerSample final {
     [[nodiscard]] bool pressed(ControllerDigitalControl control) const noexcept;
     void setPressed(ControllerDigitalControl control, bool value) noexcept;
 
-    [[nodiscard]] friend constexpr bool operator==(
-        const ControllerSample&, const ControllerSample&) noexcept = default;
+    [[nodiscard]] friend constexpr bool operator==(const ControllerSample&,
+        const ControllerSample&) noexcept = default;
 };
 
 struct ControllerDigitalEdge final {
@@ -67,8 +68,7 @@ struct ControllerDigitalEdge final {
     ControllerDigitalControl control{ControllerDigitalControl::primaryTrigger};
     bool pressed{};
 
-    [[nodiscard]] friend constexpr bool operator==(
-        const ControllerDigitalEdge&,
+    [[nodiscard]] friend constexpr bool operator==(const ControllerDigitalEdge&,
         const ControllerDigitalEdge&) noexcept = default;
 };
 
@@ -131,9 +131,9 @@ struct ControllerDigitalMapping final {
     case ControllerDigitalControl::cameraRecenter:
         return {rightStickClick, PhysicalEventKind::digital};
     case ControllerDigitalControl::uiPrevious:
-      return {dpadLeft, PhysicalEventKind::digital};
+        return {dpadLeft, PhysicalEventKind::digital};
     case ControllerDigitalControl::uiNext:
-      return {dpadRight, PhysicalEventKind::digital};
+        return {dpadRight, PhysicalEventKind::digital};
     case ControllerDigitalControl::count:
         break;
     }
@@ -146,6 +146,7 @@ enum class ControllerBatchStatus : std::uint8_t {
     inputOverflow,
     inputCapacityExceeded,
     invalidAxis,
+    calibrationFailed,
     startingStateMismatch,
     invalidEdgeGeneration,
     invalidEdgeOrder,
@@ -162,8 +163,7 @@ struct ControllerBatchResult final {
         return status == ControllerBatchStatus::accepted;
     }
 
-    [[nodiscard]] friend constexpr bool operator==(
-        const ControllerBatchResult&,
+    [[nodiscard]] friend constexpr bool operator==(const ControllerBatchResult&,
         const ControllerBatchResult&) noexcept = default;
 };
 
@@ -172,9 +172,13 @@ public:
     static constexpr std::int32_t stickDeadzone = 4096;
     static constexpr std::int32_t meaningfulAxisDelta = 1024;
     static constexpr std::size_t maximumEmissionCount =
-        controllerAxisCount +
-        (controllerDigitalControlCount * 2U) +
+        controllerAxisCount + (controllerDigitalControlCount * 2U) +
         ControllerInputBatch::edgeCapacity;
+
+    ControllerInputBatchBridge() noexcept = default;
+    explicit ControllerInputBatchBridge(
+        const ControllerInputRuntimeConfiguration& configuration) noexcept
+        : configuration_(configuration) {}
 
     // The output order is deterministic: final continuous axes, a starting
     // digital full-state for a new generation, ordered edges, then any final
@@ -190,7 +194,13 @@ public:
         return hasGeneration_ ? generation_ : 0U;
     }
 
+    [[nodiscard]] constexpr const ResolvedControllerInputProfile*
+    controllerProfile() const noexcept {
+        return configuration_ ? &configuration_->profile() : nullptr;
+    }
+
 private:
+    std::optional<ControllerInputRuntimeConfiguration> configuration_;
     std::uint64_t generation_{};
     std::uint64_t lastEdgeOrder_{};
     ControllerSample acceptedSample_{};

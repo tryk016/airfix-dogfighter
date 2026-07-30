@@ -1,6 +1,7 @@
 #include "AirfixSdlInputAdapter.hpp"
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <limits>
@@ -77,8 +78,10 @@ void testGamepadAxes() {
               airfix::windows::sdlGamepadAxisValue(
                   SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, 20000) == 20000,
           "SDL trigger range was not clamped to positive Q15");
-  require(!airfix::windows::sdlGamepadTriggerPressed(16383) &&
-              airfix::windows::sdlGamepadTriggerPressed(16384),
+  require(!airfix::windows::sdlGamepadTriggerPressed(
+              airfix::input::controllerTriggerActuationQ15 - 1) &&
+              airfix::windows::sdlGamepadTriggerPressed(
+                  airfix::input::controllerTriggerActuationQ15),
           "SDL trigger actuation threshold was incorrect");
 }
 
@@ -117,17 +120,47 @@ void testGamepadButtons() {
                 "D-pad right");
 }
 
+void testPreparedProfileIsInstalledAtAdapterConstruction() {
+  const auto initialRecord =
+      airfix::input::makeDefaultControllerInputProfileRecord();
+  const auto initial =
+      airfix::input::resolveControllerInputProfile(initialRecord);
+  const auto initialConfiguration =
+      initial.complete()
+          ? airfix::input::prepareControllerInputRuntimeConfiguration(
+                *initial.profile)
+          : airfix::input::ControllerInputRuntimeConfigurationResult{};
+  require(initialConfiguration.complete(),
+          "initial controller configuration did not prepare");
+
+  airfix::windows::AirfixSdlInputAdapter adapter{
+      *initialConfiguration.configuration};
+  require(adapter.activeControllerProfile() != nullptr &&
+              adapter.activeControllerProfile()->record() == initialRecord,
+          "Windows adapter did not start with the prepared profile");
+}
+
 } // namespace
 
 int main() {
+  if (!SDL_Init(SDL_INIT_EVENTS | SDL_INIT_GAMEPAD)) {
+    std::cerr << "AirfixSdlInputMappingTests failed: SDL initialization\n";
+    return 1;
+  }
+  int exitCode = 0;
   try {
     testKeyboardUsesUsbHidIds();
     testMouseMappingAndScaling();
     testGamepadAxes();
     testGamepadButtons();
+    testPreparedProfileIsInstalledAtAdapterConstruction();
   } catch (const std::exception &error) {
     std::cerr << "AirfixSdlInputMappingTests failed: " << error.what() << '\n';
-    return 1;
+    exitCode = 1;
+  }
+  SDL_Quit();
+  if (exitCode != 0) {
+    return exitCode;
   }
 
   std::cout << "AirfixSdlInputMappingTests passed\n";

@@ -4090,3 +4090,38 @@ superseded evidence.
   persistence diagnostics, and stale documentation. Windows and iOS now share
   the same portable UI-navigation actuation/release constants. Final re-review
   reports GO with no remaining P0-P3 finding.
+
+## 2026-07-30 - safe native controller-profile startup
+
+- Added an immutable runtime configuration that keeps one resolved controller
+  profile together with its exact compiled binding table and a mask of physical
+  controls actually used by that profile. Active position-indexed router state
+  is never mutated in place.
+- Windows interactive startup now loads the private AFIP store through
+  `current -> backup -> default` recovery before constructing SDL input.
+  Session-only validation modes remain data-less. A changed durable profile is
+  applied on restart; no live caller can assert a pause boundary.
+- iOS startup applies the canonical default through the same fresh-pair seam.
+  The iOS seam is one-time and pre-start, with a fully prepared pair and a
+  statically no-throw publication point. D-pad left/right now reach the portable
+  previous/next controls.
+- Live replacement is deliberately deferred until each product has a
+  host-owned pause transaction. A menu/input context alone cannot authorize a
+  swap.
+- V1 deadzone layering is explicit: the legacy transport floor is applied
+  before profile calibration. Configured axes emit every changed calibrated
+  Q15 value so a small delta cannot hide a binding threshold crossing. Triggers
+  remain a fixed binary native transport at Q15 `16384`; incompatible
+  continuous, scaled, or alternate-threshold bindings fail validation.
+- Synthetic tests prove prepared profile/table consistency, calibration,
+  remapping, transport-floor boundaries, a sub-`1024` threshold crossing,
+  discarded pre-swap input, blocked held full snapshots, exactly two neutral
+  ticks, fresh remapped input, and safe omission of unmapped controls from full
+  snapshots and later events. A fresh GCC 15.2/Ninja build completes 360 steps and
+  passes 112/112 CTests; a fresh MSVC 19.51/Ninja Windows product build
+  completes 642 steps and passes 121/121 CTests. Clang 22 warnings-as-errors,
+  synthetic public-boundary tests, the 572-file repository scan, and
+  `git diff --check` pass. Independent re-review reproduces the sparse-profile
+  failure before the fix, confirms the corrected full-state/edge behavior, and
+  reports GO with no P0-P3 finding. Hosted Apple compilation remains the
+  publication gate.

@@ -298,6 +298,13 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     self.inputCoordinator = [[AirfixIOSInputCoordinator alloc]
         initWithTouchControlsView:touchControlsView];
     self.inputCoordinator.delegate = self;
+    const auto defaultControllerProfile =
+        airfix::input::resolveControllerInputProfile(
+            airfix::input::makeDefaultControllerInputProfileRecord());
+    const bool controllerProfileReady =
+        defaultControllerProfile.complete() &&
+        airfix::ios::detail::installControllerInputProfileBeforeStart(
+            self.inputCoordinator, *defaultControllerProfile.profile);
     self.simulationPipelineReady = YES;
     _audioBackend =
         std::make_unique<airfix::ios::AirfixAVAudioEngineBackend>();
@@ -311,7 +318,8 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
                 [strongSelf handleAudioForcedPause:reason];
             }
         });
-    self.inputPipelineReady = airfix::ios::setInputFrameConsumer(
+    self.inputPipelineReady = controllerProfileReady &&
+        airfix::ios::setInputFrameConsumer(
         self.inputCoordinator,
         [weakSelf](const airfix::input::InputFrame& frame) noexcept {
             AirfixGameViewController* strongSelf = weakSelf;

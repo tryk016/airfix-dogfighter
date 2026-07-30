@@ -80,6 +80,7 @@ endif()
 
 add_library(airfix_input
     src/airfix/input/ControllerInputProfile.cpp
+    src/airfix/input/ControllerInputRuntimeConfiguration.cpp
     src/airfix/input/ControllerInputBatchBridge.cpp
     src/airfix/input/DesktopInputBridge.cpp
     src/airfix/input/InputRouter.cpp
@@ -625,6 +626,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::input)
     add_test(NAME airfix_controller_input_profile_tests
         COMMAND airfix_controller_input_profile_tests)
+
+    add_executable(airfix_controller_input_runtime_configuration_tests
+        tests/ControllerInputRuntimeConfigurationTests.cpp)
+    target_link_libraries(airfix_controller_input_runtime_configuration_tests
+        PRIVATE airfix::input)
+    add_test(NAME airfix_controller_input_runtime_configuration_tests
+        COMMAND airfix_controller_input_runtime_configuration_tests)
 
     add_executable(airfix_controller_input_batch_bridge_tests
         tests/ControllerInputBatchBridgeTests.cpp)

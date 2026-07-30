@@ -10,7 +10,7 @@ namespace {
 [[nodiscard]] constexpr bool validControl(
     const ControllerDigitalControl control) noexcept {
     return static_cast<std::uint8_t>(control) <
-        static_cast<std::uint8_t>(ControllerDigitalControl::count);
+           static_cast<std::uint8_t>(ControllerDigitalControl::count);
 }
 
 [[nodiscard]] constexpr bool validAxis(const Q15 value) noexcept {
@@ -20,22 +20,20 @@ namespace {
 [[nodiscard]] constexpr Q15 stableAxis(const Q15 value) noexcept {
     const auto wide = static_cast<std::int32_t>(value);
     const auto magnitude = wide < 0 ? -wide : wide;
-    return magnitude < ControllerInputBatchBridge::stickDeadzone
-        ? q15Zero
-        : value;
+    return magnitude < ControllerInputBatchBridge::stickDeadzone ? q15Zero
+                                                                 : value;
 }
 
-[[nodiscard]] constexpr bool shouldSubmitAxis(
-    const Q15 previous, const Q15 current) noexcept {
+[[nodiscard]] constexpr bool shouldSubmitAxis(const Q15 previous,
+    const Q15 current) noexcept {
     if (previous == current) {
         return false;
     }
     if (previous == q15Zero || current == q15Zero) {
         return true;
     }
-    const auto difference =
-        static_cast<std::int32_t>(current) -
-        static_cast<std::int32_t>(previous);
+    const auto difference = static_cast<std::int32_t>(current) -
+                            static_cast<std::int32_t>(previous);
     const auto magnitude = difference < 0 ? -difference : difference;
     return magnitude >= ControllerInputBatchBridge::meaningfulAxisDelta;
 }
@@ -43,6 +41,13 @@ namespace {
 [[nodiscard]] constexpr std::array<Q15, controllerAxisCount> axes(
     const ControllerSample& sample) noexcept {
     return {sample.bank, sample.pitch, sample.lookX, sample.lookY};
+}
+
+[[nodiscard]] constexpr ControllerAxisElement axisElement(
+    const std::size_t index) noexcept {
+    return index < controllerAxisCount
+               ? static_cast<ControllerAxisElement>(index)
+               : ControllerAxisElement::count;
 }
 
 inline constexpr std::array<ControlId, controllerAxisCount> axisControls{
@@ -53,7 +58,8 @@ inline constexpr std::array<ControlId, controllerAxisCount> axisControls{
 };
 
 [[nodiscard]] constexpr ControllerInputEmission axisEmission(
-    const std::size_t index, const Q15 value) noexcept {
+    const std::size_t index,
+    const Q15 value) noexcept {
     return {
         axisControls[index],
         PhysicalEventKind::analog,
@@ -62,7 +68,8 @@ inline constexpr std::array<ControlId, controllerAxisCount> axisControls{
 }
 
 [[nodiscard]] constexpr ControllerInputEmission digitalEmission(
-    const ControllerDigitalControl control, const bool pressed) noexcept {
+    const ControllerDigitalControl control,
+    const bool pressed) noexcept {
     const auto mapping = controllerDigitalMapping(control);
     return {
         mapping.control,
@@ -114,17 +121,17 @@ bool ControllerSample::pressed(
     case ControllerDigitalControl::cameraRecenter:
         return cameraRecenterPressed;
     case ControllerDigitalControl::uiPrevious:
-      return uiPreviousPressed;
+        return uiPreviousPressed;
     case ControllerDigitalControl::uiNext:
-      return uiNextPressed;
+        return uiNextPressed;
     case ControllerDigitalControl::count:
         break;
     }
     return false;
 }
 
-void ControllerSample::setPressed(
-    const ControllerDigitalControl control, const bool value) noexcept {
+void ControllerSample::setPressed(const ControllerDigitalControl control,
+    const bool value) noexcept {
     switch (control) {
     case ControllerDigitalControl::primaryTrigger:
         primaryTriggerPressed = value;
@@ -163,11 +170,11 @@ void ControllerSample::setPressed(
         cameraRecenterPressed = value;
         break;
     case ControllerDigitalControl::uiPrevious:
-      uiPreviousPressed = value;
-      break;
+        uiPreviousPressed = value;
+        break;
     case ControllerDigitalControl::uiNext:
-      uiNextPressed = value;
-      break;
+        uiNextPressed = value;
+        break;
     case ControllerDigitalControl::count:
         break;
     }
@@ -202,8 +209,7 @@ ControllerBatchResult ControllerInputBatchBridge::process(
         }
     }
 
-    const bool fullState =
-        !hasGeneration_ || generation_ < batch.generation;
+    const bool fullState = !hasGeneration_ || generation_ < batch.generation;
     if (!fullState && batch.startingState != acceptedSample_) {
         return {ControllerBatchStatus::startingStateMismatch, 0U};
     }
@@ -233,11 +239,28 @@ ControllerBatchResult ControllerInputBatchBridge::process(
     auto candidateSubmittedAxes = submittedAxes_;
 
     for (std::size_t index = 0U; index < controllerAxisCount; ++index) {
-        const Q15 stabilized = stableAxis(finalAxes[index]);
-        if (fullState ||
-            shouldSubmitAxis(candidateSubmittedAxes[index], stabilized)) {
-            if (!append(
-                    scratch, emissionCount,
+        if (configuration_.has_value() &&
+            !configuration_->usesControllerControl(axisControls[index])) {
+            continue;
+        }
+        Q15 stabilized = stableAxis(finalAxes[index]);
+        if (configuration_.has_value()) {
+            const auto calibrated = transformControllerAxis(stabilized,
+                axisElement(index),
+                configuration_->profile());
+            if (!calibrated.has_value()) {
+                return {ControllerBatchStatus::calibrationFailed, 0U};
+            }
+            stabilized = *calibrated;
+        }
+        const bool changed = candidateSubmittedAxes[index] != stabilized;
+        const bool shouldSubmit =
+            configuration_.has_value()
+                ? changed
+                : shouldSubmitAxis(candidateSubmittedAxes[index], stabilized);
+        if (fullState || shouldSubmit) {
+            if (!append(scratch,
+                    emissionCount,
                     axisEmission(index, stabilized))) {
                 return {ControllerBatchStatus::outputCapacityExceeded, 0U};
             }
@@ -246,15 +269,18 @@ ControllerBatchResult ControllerInputBatchBridge::process(
     }
 
     if (fullState) {
-        for (std::size_t index = 0U;
-             index < controllerDigitalControlCount;
-             ++index) {
-            const auto control =
-                static_cast<ControllerDigitalControl>(index);
-            if (!append(
-                    scratch, emissionCount,
-                    digitalEmission(
-                        control, batch.startingState.pressed(control)))) {
+        for (std::size_t index = 0U; index < controllerDigitalControlCount;
+            ++index) {
+            const auto control = static_cast<ControllerDigitalControl>(index);
+            const auto mapping = controllerDigitalMapping(control);
+            if (configuration_.has_value() &&
+                !configuration_->usesControllerControl(mapping.control)) {
+                continue;
+            }
+            if (!append(scratch,
+                    emissionCount,
+                    digitalEmission(control,
+                        batch.startingState.pressed(control)))) {
                 return {ControllerBatchStatus::outputCapacityExceeded, 0U};
             }
         }
@@ -263,25 +289,35 @@ ControllerBatchResult ControllerInputBatchBridge::process(
     auto replayState = batch.startingState;
     for (std::size_t index = 0U; index < batch.edgeCount; ++index) {
         const auto& edge = batch.edges[index];
-        if (!append(
-                scratch, emissionCount,
+        const auto mapping = controllerDigitalMapping(edge.control);
+        if (configuration_.has_value() &&
+            !configuration_->usesControllerControl(mapping.control)) {
+            replayState.setPressed(edge.control, edge.pressed);
+            continue;
+        }
+        if (!append(scratch,
+                emissionCount,
                 digitalEmission(edge.control, edge.pressed))) {
             return {ControllerBatchStatus::outputCapacityExceeded, 0U};
         }
         replayState.setPressed(edge.control, edge.pressed);
     }
 
-    for (std::size_t index = 0U;
-         index < controllerDigitalControlCount;
-         ++index) {
-        const auto control =
-            static_cast<ControllerDigitalControl>(index);
+    for (std::size_t index = 0U; index < controllerDigitalControlCount;
+        ++index) {
+        const auto control = static_cast<ControllerDigitalControl>(index);
         const bool finalPressed = batch.finalState.pressed(control);
         if (replayState.pressed(control) == finalPressed) {
             continue;
         }
-        if (!append(
-                scratch, emissionCount,
+        const auto mapping = controllerDigitalMapping(control);
+        if (configuration_.has_value() &&
+            !configuration_->usesControllerControl(mapping.control)) {
+            replayState.setPressed(control, finalPressed);
+            continue;
+        }
+        if (!append(scratch,
+                emissionCount,
                 digitalEmission(control, finalPressed))) {
             return {ControllerBatchStatus::outputCapacityExceeded, 0U};
         }

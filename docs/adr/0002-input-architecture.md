@@ -1,6 +1,7 @@
 # ADR-0002: Semantic actions with touch and controller adapters
 
-**Status:** Accepted; portable router and controller-profile core implemented
+**Status:** Accepted; portable router, controller-profile core, and native
+startup installation seams implemented
 
 **Date:** 2026-07-21
 
@@ -115,7 +116,9 @@ context and remapping, and cannot express an absolute touch throttle cleanly.
    adapter only when desktop parity work needs it.
 5. [x] Implement a bounded controller profile, deterministic integer
    calibration, strict remapping validation, and private durable persistence.
-6. [ ] Apply profiles only at a paused/mission boundary by replacing the
-   router/bridge pair and re-entering the neutral gate.
+6. [x] Install profiles only while constructing the Windows adapter or through
+   the one-time iOS pre-start seam. Live replacement remains deferred until a
+   host-owned pause transaction can prepare and publish a fresh router/bridge
+   pair; an input context enum is not authorization.
 7. [ ] Validate whether an Apple bridge is required for haptics/glyph metadata.
 8. [ ] Run phone/tablet/controller usability and lifecycle tests.

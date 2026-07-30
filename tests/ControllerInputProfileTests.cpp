@@ -358,6 +358,35 @@ void testBindingFieldValidationFailsClosed() {
                ControllerInputProfileIssueKind::invalidBlocksNeutralGate, 0U);
 }
 
+void testTriggersRequireTheFixedBinaryV1Contract() {
+  using namespace airfix::input::controls::controller;
+
+  auto record = makeDefaultControllerInputProfileRecord();
+  const auto triggerIndex = findBinding(record, rightTrigger, gameplayContext);
+  require(record.bindings[triggerIndex].meaningfulThreshold ==
+              airfix::input::controllerTriggerActuationQ15,
+          "default trigger does not use the V1 actuation threshold");
+
+  record.bindings[triggerIndex].meaningfulThreshold = 1;
+  requireIssue(record,
+               ControllerInputProfileIssueKind::triggerRequiresBinaryBinding,
+               triggerIndex);
+
+  record = makeDefaultControllerInputProfileRecord();
+  record.bindings[triggerIndex].targetKind = BindingTargetKind::analog;
+  record.bindings[triggerIndex].target =
+      static_cast<std::uint8_t>(AnalogAxis::flightThrottleDelta);
+  requireIssue(record,
+               ControllerInputProfileIssueKind::triggerRequiresBinaryBinding,
+               triggerIndex);
+
+  record = makeDefaultControllerInputProfileRecord();
+  record.bindings[triggerIndex].scale = q15Min;
+  requireIssue(record,
+               ControllerInputProfileIssueKind::triggerRequiresBinaryBinding,
+               triggerIndex);
+}
+
 void testContextConflictsFailClosed() {
   auto record = makeDefaultControllerInputProfileRecord();
   const auto duplicateIndex = static_cast<std::size_t>(record.bindingCount);
@@ -516,6 +545,7 @@ int main() {
     testResponseCurves();
     testAxisValidationFailsClosed();
     testBindingFieldValidationFailsClosed();
+    testTriggersRequireTheFixedBinaryV1Contract();
     testContextConflictsFailClosed();
     testRecoveryBindingsAreMandatory();
     testValidRemapCompilesAtomically();
