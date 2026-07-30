@@ -40,6 +40,7 @@ struct AirfixWindowsCommandLineOptions final {
   std::optional<std::filesystem::path> captureFrameOutput;
   std::optional<std::filesystem::path> captureDiagnosticFrameOutput;
   std::optional<std::filesystem::path> captureSettingsPanelOutput;
+  std::optional<std::filesystem::path> captureControllerCalibrationPanelOutput;
   std::optional<AirfixWindowsCaptureSize> captureSize;
 
   [[nodiscard]] friend bool
@@ -63,6 +64,7 @@ parseAirfixWindowsCommandLine(std::span<const std::string_view> arguments);
          "[--smoke-test | "
          "--capture-diagnostic-frame <public-output.bmp> "
          "| --capture-settings-panel <public-output.bmp> "
+         "| --capture-controller-calibration-panel <public-output.bmp> "
          "[--capture-size <width>x<height>] | "
          "--content-root <path> [--setup <logical-path> "
          "--level <logical-path> [--player-object <logical-path>] "

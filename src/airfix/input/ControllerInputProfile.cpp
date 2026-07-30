@@ -7,9 +7,6 @@
 namespace airfix::input {
 namespace {
 
-constexpr std::uint16_t minimumSensitivityPermille = 250U;
-constexpr std::uint16_t maximumSensitivityPermille = 2000U;
-
 [[nodiscard]] constexpr ControllerInputProfileIssue
 issue(const ControllerInputProfileIssueKind kind,
       const std::size_t index = controllerInputProfileNoIndex) noexcept {
@@ -201,8 +198,10 @@ validateAxis(const ControllerAxisCalibrationRecord &calibration,
     return issue(ControllerInputProfileIssueKind::invalidOuterSaturation,
                  index);
   }
-  if (calibration.sensitivityPermille < minimumSensitivityPermille ||
-      calibration.sensitivityPermille > maximumSensitivityPermille) {
+  if (calibration.sensitivityPermille <
+          controllerAxisMinimumSensitivityPermille ||
+      calibration.sensitivityPermille >
+          controllerAxisMaximumSensitivityPermille) {
     return issue(ControllerInputProfileIssueKind::invalidSensitivity, index);
   }
   if (calibration.responseCurve >= ControllerResponseCurve::count) {

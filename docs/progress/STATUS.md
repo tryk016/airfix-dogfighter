@@ -158,8 +158,15 @@
   host-owned pause transaction exists; a changed durable profile applies after
   restart. Configured axes preserve every changed calibrated value, triggers
   use an explicit fixed binary V1 policy, and iOS covers D-pad left/right.
-  Native editor/save UI, glyphs, haptics, and physical-device persistence
-  acceptance remain.
+  Windows now adds a DPI-aware pause-menu calibration editor for all four
+  standardized stick axes. It uses the exact runtime transport/profile
+  transform for a rate-limited raw/adjusted preview, validates every complete
+  draft, preserves bindings, and saves atomically for the next launch without
+  mutating the active SDL adapter. Backup/default recovery can request an
+  explicit repair write; unavailable or blocked persistence disables only the
+  save action. A synthetic, data-less capture mode proves the surface without
+  reading the private store. iOS profile saving/editing, binding remapping,
+  glyphs, haptics, and physical-device persistence acceptance remain.
 - Local Git repository initialized on branch `main`; planning baseline committed
   as `59828ed`.
 - GitHub remote `tryk016/airfix-dogfighter` connected and the planning baseline
@@ -1023,14 +1030,15 @@
    campaign/save consumer before wiring the isolated mission-outcome state.
    Preserve one already-ordered call per transition; do not batch, sort,
    deduplicate, replay, or invent a priority when both native flags are true.
-4. Add the native calibration/remapping editor and save-on-next-launch flow on
-   top of the implemented Windows and load-only iOS AFIP startup adapters.
-   Before supporting live replacement, add a host-owned pause transaction that
-   prepares a fresh pair. Then add persistent touch layout/visibility profiles,
-   controller glyphs, haptics, and finished menu bindings before touch-only and
-   controller-only acceptance on both target iPhones. Never mutate
-   position-indexed active router state in place or accept a live caller's
-   unauthenticated mission claim.
+4. Extend the implemented Windows save-on-next-launch calibration surface with
+   binding remapping only after its conflict/recovery UX is specified, and add
+   the corresponding private save/editor flow above the load-only iOS AFIP
+   startup adapter. Before supporting live replacement, add a host-owned pause
+   transaction that prepares a fresh pair. Then add persistent touch
+   layout/visibility profiles, controller glyphs, haptics, and finished menu
+   bindings before touch-only and controller-only acceptance on both target
+   iPhones. Never mutate position-indexed active router state in place or accept
+   a live caller's unauthenticated mission claim.
 5. Connect the implemented weak camera-runtime endpoint to the recovered live
    AirCraft producer once it supplies distinct chase position, world anchor,
    vehicle rotation, live health, inactive state, and the confirmed scheduler

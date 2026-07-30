@@ -14,6 +14,8 @@ namespace airfix::input {
 inline constexpr std::uint32_t controllerInputProfileRecordSchemaVersion = 1U;
 inline constexpr std::size_t controllerProfileAxisCount = 4U;
 inline constexpr std::size_t controllerProfileBindingCapacity = 48U;
+inline constexpr std::uint16_t controllerAxisMinimumSensitivityPermille = 250U;
+inline constexpr std::uint16_t controllerAxisMaximumSensitivityPermille = 2000U;
 inline constexpr std::size_t controllerInputProfileNoIndex =
     std::numeric_limits<std::size_t>::max();
 

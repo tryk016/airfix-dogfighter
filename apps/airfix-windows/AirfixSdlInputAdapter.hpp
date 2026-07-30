@@ -4,6 +4,8 @@
 
 #include <SDL3/SDL.h>
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 
 namespace airfix::windows {
@@ -21,6 +23,25 @@ struct SdlInputEventResult final {
   bool accepted{true};
   bool meaningfulInput{};
   bool controllerDisconnected{};
+};
+
+// Storage- and device-identity-neutral live values used only by the local
+// calibration preview. Indices match ControllerAxisElement. No SDL handle,
+// GUID, controller name, path, or persistence state crosses this boundary.
+struct SdlControllerAxisSnapshot final {
+  std::array<airfix::input::Q15, airfix::input::controllerProfileAxisCount>
+      rawAxes{};
+  bool connected{};
+
+  [[nodiscard]] constexpr airfix::input::Q15
+  axis(const airfix::input::ControllerAxisElement element) const noexcept {
+    const auto index = static_cast<std::size_t>(element);
+    return index < rawAxes.size() ? rawAxes[index] : airfix::input::q15Zero;
+  }
+
+  [[nodiscard]] friend constexpr bool
+  operator==(const SdlControllerAxisSnapshot &,
+             const SdlControllerAxisSnapshot &) noexcept = default;
 };
 
 [[nodiscard]] airfix::input::ControlId
@@ -63,6 +84,8 @@ public:
   [[nodiscard]] const char *controllerName() const noexcept;
   [[nodiscard]] const airfix::input::ResolvedControllerInputProfile *
   activeControllerProfile() const noexcept;
+  [[nodiscard]] SdlControllerAxisSnapshot
+  controllerAxisSnapshot() const noexcept;
 
 private:
   [[nodiscard]] bool openGamepad(SDL_JoystickID instanceId) noexcept;

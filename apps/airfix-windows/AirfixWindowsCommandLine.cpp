@@ -100,6 +100,7 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
   std::optional<std::filesystem::path> captureFrameOutput;
   std::optional<std::filesystem::path> captureDiagnosticFrameOutput;
   std::optional<std::filesystem::path> captureSettingsPanelOutput;
+  std::optional<std::filesystem::path> captureControllerCalibrationPanelOutput;
   std::optional<AirfixWindowsCaptureSize> captureSize;
   bool scenePresentationSeen = false;
   bool visualProfileSeen = false;
@@ -209,6 +210,17 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
       if (extension != ".bmp" && extension != ".BMP") {
         invalidCommandLine();
       }
+    } else if (option == "--capture-controller-calibration-panel") {
+      if (captureControllerCalibrationPanelOutput.has_value()) {
+        invalidCommandLine();
+      }
+      captureControllerCalibrationPanelOutput =
+          std::filesystem::path(requireValue(arguments, index));
+      const auto extension =
+          captureControllerCalibrationPanelOutput->extension().string();
+      if (extension != ".bmp" && extension != ".BMP") {
+        invalidCommandLine();
+      }
     } else if (option == "--capture-size") {
       if (captureSize.has_value()) {
         invalidCommandLine();
@@ -225,17 +237,22 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
                                    startIndex.has_value();
   const bool hasContentSpecificOption =
       hasAnyMissionOption || captureFrameOutput.has_value();
-  const bool hasAnyCapture = captureFrameOutput.has_value() ||
-                             captureDiagnosticFrameOutput.has_value() ||
-                             captureSettingsPanelOutput.has_value();
+  const bool hasAnyCapture =
+      captureFrameOutput.has_value() ||
+      captureDiagnosticFrameOutput.has_value() ||
+      captureSettingsPanelOutput.has_value() ||
+      captureControllerCalibrationPanelOutput.has_value();
   if ((options.smokeTest &&
        (options.contentRoot.has_value() || hasContentSpecificOption ||
         captureDiagnosticFrameOutput.has_value() ||
-        captureSettingsPanelOutput.has_value() || captureSize.has_value())) ||
+        captureSettingsPanelOutput.has_value() ||
+        captureControllerCalibrationPanelOutput.has_value() ||
+        captureSize.has_value())) ||
       (!options.contentRoot.has_value() && hasContentSpecificOption) ||
       (options.contentRoot.has_value() &&
        (captureDiagnosticFrameOutput.has_value() ||
-        captureSettingsPanelOutput.has_value())) ||
+        captureSettingsPanelOutput.has_value() ||
+        captureControllerCalibrationPanelOutput.has_value())) ||
       (hasAnyMissionOption && !hasMissionPair) ||
       (captureFrameOutput.has_value() &&
        (options.validateContentOnly || !hasMissionPair)) ||
@@ -243,10 +260,14 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
        (hasAnyMissionOption || options.validateContentOnly)) ||
       (captureSettingsPanelOutput.has_value() &&
        (hasAnyMissionOption || options.validateContentOnly)) ||
+      (captureControllerCalibrationPanelOutput.has_value() &&
+       (hasAnyMissionOption || options.validateContentOnly)) ||
       (captureSize.has_value() && !hasAnyCapture) ||
       ((static_cast<unsigned>(captureFrameOutput.has_value()) +
         static_cast<unsigned>(captureDiagnosticFrameOutput.has_value()) +
-        static_cast<unsigned>(captureSettingsPanelOutput.has_value())) > 1U)) {
+        static_cast<unsigned>(captureSettingsPanelOutput.has_value()) +
+        static_cast<unsigned>(
+            captureControllerCalibrationPanelOutput.has_value())) > 1U)) {
     invalidCommandLine();
   }
   if (hasMissionPair) {
@@ -261,6 +282,8 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
   options.captureDiagnosticFrameOutput =
       std::move(captureDiagnosticFrameOutput);
   options.captureSettingsPanelOutput = std::move(captureSettingsPanelOutput);
+  options.captureControllerCalibrationPanelOutput =
+      std::move(captureControllerCalibrationPanelOutput);
   options.captureSize = captureSize;
   if (options.captureDiagnosticFrameOutput.has_value()) {
     if (options.renderOverrides.diagnosticsOverlayEnabled == false) {

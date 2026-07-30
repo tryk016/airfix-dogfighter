@@ -1,6 +1,7 @@
 #include "AirfixD3D11Renderer.hpp"
 #include "AirfixSdlInputAdapter.hpp"
 #include "AirfixWindowsCommandLine.hpp"
+#include "AirfixWindowsControllerProfileCoordinator.hpp"
 #include "AirfixWindowsRenderSettingsCoordinator.hpp"
 #include "AirfixWindowsRenderSettingsPanel.hpp"
 #include "AirfixWindowsSettingsRoot.hpp"
@@ -42,6 +43,8 @@ namespace {
 
 constexpr std::uint64_t inputStepNanoseconds = 1'000'000'000ULL / 60ULL;
 constexpr std::uint64_t maximumFrameNanoseconds = inputStepNanoseconds * 8ULL;
+constexpr std::uint64_t controllerPreviewRefreshNanoseconds =
+    1'000'000'000ULL / 15ULL;
 constexpr airfix::audio::AudioClipId smokeAudioClip{1U};
 constexpr int minimumInteractiveWindowWidth = 640;
 constexpr int minimumInteractiveWindowHeight = 360;
@@ -318,6 +321,74 @@ reloadWindowsRenderSettings(void *const context) noexcept {
   }
 }
 
+[[nodiscard]] bool controllerProfileNeedsRepair(
+    const airfix::settings::ControllerInputProfileLoadResult &load) noexcept {
+  using Source = airfix::settings::ControllerInputProfileLoadSource;
+  using Status = airfix::settings::ControllerInputProfileFileStatus;
+  if (load.persistenceBlocked || load.source == Source::current) {
+    return false;
+  }
+  if (load.source == Source::backup) {
+    return true;
+  }
+  return load.current.status != Status::missing ||
+         load.backup.status != Status::missing;
+}
+
+[[nodiscard]] airfix::windows::AirfixWindowsControllerProfileStoreResult
+storeWindowsControllerProfile(
+    void *const context,
+    const airfix::input::ControllerInputProfileRecord &candidate) noexcept {
+  using ErrorKind = airfix::settings::ControllerInputProfileStoreErrorKind;
+  using Result = airfix::windows::AirfixWindowsControllerProfileStoreResult;
+  using SaveStatus = airfix::settings::ControllerInputProfileSaveStatus;
+  using Status = airfix::windows::AirfixWindowsControllerProfileStoreStatus;
+  const auto *persistence =
+      static_cast<const WindowsRenderSettingsPersistenceContext *>(context);
+  if (persistence == nullptr || !persistence->settingsDirectory.has_value()) {
+    return Result{Status::unavailable};
+  }
+  try {
+    const auto saved = airfix::settings::saveControllerInputProfile(
+        *persistence->settingsDirectory, candidate);
+    return Result{saved.status == SaveStatus::unchanged ? Status::unchanged
+                                                        : Status::committed};
+  } catch (const airfix::settings::ControllerInputProfileStoreError &error) {
+    switch (error.kind()) {
+    case ErrorKind::commitUnknown:
+      return Result{Status::commitUnknown};
+    case ErrorKind::persistenceBlocked:
+      return Result{Status::blocked};
+    case ErrorKind::invalidDirectory:
+      return Result{Status::unavailable};
+    case ErrorKind::invalidProfile:
+    case ErrorKind::saveFailed:
+      return Result{Status::failed};
+    }
+  } catch (...) {
+  }
+  return Result{Status::failed};
+}
+
+[[nodiscard]] airfix::windows::AirfixWindowsControllerProfileReloadResult
+reloadWindowsControllerProfile(void *const context) noexcept {
+  using Result = airfix::windows::AirfixWindowsControllerProfileReloadResult;
+  using Status = airfix::windows::AirfixWindowsControllerProfileReloadStatus;
+  const auto *persistence =
+      static_cast<const WindowsRenderSettingsPersistenceContext *>(context);
+  if (persistence == nullptr || !persistence->settingsDirectory.has_value()) {
+    return Result{.status = Status::unavailable};
+  }
+  try {
+    const auto loaded = airfix::settings::loadControllerInputProfile(
+        *persistence->settingsDirectory);
+    return airfix::windows::classifyWindowsControllerProfileCommitReadback(
+        loaded);
+  } catch (...) {
+    return Result{.status = Status::failed};
+  }
+}
+
 [[nodiscard]] airfix::windows::AirfixWindowsUiPixelExtent
 windowsUiExtent(SDL_Window &window) {
   int width{};
@@ -466,7 +537,8 @@ int run(const int argumentCount, char *arguments[]) {
       options.smokeTest || options.validateContentOnly ||
       options.captureFrameOutput.has_value() ||
       options.captureDiagnosticFrameOutput.has_value() ||
-      options.captureSettingsPanelOutput.has_value();
+      options.captureSettingsPanelOutput.has_value() ||
+      options.captureControllerCalibrationPanelOutput.has_value();
   SDL_WindowFlags flags = SDL_WINDOW_HIGH_PIXEL_DENSITY;
   flags |= sessionOnlyInvocation ? SDL_WINDOW_HIDDEN : SDL_WINDOW_RESIZABLE;
   const auto initialWindowSize = options.captureSize.value_or(
@@ -557,9 +629,10 @@ int run(const int argumentCount, char *arguments[]) {
         "Windows render settings coordinator could not be created");
   }
 
+  const auto defaultControllerRecord =
+      airfix::input::makeDefaultControllerInputProfileRecord();
   const auto defaultControllerProfile =
-      airfix::input::resolveControllerInputProfile(
-          airfix::input::makeDefaultControllerInputProfileRecord());
+      airfix::input::resolveControllerInputProfile(defaultControllerRecord);
   if (!defaultControllerProfile.complete()) {
     throw std::runtime_error(
         "canonical controller profile could not be resolved");
@@ -572,6 +645,11 @@ int run(const int argumentCount, char *arguments[]) {
         "canonical controller runtime configuration could not be prepared");
   }
   auto controllerInputConfiguration = *preparedControllerInput.configuration;
+  auto activeControllerRecord = defaultControllerRecord;
+  auto persistentControllerRecord = defaultControllerRecord;
+  auto controllerPersistenceState = airfix::windows::
+      AirfixWindowsControllerProfilePersistenceState::unavailable;
+  bool controllerProfileRepairRequired = false;
   if (!sessionOnlyInvocation &&
       persistenceContext.settingsDirectory.has_value()) {
     try {
@@ -585,6 +663,15 @@ int run(const int argumentCount, char *arguments[]) {
             "validated controller profile did not prepare");
       }
       controllerInputConfiguration = *prepared.configuration;
+      activeControllerRecord = loaded.profile.record();
+      persistentControllerRecord = activeControllerRecord;
+      controllerPersistenceState =
+          loaded.persistenceBlocked
+              ? airfix::windows::
+                    AirfixWindowsControllerProfilePersistenceState::blocked
+              : airfix::windows::
+                    AirfixWindowsControllerProfilePersistenceState::available;
+      controllerProfileRepairRequired = controllerProfileNeedsRepair(loaded);
       switch (loaded.source) {
       case airfix::settings::ControllerInputProfileLoadSource::current:
         std::cerr << "Controller input profile: current\n";
@@ -602,8 +689,24 @@ int run(const int argumentCount, char *arguments[]) {
     } catch (...) {
       // The canonical in-memory profile remains active. Never reveal a
       // settings path, document bytes, checksum, or platform error here.
+      controllerPersistenceState = airfix::windows::
+          AirfixWindowsControllerProfilePersistenceState::unavailable;
       std::cerr << "Controller input profile: storage-unavailable\n";
     }
+  }
+  const airfix::windows::AirfixWindowsControllerProfileCallbacks
+      controllerProfileCallbacks{
+          .store = storeWindowsControllerProfile,
+          .reload = reloadWindowsControllerProfile,
+          .context = &persistenceContext,
+      };
+  auto controllerProfileCoordinator =
+      airfix::windows::AirfixWindowsControllerProfileCoordinator::create(
+          persistentControllerRecord, controllerPersistenceState,
+          controllerProfileCallbacks);
+  if (!controllerProfileCoordinator.has_value()) {
+    throw std::runtime_error(
+        "Windows controller profile coordinator could not be created");
   }
 
   airfix::windows::AirfixWindowsUiRasterizer uiRasterizer;
@@ -635,6 +738,67 @@ int run(const int argumentCount, char *arguments[]) {
     renderer.capturePublicSettingsPanelFrameToBmp(
         *options.captureSettingsPanelOutput);
     std::cout << "Public D3D11 settings-panel frame captured\n";
+    return 0;
+  }
+  if (options.captureControllerCalibrationPanelOutput.has_value()) {
+    auto captureControllerRecord = defaultControllerRecord;
+    captureControllerRecord
+        .axes[static_cast<std::size_t>(
+            airfix::input::ControllerAxisElement::leftStickX)]
+        .sensitivityPermille = 1350U;
+    auto panel = airfix::windows::AirfixWindowsRenderSettingsPanel::create(
+        startupSettings, true, windowsUiExtent(*window),
+        airfix::windows::airfixWindowsRenderSettingsSessionOverrideMask(
+            options.renderOverrides),
+        false,
+        airfix::windows::AirfixWindowsControllerProfilePanelState{
+            .active = captureControllerRecord,
+            .persisted = captureControllerRecord,
+            .capabilities =
+                {
+                    .persistenceAvailable = true,
+                    .repairRequired = false,
+                },
+        });
+    if (!panel.has_value()) {
+      throw std::runtime_error(
+          "public controller-calibration capture model is invalid");
+    }
+    const auto activateItem =
+        [&](const airfix::windows::AirfixWindowsRenderSettingsItem item) {
+          const auto snapshot = panel->snapshot();
+          const auto found = std::find_if(
+              snapshot.items.begin(),
+              snapshot.items.begin() + snapshot.itemCount,
+              [item](const auto &candidate) { return candidate.item == item; });
+          if (found == snapshot.items.begin() + snapshot.itemCount) {
+            throw std::runtime_error(
+                "public controller-calibration capture item is unavailable");
+          }
+          (void)panel->consumePointer({
+              .xPixels = found->bounds.x + found->bounds.width * 0.5F,
+              .yPixels = found->bounds.y + found->bounds.height * 0.5F,
+              .wheelY = 0,
+              .primaryPressed = true,
+          });
+        };
+    activateItem(airfix::windows::AirfixWindowsRenderSettingsItem::
+                     controllerCalibration);
+    activateItem(airfix::windows::AirfixWindowsRenderSettingsItem::leftStickX);
+    airfix::windows::AirfixWindowsControllerAxisInputSnapshot syntheticInput{};
+    syntheticInput.rawAxes[static_cast<std::size_t>(
+        airfix::input::ControllerAxisElement::leftStickX)] =
+        static_cast<airfix::input::Q15>(19'661);
+    syntheticInput.connected = true;
+    panel->setControllerAxisInput(syntheticInput);
+    const auto raster = uiRasterizer.rasterize(panel->snapshot());
+    if (!raster.complete() || !renderer.setProductUiRaster(*raster.raster)) {
+      throw std::runtime_error(
+          "public controller-calibration raster could not be published");
+    }
+    renderer.capturePublicSettingsPanelFrameToBmp(
+        *options.captureControllerCalibrationPanelOutput);
+    std::cout << "Public D3D11 controller-calibration panel frame captured\n";
     return 0;
   }
   airfix::windows::AirfixXAudio2Backend audio;
@@ -758,6 +922,7 @@ int run(const int argumentCount, char *arguments[]) {
       renderSettingsPanel;
   std::optional<airfix::windows::AirfixWindowsRenderSettingsViewSnapshot>
       publishedPanelSnapshot;
+  std::uint64_t controllerPreviewRefreshTime{};
   bool simulationPipelineReady = true;
   bool windowFocused =
       (SDL_GetWindowFlags(window.get()) & SDL_WINDOW_INPUT_FOCUS) != 0U;
@@ -804,11 +969,27 @@ int run(const int argumentCount, char *arguments[]) {
             windowsUiExtent(*window),
             airfix::windows::airfixWindowsRenderSettingsSessionOverrideMask(
                 renderSettingsCoordinator->sessionOverrides()),
-            mayResumeSimulation());
+            mayResumeSimulation(),
+            airfix::windows::AirfixWindowsControllerProfilePanelState{
+                .active = activeControllerRecord,
+                .persisted = controllerProfileCoordinator->persistentBase(),
+                .capabilities =
+                    {
+                        .persistenceAvailable = controllerProfileCoordinator
+                                                    ->persistenceAvailable(),
+                        .repairRequired = controllerProfileRepairRequired,
+                    },
+            });
     if (!renderSettingsPanel.has_value()) {
       throw std::runtime_error(
           "Windows render settings panel could not be created");
     }
+    const auto controllerAxes = input.controllerAxisSnapshot();
+    renderSettingsPanel->setControllerAxisInput({
+        .rawAxes = controllerAxes.rawAxes,
+        .connected = controllerAxes.connected,
+    });
+    controllerPreviewRefreshTime = SDL_GetTicksNS();
     publishedPanelSnapshot.reset();
     refreshRenderSettingsPanel();
   };
@@ -828,6 +1009,21 @@ int run(const int argumentCount, char *arguments[]) {
           } else {
             (void)renderSettingsPanel->finishApplyFailure(*intent.applyTicket);
           }
+        }
+        if (intent.controllerProfileSaveTicket.has_value()) {
+          const auto outcome =
+              controllerProfileCoordinator->applyPersistentCandidate(
+                  intent.controllerProfileSaveTicket->candidate);
+          if (outcome.accepted()) {
+            controllerProfileRepairRequired = false;
+            (void)renderSettingsPanel->finishControllerProfileSaveSuccess(
+                *intent.controllerProfileSaveTicket);
+          } else {
+            (void)renderSettingsPanel->finishControllerProfileSaveFailure(
+                *intent.controllerProfileSaveTicket);
+          }
+          renderSettingsPanel->setControllerProfilePersistenceAvailable(
+              controllerProfileCoordinator->persistenceAvailable());
         }
         if (intent.resumeRequested && mayResumeSimulation()) {
           input.setContext(airfix::input::InputContext::gameplay);
@@ -932,6 +1128,21 @@ int run(const int argumentCount, char *arguments[]) {
     const std::uint64_t elapsed =
         currentTime >= previousTime ? currentTime - previousTime : 0U;
     previousTime = currentTime;
+    if (renderSettingsPanel.has_value() &&
+        renderSettingsPanel->screen() ==
+            airfix::windows::AirfixWindowsRenderSettingsScreen::
+                controllerAxisCalibration &&
+        (currentTime < controllerPreviewRefreshTime ||
+         currentTime - controllerPreviewRefreshTime >=
+             controllerPreviewRefreshNanoseconds)) {
+      const auto controllerAxes = input.controllerAxisSnapshot();
+      renderSettingsPanel->setControllerAxisInput({
+          .rawAxes = controllerAxes.rawAxes,
+          .connected = controllerAxes.connected,
+      });
+      controllerPreviewRefreshTime = currentTime;
+      refreshRenderSettingsPanel();
+    }
     inputAccumulator += std::min(elapsed, maximumFrameNanoseconds);
     while (inputAccumulator >= inputStepNanoseconds) {
       if (inputTick == std::numeric_limits<std::uint64_t>::max()) {

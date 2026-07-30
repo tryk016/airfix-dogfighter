@@ -1,8 +1,8 @@
 # Input, controls, and haptics system
 
 **Status:** portable core, controller-profile V1, safe native startup seams,
-and native gameplay transport implemented; editor UI, iOS profile persistence,
-haptics, glyphs, and device acceptance pending
+native gameplay transport, and Windows calibration/save UI implemented; iOS
+profile saving/editor UI, haptics, glyphs, and device acceptance pending
 
 **Priority:** P0 for the Windows x64 and iOS vertical slices
 
@@ -69,16 +69,19 @@ keyboard/mouse focus and standardized-controller discovery/hot-plug, converts
 those native values into stable USB HID/control IDs and Q15 values, and emits
 the same normalized events as iOS. Windows interactive startup now loads the
 private persisted controller profile and constructs its initial router/bridge
-pair from that immutable configuration. Live replacement, the settings editor,
-glyphs, and rumble policy remain pending.
+pair from that immutable configuration. Its pause surface now edits the four
+stick-axis calibration records, previews raw and adjusted Q15 values through
+the exact runtime transform, and durably saves a complete AFIP for the next
+launch. Live replacement, binding remapping, glyphs, and rumble policy remain
+pending.
 
 The native iOS layer feeds the complete current gameplay-action surface from a
 safe-area-aware UIKit overlay and Apple's Game Controller framework; none of
 those platform types enter `InputFrame`. Startup applies the canonical default
 through a one-time pre-start seam. Live replacement requires a future
-host-owned pause transaction. Private iOS profile persistence,
-controller glyphs, finished menu UI, physical device acceptance, and haptic
-adapters remain follow-up layers.
+host-owned pause transaction. Private iOS profile saving/editing, controller
+glyphs, finished menu UI, physical device
+acceptance, and haptic adapters remain follow-up layers.
 
 The portable simulation consumer is also implemented.
 `airfix::simulation::PlayerAircraftState` accepts one eligible `InputFrame` at
@@ -177,11 +180,14 @@ recovery before the fixed input pump may start. Storage failure still installs
 the in-memory canonical default through the same one-time seam. AFRS and AFIP
 share one native serial persistence queue so directory creation, permission
 hardening, reads, and future writes cannot race inside the common settings
-leaf. A future live editor must obtain a host-owned pause transaction, prepare
+leaf. A future live-replacement editor must obtain a host-owned pause
+transaction, prepare
 a fresh router/bridge pair, rebase a complete physical snapshot, discard old
 queued edges, and re-enter the two-tick neutral gate. An input context enum
-alone is not authorization to replace active state. No calibration/remapping
-editor UI is included in this slice.
+alone is not authorization to replace active state. The implemented Windows
+calibration editor therefore changes only a validated draft and persistent
+AFIP. It never rebuilds or mutates the active adapter; successful saves clearly
+require restart. Binding remapping and iOS editing remain later slices.
 
 ### Implemented native iOS slice
 
@@ -255,9 +261,15 @@ This is the tested physical transport and profile-startup baseline, not
 finished input acceptance. Interactive Windows startup loads the private AFIP
 store with `current -> backup -> default` recovery; session-only smoke and
 capture modes never read it. Runtime replacement is deliberately unavailable;
-a changed profile takes effect after restart. Selected-device UI, glyphs,
-digital menu repeat, rumble, settings editing, and physical
-Xbox/PlayStation/generic-controller testing remain pending.
+a changed profile takes effect after restart. The DPI-aware pause surface now
+provides per-axis inner deadzone, outer saturation, sensitivity,
+linear/squared/cubic response, inversion, reset, raw/adjusted live preview, and
+an explicit `Save for next launch` action. A repair-only save is available
+after safe backup/default recovery. Storage errors disable saving without
+disabling input or aborting the session, and no UI/log includes a path,
+checksum, SDL identity, GUID, controller name, or Bluetooth address.
+Selected-device UI, binding remapping, glyphs, digital menu repeat, rumble,
+and physical Xbox/PlayStation/generic-controller testing remain pending.
 
 ## Input contexts
 

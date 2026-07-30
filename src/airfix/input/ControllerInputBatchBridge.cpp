@@ -93,6 +93,15 @@ template <std::size_t Capacity>
 
 } // namespace
 
+std::optional<Q15> transformControllerAxisForTransport(
+    const Q15 raw, const ControllerAxisElement axis,
+    const ResolvedControllerInputProfile &profile) noexcept {
+  if (!validAxis(raw)) {
+    return std::nullopt;
+  }
+  return transformControllerAxis(stableAxis(raw), axis, profile);
+}
+
 bool ControllerSample::pressed(
     const ControllerDigitalControl control) const noexcept {
     switch (control) {
@@ -243,15 +252,16 @@ ControllerBatchResult ControllerInputBatchBridge::process(
             !configuration_->usesControllerControl(axisControls[index])) {
             continue;
         }
-        Q15 stabilized = stableAxis(finalAxes[index]);
+        Q15 stabilized{};
         if (configuration_.has_value()) {
-            const auto calibrated = transformControllerAxis(stabilized,
-                axisElement(index),
-                configuration_->profile());
-            if (!calibrated.has_value()) {
-                return {ControllerBatchStatus::calibrationFailed, 0U};
-            }
+          const auto calibrated = transformControllerAxisForTransport(
+              finalAxes[index], axisElement(index), configuration_->profile());
+          if (!calibrated.has_value()) {
+            return {ControllerBatchStatus::calibrationFailed, 0U};
+          }
             stabilized = *calibrated;
+        } else {
+          stabilized = stableAxis(finalAxes[index]);
         }
         const bool changed = candidateSubmittedAxes[index] != stabilized;
         const bool shouldSubmit =
