@@ -2,7 +2,8 @@
 
 **Date:** 2026-07-29
 **Evidence ID:** `EV-20260729-007`
-**Status:** complete static evidence report; no reducer implemented
+**Status:** complete static evidence report; isolated reducer implemented in
+[EXP-20260729-060](EXP-20260729-060-native-pitch-bank-event-reducer.md)
 **Decision:** GO for an isolated structural reducer and an explicitly labelled
 startup-compatible numeric policy; NO-GO for claiming live full-domain numeric
 parity, timing, or live-input integration without dynamic evidence
@@ -345,8 +346,10 @@ performed in this static experiment.
 
 ## Synthetic test plan
 
-No reducer was implemented. The following tests are the acceptance boundary
-for a later implementation.
+No reducer was implemented during this static-evidence experiment. The
+following tests formed the acceptance boundary for the later implementation
+recorded in
+[EXP-20260729-060](EXP-20260729-060-native-pitch-bank-event-reducer.md).
 
 ### Native branch tests
 
@@ -453,6 +456,7 @@ order, event/refresh phase, and the real clock behavior around the nominal
 
 ## Related public evidence
 
+- [Portable pitch/bank event reducer](EXP-20260729-060-native-pitch-bank-event-reducer.md)
 - [Aircraft flight reconstruction boundary](../re/systems/AIRCRAFT-FLIGHT.md)
 - [Vehicle rest/sleep gate](EXP-20260728-026-vehicle-rest-sleep-gate.md)
 - [Static Ghidra/Rizin cross-check](EXP-20260727-001-static-tool-crosscheck.md)

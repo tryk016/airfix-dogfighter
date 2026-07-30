@@ -3680,3 +3680,38 @@ superseded evidence.
   `30505632630` and `30505632588` for portable/native Windows and both unsigned
   Apple SDK builds. All validation uses synthetic settings; no owner asset,
   profile path, or generated settings record is committed.
+
+## 2026-07-29 - isolated native pitch/bank SET reducer
+
+- Added an allocation-free typed-write decoder for already-ordered native
+  `PITCH_SET (0x5F)` and `BANK_SET (0x65)` events. It accepts the complete
+  signed `int32` consumer domain, preserves the inactive no-op gate, selects
+  only pitch or bank, writes active positive zero, repeats equal overwrites,
+  and requests the shared rest-duration clear for every active nonzero event.
+- The sole numeric policy is explicitly named startup-compatible PC53 and
+  nearest-even. It returns exact binary32 bits and uses integer rational
+  arithmetic for the 53-bit retained-product rounding followed by the
+  binary32 store rounding, so the result does not depend on the host FP
+  environment. This remains a conditional compatibility policy, not a claim
+  that live native x87 control state has been observed.
+- Dedicated tests cover both axes, all 11 confirmed PC53/RNE vectors,
+  `INT32_MIN/MAX`, the decimal-double, premature-binary32, and PC64
+  discriminators, inactive and unsupported inputs, zero/nonzero rest
+  behavior, repeated writes, interleaving, and last-processed-write wins.
+- The reducer remains deliberately unwired from input producers,
+  `PlayerAircraftState`, event queues, and the nominal 12 ms refresh. Those
+  integrations still require controlled evidence for numeric mode and
+  ordering.
+- Independent review found one P2 validation-precedence error: an unsupported
+  reconstruction policy was rejected before the native inactive gate. The
+  gate now accepts every recognized inactive SET before active-policy
+  validation; its regression test and symmetric per-axis/interleaving tests
+  close the finding. Final re-review reports GO with no remaining P0-P2.
+- An independent exhaustive audit compared every one of the `2^32` signed
+  payloads with a hardware binary64 PC53/nearest-even reference and found no
+  mismatch. A second exact-product oracle confirmed the sole positive PC53
+  double-rounding discriminator and its sign counterpart.
+- Clean Windows GCC 15.2/Ninja and isolated WSL Ubuntu GCC 13.3/Ninja builds
+  each pass 100/100 CTests. A fresh Clang 22.1.8 build passes the dedicated
+  reducer test, the public-boundary scanner passes 509 files, and
+  `git diff --check` passes. Hosted run identifiers follow after branch CI.

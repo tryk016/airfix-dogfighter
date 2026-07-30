@@ -101,6 +101,7 @@ add_library(airfix_simulation
     src/airfix/simulation/LegacyAircraftAudioCoordinator.cpp
     src/airfix/simulation/LegacyAircraftDestroyedDiveAudioState.cpp
     src/airfix/simulation/LegacyAircraftEngineAudioState.cpp
+    src/airfix/simulation/LegacyAircraftPitchBankEventReducer.cpp
     src/airfix/simulation/LegacyAircraftThrustEventReducer.cpp
     src/airfix/simulation/LegacyAircraftThrustState.cpp
     src/airfix/simulation/LegacyMachineGunFireState.cpp
@@ -620,6 +621,17 @@ if(AIRFIX_BUILD_TESTS)
     add_test(
         NAME airfix_legacy_aircraft_thrust_event_reducer_tests
         COMMAND airfix_legacy_aircraft_thrust_event_reducer_tests)
+
+    add_executable(
+        airfix_legacy_aircraft_pitch_bank_event_reducer_tests
+        tests/LegacyAircraftPitchBankEventReducerTests.cpp)
+    target_link_libraries(
+        airfix_legacy_aircraft_pitch_bank_event_reducer_tests
+        PRIVATE airfix::simulation)
+    add_test(
+        NAME airfix_legacy_aircraft_pitch_bank_event_reducer_tests
+        COMMAND
+            airfix_legacy_aircraft_pitch_bank_event_reducer_tests)
 
     add_executable(airfix_legacy_aircraft_engine_audio_state_tests
         tests/LegacyAircraftEngineAudioStateTests.cpp)
