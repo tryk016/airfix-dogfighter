@@ -101,10 +101,11 @@ partially mutate a vehicle or rest counter.
 
 ## Integration gate
 
-This reducer may be consumed only after a future state owner can apply the
-typed field write and shared rest clear atomically in already-established
-event order. It must remain unwired from live player, keyboard, controller,
-analog, AI, and network sources until controlled evidence establishes:
+The separate simulation-thread-confined control-event state owner now applies
+the typed field write and shared rest clear as one transaction in
+already-established event order. The reducer and owner must remain unwired
+from live player, keyboard, controller, analog, AI, and network sources until
+controlled evidence establishes:
 
 - live x87 control state or an accepted portability policy;
 - Q15-to-native payload conversion and event ordering;
@@ -112,6 +113,9 @@ analog, AI, and network sources until controlled evidence establishes:
 - event phase relative to the nominal 12 ms AirCraft refresh.
 
 No nominal 12 ms sample-and-hold behavior is inferred here.
+
+The owner and the newly recovered sibling `TURN_SET` branch are recorded in
+[EXP-20260730-061](EXP-20260730-061-native-turn-event-control-state.md).
 
 ## Validation
 

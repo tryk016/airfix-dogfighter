@@ -3717,3 +3717,36 @@ superseded evidence.
   `git diff --check` passes. All seven hosted checks pass: portable, native
   Windows product, macOS, and clangd jobs in run `30507391649`, plus unsigned
   iPhoneOS and iPhoneSimulator jobs in run `30507391659`.
+
+## 2026-07-30 - native TURN_SET and transactional control state
+
+- Identified the previously unnamed `AfVehicle+0x450` wake control as the
+  positive-zero-initialized binary32 destination of `EVENT_TURN_SET (0x5D)`.
+  Its active branch consumes the complete signed `int32` payload, uses the
+  same exact `0x3D3020C5` x87 multiply/store path as pitch and bank, and clears
+  the shared signed rest duration only for nonzero results.
+- Confirmed discrete `turnleft/turnright` payloads `-32/+32` and zero/opposite
+  release behavior. No analog or AirCraft/GroundUnit/WaterUnit AI producer,
+  and no control-law consumer outside the sleep gate, was found.
+  `TURN_APPLY (0x5E)` is a no-op in the inspected chains; `TURN_SET` remains
+  distinct from the separate YAW event pair.
+- Added an isolated `TURN_SET` typed-write reducer and moved the exact
+  turn/pitch/bank PC53/RNE calculation to one host-FP-independent shared
+  helper. The existing pitch/bank vectors remain unchanged.
+- Added a simulation-thread-confined transactional owner for the two thrust
+  writes and three angular SET writes. It validates before mutation, commits
+  the selected field and explicit shared-rest clear together, preserves
+  unselected state, and exposes the five sleep controls in native order.
+  It owns no producer ordering, Q15 conversion, scheduler, sleep-result
+  persistence, rigid-body clear, or live player-state integration.
+- Synthetic tests cover all confirmed TURN_SET exact vectors, inactive and
+  invalid paths, every field transaction, exact wake ordering, rollback,
+  repeated and interleaved writes, and composition with the separate sleep
+  helper using an arbitrary synthetic refresh delta.
+- Independent review reports GO with no P0-P2 findings. Its two P3 notes were
+  resolved by adding a direct `<bit>` include and removing nominal 12 ms from
+  the owner-composition test. Clean Windows GCC 15.2/Ninja and isolated WSL
+  Ubuntu GCC 13.3/Ninja full builds pass all 102 CTests. A fresh Clang 22.1.8
+  build passes the three affected tests. Synthetic public-boundary tests, all
+  12 Rizin normalization tests, the Ghidra/working-copy/Rizin PowerShell
+  wrapper suites, the 519-file public scan, and `git diff --check` pass.
