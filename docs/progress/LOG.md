@@ -4232,3 +4232,34 @@ superseded evidence.
 - Independent review found four issues in the first draft, verified all four
   fixes, and returned GO with no remaining P0-P3 finding. Native Windows/iOS
   text pickers and hosted Actions remain publication/follow-up gates.
+
+## 2026-07-30 - mission outcome consumer boundary
+
+- `EV-20260730-006` recovers the native result predicate as
+  `missionExists && accomplished && !failed`; both outcome flags therefore
+  select failure and Retry.
+- Success always replaces the typed `THRD` side, then adds an absent signed
+  `AXMI`/`ALMI` maximum or replaces it only when the existing value is smaller
+  than `mission_number + 1`. An unchanged maximum does not suppress the
+  preceding thread update.
+- Added an allocation-free value-only `LegacyMissionOutcomeConsumer` with
+  failure/Retry, success/Continue, typed Axis/Allied and maximum
+  none/add/replace directives. Unknown sides and `INT32_MAX` fail closed
+  without UI or persistence directives rather than copying x86 wraparound.
+- The ordinary mission refresh boundary runs active AFS processes before
+  polling trigger refresh; selected `Spawned` events use a separate immediate
+  update-then-call path. Remaining compiler, bytecode and global-order gaps
+  keep live AFS wiring at NO-GO.
+- Synthetic tests cover the full mission/flag table, conflict precedence,
+  ignored failure metadata, both sides, signed maximum comparisons, negative
+  and upper boundaries, always-set-thread behavior, forged values, and
+  deterministic trivially-copyable results.
+- The complete portable GCC/Ninja build passes 116/116 CTests. The complete
+  MSVC 19.51/Ninja Windows product links `AirfixDogfighter.exe` and passes
+  126/126 CTests, including both D3D11 product smokes. Focused Clang 22
+  warnings-as-errors, clang-format, synthetic public-boundary tests, the
+  600-file repository scan, the 322-row/14-column unique catalogue, and
+  `git diff --check` pass. Independent review reproduces the GCC Release build
+  and all 116 CTests, checks the implementation against the raw Ghidra
+  evidence, and returns GO with no P0-P3 finding. Hosted platform builds remain
+  the publication gate.
