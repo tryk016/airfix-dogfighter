@@ -3864,3 +3864,30 @@ superseded evidence.
   Actions runs `30516125990` and `30516125991` pass all seven hosted jobs,
   including iPhoneOS and iPhoneSimulator compilation/linking. Physical-device
   interaction/persistence acceptance remains to be recorded.
+
+## 2026-07-30 - Windows render-settings panel and native D3D11 overlay
+
+- Added a native Windows pause and display-settings surface over the shared
+  C++20 settings model. Keyboard, mouse, standard controller buttons, and
+  D-pad navigation share explicit menu-context routing without leaking menu
+  input into gameplay.
+- Added a Direct2D, DirectWrite, and WIC raster path which uploads a
+  premultiplied BGRA overlay to D3D11 and composites it after the 3D scene and
+  diagnostics. The adaptive layout fits the supported 640x360 minimum while
+  preserving DPI-aware scaling at larger window and capture sizes.
+- Added a Windows transaction coordinator which keeps durable settings
+  separate from sparse command-line overrides. Renderer publication follows a
+  successful save; indeterminate commit recovery accepts only a fresh,
+  verified current settings snapshot and never treats defaults or backup
+  recovery as proof of durability.
+- Added a public, session-only `--capture-settings-panel` diagnostic path for
+  synthetic screenshots. Captures at 960x540, 1920x1080, and 3440x1440 were
+  reviewed locally and remain ignored build artifacts rather than repository
+  content.
+- Independent review found and then verified fixes for the indeterminate-save
+  readback rule and small-window clipping. Final review reports GO with no open
+  P0-P2 findings; physical per-monitor DPI, minimum-size readability, pointer,
+  and controller behavior remain device acceptance work.
+- A clean Windows MSVC/Ninja product build passes all 115 CTests. The isolated
+  `Airfix-Dev` WSL clone builds all 302 Linux targets and passes 106/106 CTests.
+  Clang-format, `git diff --check`, and the 546-file public-boundary scan pass.
