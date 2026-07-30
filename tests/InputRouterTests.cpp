@@ -634,6 +634,59 @@ void testDefaultBindingsCoverNativeV1Surface() {
             menuFrame.pressed(DigitalAction::uiTabPrevious) &&
             menuFrame.pressed(DigitalAction::uiTabNext),
         "default controller menu actions are incomplete");
+
+    InputRouter menuDpadRouter;
+    menuDpadRouter.setContext(InputContext::menu);
+    require(menuDpadRouter.enqueue(PhysicalEvent::button(
+        1U, 0U, controllerOne,
+        airfix::input::controls::controller::dpadUp, true)),
+        "controller menu D-pad up was rejected");
+    const auto menuDpadUp = menuDpadRouter.tick(1U);
+    require(menuDpadUp.analog(AnalogAxis::uiNavigateY) ==
+                airfix::input::q15One &&
+            menuDpadUp.analog(AnalogAxis::flightThrottleDelta) == q15Zero,
+        "controller menu D-pad up leaked into gameplay or mapped downward");
+
+    InputRouter modalDpadRouter;
+    modalDpadRouter.setContext(InputContext::modal);
+    require(modalDpadRouter.enqueue(PhysicalEvent::axis(
+        1U, 0U, controllerOne,
+        airfix::input::controls::controller::leftStickX, 12000)),
+        "controller modal horizontal navigation was rejected");
+    require(modalDpadRouter.enqueue(PhysicalEvent::button(
+        2U, 0U, controllerOne,
+        airfix::input::controls::controller::facePrimary, true)),
+        "controller modal confirm was rejected");
+    require(modalDpadRouter.enqueue(PhysicalEvent::button(
+        3U, 0U, controllerOne,
+        airfix::input::controls::controller::faceSecondary, true)),
+        "controller modal cancel was rejected");
+    require(modalDpadRouter.enqueue(PhysicalEvent::button(
+        4U, 0U, controllerOne,
+        airfix::input::controls::controller::leftShoulder, true)),
+        "controller modal previous-tab event was rejected");
+    require(modalDpadRouter.enqueue(PhysicalEvent::button(
+        5U, 0U, controllerOne,
+        airfix::input::controls::controller::rightShoulder, true)),
+        "controller modal next-tab event was rejected");
+    require(modalDpadRouter.enqueue(PhysicalEvent::button(
+        6U, 0U, controllerOne,
+        airfix::input::controls::controller::dpadDown, true)),
+        "controller modal D-pad down was rejected");
+    const auto modalDpadDown = modalDpadRouter.tick(1U);
+    require(modalDpadDown.analog(AnalogAxis::uiNavigateX) == 12000 &&
+            modalDpadDown.analog(AnalogAxis::uiNavigateY) ==
+                airfix::input::q15Min &&
+            modalDpadDown.analog(AnalogAxis::flightThrottleDelta) == q15Zero &&
+            modalDpadDown.analog(AnalogAxis::flightBank) == q15Zero &&
+            modalDpadDown.pressed(DigitalAction::uiConfirm) &&
+            modalDpadDown.pressed(DigitalAction::uiCancel) &&
+            modalDpadDown.pressed(DigitalAction::uiTabPrevious) &&
+            modalDpadDown.pressed(DigitalAction::uiTabNext) &&
+            !modalDpadDown.pressed(DigitalAction::globalPause) &&
+            !modalDpadDown.pressed(DigitalAction::combatPrimaryFire) &&
+            !modalDpadDown.pressed(DigitalAction::combatWeaponNext),
+        "controller modal bindings leaked into gameplay or mapped incorrectly");
 }
 
 void testDefaultBindingsAreBounded() {

@@ -373,8 +373,9 @@ to the native output at 100% and use backend-private offscreen color/depth
 targets plus linear presentation at non-100% scales. Windows direct backbuffer
 captures verify 1080p, 1440p, 4K, and 32:9, and a controlled 50%/200% trial
 verifies that output and 3D raster extents vary independently. Remaining stage
-1-2 work is finished settings UI and persistence, complete HUD/effect
-integration, safe FOV control, and iOS runtime/device acceptance. The shared
+1-2 work is the equivalent Windows settings UI, complete HUD/effect
+integration, safe FOV control, and iOS runtime/device acceptance. The iOS
+touch/controller render-settings panel and persistence path are implemented. The shared
 telemetry contract and output-resolution developer overlay are implemented:
 both backends publish the same resolution, timing, workload, light, and
 labelled GPU-memory fields; D3D11 uses non-blocking timestamp queries and Metal
@@ -401,7 +402,9 @@ binds the same store semantics to its private Application Support directory:
 Metal resources prepare off-main, the persistent base saves on a serial queue,
 and a fresh main-thread surface/revision check precedes publication. A stale
 post-save surface reprepares without saving twice. The final cross-input
-settings UI follows as a separate slice.
+iOS settings UI now consumes that transaction through a portable applied/draft
+model and an explicit touch/controller pause-menu boundary. The equivalent
+Windows product UI and physical-device iOS acceptance remain separate slices.
 
 `Classic` and `Enhanced` are visual-intent profiles independent of the quality
 tier. Classic renders faithfully at the chosen high resolution; Enhanced adds

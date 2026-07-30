@@ -229,6 +229,43 @@ static_assert(AirfixGameControllerDigitalControlRightStickClick ==
 
 @end
 
+@interface AirfixUIInputSnapshot ()
+
+- (instancetype)initWithTick:(uint64_t)tick
+                 navigationX:(int16_t)navigationX
+                 navigationY:(int16_t)navigationY
+              confirmPressed:(BOOL)confirmPressed
+               cancelPressed:(BOOL)cancelPressed
+          tabPreviousPressed:(BOOL)tabPreviousPressed
+              tabNextPressed:(BOOL)tabNextPressed
+    NS_DESIGNATED_INITIALIZER;
+
+@end
+
+@implementation AirfixUIInputSnapshot
+
+- (instancetype)initWithTick:(uint64_t)tick
+                 navigationX:(int16_t)navigationX
+                 navigationY:(int16_t)navigationY
+              confirmPressed:(BOOL)confirmPressed
+               cancelPressed:(BOOL)cancelPressed
+          tabPreviousPressed:(BOOL)tabPreviousPressed
+              tabNextPressed:(BOOL)tabNextPressed {
+    self = [super init];
+    if (self != nil) {
+        _tick = tick;
+        _navigationX = navigationX;
+        _navigationY = navigationY;
+        _confirmPressed = confirmPressed;
+        _cancelPressed = cancelPressed;
+        _tabPreviousPressed = tabPreviousPressed;
+        _tabNextPressed = tabNextPressed;
+    }
+    return self;
+}
+
+@end
+
 @class AirfixIOSInputCoordinator;
 
 @interface AirfixInputDisplayLinkTarget : NSObject
@@ -292,6 +329,7 @@ static_assert(AirfixGameControllerDigitalControlRightStickClick ==
 - (void)notifyPauseForReason:(AirfixInputPauseReason)reason;
 - (void)notifyControllerState:(AirfixGameControllerState*)state;
 - (void)notifyDiagnostics:(AirfixInputDiagnostics*)diagnostics;
+- (void)notifyUIInput:(AirfixUIInputSnapshot*)input;
 - (void)performOnMain:(dispatch_block_t)block;
 - (BOOL)setPrivateFrameConsumer:
     (const airfix::ios::InputFrameConsumer&)consumer;
@@ -574,6 +612,33 @@ static_assert(AirfixGameControllerDigitalControlRightStickClick ==
         // diagnostics or a pause request derived from the pre-reset frame.
         return;
     }
+
+    const auto inputContext = _router.context();
+    if (inputContext == airfix::input::InputContext::menu ||
+        inputContext == airfix::input::InputContext::modal) {
+        AirfixUIInputSnapshot* const input =
+            [[AirfixUIInputSnapshot alloc]
+                initWithTick:frame.simulationTick
+                 navigationX:frame.analog(
+                     airfix::input::AnalogAxis::uiNavigateX)
+                 navigationY:frame.analog(
+                     airfix::input::AnalogAxis::uiNavigateY)
+              confirmPressed:frame.pressed(
+                  airfix::input::DigitalAction::uiConfirm)
+               cancelPressed:frame.pressed(
+                  airfix::input::DigitalAction::uiCancel)
+          tabPreviousPressed:frame.pressed(
+              airfix::input::DigitalAction::uiTabPrevious)
+              tabNextPressed:frame.pressed(
+                  airfix::input::DigitalAction::uiTabNext)];
+        [self notifyUIInput:input];
+        if (_terminalInputFailure || _resetEpoch != frameEpoch) {
+            // The UI delegate crossed an input/lifecycle boundary. The
+            // already-delivered frame must not produce later callbacks.
+            return;
+        }
+    }
+
     const BOOL userPause =
         frame.pressed(airfix::input::DigitalAction::globalPause);
 
@@ -853,6 +918,20 @@ lastMeaningfulSource:AirfixInputSourceNone];
         }
         catch (...) {
             // Diagnostics are best effort and never affect routing.
+        }
+    }
+}
+
+- (void)notifyUIInput:(AirfixUIInputSnapshot*)input {
+    id<AirfixIOSInputCoordinatorDelegate> delegate = self.delegate;
+    SEL selector =
+        @selector(inputCoordinator:didUpdateUIInput:);
+    if ([delegate respondsToSelector:selector]) {
+        try {
+            [delegate inputCoordinator:self didUpdateUIInput:input];
+        }
+        catch (...) {
+            // UI navigation is best effort and never compromises routing.
         }
     }
 }

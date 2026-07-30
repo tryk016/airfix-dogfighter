@@ -57,6 +57,23 @@ typedef NS_ENUM(NSInteger, AirfixNativeInputContext) {
 
 @end
 
+// Immutable Objective-C projection of one already-delivered portable
+// InputFrame while the router is in a menu or modal context. Gameplay fields
+// and platform timestamps are intentionally not exposed.
+@interface AirfixUIInputSnapshot : NSObject
+
+@property(nonatomic, readonly) uint64_t tick;
+@property(nonatomic, readonly) int16_t navigationX;
+@property(nonatomic, readonly) int16_t navigationY;
+@property(nonatomic, readonly) BOOL confirmPressed;
+@property(nonatomic, readonly) BOOL cancelPressed;
+@property(nonatomic, readonly) BOOL tabPreviousPressed;
+@property(nonatomic, readonly) BOOL tabNextPressed;
+
+- (instancetype)init NS_UNAVAILABLE;
+
+@end
+
 @protocol AirfixIOSInputCoordinatorDelegate <NSObject>
 @optional
 
@@ -71,6 +88,13 @@ typedef NS_ENUM(NSInteger, AirfixNativeInputContext) {
 // Published on meaningful changes and otherwise at most as a 10 Hz heartbeat.
 - (void)inputCoordinator:(AirfixIOSInputCoordinator*)coordinator
         didUpdateDiagnostics:(AirfixInputDiagnostics*)diagnostics;
+
+// Delivered on main after the exact portable InputFrame has reached its
+// consumer and only while the active input context is menu or modal. A
+// reentrant input/lifecycle reset suppresses this callback for the stale
+// frame.
+- (void)inputCoordinator:(AirfixIOSInputCoordinator*)coordinator
+        didUpdateUIInput:(AirfixUIInputSnapshot*)input;
 
 @end
 

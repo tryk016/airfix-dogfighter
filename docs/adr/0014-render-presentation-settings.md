@@ -249,4 +249,5 @@ area, orientation, memory pressure, and target-allocation fallback on iPhone SE
 - [x] Add the equivalent iOS Application Support adapter and hosted build
   coverage.
 - [ ] Capture and compare the public synthetic Windows matrix.
-- [ ] Add the final cross-input settings UI as a separate slice.
+- [x] Add the iOS touch/controller render-settings UI as a separate slice.
+- [ ] Add the equivalent Windows product settings UI.

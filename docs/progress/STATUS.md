@@ -37,8 +37,9 @@
   CPU/GPU frame time, output and scene extents, render scale, draw calls,
   triangles, lights, and labelled GPU-memory measurements. D3D11 and Metal
   composite the same output-resolution developer panel after scene
-  presentation; Metal applies UIKit safe-area offsets. Finished settings UI,
-  modern visual stages, and iOS runtime/device acceptance remain pending.
+  presentation; Metal applies UIKit safe-area offsets. The iOS render-settings
+  UI is now implemented; the equivalent Windows UI, modern visual stages, and
+  iOS runtime/device acceptance remain pending.
   Hosted iPhoneOS and iPhoneSimulator builds compile the complete Metal path;
   only physical-device visual/timing acceptance remains for this slice.
 - ADR-0014 defines one cross-platform render-presentation settings transaction.
@@ -74,7 +75,14 @@
   immutable Metal candidates on a separate worker, and publishes only after a
   fresh main-thread surface/revision validation. A durable candidate that
   becomes stale is prepared again without another save, and first presentation
-  waits for startup resolution. The final settings UI remains pending.
+  waits for startup resolution. iOS now exposes the four persisted fields
+  through a safe-area UIKit panel backed by a portable applied/draft/ticket
+  model. Apply reports success only after durable save and Metal publication;
+  touch and controller navigation use an explicit pause/menu/modal input
+  boundary and closing never auto-resumes. Pull-request Actions compile and
+  link the complete iPhoneOS and iPhoneSimulator products successfully;
+  physical-device interaction/persistence acceptance and the equivalent
+  Windows settings UI remain pending.
 - The native Windows x64 product foundation is implemented. A statically
   linked SDL3 shell owns the window and lifecycle events; a separate
   D3D11/DXGI backend compiles HLSL, uploads the same public scene used by Metal,

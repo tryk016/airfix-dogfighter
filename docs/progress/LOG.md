@@ -3825,3 +3825,42 @@ superseded evidence.
   findings. Public boundary tests, 12 Rizin export tests, all three
   reverse-engineering wrapper suites, the 527-file public scan, document
   links, local-path scan, clang-format, and `git diff --check` pass.
+
+## 2026-07-30 - iOS render-settings panel and menu input boundary
+
+- Added an allocation-free portable settings-menu model over the existing
+  ADR-0014 snapshot. It separates applied and draft values, derives the exact
+  settings delta, freezes edits during Apply, issues non-wrapping exact tickets,
+  promotes only exact successes, preserves the draft after failure, and ignores
+  stale callbacks.
+- Extended the iOS settings coordinator with path-free completion results and
+  an active-renderer snapshot. Success is reported only after durable save and
+  final Metal publication. Pending requests remain latest-wins and explicitly
+  supersede an older pending completion without confusing durable and active
+  state.
+- Added a safe-area UIKit child overlay for 50-200% render scale,
+  Hor+/Original 4:3, Classic/Enhanced preview, and renderer diagnostics. It uses
+  Dynamic Type, VoiceOver semantics, standard controls, path-free errors, and
+  explicitly distinguishes the Enhanced profile from optional private HD
+  textures.
+- Added an immutable UI-only input projection after exact portable-frame
+  delivery. Menu/modal bindings now cover left-stick navigation, D-pad Up/Down,
+  shoulders, A, and B without emitting gameplay actions. The pause surface has
+  explicit touch Resume and controller A-settings/B-resume behavior.
+- Opening or closing the overlay pauses audio/session/Metal, resets every
+  physical source, changes input context explicitly, hides flight touch
+  controls, and never auto-resumes gameplay. Closing during an in-flight Apply
+  detaches the UI but does not pretend to cancel the durable transaction.
+  Reopening is refused until the transaction is idle, so a panel seeded from
+  an older active snapshot cannot enqueue a full candidate that rolls back the
+  in-flight change.
+- Independent review found that close/reopen race and a missing executable
+  seam around asynchronous completion arbitration. The race is closed, and a
+  portable request queue now owns exact identities, latest-wins superseding,
+  two-phase reentrant completion, pending promotion, stale/duplicate rejection,
+  and non-wrapping exhaustion under deterministic tests.
+- The full local build and 106/106 CTests pass, as do clang-format,
+  `git diff --check`, and the 536-file public-boundary scan. Pull-request
+  Actions runs `30516125990` and `30516125991` pass all seven hosted jobs,
+  including iPhoneOS and iPhoneSimulator compilation/linking. Physical-device
+  interaction/persistence acceptance remains to be recorded.

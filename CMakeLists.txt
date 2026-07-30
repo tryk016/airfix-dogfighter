@@ -265,6 +265,8 @@ endif()
 
 add_library(airfix_settings
     src/airfix/settings/RenderPresentationPersistenceGate.cpp
+    src/airfix/settings/RenderPresentationRequestQueue.cpp
+    src/airfix/settings/RenderPresentationSettingsMenuModel.cpp
     src/airfix/settings/RenderPresentationSettingsCodec.cpp
     src/airfix/settings/RenderPresentationSettingsStore.cpp
 )
@@ -487,6 +489,20 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::settings)
     add_test(NAME airfix_render_settings_persistence_gate_tests
         COMMAND airfix_render_settings_persistence_gate_tests)
+
+    add_executable(airfix_render_settings_request_queue_tests
+        tests/RenderPresentationRequestQueueTests.cpp)
+    target_link_libraries(airfix_render_settings_request_queue_tests
+        PRIVATE airfix::settings)
+    add_test(NAME airfix_render_settings_request_queue_tests
+        COMMAND airfix_render_settings_request_queue_tests)
+
+    add_executable(airfix_render_settings_menu_model_tests
+        tests/RenderPresentationSettingsMenuModelTests.cpp)
+    target_link_libraries(airfix_render_settings_menu_model_tests
+        PRIVATE airfix::settings)
+    add_test(NAME airfix_render_settings_menu_model_tests
+        COMMAND airfix_render_settings_menu_model_tests)
 
     add_executable(airfix_asset_tests tests/LegacyFormatsTests.cpp)
     target_link_libraries(airfix_asset_tests PRIVATE airfix::assets)
