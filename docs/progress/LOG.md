@@ -3954,6 +3954,44 @@ superseded evidence.
   changed-scope local-path scan, reserved-ID scan, and `git diff --check`
   pass.
 
+## 2026-07-30 - isolated CcRigidBody integration kernel
+
+- `EV-20260730-004` / `EXP-20260730-068` recovers the complete static
+  variable-state contract for `CcODE::EulerODE`, `CcRigidBody::Derive`,
+  `CalcAuxiliary`, `PostODE`, `ResetForceAndTorque`, and
+  `CcQuaternion::Normalize`.
+- Confirmed `count=0x0D`, `stateOffset=0x40`, and the ordered state fields:
+  position, `(w,x,y,z)` quaternion, linear momentum, and world angular
+  momentum. Configuration and auxiliary offsets through the force/torque
+  accumulators are documented separately.
+- Proved column-major matrix storage, native row-vector coordinate
+  application, `W=R*bodyInverseInertia*transpose(R)`, and left-Hamilton
+  quaternion differentiation. The upstream AirCraft constructor's in-place
+  matrix inversion proves that `+0x18` is body inverse inertia during
+  integration.
+- Recorded the exact x87 instruction and binary32-store schedule, including
+  matrix `k=0,2,1` accumulation, retained/spilled quaternion products,
+  normalization order, and the X/Y-stored versus Z-retained angular-damping
+  asymmetry.
+- Added six synthetic exact-bit vectors. One damping vector distinguishes the
+  three lanes under PC53/PC64, and one Euler vector produces `0x3F800000`
+  under PC24/RNE or PC53/RNE but `0x3F800001` under PC64/RNE.
+- Ghidra 12.1.2 and Rizin 0.9.1 plus bundled `rz-ghidra` pseudocode agree on
+  every main/helper boundary and broad data flow. Rizin pseudocode's
+  hidden-return typing remains secondary to the agreeing instructions.
+- Both RE wrapper suites, 12/12 Rizin exporter tests, public-boundary
+  synthetic tests, the 551-file public scan, the 298-row/14-column unique
+  catalog check, changed-document links, changed-scope local-path scan, and
+  `git diff --check` pass.
+- Independent instruction-level review closed signed-zero, PC24, empty-CFG,
+  transpose-call, self-contained-vector, and constant-report findings; the
+  final re-review found no further issue.
+- No game, GUI, debugger, executable path, kernel, scheduler, collision,
+  renderer, live-input integration, binary, tool database, or private
+  resource changed. The decision is NO-GO for bit-parity implementation until
+  the live x87 control/exception state is captured or an explicit portable
+  numeric policy is accepted.
+
 ## 2026-07-30 - one-event pitch/bank state step
 
 - `EXP-20260730-069` implements the conditional GO from the producer-order
