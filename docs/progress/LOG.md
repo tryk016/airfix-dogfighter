@@ -3794,3 +3794,34 @@ superseded evidence.
   Actions runs `30511495498` and `30511495515` pass all seven hosted Windows
   product, Windows/Ubuntu/macOS portable, clangd, iPhoneOS, and
   iPhoneSimulator jobs.
+
+## 2026-07-30 - staged native control-command step
+
+- Added one allocation-free production composition point for exactly one
+  caller-ordered bool command invocation: eight-flag transition, typed native
+  event, matching turn/pitch-bank/thrust decoder, typed write, and
+  transactional control-field owner.
+- Preserved the recovered stage order instead of inventing a larger atomic
+  transaction. A recognized inactive invocation updates its callback flag but
+  changes no vehicle control field. An active unsupported angular policy also
+  retains that earlier flag update while failing closed before a field write;
+  an unsupported command changes neither state.
+- The result retains typed event/write evidence and distinguishes committed,
+  inactive-ignored, unsupported-command, decode-rejected, and defensive
+  owner-rejected outcomes. The owner-rejected path is unreachable for every
+  write currently produced by the closed decoder set and guards future
+  contract drift.
+- Synthetic tests cover both bool values for all eight commands over every
+  8-bit flag snapshot, exact event and write variants, binary32 bits, rest
+  behavior, inactive and numeric-policy precedence, invalid rollback, repeats,
+  deterministic mixed-axis replay, and prefix/suffix composition.
+- No `InputFrame`, Q15 conversion, producer identity, event collection, trace
+  serialization, sorting, deduplication, sample-and-hold, 60 Hz/12 ms timing,
+  or live player-state wiring was added.
+- Fresh Windows GCC 15.2/Ninja and isolated WSL Ubuntu GCC 13.3/Ninja builds
+  compile all 336 steps and pass 104/104 CTests. Fresh Clang 22.1.8 passes the
+  dedicated test, and one independent review additionally passes both GCC and
+  Clang warnings-as-errors builds. All three reviews report GO with no P0-P3
+  findings. Public boundary tests, 12 Rizin export tests, all three
+  reverse-engineering wrapper suites, the 527-file public scan, document
+  links, local-path scan, clang-format, and `git diff --check` pass.

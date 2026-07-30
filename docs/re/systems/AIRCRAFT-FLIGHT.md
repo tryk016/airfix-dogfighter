@@ -400,6 +400,16 @@ transition and returns an existing typed native-event input. It does not accept
 order, an in-tick tap, or repeated callback invocations. See
 [EXP-20260730-062](../../experiments/EXP-20260730-062-native-control-command-reducer.md).
 
+`LegacyAircraftControlCommandStep` now supplies the single production
+composition point from that command transition through the matching existing
+native-event decoder and the control-event state owner. It advances exactly one
+caller-ordered invocation. The callback flag update is retained when an
+inactive event is ignored or a port-side numeric policy is rejected; vehicle
+control state changes only after a decoded typed write commits. This staged
+behavior does not claim atomicity across the native callback and
+`ProcessEvent`, and it adds no queue, producer, Q15, or clock. See
+[EXP-20260730-063](../../experiments/EXP-20260730-063-native-control-command-step.md).
+
 The broader input-event dispatcher at `0x00411BB0`
 (`FN-DOGFIGHTER-00011BB0`, working name `DispatchInputEvents`) uses only `SET`
 events in its three analog cases:
@@ -502,7 +512,8 @@ Until those unknowns are resolved, the portable simulation may:
 
 Separate pure helpers may also preserve already confirmed local contracts for
 the vehicle sleep gate; the typed already-formed native thrust-event write;
-the eight-flag already-ordered discrete control-command transition;
+the eight-flag already-ordered discrete control-command transition and its
+single-invocation typed-event/decode/field-commit composition;
 the ordered slot-45 target/apply/clamp/smoothing prefix; collision-driven
 thrust-integrity degradation; later
 recovery/clamping; and the bounded engine-only audio command stream plus the
@@ -510,8 +521,10 @@ destroyed-dive sample state. The thrust-control transition treats invocation
 as the already-decided active slot-45 call and owns no scheduler, `dt`, Q15
 conversion, or event timing. The command reducer owns neither the 60 Hz
 producer nor 12 ms sample-and-hold policy and returns only a typed native-event
-input. The event decoders share that timing boundary and return only a typed
-write plus a rest-clear directive. The primary `WpMGun` helper may also
+input. The per-invocation step retains that separation while composing the
+event decoder and field owner; it is not a producer or batch runner. The event
+decoders share that timing boundary and return only a typed write plus a
+rest-clear directive. The primary `WpMGun` helper may also
 preserve its
 recovered technology profiles, shot accumulator, trigger, barrel, ammunition,
 and one-projectile-request-per-refresh transition. These helpers remain

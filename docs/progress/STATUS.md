@@ -331,7 +331,13 @@
   emits one typed `TURN_SET`, `PITCH_SET`, `BANK_SET`, or `THRUST_APPLY`
   input, including repeats, opposite-held releases, and zero releases. It is
   intentionally separate from the Q15 `InputFrame`, which cannot retain
-  opposing-command order or in-tick taps.
+  opposing-command order or in-tick taps. One allocation-free step now
+  composes exactly one such caller-ordered invocation through the matching
+  decoder and transactional field owner. Its staged result retains the earlier
+  callback flag update when an inactive event is ignored or an active
+  reconstruction policy is rejected, while control-event state changes only
+  after a typed write commits. It owns no batch, replay format, producer,
+  source order, Q15 conversion, or clock.
   Live producer, scheduler, force-law, and player-state wiring remains
   intentionally absent.
 - Recovered the scheduler-visible aircraft order:
@@ -927,6 +933,8 @@
    model remains conditional on the live x87 control word. A
    simulation-thread-confined owner commits typed control writes and their
    shared rest clear transactionally, but owns no producer ordering or clock.
+   A separate single-invocation step now composes the discrete command reducer,
+   typed decoder, and that owner without adding a batch or scheduler.
    Keep all control reducers and that owner unwired from
    `PlayerAircraftState` until controlled traces prove
    numeric mode, Q15-to-event ordering, and sample-and-hold timing; do not
@@ -975,6 +983,15 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The staged native control-command step passes fresh complete Windows GCC
+  15.2/Ninja and isolated WSL Ubuntu GCC 13.3/Ninja builds plus all 104 CTests.
+  A fresh Clang 22.1.8 build passes the dedicated exhaustive test; one
+  independent review additionally passes both GCC and Clang
+  warnings-as-errors builds. All three reviewers report GO with no P0-P3
+  findings. Public-boundary tests, 12 Rizin export tests, all three
+  reverse-engineering wrapper suites, the 527-file public scan,
+  changed-document links, local-path scan, clang-format, and
+  `git diff --check` pass.
 - The discrete native control-command slice passes complete clean Windows GCC
   15.2/Ninja and isolated WSL Ubuntu GCC 13.3/Ninja builds plus all 103 tests.
   Fresh Clang 22.1.8 and independent GCC warnings-as-errors builds pass the
