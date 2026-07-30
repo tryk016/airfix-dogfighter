@@ -380,6 +380,8 @@ inline constexpr ControlId rightStickClick{13U};
 inline constexpr ControlId menu{14U};
 inline constexpr ControlId facePrimary{15U};
 inline constexpr ControlId faceSecondary{16U};
+inline constexpr ControlId dpadLeft{17U};
+inline constexpr ControlId dpadRight{18U};
 } // namespace controller
 
 namespace keyboard {

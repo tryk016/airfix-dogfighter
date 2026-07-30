@@ -1,5 +1,7 @@
 #pragma once
 
+#include "AirfixWindowsUiRasterizer.hpp"
+
 #include "airfix/content/MissionWorldRoomLoader.hpp"
 #include "airfix/render/PlayerActorPoseRuntime.hpp"
 #include "airfix/render/RenderFrameDiagnostics.hpp"
@@ -101,6 +103,18 @@ public:
   void capturePublicDiagnosticFrameToBmp(
       const std::filesystem::path &outputPath);
 
+  // Publishes or clears a product UI layer in physical output pixels. The
+  // image is premultiplied BGRA8 and contains only bounded, path-free UI
+  // state. Rejection preserves the previously published layer.
+  [[nodiscard]] bool
+  setProductUiRaster(const AirfixWindowsUiRaster &raster) noexcept;
+  void clearProductUiRaster() noexcept;
+
+  // Captures the public synthetic scene with the currently published product
+  // UI. Installed private content is rejected.
+  void
+  capturePublicSettingsPanelFrameToBmp(const std::filesystem::path &outputPath);
+
   [[nodiscard]] std::optional<airfix::render::RenderFrameDiagnostics>
   frameDiagnostics() const noexcept;
 
@@ -124,6 +138,7 @@ private:
   lastScenePresentationForTesting() const noexcept;
   [[nodiscard]] bool
   hasDiagnosticsOverlayResourcesForTesting() const noexcept;
+  [[nodiscard]] bool hasProductUiOverlayResourcesForTesting() const noexcept;
 
   class Implementation;
   std::unique_ptr<Implementation> implementation_;

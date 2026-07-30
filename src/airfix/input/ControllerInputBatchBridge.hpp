@@ -13,19 +13,21 @@ namespace airfix::input {
 // platform frameworks out of this contract: adapters translate their native
 // samples into these plain C++ values before reconciliation.
 enum class ControllerDigitalControl : std::uint8_t {
-    primaryTrigger = 0,
-    pause = 1,
-    secondaryTrigger = 2,
-    throttleUp = 3,
-    throttleDown = 4,
-    weaponNext = 5,
-    rearView = 6,
-    cameraCycle = 7,
-    missionStatus = 8,
-    uiConfirm = 9,
-    uiCancel = 10,
-    cameraRecenter = 11,
-    count = 12,
+  primaryTrigger = 0,
+  pause = 1,
+  secondaryTrigger = 2,
+  throttleUp = 3,
+  throttleDown = 4,
+  weaponNext = 5,
+  rearView = 6,
+  cameraCycle = 7,
+  missionStatus = 8,
+  uiConfirm = 9,
+  uiCancel = 10,
+  cameraRecenter = 11,
+  uiPrevious = 12,
+  uiNext = 13,
+  count = 14,
 };
 
 inline constexpr std::size_t controllerDigitalControlCount =
@@ -49,6 +51,8 @@ struct ControllerSample final {
     bool uiConfirmPressed{};
     bool uiCancelPressed{};
     bool cameraRecenterPressed{};
+    bool uiPreviousPressed{};
+    bool uiNextPressed{};
 
     [[nodiscard]] bool pressed(ControllerDigitalControl control) const noexcept;
     void setPressed(ControllerDigitalControl control, bool value) noexcept;
@@ -126,6 +130,10 @@ struct ControllerDigitalMapping final {
         return {faceSecondary, PhysicalEventKind::digital};
     case ControllerDigitalControl::cameraRecenter:
         return {rightStickClick, PhysicalEventKind::digital};
+    case ControllerDigitalControl::uiPrevious:
+      return {dpadLeft, PhysicalEventKind::digital};
+    case ControllerDigitalControl::uiNext:
+      return {dpadRight, PhysicalEventKind::digital};
     case ControllerDigitalControl::count:
         break;
     }
@@ -190,6 +198,6 @@ private:
     bool hasGeneration_{};
 };
 
-static_assert(ControllerInputBatchBridge::maximumEmissionCount == 92U);
+static_assert(ControllerInputBatchBridge::maximumEmissionCount == 96U);
 
 } // namespace airfix::input

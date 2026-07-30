@@ -111,9 +111,10 @@ void testGamepadButtons() {
                 ControllerDigitalControl::throttleUp, "D-pad up");
   requireButton(SDL_GAMEPAD_BUTTON_DPAD_DOWN,
                 ControllerDigitalControl::throttleDown, "D-pad down");
-  require(
-      !airfix::windows::sdlGamepadButton(SDL_GAMEPAD_BUTTON_DPAD_LEFT).valid(),
-      "unbound SDL gamepad button was accepted");
+  requireButton(SDL_GAMEPAD_BUTTON_DPAD_LEFT,
+                ControllerDigitalControl::uiPrevious, "D-pad left");
+  requireButton(SDL_GAMEPAD_BUTTON_DPAD_RIGHT, ControllerDigitalControl::uiNext,
+                "D-pad right");
 }
 
 } // namespace

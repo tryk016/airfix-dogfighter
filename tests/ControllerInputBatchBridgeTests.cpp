@@ -100,30 +100,34 @@ void establishNeutral(
 void testAllDigitalMappings() {
     using namespace airfix::input::controls::controller;
     constexpr std::array expected{
-        airfix::input::ControllerDigitalMapping{
-            rightTrigger, PhysicalEventKind::analog},
-        airfix::input::ControllerDigitalMapping{
-            menu, PhysicalEventKind::digital},
-        airfix::input::ControllerDigitalMapping{
-            leftTrigger, PhysicalEventKind::analog},
-        airfix::input::ControllerDigitalMapping{
-            dpadUp, PhysicalEventKind::digital},
-        airfix::input::ControllerDigitalMapping{
-            dpadDown, PhysicalEventKind::digital},
-        airfix::input::ControllerDigitalMapping{
-            rightShoulder, PhysicalEventKind::digital},
-        airfix::input::ControllerDigitalMapping{
-            leftShoulder, PhysicalEventKind::digital},
-        airfix::input::ControllerDigitalMapping{
-            faceLeft, PhysicalEventKind::digital},
-        airfix::input::ControllerDigitalMapping{
-            faceTop, PhysicalEventKind::digital},
-        airfix::input::ControllerDigitalMapping{
-            facePrimary, PhysicalEventKind::digital},
-        airfix::input::ControllerDigitalMapping{
-            faceSecondary, PhysicalEventKind::digital},
-        airfix::input::ControllerDigitalMapping{
-            rightStickClick, PhysicalEventKind::digital},
+        airfix::input::ControllerDigitalMapping{rightTrigger,
+                                                PhysicalEventKind::analog},
+        airfix::input::ControllerDigitalMapping{menu,
+                                                PhysicalEventKind::digital},
+        airfix::input::ControllerDigitalMapping{leftTrigger,
+                                                PhysicalEventKind::analog},
+        airfix::input::ControllerDigitalMapping{dpadUp,
+                                                PhysicalEventKind::digital},
+        airfix::input::ControllerDigitalMapping{dpadDown,
+                                                PhysicalEventKind::digital},
+        airfix::input::ControllerDigitalMapping{rightShoulder,
+                                                PhysicalEventKind::digital},
+        airfix::input::ControllerDigitalMapping{leftShoulder,
+                                                PhysicalEventKind::digital},
+        airfix::input::ControllerDigitalMapping{faceLeft,
+                                                PhysicalEventKind::digital},
+        airfix::input::ControllerDigitalMapping{faceTop,
+                                                PhysicalEventKind::digital},
+        airfix::input::ControllerDigitalMapping{facePrimary,
+                                                PhysicalEventKind::digital},
+        airfix::input::ControllerDigitalMapping{faceSecondary,
+                                                PhysicalEventKind::digital},
+        airfix::input::ControllerDigitalMapping{rightStickClick,
+                                                PhysicalEventKind::digital},
+        airfix::input::ControllerDigitalMapping{dpadLeft,
+                                                PhysicalEventKind::digital},
+        airfix::input::ControllerDigitalMapping{dpadRight,
+                                                PhysicalEventKind::digital},
     };
 
     static_assert(expected.size() == controllerDigitalControlCount);
@@ -144,7 +148,8 @@ void testNeutralFullState() {
     const auto input = batch(7U, {}, {});
     const auto count = accept(bridge, input, output);
 
-    require(count == 16U, "neutral full state must emit four axes and 12 buttons");
+    require(count == 18U,
+            "neutral full state must emit four axes and 14 buttons");
     constexpr std::array axisControls{
         airfix::input::controls::controller::leftStickX,
         airfix::input::controls::controller::leftStickY,
@@ -184,7 +189,7 @@ void testNonNeutralFullStateAndDeadzone() {
     ControllerInputBatchBridge bridge;
     OutputBuffer output{};
     const auto count = accept(bridge, batch(2U, sample, sample), output);
-    require(count == 16U, "non-neutral full state emitted unexpected count");
+    require(count == 18U, "non-neutral full state emitted unexpected count");
     require(output[0U].value == 5000, "bank was changed");
     require(output[1U].value == -5000, "pitch was changed");
     require(output[2U].value == 0, "positive deadzone boundary was wrong");
@@ -359,16 +364,16 @@ void testGenerationChangeAndReset() {
     replacement.secondaryTriggerPressed = true;
     const auto replacementCount =
         accept(bridge, batch(11U, replacement, replacement), output);
-    require(replacementCount == 16U,
-        "new generation was not emitted as full state");
+    require(replacementCount == 18U,
+            "new generation was not emitted as full state");
     require(bridge.currentGeneration() == 11U,
         "new generation did not replace current generation");
 
     bridge.reset();
     require(bridge.currentGeneration() == 0U,
         "reset did not clear current generation");
-    require(accept(bridge, batch(11U, replacement, replacement), output) == 16U,
-        "reset did not require a fresh full state");
+    require(accept(bridge, batch(11U, replacement, replacement), output) == 18U,
+            "reset did not require a fresh full state");
 }
 
 void requireRejectedAtomically(
@@ -504,8 +509,8 @@ void testOutputCapacityAndMaximumBound() {
     require(smallBridge.currentGeneration() == 0U,
         "small output capacity committed bridge state");
     requireUntouched(output, "small full-state output");
-    require(accept(smallBridge, neutral, output) == 16U,
-        "retry after small output was not a full state");
+    require(accept(smallBridge, neutral, output) == 18U,
+            "retry after small output was not a full state");
 
     ControllerInputBatch maximum = batch(2U, {}, {});
     ControllerSample edgeState{};

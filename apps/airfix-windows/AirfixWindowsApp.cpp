@@ -1,7 +1,10 @@
 #include "AirfixD3D11Renderer.hpp"
 #include "AirfixSdlInputAdapter.hpp"
 #include "AirfixWindowsCommandLine.hpp"
+#include "AirfixWindowsRenderSettingsCoordinator.hpp"
+#include "AirfixWindowsRenderSettingsPanel.hpp"
 #include "AirfixWindowsSettingsRoot.hpp"
+#include "AirfixWindowsUiRasterizer.hpp"
 #include "AirfixXAudio2Backend.hpp"
 
 #include "airfix/audio/AudioCommand.hpp"
@@ -21,6 +24,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <exception>
 #include <filesystem>
@@ -38,6 +42,8 @@ namespace {
 constexpr std::uint64_t inputStepNanoseconds = 1'000'000'000ULL / 60ULL;
 constexpr std::uint64_t maximumFrameNanoseconds = inputStepNanoseconds * 8ULL;
 constexpr airfix::audio::AudioClipId smokeAudioClip{1U};
+constexpr int minimumInteractiveWindowWidth = 640;
+constexpr int minimumInteractiveWindowHeight = 360;
 
 [[nodiscard]] constexpr std::string_view renderSettingsIssueCategory(
     const airfix::windows::RenderPresentationSettingsApplyIssueKind
@@ -239,6 +245,115 @@ struct SdlWindowDeleter {
 
 using SdlWindow = std::unique_ptr<SDL_Window, SdlWindowDeleter>;
 
+struct WindowsRenderSettingsPersistenceContext final {
+  std::optional<std::filesystem::path> settingsDirectory;
+};
+
+[[nodiscard]] airfix::windows::RenderPresentationSettingsApplyResult
+applyWindowsRenderSettings(
+    void *const context,
+    const airfix::render::RenderPresentationSettings &candidate,
+    const airfix::windows::RenderPresentationSettingsPublicationGate
+        publicationGate) noexcept {
+  if (context == nullptr) {
+    return {
+        .changed = false,
+        .issue = airfix::windows::RenderPresentationSettingsApplyIssueKind::
+            surfaceUnavailable,
+    };
+  }
+  return static_cast<airfix::windows::AirfixD3D11Renderer *>(context)
+      ->applyRenderPresentationSettings(candidate, publicationGate);
+}
+
+[[nodiscard]] airfix::windows::AirfixWindowsRenderSettingsStoreResult
+storeWindowsRenderSettings(
+    void *const context,
+    const airfix::render::RenderPresentationSettings &candidate) noexcept {
+  using Result = airfix::windows::AirfixWindowsRenderSettingsStoreResult;
+  using Status = airfix::windows::AirfixWindowsRenderSettingsStoreStatus;
+  using ErrorKind = airfix::settings::RenderSettingsStoreErrorKind;
+  const auto *persistence =
+      static_cast<const WindowsRenderSettingsPersistenceContext *>(context);
+  if (persistence == nullptr || !persistence->settingsDirectory.has_value()) {
+    return Result{Status::unavailable};
+  }
+  try {
+    (void)airfix::settings::saveRenderPresentationSettings(
+        *persistence->settingsDirectory, candidate);
+    return Result{Status::committed};
+  } catch (const airfix::settings::RenderSettingsStoreError &error) {
+    switch (error.kind()) {
+    case ErrorKind::commitUnknown:
+      return Result{Status::commitUnknown};
+    case ErrorKind::persistenceBlocked:
+      return Result{Status::blocked};
+    case ErrorKind::invalidDirectory:
+      return Result{Status::unavailable};
+    case ErrorKind::invalidSettings:
+    case ErrorKind::saveFailed:
+      return Result{Status::failed};
+    }
+  } catch (...) {
+  }
+  return Result{Status::failed};
+}
+
+[[nodiscard]] airfix::windows::AirfixWindowsRenderSettingsReloadResult
+reloadWindowsRenderSettings(void *const context) noexcept {
+  using Result = airfix::windows::AirfixWindowsRenderSettingsReloadResult;
+  using Status = airfix::windows::AirfixWindowsRenderSettingsReloadStatus;
+  const auto *persistence =
+      static_cast<const WindowsRenderSettingsPersistenceContext *>(context);
+  if (persistence == nullptr || !persistence->settingsDirectory.has_value()) {
+    return Result{.status = Status::unavailable};
+  }
+  try {
+    const auto loaded = airfix::settings::loadRenderPresentationSettings(
+        *persistence->settingsDirectory);
+    return airfix::windows::classifyWindowsRenderSettingsCommitReadback(loaded);
+  } catch (...) {
+    return Result{.status = Status::failed};
+  }
+}
+
+[[nodiscard]] airfix::windows::AirfixWindowsUiPixelExtent
+windowsUiExtent(SDL_Window &window) {
+  int width{};
+  int height{};
+  if (!SDL_GetWindowSizeInPixels(&window, &width, &height) || width <= 0 ||
+      height <= 0) {
+    throw std::runtime_error("SDL3 product UI extent is unavailable");
+  }
+  float dpiScale = SDL_GetWindowDisplayScale(&window);
+  if (!std::isfinite(dpiScale) || dpiScale <= 0.0F) {
+    dpiScale = 1.0F;
+  }
+  return {
+      .width = static_cast<std::uint32_t>(width),
+      .height = static_cast<std::uint32_t>(height),
+      .dpiScale = dpiScale,
+  };
+}
+
+[[nodiscard]] airfix::windows::AirfixWindowsPointerInput
+windowsPointerInput(SDL_Window &window, const bool primaryPressed,
+                    const std::int32_t wheelY) noexcept {
+  float x{};
+  float y{};
+  (void)SDL_GetMouseState(&x, &y);
+  float pixelDensity = SDL_GetWindowPixelDensity(&window);
+  if (!std::isfinite(pixelDensity) || pixelDensity <= 0.0F) {
+    pixelDensity = 1.0F;
+  }
+  return {
+      .xPixels = x * pixelDensity,
+      .yPixels = y * pixelDensity,
+      .wheelY = wheelY,
+      .primaryPressed = primaryPressed,
+  };
+}
+
 struct LoadedPrivateContent final {
   airfix::content::ContentRevision revision;
   airfix::simulation::LegacyAircraftAudioBindings aircraftAudioBindings;
@@ -346,12 +461,13 @@ int run(const int argumentCount, char *arguments[]) {
     ~SdlQuitGuard() { SDL_Quit(); }
   } quitGuard;
 
+  const bool sessionOnlyInvocation =
+      options.smokeTest || options.validateContentOnly ||
+      options.captureFrameOutput.has_value() ||
+      options.captureDiagnosticFrameOutput.has_value() ||
+      options.captureSettingsPanelOutput.has_value();
   SDL_WindowFlags flags = SDL_WINDOW_HIGH_PIXEL_DENSITY;
-  flags |= options.smokeTest || options.validateContentOnly ||
-                   options.captureFrameOutput.has_value() ||
-                   options.captureDiagnosticFrameOutput.has_value()
-               ? SDL_WINDOW_HIDDEN
-               : SDL_WINDOW_RESIZABLE;
+  flags |= sessionOnlyInvocation ? SDL_WINDOW_HIDDEN : SDL_WINDOW_RESIZABLE;
   const auto initialWindowSize = options.captureSize.value_or(
       airfix::windows::AirfixWindowsCaptureSize{960U, 540U});
   SdlWindow window{SDL_CreateWindow("Airfix Dogfighter Reconstruction",
@@ -359,6 +475,11 @@ int run(const int argumentCount, char *arguments[]) {
                                     static_cast<int>(initialWindowSize.height),
                                     flags)};
   if (!window) {
+    throw std::runtime_error(SDL_GetError());
+  }
+  if (!sessionOnlyInvocation &&
+      !SDL_SetWindowMinimumSize(window.get(), minimumInteractiveWindowWidth,
+                                minimumInteractiveWindowHeight)) {
     throw std::runtime_error(SDL_GetError());
   }
   if (options.captureSize.has_value()) {
@@ -378,24 +499,28 @@ int run(const int argumentCount, char *arguments[]) {
   airfix::runtime::AppSession session;
   airfix::windows::AirfixD3D11Renderer renderer{*window};
   airfix::render::RenderPresentationSettings persistentSettings;
-  std::optional<std::filesystem::path> settingsDirectory;
-  const bool sessionOnlyInvocation =
-      options.smokeTest || options.validateContentOnly ||
-      options.captureFrameOutput.has_value() ||
-      options.captureDiagnosticFrameOutput.has_value();
+  WindowsRenderSettingsPersistenceContext persistenceContext;
+  auto persistenceState =
+      airfix::windows::AirfixWindowsRenderSettingsPersistenceState::unavailable;
   if (!sessionOnlyInvocation) {
     try {
-      settingsDirectory =
+      persistenceContext.settingsDirectory =
           airfix::windows::resolveAirfixWindowsSettingsDirectory();
-      const auto load =
-          airfix::settings::loadRenderPresentationSettings(*settingsDirectory);
+      const auto load = airfix::settings::loadRenderPresentationSettings(
+          *persistenceContext.settingsDirectory);
       persistentSettings = load.settings;
+      persistenceState =
+          load.persistenceBlocked
+              ? airfix::windows::AirfixWindowsRenderSettingsPersistenceState::
+                    blocked
+              : airfix::windows::AirfixWindowsRenderSettingsPersistenceState::
+                    available;
       reportSettingsLoad(load);
     } catch (...) {
       // Paths and platform error text are deliberately not exposed here.
       // An unavailable profile is nonfatal and cannot partially change the
       // canonical defaults.
-      settingsDirectory.reset();
+      persistenceContext.settingsDirectory.reset();
       std::cerr << "Render settings: storage-unavailable\n";
     }
   }
@@ -412,6 +537,55 @@ int run(const int argumentCount, char *arguments[]) {
     std::cerr << "Windows render settings override rejected ("
               << renderSettingsIssueCategory(*startupSettingsResult.issue)
               << "); continuing with the active snapshot\n";
+  }
+  const airfix::windows::AirfixWindowsRenderSettingsCallbacks
+      renderSettingsCallbacks{
+          .applyRenderer = applyWindowsRenderSettings,
+          .rendererContext = &renderer,
+          .store = storeWindowsRenderSettings,
+          .reload = reloadWindowsRenderSettings,
+          .persistenceContext = &persistenceContext,
+      };
+  auto renderSettingsCoordinator =
+      airfix::windows::AirfixWindowsRenderSettingsCoordinator::create(
+          persistentSettings, options.renderOverrides,
+          renderer.renderPresentationSettings(), persistenceState,
+          renderSettingsCallbacks);
+  if (!renderSettingsCoordinator.has_value()) {
+    throw std::runtime_error(
+        "Windows render settings coordinator could not be created");
+  }
+
+  airfix::windows::AirfixWindowsUiRasterizer uiRasterizer;
+  if (options.captureSettingsPanelOutput.has_value()) {
+    auto panel = airfix::windows::AirfixWindowsRenderSettingsPanel::create(
+        startupSettings, true, windowsUiExtent(*window),
+        airfix::windows::airfixWindowsRenderSettingsSessionOverrideMask(
+            options.renderOverrides),
+        false);
+    if (!panel.has_value()) {
+      throw std::runtime_error(
+          "public settings-panel capture model is invalid");
+    }
+    const auto pause = panel->snapshot();
+    const auto &displaySettings = pause.items[0];
+    (void)panel->consumePointer({
+        .xPixels =
+            displaySettings.bounds.x + displaySettings.bounds.width * 0.5F,
+        .yPixels =
+            displaySettings.bounds.y + displaySettings.bounds.height * 0.5F,
+        .wheelY = 0,
+        .primaryPressed = true,
+    });
+    const auto raster = uiRasterizer.rasterize(panel->snapshot());
+    if (!raster.complete() || !renderer.setProductUiRaster(*raster.raster)) {
+      throw std::runtime_error(
+          "public settings-panel raster could not be published");
+    }
+    renderer.capturePublicSettingsPanelFrameToBmp(
+        *options.captureSettingsPanelOutput);
+    std::cout << "Public D3D11 settings-panel frame captured\n";
+    return 0;
   }
   airfix::windows::AirfixXAudio2Backend audio;
   if (audio.outputState() ==
@@ -530,9 +704,99 @@ int run(const int argumentCount, char *arguments[]) {
   airfix::windows::AirfixSdlInputAdapter input;
   airfix::runtime::PlayerAircraftPresentationCoordinator
       playerAircraftPresentation;
+  std::optional<airfix::windows::AirfixWindowsRenderSettingsPanel>
+      renderSettingsPanel;
+  std::optional<airfix::windows::AirfixWindowsRenderSettingsViewSnapshot>
+      publishedPanelSnapshot;
   bool simulationPipelineReady = true;
   bool windowFocused =
       (SDL_GetWindowFlags(window.get()) & SDL_WINDOW_INPUT_FOCUS) != 0U;
+
+  const auto mayResumeSimulation = [&]() noexcept {
+    return session.lifecycleState() ==
+               airfix::runtime::LifecycleState::foregroundPaused &&
+           windowFocused && simulationPipelineReady &&
+           playerAircraftPresentation.healthy() &&
+           renderer.missionWorldRoomInstalled() && playerSpawnPose.has_value();
+  };
+  const auto refreshRenderSettingsPanel = [&]() {
+    if (!renderSettingsPanel.has_value()) {
+      return;
+    }
+    renderSettingsPanel->setResumeAvailable(mayResumeSimulation());
+    const auto snapshot = renderSettingsPanel->snapshot();
+    if (publishedPanelSnapshot.has_value() &&
+        *publishedPanelSnapshot == snapshot) {
+      return;
+    }
+    const auto raster = uiRasterizer.rasterize(snapshot);
+    if (!raster.complete() || !renderer.setProductUiRaster(*raster.raster)) {
+      throw std::runtime_error(
+          "Windows product UI raster could not be published");
+    }
+    publishedPanelSnapshot = snapshot;
+  };
+  const auto openRenderSettingsPanel = [&]() {
+    if (renderSettingsPanel.has_value()) {
+      return;
+    }
+    audio.setActive(false);
+    session.pause();
+    input.setContext(airfix::input::InputContext::menu);
+    if (!input.resetForGameplayBoundary()) {
+      throw std::runtime_error(
+          "SDL3 input reset failed while opening the pause menu");
+    }
+    renderSettingsPanel =
+        airfix::windows::AirfixWindowsRenderSettingsPanel::create(
+            renderSettingsCoordinator->persistentBase(),
+            renderSettingsCoordinator->persistenceAvailable(),
+            windowsUiExtent(*window),
+            airfix::windows::airfixWindowsRenderSettingsSessionOverrideMask(
+                renderSettingsCoordinator->sessionOverrides()),
+            mayResumeSimulation());
+    if (!renderSettingsPanel.has_value()) {
+      throw std::runtime_error(
+          "Windows render settings panel could not be created");
+    }
+    publishedPanelSnapshot.reset();
+    refreshRenderSettingsPanel();
+  };
+  const auto consumeRenderSettingsIntent =
+      [&](const airfix::windows::AirfixWindowsRenderSettingsIntent &intent) {
+        if (!renderSettingsPanel.has_value()) {
+          return;
+        }
+        if (intent.applyTicket.has_value()) {
+          const auto outcome =
+              renderSettingsCoordinator->applyPersistentCandidate(
+                  intent.applyTicket->candidate);
+          renderSettingsPanel->setPersistenceAvailable(
+              renderSettingsCoordinator->persistenceAvailable());
+          if (outcome.accepted()) {
+            (void)renderSettingsPanel->finishApplySuccess(*intent.applyTicket);
+          } else {
+            (void)renderSettingsPanel->finishApplyFailure(*intent.applyTicket);
+          }
+        }
+        if (intent.resumeRequested && mayResumeSimulation()) {
+          input.setContext(airfix::input::InputContext::gameplay);
+          if (!input.resetForGameplayBoundary()) {
+            throw std::runtime_error(
+                "SDL3 input reset failed while resuming gameplay");
+          }
+          const bool resumed = session.resume();
+          audio.setActive(resumed);
+          if (resumed) {
+            renderer.clearProductUiRaster();
+            renderSettingsPanel.reset();
+            publishedPanelSnapshot.reset();
+            return;
+          }
+        }
+        refreshRenderSettingsPanel();
+      };
+
   std::uint64_t inputTick = 0U;
   std::uint64_t inputAccumulator = 0U;
   std::uint64_t previousTime = SDL_GetTicksNS();
@@ -554,6 +818,22 @@ int run(const int argumentCount, char *arguments[]) {
         }
         audio.setActive(false);
         session.pause();
+        refreshRenderSettingsPanel();
+      }
+
+      if (renderSettingsPanel.has_value() &&
+          (event.type == SDL_EVENT_MOUSE_MOTION ||
+           event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
+           event.type == SDL_EVENT_MOUSE_WHEEL)) {
+        const bool primaryPressed = event.type == SDL_EVENT_MOUSE_BUTTON_DOWN &&
+                                    event.button.button == SDL_BUTTON_LEFT;
+        std::int32_t wheelY = 0;
+        if (event.type == SDL_EVENT_MOUSE_WHEEL) {
+          wheelY = event.wheel.y > 0.0F ? 1 : (event.wheel.y < 0.0F ? -1 : 0);
+        }
+        const auto intent = renderSettingsPanel->consumePointer(
+            windowsPointerInput(*window, primaryPressed, wheelY));
+        consumeRenderSettingsIntent(intent);
       }
 
       switch (event.type) {
@@ -562,12 +842,25 @@ int run(const int argumentCount, char *arguments[]) {
         break;
       case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
         renderer.resize();
+        if (renderSettingsPanel.has_value()) {
+          renderSettingsPanel->setOutput(windowsUiExtent(*window));
+          publishedPanelSnapshot.reset();
+          refreshRenderSettingsPanel();
+        }
+        break;
+      case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
+        if (renderSettingsPanel.has_value()) {
+          renderSettingsPanel->setOutput(windowsUiExtent(*window));
+          publishedPanelSnapshot.reset();
+          refreshRenderSettingsPanel();
+        }
         break;
       case SDL_EVENT_WINDOW_FOCUS_LOST:
         windowFocused = false;
         input.focusLost();
         audio.setActive(false);
         session.enterInactive();
+        refreshRenderSettingsPanel();
         break;
       case SDL_EVENT_WINDOW_FOCUS_GAINED:
         if (!input.focusGained()) {
@@ -578,6 +871,7 @@ int run(const int argumentCount, char *arguments[]) {
         audio.setActive(false);
         session.enterForeground();
         windowFocused = true;
+        refreshRenderSettingsPanel();
         break;
       default:
         break;
@@ -598,25 +892,15 @@ int run(const int argumentCount, char *arguments[]) {
       if (!inputFrame.accepted) {
         throw std::runtime_error("SDL3 input frame generation failed");
       }
+      if (renderSettingsPanel.has_value()) {
+        const auto intent =
+            renderSettingsPanel->consumeInputFrame(inputFrame.frame);
+        consumeRenderSettingsIntent(intent);
+        inputAccumulator -= inputStepNanoseconds;
+        continue;
+      }
       if (inputFrame.frame.pressed(airfix::input::DigitalAction::globalPause)) {
-        if (!input.resetForGameplayBoundary()) {
-          throw std::runtime_error(
-              "SDL3 input reset failed at a gameplay boundary");
-        }
-        if (session.simulationRunning()) {
-          audio.setActive(false);
-          session.pause();
-        } else {
-          const bool mayResume =
-              session.lifecycleState() ==
-                  airfix::runtime::LifecycleState::foregroundPaused &&
-              windowFocused && simulationPipelineReady &&
-              playerAircraftPresentation.healthy() &&
-              renderer.missionWorldRoomInstalled() &&
-              playerSpawnPose.has_value();
-          const bool resumed = mayResume && session.resume();
-          audio.setActive(resumed);
-        }
+        openRenderSettingsPanel();
         inputAccumulator -= inputStepNanoseconds;
         continue;
       }

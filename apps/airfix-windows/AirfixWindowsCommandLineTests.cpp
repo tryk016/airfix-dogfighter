@@ -48,7 +48,8 @@ void testEmptyAndSmokeModes() {
               !defaultOptions.renderOverrides.scenePresentation &&
               !defaultOptions.renderOverrides.visualProfile &&
               !defaultOptions.renderOverrides.diagnosticsOverlayEnabled &&
-              !defaultOptions.captureDiagnosticFrameOutput,
+              !defaultOptions.captureDiagnosticFrameOutput &&
+              !defaultOptions.captureSettingsPanelOutput,
           "empty command line must retain a sparse data-less shell");
 
   const std::array smoke{"--smoke-test"sv};
@@ -216,6 +217,19 @@ void testValidationAndRejections() {
       std::array{"--smoke-test"sv, "--capture-diagnostic-frame"sv,
                  "public.bmp"sv},
       "public diagnostic capture and smoke mode must remain exclusive");
+  requireRejected(
+      std::array{"--smoke-test"sv, "--capture-settings-panel"sv,
+                 "settings.bmp"sv},
+      "public settings capture and smoke mode must remain exclusive");
+  requireRejected(std::array{"--content-root"sv, "private-pack"sv,
+                             "--capture-settings-panel"sv, "settings.bmp"sv},
+                  "public settings capture must reject private content");
+  requireRejected(std::array{"--capture-diagnostic-frame"sv,
+                             "diagnostics.bmp"sv, "--capture-settings-panel"sv,
+                             "settings.bmp"sv},
+                  "public capture modes must remain mutually exclusive");
+  requireRejected(std::array{"--capture-settings-panel"sv, "settings.png"sv},
+                  "settings-panel capture must require BMP output");
   requireRejected(std::array{"--capture-diagnostic-frame"sv, "public.bmp"sv,
                              "--no-render-diagnostics"sv},
                   "diagnostic capture and disabled diagnostics must conflict");
@@ -280,6 +294,26 @@ void testPublicDiagnosticCaptureRequest() {
           "public diagnostic capture request was not retained");
 }
 
+void testPublicSettingsPanelCaptureRequest() {
+  const std::array arguments{
+      "--capture-settings-panel"sv, "settings.bmp"sv,
+      "--capture-size"sv,           "3440x1440"sv,
+      "--render-scale"sv,           "125"sv,
+      "--visual-profile"sv,         "enhanced"sv,
+  };
+  const auto options = parse(arguments);
+  require(options.captureSettingsPanelOutput ==
+                  std::filesystem::path("settings.bmp") &&
+              options.captureSize ==
+                  airfix::windows::AirfixWindowsCaptureSize{3440U, 1440U} &&
+              options.renderOverrides.renderScalePercent == 125.0F &&
+              options.renderOverrides.visualProfile ==
+                  VisualProfile::enhanced &&
+              !options.captureDiagnosticFrameOutput && !options.contentRoot &&
+              !options.mission,
+          "public settings-panel capture request was not retained");
+}
+
 } // namespace
 
 int main() {
@@ -290,6 +324,7 @@ int main() {
     testValidationAndRejections();
     testPrivateCaptureRequest();
     testPublicDiagnosticCaptureRequest();
+    testPublicSettingsPanelCaptureRequest();
     std::cout << "Airfix Windows command-line tests passed\n";
     return 0;
   } catch (const std::exception &error) {

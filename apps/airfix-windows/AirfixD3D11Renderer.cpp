@@ -590,6 +590,11 @@ public:
            overlayExtent_.width != 0U && overlayExtent_.height != 0U;
   }
 
+  [[nodiscard]] bool hasProductUiOverlayResourcesForTesting() const noexcept {
+    return productUiTexture_ && productUiShaderResource_ &&
+           productUiExtent_.width != 0U && productUiExtent_.height != 0U;
+  }
+
   void installLoadedMissionRoom(
       airfix::content::LoadedMissionWorldRoom &&room,
       const airfix::content::ContentRevision &expectedRevision) {
@@ -916,6 +921,9 @@ public:
         releaseDiagnosticsOverlayResources();
       }
     }
+    if (productUiShaderResource_) {
+      drawProductUiOverlay();
+    }
     endGpuTimestamp(gpuTimestamp);
 
     std::optional<CapturedBackBuffer> captured;
@@ -959,6 +967,96 @@ public:
     if (!renderFrame(true, &outputPath)) {
       throw std::runtime_error(
           "public diagnostic capture produced no visible D3D11 output");
+    }
+  }
+
+  [[nodiscard]] bool
+  setProductUiRaster(const AirfixWindowsUiRaster &raster) noexcept {
+    if (!raster.complete() || width_ <= 0 || height_ <= 0 ||
+        raster.width != static_cast<std::uint32_t>(width_) ||
+        raster.height != static_cast<std::uint32_t>(height_)) {
+      return false;
+    }
+
+    try {
+      ComPtr<ID3D11Texture2D> preparedTexture;
+      ComPtr<ID3D11ShaderResourceView> preparedView;
+      ID3D11Texture2D *targetTexture = productUiTexture_.Get();
+      if (!targetTexture || productUiExtent_.width != raster.width ||
+          productUiExtent_.height != raster.height) {
+        D3D11_TEXTURE2D_DESC description{};
+        description.Width = raster.width;
+        description.Height = raster.height;
+        description.MipLevels = 1U;
+        description.ArraySize = 1U;
+        description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        description.SampleDesc = {1U, 0U};
+        description.Usage = D3D11_USAGE_DYNAMIC;
+        description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        description.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        requireSuccess(device_->CreateTexture2D(&description, nullptr,
+                                                preparedTexture.GetAddressOf()),
+                       "ID3D11Device::CreateTexture2D(product UI)");
+        requireSuccess(
+            device_->CreateShaderResourceView(preparedTexture.Get(), nullptr,
+                                              preparedView.GetAddressOf()),
+            "ID3D11Device::CreateShaderResourceView(product UI)");
+        targetTexture = preparedTexture.Get();
+      }
+
+      D3D11_MAPPED_SUBRESOURCE mapped{};
+      requireSuccess(context_->Map(targetTexture, 0U, D3D11_MAP_WRITE_DISCARD,
+                                   0U, &mapped),
+                     "ID3D11DeviceContext::Map(product UI)");
+      if (mapped.RowPitch < raster.rowPitchBytes) {
+        context_->Unmap(targetTexture, 0U);
+        return false;
+      }
+      for (std::uint32_t row = 0U; row < raster.height; ++row) {
+        auto *destination = static_cast<std::uint8_t *>(mapped.pData) +
+                            static_cast<std::size_t>(row) * mapped.RowPitch;
+        const auto *source =
+            raster.premultipliedBgra8.data() +
+            static_cast<std::size_t>(row) * raster.rowPitchBytes;
+        std::copy_n(source, raster.rowPitchBytes, destination);
+      }
+      context_->Unmap(targetTexture, 0U);
+
+      if (preparedTexture) {
+        productUiTexture_ = std::move(preparedTexture);
+        productUiShaderResource_ = std::move(preparedView);
+        productUiExtent_ = {raster.width, raster.height};
+      }
+      return true;
+    } catch (...) {
+      return false;
+    }
+  }
+
+  void clearProductUiRaster() noexcept {
+    if (context_) {
+      ID3D11ShaderResourceView *nullView = nullptr;
+      context_->PSSetShaderResources(0U, 1U, &nullView);
+    }
+    productUiShaderResource_.Reset();
+    productUiTexture_.Reset();
+    productUiExtent_ = {};
+  }
+
+  void capturePublicSettingsPanelFrameToBmp(
+      const std::filesystem::path &outputPath) {
+    if (missionWorldRoomInstalled()) {
+      throw std::runtime_error(
+          "public settings capture rejects installed private content");
+    }
+    if (!productUiShaderResource_ || productUiExtent_.width == 0U ||
+        productUiExtent_.height == 0U) {
+      throw std::runtime_error(
+          "public settings capture requires a published product UI");
+    }
+    if (!renderFrame(true, &outputPath)) {
+      throw std::runtime_error(
+          "public settings capture produced no visible D3D11 output");
     }
   }
 
@@ -1170,6 +1268,11 @@ private:
           static_cast<std::uint64_t>(overlayExtent_.width) *
               overlayExtent_.height * 4U);
     }
+    if (productUiExtent_.width != 0U && productUiExtent_.height != 0U) {
+      total = saturatingAdd(total,
+                            static_cast<std::uint64_t>(productUiExtent_.width) *
+                                productUiExtent_.height * 4U);
+    }
     return total;
   }
 
@@ -1294,6 +1397,50 @@ private:
     context_->PSSetShaderResources(0U, 1U, &nullView);
     context_->OMSetBlendState(
         nullptr, blendFactor.data(), 0xFFFFFFFFU);
+  }
+
+  void drawProductUiOverlay() {
+    if (!productUiShaderResource_ || !renderTarget_ ||
+        productUiExtent_.width == 0U || productUiExtent_.height == 0U) {
+      return;
+    }
+
+    const OverlayUniforms uniforms{
+        .outputAndPanelSize =
+            {
+                static_cast<float>(width_),
+                static_cast<float>(height_),
+                static_cast<float>(productUiExtent_.width),
+                static_cast<float>(productUiExtent_.height),
+            },
+        .panelOrigin = {0.0F, 0.0F, 0.0F, 0.0F},
+    };
+    context_->UpdateSubresource(overlayUniforms_.Get(), 0U, nullptr, &uniforms,
+                                0U, 0U);
+
+    ID3D11RenderTargetView *outputTarget = renderTarget_.Get();
+    context_->OMSetRenderTargets(1U, &outputTarget, nullptr);
+    context_->RSSetViewports(1U, &viewport_);
+    context_->RSSetState(rasterizer_.Get());
+    context_->OMSetDepthStencilState(presentationDepthState_.Get(), 0U);
+    constexpr std::array<float, 4U> blendFactor{};
+    context_->OMSetBlendState(productUiBlendState_.Get(), blendFactor.data(),
+                              0xFFFFFFFFU);
+    context_->IASetInputLayout(nullptr);
+    context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context_->VSSetShader(overlayVertexShader_.Get(), nullptr, 0U);
+    ID3D11Buffer *uniformBuffer = overlayUniforms_.Get();
+    context_->VSSetConstantBuffers(2U, 1U, &uniformBuffer);
+    context_->PSSetShader(overlayPixelShader_.Get(), nullptr, 0U);
+    ID3D11SamplerState *sampler = sampler_.Get();
+    context_->PSSetSamplers(0U, 1U, &sampler);
+    ID3D11ShaderResourceView *view = productUiShaderResource_.Get();
+    context_->PSSetShaderResources(0U, 1U, &view);
+    context_->Draw(6U, 0U);
+
+    ID3D11ShaderResourceView *nullView = nullptr;
+    context_->PSSetShaderResources(0U, 1U, &nullView);
+    context_->OMSetBlendState(nullptr, blendFactor.data(), 0xFFFFFFFFU);
   }
 
   void releaseSwapTargets() {
@@ -1579,6 +1726,17 @@ private:
             &overlayBlendDescription,
             overlayBlendState_.GetAddressOf()),
         "ID3D11Device::CreateBlendState(overlay)");
+
+    auto productUiBlendDescription = overlayBlendDescription;
+    auto &productUiTarget = productUiBlendDescription.RenderTarget[0];
+    productUiTarget.SrcBlend = D3D11_BLEND_ONE;
+    productUiTarget.DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+    productUiTarget.SrcBlendAlpha = D3D11_BLEND_ONE;
+    productUiTarget.DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+    requireSuccess(
+        device_->CreateBlendState(&productUiBlendDescription,
+                                  productUiBlendState_.GetAddressOf()),
+        "ID3D11Device::CreateBlendState(product UI)");
 
     const D3D11_QUERY_DESC disjointDescription{
         .Query = D3D11_QUERY_TIMESTAMP_DISJOINT,
@@ -2095,10 +2253,13 @@ private:
   ComPtr<ID3D11DepthStencilState> gameplayDepthState_;
   ComPtr<ID3D11DepthStencilState> presentationDepthState_;
   ComPtr<ID3D11BlendState> overlayBlendState_;
+  ComPtr<ID3D11BlendState> productUiBlendState_;
   ComPtr<ID3D11ShaderResourceView> texture_;
   ComPtr<ID3D11ShaderResourceView> fallbackTexture_;
   ComPtr<ID3D11Texture2D> overlayTexture_;
   ComPtr<ID3D11ShaderResourceView> overlayShaderResource_;
+  ComPtr<ID3D11Texture2D> productUiTexture_;
+  ComPtr<ID3D11ShaderResourceView> productUiShaderResource_;
   std::vector<MeshResources> meshResources_;
   std::unique_ptr<MissionResources> mission_;
   std::array<GpuTimestampQueries, 4U> gpuTimestampQueries_;
@@ -2106,6 +2267,7 @@ private:
   std::optional<double> latestGpuFrameMilliseconds_;
   airfix::render::RenderFrameDiagnosticsAccumulator diagnostics_;
   airfix::render::RenderTargetPixelExtent overlayExtent_{};
+  airfix::render::RenderTargetPixelExtent productUiExtent_{};
   std::optional<std::chrono::steady_clock::time_point>
       previousFrameStart_;
   std::optional<std::chrono::steady_clock::time_point>
@@ -2188,6 +2350,11 @@ hasDiagnosticsOverlayResourcesForTesting() const noexcept {
   return implementation_->hasDiagnosticsOverlayResourcesForTesting();
 }
 
+bool AirfixD3D11Renderer::hasProductUiOverlayResourcesForTesting()
+    const noexcept {
+  return implementation_->hasProductUiOverlayResourcesForTesting();
+}
+
 void AirfixD3D11Renderer::installLoadedMissionRoom(
     airfix::content::LoadedMissionWorldRoom &&room,
     const airfix::content::ContentRevision &expectedRevision) {
@@ -2211,6 +2378,20 @@ void AirfixD3D11Renderer::captureFrameToBmp(
 void AirfixD3D11Renderer::capturePublicDiagnosticFrameToBmp(
     const std::filesystem::path &outputPath) {
   implementation_->capturePublicDiagnosticFrameToBmp(outputPath);
+}
+
+bool AirfixD3D11Renderer::setProductUiRaster(
+    const AirfixWindowsUiRaster &raster) noexcept {
+  return implementation_->setProductUiRaster(raster);
+}
+
+void AirfixD3D11Renderer::clearProductUiRaster() noexcept {
+  implementation_->clearProductUiRaster();
+}
+
+void AirfixD3D11Renderer::capturePublicSettingsPanelFrameToBmp(
+    const std::filesystem::path &outputPath) {
+  implementation_->capturePublicSettingsPanelFrameToBmp(outputPath);
 }
 
 std::optional<airfix::render::RenderFrameDiagnostics>

@@ -169,6 +169,12 @@ BindingTable makeDefaultBindings() noexcept {
     add(Binding::analog(SourceKind::controller, controls::controller::dpadDown,
         AnalogAxis::uiNavigateY, menus, PhysicalEventKind::digital,
         q15Min, 1));
+    add(Binding::analog(SourceKind::controller, controls::controller::dpadLeft,
+                        AnalogAxis::uiNavigateX, menus,
+                        PhysicalEventKind::digital, q15Min, 1));
+    add(Binding::analog(SourceKind::controller, controls::controller::dpadRight,
+                        AnalogAxis::uiNavigateX, menus,
+                        PhysicalEventKind::digital, q15One, 1));
     add(Binding::digital(SourceKind::controller,
         controls::controller::facePrimary, DigitalAction::uiConfirm, menus));
     add(Binding::digital(SourceKind::controller,

@@ -1,8 +1,9 @@
 # Windows x64 product requirements
 
 **Status:** accepted product direction; data-less renderer, authenticated
-owner-local mission rendering, baseline physical input, and native audio
-shells implemented; live playable integration pending
+owner-local mission rendering, baseline physical input, native audio, and
+product presentation-settings shells implemented; live playable integration
+pending
 
 **Scope:** requirements unique to the playable Windows x64 product. Shared
 gameplay scope and parity requirements are defined in `V1-SCOPE.md`.
@@ -29,7 +30,20 @@ the requested logical paths. An explicit one-shot capture mode writes the same
 validated back buffer to a new owner-private BMP for local visual comparison;
 it never overwrites a file, rejects a requested capture extent that differs
 from the physical backbuffer, and keeps all captures outside Git. A
-separate SDL3 adapter now feeds fixed-rate semantic frames from the baseline
+separate public settings-panel capture exercises the real D3D11 composition
+path with a synthetic scene and never opens the private content or preference
+roots. The interactive product has a DPI-aware pause and Display settings
+surface rasterized with DirectWrite/Direct2D and composed after the 3D scene.
+It exposes render scale, Hor+/Original 4:3, Classic/Enhanced, and renderer
+statistics through keyboard, mouse, and standard-controller input. Apply is a
+durable prepare-save-publish transaction; Resume is a distinct action and is
+disabled until a resumable mission exists. Sparse command-line overrides
+remain session-only and never contaminate the persisted base.
+Rows, hit targets, status text, and font size use one adaptive physical layout
+scale when the preferred DPI-scaled panel would not fit. The interactive
+window has a 640x360 logical minimum, and the rasterizer rejects any view
+snapshot whose geometry escapes the actual backbuffer.
+A separate SDL3 adapter now feeds fixed-rate semantic frames from the baseline
 keyboard/mouse and standardized-controller layout, including focus loss,
 hot-plug, disconnect, ordered taps, dead-zone handling, and lifecycle neutral
 gates. A native XAudio2 2.9 adapter validates bounded portable audio commands,
@@ -94,13 +108,16 @@ ADR-0013 is mandatory for the Windows product:
 - `Low`, `Medium`, `High`, and `Ultra` plus separate shadow, MSAA, effect, and
   render-scale controls provide scalable performance.
 
-The authenticated mission renderer now uses the shared full-target Hor+ policy
-and exact native target at 100% scale. The recovered 640x480 projection remains
-reference-camera evidence only. Original 4:3 is implemented in portable layout
-math but is not yet exposed as a Windows user setting. Backend offscreen targets
-for 50-200% render scale and their resolve/resampling pass also remain pending.
-D3D11 remains responsible for native rasterization; neither SDL3 nor a legacy
-DirectX 7 emulation layer owns drawing.
+The authenticated mission renderer uses the shared full-target Hor+ policy and
+exact native target at 100% scale. The recovered 640x480 projection remains
+reference-camera evidence only. Original 4:3 and the 50-200% render-scale range
+are exposed through the Windows Display settings surface. D3D11 owns complete
+offscreen color/depth targets and the linear presentation pass for non-100%
+scales; publication retains the previous complete snapshot if preparation,
+durable persistence, or final validation fails. D3D11 remains responsible for
+native rasterization; neither SDL3 nor a legacy DirectX 7 emulation layer owns
+drawing. The broader Low/Medium/High/Ultra quality controls remain staged with
+their associated lighting, shadow, material, and post-processing work.
 
 The Windows performance target is 60 FPS at 1080p and 1440p on reasonable
 contemporary hardware, with scalable settings for 4K. Native 4K at 100% render
@@ -131,7 +148,7 @@ loss, and synthetic release of held actions are release requirements.
 | Camera cycle / recenter | `C` / `F`, middle mouse cycles | west face / right-stick click |
 | Mission status | `M` or mouse X2 | north face |
 | Pause | `Escape` | Start/Menu |
-| Menu navigation | arrows, `Enter`, `Escape`, `Q` / `E` tabs | left stick, south/east face, shoulders |
+| Menu navigation | arrows, mouse/wheel, `Enter`, `Escape`, `Q` / `E` tabs | left stick, D-pad, south/east face, shoulders |
 
 SDL scancodes are converted to stable USB HID control IDs. Controller Y axes
 are normalized so positive pitch/look means up, matching the shared semantic

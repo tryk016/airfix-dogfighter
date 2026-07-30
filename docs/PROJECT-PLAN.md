@@ -365,7 +365,7 @@ This phase is split into ordered, independently shippable stages:
    separate shadow/MSAA/effects/render-scale controls; dynamic render scale
    where useful; device profiling and memory budgets.
 
-Implementation checkpoint (2026-07-29): stages 1-2 have their portable
+Implementation checkpoint (2026-07-30): stages 1-2 have their portable
 foundation. Strongly typed resolution domains, exact 100% target identity,
 Hor+, Original 4:3 layout math, safe-area/UI fitting, input transforms, and the
 required aspect-ratio tests are implemented. D3D11 and Metal render directly
@@ -373,14 +373,16 @@ to the native output at 100% and use backend-private offscreen color/depth
 targets plus linear presentation at non-100% scales. Windows direct backbuffer
 captures verify 1080p, 1440p, 4K, and 32:9, and a controlled 50%/200% trial
 verifies that output and 3D raster extents vary independently. Remaining stage
-1-2 work is the equivalent Windows settings UI, complete HUD/effect
-integration, safe FOV control, and iOS runtime/device acceptance. The iOS
-touch/controller render-settings panel and persistence path are implemented. The shared
-telemetry contract and output-resolution developer overlay are implemented:
-both backends publish the same resolution, timing, workload, light, and
-labelled GPU-memory fields; D3D11 uses non-blocking timestamp queries and Metal
-uses completed-command-buffer timing. This checkpoint does not advance the
-lighting/material/post-processing stages.
+1-2 work is complete HUD/effect integration, safe FOV control, and iOS
+runtime/device acceptance. Both platform shells now expose the shared settings
+transaction through explicit pause boundaries: iOS uses a safe-area
+touch/controller panel, while Windows uses a DPI-aware DirectWrite/Direct2D
+raster composed by D3D11 and controlled by keyboard, mouse, or gamepad. The
+shared telemetry contract and output-resolution developer overlay are
+implemented: both backends publish the same resolution, timing, workload,
+light, and labelled GPU-memory fields; D3D11 uses non-blocking timestamp
+queries and Metal uses completed-command-buffer timing. This checkpoint does
+not advance the lighting/material/post-processing stages.
 
 ADR-0014 now supplies the finished cross-backend runtime settings foundation:
 one validated portable snapshot for render scale, Hor+/Original 4:3,
@@ -401,10 +403,12 @@ launch overrides; CI smoke/capture modes never open the real profile. iOS now
 binds the same store semantics to its private Application Support directory:
 Metal resources prepare off-main, the persistent base saves on a serial queue,
 and a fresh main-thread surface/revision check precedes publication. A stale
-post-save surface reprepares without saving twice. The final cross-input
-iOS settings UI now consumes that transaction through a portable applied/draft
-model and an explicit touch/controller pause-menu boundary. The equivalent
-Windows product UI and physical-device iOS acceptance remain separate slices.
+post-save surface reprepares without saving twice. Both product settings
+surfaces consume that transaction through the same portable applied/draft
+model and explicit pause-menu boundaries. Windows additionally keeps launch
+overrides session-only, persists only the unmasked base, and exposes a
+data-less settings-panel capture for deterministic UI validation. Physical-
+device iOS acceptance remains a separate slice.
 
 `Classic` and `Enhanced` are visual-intent profiles independent of the quality
 tier. Classic renders faithfully at the chosen high resolution; Enhanced adds
