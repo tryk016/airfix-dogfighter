@@ -3602,3 +3602,46 @@ superseded evidence.
   96 CTests pass. Both independent reviews report GO with no remaining P0-P2.
   All seven hosted checks pass, including Xcode 26.6 iPhoneOS and
   iPhoneSimulator builds plus the native Windows D3D11/XAudio2 smoke.
+
+## 2026-07-29 - durable render-presentation settings and Windows binding
+
+- Added the canonical AFRS v1 byte format above the storage-neutral semantic
+  record. The exact 71-byte current-schema document uses a little-endian
+  envelope, ordered single-occurrence TLVs, exact IEEE-754 render-scale bits,
+  a 4 KiB input ceiling, and SHA-256 over the complete envelope outside the
+  digest field. Missing, duplicate, unknown, out-of-order, truncated, trailing,
+  wrong-size, invalid-value, and noncanonical documents are rejected without
+  producing a partial snapshot.
+- A structurally intact future schema remains opaque exact bytes. A downgrade
+  uses safe defaults, does not fall through to an older backup, and refuses to
+  replace either retained future current or backup state.
+- Extended the portable durable-file boundary with one-handle bounded reads on
+  Win32 and POSIX. The reader rejects directories, symlinks/reparse points,
+  multiple hard links, oversized input, truncation/growth, and identity, size,
+  or link-count changes while reading.
+- Added a serialized current/backup settings store. Only a fully validated
+  current record can rotate into backup. New bytes are written to a prepared
+  sibling, synchronized, atomically replaced, and read back exactly. A
+  post-rename error is accepted only after the target matches the requested
+  bytes and file/directory durability can be retried; all other ambiguous
+  outcomes report `commitUnknown` without exposing a host path.
+- Windows now derives its private settings directory through
+  `SDL_GetPrefPath`, applies defaults -> one recovered persistent snapshot ->
+  sparse explicit launch overrides, and keeps launch values session-only.
+  Both positive and negative presentation/diagnostics flags and the
+  Classic/Enhanced selector are expressible. Smoke, capture, and validation
+  invocations deliberately bypass the profile resolver, so public CI cannot
+  read or modify user preferences.
+- Independent review initially rejected a linked-directory asymmetry. The
+  store now validates the `settings/` leaf itself before load as well as save,
+  rejects directory symlinks/reparse points, documents its serialized
+  app-private parent trust boundary, and has a synthetic linked-directory
+  regression test. Re-review reports GO with no remaining P0-P2.
+- Clean WSL Ubuntu GCC 13.3/Ninja builds all 317 steps and passes 98/98 tests.
+  Native MSVC 19.51/Ninja builds the complete Windows product and passes
+  104/104 tests, including D3D11 renderer and both data-less product smokes.
+  All seven PR checks also pass: hosted portable/macOS/Windows/clangd and the
+  native Windows product in run `30502869591`, plus unsigned iPhoneOS and
+  iPhoneSimulator in run `30502869598`.
+  No original asset, private setting, owner path, or generated AFRS record is
+  committed.

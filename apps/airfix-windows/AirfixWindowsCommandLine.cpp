@@ -100,8 +100,8 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
   std::optional<std::filesystem::path> captureFrameOutput;
   std::optional<std::filesystem::path> captureDiagnosticFrameOutput;
   std::optional<AirfixWindowsCaptureSize> captureSize;
-  std::optional<std::uint32_t> renderScalePercent;
-  bool originalFourByThreeSeen = false;
+  bool scenePresentationSeen = false;
+  bool visualProfileSeen = false;
   bool renderDiagnosticsSeen = false;
 
   for (std::size_t index = 0U; index < arguments.size(); ++index) {
@@ -112,23 +112,44 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
       }
       options.smokeTest = true;
     } else if (option == "--render-scale") {
-      if (renderScalePercent.has_value()) {
+      if (options.renderOverrides.renderScalePercent.has_value()) {
         invalidCommandLine();
       }
-      renderScalePercent =
-          parseRenderScalePercent(requireValue(arguments, index));
-    } else if (option == "--original-4x3") {
-      if (originalFourByThreeSeen) {
+      options.renderOverrides.renderScalePercent = static_cast<float>(
+          parseRenderScalePercent(requireValue(arguments, index)));
+    } else if (option == "--original-4x3" ||
+               option == "--widescreen-hor-plus") {
+      if (scenePresentationSeen) {
         invalidCommandLine();
       }
-      originalFourByThreeSeen = true;
-      options.originalFourByThreePresentation = true;
-    } else if (option == "--render-diagnostics") {
+      scenePresentationSeen = true;
+      options.renderOverrides.scenePresentation =
+          option == "--original-4x3"
+              ? airfix::render::ScenePresentationMode::originalFourByThree
+              : airfix::render::ScenePresentationMode::widescreenHorPlus;
+    } else if (option == "--visual-profile") {
+      if (visualProfileSeen) {
+        invalidCommandLine();
+      }
+      visualProfileSeen = true;
+      const auto value = requireValue(arguments, index);
+      if (value == "classic") {
+        options.renderOverrides.visualProfile =
+            airfix::render::VisualProfile::classic;
+      } else if (value == "enhanced") {
+        options.renderOverrides.visualProfile =
+            airfix::render::VisualProfile::enhanced;
+      } else {
+        invalidCommandLine();
+      }
+    } else if (option == "--render-diagnostics" ||
+               option == "--no-render-diagnostics") {
       if (renderDiagnosticsSeen) {
         invalidCommandLine();
       }
       renderDiagnosticsSeen = true;
-      options.renderDiagnostics = true;
+      options.renderOverrides.diagnosticsOverlayEnabled =
+          option == "--render-diagnostics";
     } else if (option == "--content-root" ||
                option == "--validate-content-root") {
       if (options.contentRoot.has_value()) {
@@ -173,8 +194,7 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
       }
       captureDiagnosticFrameOutput =
           std::filesystem::path(requireValue(arguments, index));
-      const auto extension =
-          captureDiagnosticFrameOutput->extension().string();
+      const auto extension = captureDiagnosticFrameOutput->extension().string();
       if (extension != ".bmp" && extension != ".BMP") {
         invalidCommandLine();
       }
@@ -194,13 +214,11 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
                                    startIndex.has_value();
   const bool hasContentSpecificOption =
       hasAnyMissionOption || captureFrameOutput.has_value();
-  const bool hasAnyCapture =
-      captureFrameOutput.has_value() ||
-      captureDiagnosticFrameOutput.has_value();
+  const bool hasAnyCapture = captureFrameOutput.has_value() ||
+                             captureDiagnosticFrameOutput.has_value();
   if ((options.smokeTest &&
        (options.contentRoot.has_value() || hasContentSpecificOption ||
-        captureDiagnosticFrameOutput.has_value() ||
-        captureSize.has_value())) ||
+        captureDiagnosticFrameOutput.has_value() || captureSize.has_value())) ||
       (!options.contentRoot.has_value() && hasContentSpecificOption) ||
       (options.contentRoot.has_value() &&
        captureDiagnosticFrameOutput.has_value()) ||
@@ -226,10 +244,11 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
   options.captureDiagnosticFrameOutput =
       std::move(captureDiagnosticFrameOutput);
   options.captureSize = captureSize;
-  options.renderScalePercent =
-      renderScalePercent.value_or(options.renderScalePercent);
   if (options.captureDiagnosticFrameOutput.has_value()) {
-    options.renderDiagnostics = true;
+    if (options.renderOverrides.diagnosticsOverlayEnabled == false) {
+      invalidCommandLine();
+    }
+    options.renderOverrides.diagnosticsOverlayEnabled = true;
   }
   return options;
 }

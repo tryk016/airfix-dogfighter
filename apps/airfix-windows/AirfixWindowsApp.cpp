@@ -1,6 +1,7 @@
 #include "AirfixD3D11Renderer.hpp"
 #include "AirfixSdlInputAdapter.hpp"
 #include "AirfixWindowsCommandLine.hpp"
+#include "AirfixWindowsSettingsRoot.hpp"
 #include "AirfixXAudio2Backend.hpp"
 
 #include "airfix/audio/AudioCommand.hpp"
@@ -11,6 +12,7 @@
 #include "airfix/package/AfPackRecovery.hpp"
 #include "airfix/runtime/AppSession.hpp"
 #include "airfix/runtime/PlayerAircraftPresentationCoordinator.hpp"
+#include "airfix/settings/RenderPresentationSettingsStore.hpp"
 #include "airfix/simulation/LegacyAircraftAudioCoordinator.hpp"
 #include "airfix/simulation/PlayerSpawnPose.hpp"
 
@@ -34,15 +36,13 @@
 namespace {
 
 constexpr std::uint64_t inputStepNanoseconds = 1'000'000'000ULL / 60ULL;
-constexpr std::uint64_t maximumFrameNanoseconds =
-    inputStepNanoseconds * 8ULL;
+constexpr std::uint64_t maximumFrameNanoseconds = inputStepNanoseconds * 8ULL;
 constexpr airfix::audio::AudioClipId smokeAudioClip{1U};
 
 [[nodiscard]] constexpr std::string_view renderSettingsIssueCategory(
     const airfix::windows::RenderPresentationSettingsApplyIssueKind
         issue) noexcept {
-  using Issue =
-      airfix::windows::RenderPresentationSettingsApplyIssueKind;
+  using Issue = airfix::windows::RenderPresentationSettingsApplyIssueKind;
   switch (issue) {
   case Issue::invalidSettings:
     return "invalid-settings";
@@ -60,8 +60,34 @@ constexpr airfix::audio::AudioClipId smokeAudioClip{1U};
   return "unknown";
 }
 
-[[nodiscard]] airfix::render::ConvertedNodeTransform actorWorldFrom(
-    const airfix::simulation::PlayerSpawnPose &pose) noexcept {
+void reportSettingsLoad(
+    const airfix::settings::RenderSettingsLoadResult &load) {
+  using Source = airfix::settings::RenderSettingsLoadSource;
+  using Status = airfix::settings::RenderSettingsFileStatus;
+  if (load.source == Source::backup) {
+    std::cerr << "Render settings recovery: backup-used\n";
+  }
+  if (load.current.status == Status::futureSchema) {
+    std::cerr << "Render settings: future-schema-preserved";
+    if (load.current.schemaVersion.has_value()) {
+      std::cerr << " (schema " << *load.current.schemaVersion << ')';
+    }
+    std::cerr << '\n';
+  } else if (load.current.status == Status::malformed ||
+             load.current.status == Status::oversized ||
+             load.current.status == Status::wrongTypeOrLinked) {
+    std::cerr << "Render settings: current-invalid\n";
+  } else if (load.current.status == Status::ioUnavailable) {
+    std::cerr << "Render settings: storage-unavailable\n";
+  }
+  if (load.persistenceBlocked && load.current.status != Status::futureSchema &&
+      load.current.status != Status::ioUnavailable) {
+    std::cerr << "Render settings: persistence-disabled\n";
+  }
+}
+
+[[nodiscard]] airfix::render::ConvertedNodeTransform
+actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   const auto vectorAt = [](const std::array<float, 3U> &value) {
     return airfix::render::Vec3{value[0], value[1], value[2]};
   };
@@ -326,23 +352,19 @@ int run(const int argumentCount, char *arguments[]) {
                    options.captureDiagnosticFrameOutput.has_value()
                ? SDL_WINDOW_HIDDEN
                : SDL_WINDOW_RESIZABLE;
-  const auto initialWindowSize =
-      options.captureSize.value_or(
-          airfix::windows::AirfixWindowsCaptureSize{960U, 540U});
-  SdlWindow window{
-      SDL_CreateWindow(
-          "Airfix Dogfighter Reconstruction",
-          static_cast<int>(initialWindowSize.width),
-          static_cast<int>(initialWindowSize.height),
-          flags)};
+  const auto initialWindowSize = options.captureSize.value_or(
+      airfix::windows::AirfixWindowsCaptureSize{960U, 540U});
+  SdlWindow window{SDL_CreateWindow("Airfix Dogfighter Reconstruction",
+                                    static_cast<int>(initialWindowSize.width),
+                                    static_cast<int>(initialWindowSize.height),
+                                    flags)};
   if (!window) {
     throw std::runtime_error(SDL_GetError());
   }
   if (options.captureSize.has_value()) {
     int pixelWidth{};
     int pixelHeight{};
-    if (!SDL_GetWindowSizeInPixels(
-            window.get(), &pixelWidth, &pixelHeight)) {
+    if (!SDL_GetWindowSizeInPixels(window.get(), &pixelWidth, &pixelHeight)) {
       throw std::runtime_error(SDL_GetError());
     }
     if (pixelWidth != static_cast<int>(options.captureSize->width) ||
@@ -355,23 +377,41 @@ int run(const int argumentCount, char *arguments[]) {
 
   airfix::runtime::AppSession session;
   airfix::windows::AirfixD3D11Renderer renderer{*window};
-  const airfix::render::RenderPresentationSettings startupSettings{
-      .renderScalePercent =
-          static_cast<float>(options.renderScalePercent),
-      .scenePresentation =
-          options.originalFourByThreePresentation
-              ? airfix::render::ScenePresentationMode::originalFourByThree
-              : airfix::render::ScenePresentationMode::widescreenHorPlus,
-      .visualProfile = airfix::render::VisualProfile::classic,
-      .diagnosticsOverlayEnabled = options.renderDiagnostics,
-  };
+  airfix::render::RenderPresentationSettings persistentSettings;
+  std::optional<std::filesystem::path> settingsDirectory;
+  const bool sessionOnlyInvocation =
+      options.smokeTest || options.validateContentOnly ||
+      options.captureFrameOutput.has_value() ||
+      options.captureDiagnosticFrameOutput.has_value();
+  if (!sessionOnlyInvocation) {
+    try {
+      settingsDirectory =
+          airfix::windows::resolveAirfixWindowsSettingsDirectory();
+      const auto load =
+          airfix::settings::loadRenderPresentationSettings(*settingsDirectory);
+      persistentSettings = load.settings;
+      reportSettingsLoad(load);
+    } catch (...) {
+      // Paths and platform error text are deliberately not exposed here.
+      // An unavailable profile is nonfatal and cannot partially change the
+      // canonical defaults.
+      settingsDirectory.reset();
+      std::cerr << "Render settings: storage-unavailable\n";
+    }
+  }
+  const auto startupResolution =
+      airfix::render::resolveRenderPresentationSettings(
+          persistentSettings, options.renderOverrides);
+  if (!startupResolution.accepted()) {
+    throw std::runtime_error("resolved Windows render settings are invalid");
+  }
+  const auto startupSettings = startupResolution.settings;
   const auto startupSettingsResult =
       renderer.applyRenderPresentationSettings(startupSettings);
   if (!startupSettingsResult.accepted()) {
-    std::cerr
-        << "Windows render settings override rejected ("
-        << renderSettingsIssueCategory(*startupSettingsResult.issue)
-        << "); continuing with the active snapshot\n";
+    std::cerr << "Windows render settings override rejected ("
+              << renderSettingsIssueCategory(*startupSettingsResult.issue)
+              << "); continuing with the active snapshot\n";
   }
   airfix::windows::AirfixXAudio2Backend audio;
   if (audio.outputState() ==
@@ -381,8 +421,7 @@ int run(const int argumentCount, char *arguments[]) {
 
   std::optional<LoadedPrivateContent> privateContent;
   std::optional<airfix::simulation::PlayerSpawnPose> playerSpawnPose;
-  airfix::runtime::PlayerActorPoseRuntimeEndpoint
-      playerActorPoseRuntime;
+  airfix::runtime::PlayerActorPoseRuntimeEndpoint playerActorPoseRuntime;
   if (options.contentRoot.has_value()) {
     privateContent.emplace(
         loadPrivateContent(*options.contentRoot, options.mission, audio));
@@ -396,8 +435,7 @@ int run(const int argumentCount, char *arguments[]) {
       throw std::runtime_error(
           "authenticated Windows mission was not published");
     }
-    playerActorPoseRuntime =
-        renderer.playerActorPoseRuntimeEndpoint();
+    playerActorPoseRuntime = renderer.playerActorPoseRuntimeEndpoint();
   }
   audio.setActive(false);
   if (options.captureFrameOutput.has_value()) {
@@ -430,18 +468,15 @@ int run(const int argumentCount, char *arguments[]) {
           "D3D11 smoke frame contains no rendered geometry");
     }
     const auto diagnostics = renderer.frameDiagnostics();
-    if (!diagnostics.has_value() ||
-        diagnostics->outputExtent.width == 0U ||
+    if (!diagnostics.has_value() || diagnostics->outputExtent.width == 0U ||
         diagnostics->renderTargetExtent.width == 0U ||
         diagnostics->sceneDrawCallCount == 0U ||
         diagnostics->sceneTriangleCount == 0U) {
-      throw std::runtime_error(
-          "D3D11 smoke frame did not publish diagnostics");
+      throw std::runtime_error("D3D11 smoke frame did not publish diagnostics");
     }
 
     auto transitionSettings = renderer.renderPresentationSettings();
-    for (const float scale :
-         std::array{100.0F, 50.0F, 200.0F, 100.0F}) {
+    for (const float scale : std::array{100.0F, 50.0F, 200.0F, 100.0F}) {
       transitionSettings.renderScalePercent = scale;
       if (!renderer.applyRenderPresentationSettings(transitionSettings)
                .accepted()) {
@@ -457,13 +492,11 @@ int run(const int argumentCount, char *arguments[]) {
         throw std::runtime_error(
             "D3D11 settings transition published no diagnostics");
       }
-      const auto expectedLayout =
-          airfix::render::buildNativeRenderLayout({
-              .outputExtent = transitionDiagnostics->outputExtent,
-              .renderScalePercent = scale,
-              .scenePresentation =
-                  transitionSettings.scenePresentation,
-          });
+      const auto expectedLayout = airfix::render::buildNativeRenderLayout({
+          .outputExtent = transitionDiagnostics->outputExtent,
+          .renderScalePercent = scale,
+          .scenePresentation = transitionSettings.scenePresentation,
+      });
       if (!expectedLayout.complete() ||
           transitionDiagnostics->renderScalePercent != scale ||
           transitionDiagnostics->renderTargetExtent !=
@@ -487,8 +520,7 @@ int run(const int argumentCount, char *arguments[]) {
     throw std::runtime_error(SDL_GetError());
   }
 
-  if (renderer.missionWorldRoomInstalled() &&
-      playerSpawnPose.has_value()) {
+  if (renderer.missionWorldRoomInstalled() && playerSpawnPose.has_value()) {
     // Windows currently commits the authenticated room, audio clips, and
     // frozen spawn pose plus its replacement-safe pose runtime as one startup
     // transaction. Changing pose/camera inputs remain a later trace-driven
@@ -566,8 +598,7 @@ int run(const int argumentCount, char *arguments[]) {
       if (!inputFrame.accepted) {
         throw std::runtime_error("SDL3 input frame generation failed");
       }
-      if (inputFrame.frame.pressed(
-              airfix::input::DigitalAction::globalPause)) {
+      if (inputFrame.frame.pressed(airfix::input::DigitalAction::globalPause)) {
         if (!input.resetForGameplayBoundary()) {
           throw std::runtime_error(
               "SDL3 input reset failed at a gameplay boundary");
@@ -579,8 +610,7 @@ int run(const int argumentCount, char *arguments[]) {
           const bool mayResume =
               session.lifecycleState() ==
                   airfix::runtime::LifecycleState::foregroundPaused &&
-              windowFocused &&
-              simulationPipelineReady &&
+              windowFocused && simulationPipelineReady &&
               playerAircraftPresentation.healthy() &&
               renderer.missionWorldRoomInstalled() &&
               playerSpawnPose.has_value();
@@ -591,11 +621,9 @@ int run(const int argumentCount, char *arguments[]) {
         continue;
       }
       if (session.simulationRunning()) {
-        const auto advanced =
-            playerAircraftPresentation.tryAdvance(
-                inputFrame.frame,
-                actorWorldFrom(*playerSpawnPose),
-                playerActorPoseRuntime);
+        const auto advanced = playerAircraftPresentation.tryAdvance(
+            inputFrame.frame, actorWorldFrom(*playerSpawnPose),
+            playerActorPoseRuntime);
         if (!advanced.accepted()) {
           simulationPipelineReady = false;
           if (!input.resetForGameplayBoundary()) {
@@ -604,9 +632,8 @@ int run(const int argumentCount, char *arguments[]) {
           }
           audio.setActive(false);
           session.pause();
-          std::cerr
-              << "Windows deterministic input consumer halted after "
-                 "an invalid state transition\n";
+          std::cerr << "Windows deterministic input consumer halted after "
+                       "an invalid state transition\n";
         }
       }
       inputAccumulator -= inputStepNanoseconds;
@@ -618,8 +645,8 @@ int run(const int argumentCount, char *arguments[]) {
 
   std::cout << "Windows player input state: "
             << playerAircraftPresentation.state().completedSteps
-            << " steps, hash "
-            << playerAircraftPresentation.stateHash() << '\n';
+            << " steps, hash " << playerAircraftPresentation.stateHash()
+            << '\n';
   return 0;
 }
 

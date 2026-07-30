@@ -13,6 +13,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace airfix::io {
 namespace {
@@ -23,11 +24,18 @@ struct FileIdentity {
     DWORD indexLow{};
 };
 
+struct FileSnapshot {
+    FileIdentity identity;
+    std::uint64_t size{};
+    DWORD hardLinkCount{};
+};
+
 [[nodiscard]] std::string_view operationName(const DurableFileOperation operation) {
     switch (operation) {
     case DurableFileOperation::validate: return "validate";
     case DurableFileOperation::inspect: return "inspect";
     case DurableFileOperation::open: return "open";
+    case DurableFileOperation::read: return "read";
     case DurableFileOperation::write: return "write";
     case DurableFileOperation::flush: return "flush";
     case DurableFileOperation::close: return "close";
@@ -192,7 +200,7 @@ void closeChecked(HANDLE& handle, const std::filesystem::path& path) {
     }
 }
 
-[[nodiscard]] FileIdentity fileIdentity(
+[[nodiscard]] FileSnapshot fileSnapshot(
     const HANDLE handle,
     const std::filesystem::path& path) {
     BY_HANDLE_FILE_INFORMATION information {};
@@ -211,10 +219,21 @@ void closeChecked(HANDLE& handle, const std::filesystem::path& path) {
             "path is not a regular file");
     }
     return {
-        .volumeSerial = information.dwVolumeSerialNumber,
-        .indexHigh = information.nFileIndexHigh,
-        .indexLow = information.nFileIndexLow,
+        .identity = {
+            .volumeSerial = information.dwVolumeSerialNumber,
+            .indexHigh = information.nFileIndexHigh,
+            .indexLow = information.nFileIndexLow,
+        },
+        .size = (static_cast<std::uint64_t>(information.nFileSizeHigh) << 32U) |
+            static_cast<std::uint64_t>(information.nFileSizeLow),
+        .hardLinkCount = information.nNumberOfLinks,
     };
+}
+
+[[nodiscard]] FileIdentity fileIdentity(
+    const HANDLE handle,
+    const std::filesystem::path& path) {
+    return fileSnapshot(handle, path).identity;
 }
 
 [[nodiscard]] bool sameIdentity(
@@ -469,6 +488,123 @@ void renameFileNoReplaceDurableImpl(
 }
 
 } // namespace
+
+std::vector<std::uint8_t> readBoundedRegularFile(
+    const std::filesystem::path& path,
+    const std::size_t maxBytes) {
+    requirePath(path);
+    if (maxBytes == 0U) {
+        throwTypedError(
+            DurableFileErrorKind::invalidArgument,
+            DurableFileOperation::validate,
+            path,
+            {},
+            std::errc::invalid_argument,
+            "maximum byte count must be positive");
+    }
+
+    HANDLE handle = ::CreateFileW(
+        path.c_str(),
+        GENERIC_READ,
+        FILE_SHARE_READ,
+        nullptr,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS |
+            FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_SEQUENTIAL_SCAN,
+        nullptr);
+    if (handle == INVALID_HANDLE_VALUE) {
+        throwWindowsError(DurableFileOperation::open, path, {}, ::GetLastError());
+    }
+
+    try {
+        const auto initial = fileSnapshot(handle, path);
+        if (initial.hardLinkCount != 1U) {
+            throwTypedError(
+                DurableFileErrorKind::wrongType,
+                DurableFileOperation::inspect,
+                path,
+                {},
+                std::errc::too_many_links,
+                "regular file must have exactly one hard link");
+        }
+        if (initial.size > static_cast<std::uint64_t>(maxBytes)) {
+            throwTypedError(
+                DurableFileErrorKind::sizeLimitExceeded,
+                DurableFileOperation::inspect,
+                path,
+                {},
+                std::errc::file_too_large,
+                "file exceeds the configured byte limit");
+        }
+
+        std::vector<std::uint8_t> result(
+            static_cast<std::size_t>(initial.size));
+        std::size_t offset = 0U;
+        while (offset < result.size()) {
+            const auto remaining = result.size() - offset;
+            const auto chunk = static_cast<DWORD>(std::min(
+                remaining,
+                static_cast<std::size_t>(
+                    std::numeric_limits<DWORD>::max())));
+            DWORD bytesRead = 0U;
+            if (!::ReadFile(
+                    handle,
+                    result.data() + offset,
+                    chunk,
+                    &bytesRead,
+                    nullptr)) {
+                throwWindowsError(
+                    DurableFileOperation::read, path, {}, ::GetLastError());
+            }
+            if (bytesRead == 0U) {
+                throwTypedError(
+                    DurableFileErrorKind::ioFailure,
+                    DurableFileOperation::read,
+                    path,
+                    {},
+                    std::errc::io_error,
+                    "file was truncated while being read");
+            }
+            offset += bytesRead;
+        }
+
+        std::uint8_t extraByte = 0U;
+        DWORD extraBytesRead = 0U;
+        if (!::ReadFile(
+                handle, &extraByte, 1U, &extraBytesRead, nullptr)) {
+            throwWindowsError(
+                DurableFileOperation::read, path, {}, ::GetLastError());
+        }
+        if (extraBytesRead != 0U) {
+            throwTypedError(
+                DurableFileErrorKind::ioFailure,
+                DurableFileOperation::read,
+                path,
+                {},
+                std::errc::io_error,
+                "file grew while being read");
+        }
+
+        const auto final = fileSnapshot(handle, path);
+        if (!sameIdentity(initial.identity, final.identity) ||
+            initial.size != final.size ||
+            initial.hardLinkCount != final.hardLinkCount) {
+            throwTypedError(
+                DurableFileErrorKind::ioFailure,
+                DurableFileOperation::inspect,
+                path,
+                {},
+                std::errc::io_error,
+                "file identity, size, or link count changed while being read");
+        }
+        closeChecked(handle, path);
+        return result;
+    }
+    catch (...) {
+        closeIgnoringErrors(handle);
+        throw;
+    }
+}
 
 void syncFile(const std::filesystem::path& path) {
     requirePath(path);

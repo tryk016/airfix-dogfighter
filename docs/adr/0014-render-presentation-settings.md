@@ -239,7 +239,7 @@ area, orientation, memory pressure, and target-allocation fallback on iPhone SE
   snapshot application and a pre-publication persistence gate.
 - [x] Replace the independent Metal setters with an equivalent prepared
   complete-snapshot transaction.
-- [ ] Add Windows private storage, launch-override precedence, recovery, and
+- [x] Add Windows private storage, launch-override precedence, recovery, and
   synthetic restart tests.
 - [ ] Add the equivalent iOS Application Support adapter and hosted build
   coverage.

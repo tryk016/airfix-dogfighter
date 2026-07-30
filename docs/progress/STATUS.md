@@ -61,8 +61,16 @@
   retains the last good pair but does not render it to a mismatched drawable;
   zero extent retains it for restore. Exactly 100% remains a direct native
   target on both backends, diagnostics now defaults off on iOS, and Enhanced
-  remains a selector only, not a claim that modern passes exist. Native
-  persistence, sparse CLI precedence, and final settings UI remain pending.
+  remains a selector only, not a claim that modern passes exist. The portable
+  persistence slice now adds a canonical, checksummed, 4 KiB-bounded AFRS
+  record plus strict current/backup/default recovery and atomic durable writes.
+  Windows resolves the private `settings/` leaf only through SDL's preference
+  API, layers one valid persistent snapshot under sparse launch-only overrides,
+  and never touches the real profile during smoke, capture, or validation
+  modes. Linked files/directories, oversized/malformed records, partial fields,
+  and future schemas fail closed; future bytes are preserved and downgrade
+  writes are blocked. Equivalent asynchronous iOS Application Support binding
+  and the final settings UI remain pending.
 - The native Windows x64 product foundation is implemented. A statically
   linked SDL3 shell owns the window and lifecycle events; a separate
   D3D11/DXGI backend compiles HLSL, uploads the same public scene used by Metal,

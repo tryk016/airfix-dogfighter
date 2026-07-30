@@ -92,6 +92,12 @@ public:
             "race-replace-substitute.bin",
             "race-replace-parked.bin",
             "race-replace-target.bin",
+            "read-directory",
+            "read-exact.bin",
+            "read-hardlink-alias.bin",
+            "read-hardlink-source.bin",
+            "read-oversized.bin",
+            "read-symlink.bin",
             "sync.bin",
         };
         for (const auto name : knownFiles) {
@@ -162,6 +168,86 @@ void testExclusiveWrite(TempDirectory& temporary) {
         airfix::io::DurableFileErrorKind::alreadyExists);
     require(readFile(path) == std::string("exact\0bytes", 11U),
         "exclusive durable write replaced existing content");
+}
+
+void testBoundedRead(TempDirectory& temporary) {
+    const auto exactPath = temporary.file("read-exact.bin");
+    const std::string exactContent("exact\0bytes", 11U);
+    airfix::io::writeFileExclusiveDurable(exactPath, bytes(exactContent));
+    const auto exact =
+        airfix::io::readBoundedRegularFile(exactPath, exactContent.size());
+    require(
+        exact == std::vector<std::uint8_t>(
+            bytes(exactContent).begin(), bytes(exactContent).end()),
+        "bounded read changed exact binary content");
+
+    requireError(
+        [&] {
+            (void)airfix::io::readBoundedRegularFile(
+                temporary.file("read-missing.bin"), 16U);
+        },
+        airfix::io::DurableFileErrorKind::notFound);
+    requireError(
+        [&] { (void)airfix::io::readBoundedRegularFile(exactPath, 0U); },
+        airfix::io::DurableFileErrorKind::invalidArgument);
+
+    const auto oversizedPath = temporary.file("read-oversized.bin");
+    airfix::io::writeFileExclusiveDurable(oversizedPath, bytes("too-large"));
+    requireError(
+        [&] {
+            (void)airfix::io::readBoundedRegularFile(oversizedPath, 8U);
+        },
+        airfix::io::DurableFileErrorKind::sizeLimitExceeded);
+
+    const auto directoryPath = temporary.file("read-directory");
+    std::error_code directoryError;
+    std::filesystem::create_directory(directoryPath, directoryError);
+    if (directoryError) {
+        throw std::runtime_error(
+            "cannot create bounded-read directory fixture: " +
+            directoryError.message());
+    }
+    requireError(
+        [&] {
+            (void)airfix::io::readBoundedRegularFile(directoryPath, 16U);
+        },
+        airfix::io::DurableFileErrorKind::wrongType);
+
+    const auto hardLinkSource =
+        temporary.file("read-hardlink-source.bin");
+    const auto hardLinkAlias =
+        temporary.file("read-hardlink-alias.bin");
+    airfix::io::writeFileExclusiveDurable(hardLinkSource, bytes("linked"));
+    std::error_code hardLinkError;
+    std::filesystem::create_hard_link(
+        hardLinkSource, hardLinkAlias, hardLinkError);
+    if (hardLinkError) {
+        throw std::runtime_error(
+            "cannot create bounded-read hard-link fixture: " +
+            hardLinkError.message());
+    }
+    requireError(
+        [&] {
+            (void)airfix::io::readBoundedRegularFile(hardLinkSource, 16U);
+        },
+        airfix::io::DurableFileErrorKind::wrongType);
+    requireError(
+        [&] {
+            (void)airfix::io::readBoundedRegularFile(hardLinkAlias, 16U);
+        },
+        airfix::io::DurableFileErrorKind::wrongType);
+
+    const auto symlinkPath = temporary.file("read-symlink.bin");
+    std::error_code symlinkError;
+    std::filesystem::create_symlink(exactPath, symlinkPath, symlinkError);
+    if (!symlinkError) {
+        requireError(
+            [&] {
+                (void)airfix::io::readBoundedRegularFile(
+                    symlinkPath, 16U);
+            },
+            airfix::io::DurableFileErrorKind::wrongType);
+    }
 }
 
 void testNoReplace(TempDirectory& temporary) {
@@ -325,6 +411,7 @@ int main() {
     try {
         TempDirectory temporary;
         testExclusiveWrite(temporary);
+        testBoundedRead(temporary);
         testNoReplace(temporary);
         testReplace(temporary);
         testPreparedSubstitution(temporary);

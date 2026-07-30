@@ -392,7 +392,12 @@ the exact view/device/extent/generation, charges each complete color/depth pair
 to the shared GPU ledger, and retains one immutable frame lease through command-
 buffer completion. Both retain the previous complete snapshot after validation,
 surface, allocation, or resize failure; exactly 100% remains their direct native
-output path. Platform persistence, sparse launch-override binding, and the final
+output path. A canonical checksummed AFRS store now supplies bounded exact
+reads, current/backup/default recovery, future-schema preservation, and durable
+atomic replacement. Windows binds that store to SDL's private preference
+directory and resolves defaults -> persistent snapshot -> sparse session-only
+launch overrides; CI smoke/capture modes never open the real profile. The
+equivalent nonblocking iOS Application Support coordinator and the final
 settings UI follow as separate slices.
 
 `Classic` and `Enhanced` are visual-intent profiles independent of the quality
