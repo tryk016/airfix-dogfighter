@@ -212,6 +212,11 @@ RenderPresentationTransaction::activeState() const noexcept {
     return active_.has_value() ? &*active_ : nullptr;
 }
 
+RenderPresentationTransaction
+RenderPresentationTransaction::captureForPreparation() const noexcept {
+    return *this;
+}
+
 PrepareRenderPresentationStateResult
 RenderPresentationTransaction::prepare(
     const RenderPresentationSettings& candidate,
