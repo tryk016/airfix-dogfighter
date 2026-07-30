@@ -971,6 +971,18 @@
   starting states, both call orders, repeats, conflicts, reset, direct fail,
   and unsupported identifiers. It intentionally owns no trigger evaluation,
   AFS process, scheduler, campaign/save state, multiplayer, or platform menu.
+- `EV-20260730-006` closes the separate downstream result/progression decision.
+  The native result screen succeeds only for an existing mission with
+  accomplished true and failed false, so failure wins when both flags are set.
+  Success always replaces typed Axis/Allied thread state, then adds a missing
+  side maximum or replaces it only when the existing signed int32 maximum is
+  smaller than `mission_number + 1`. The new allocation-free consumer returns
+  only Retry/Continue and value-only progress directives, rejects unknown
+  sides and the native `INT32_MAX` wraparound, and owns no FourCC, roster,
+  score/stat mutation, file write, AFS wiring, or UI execution. Ordinary
+  mission refresh also now has a static process-before-trigger-poll boundary,
+  but unresolved compiler/bytecode/global-order evidence still forbids live
+  AFS integration.
 
 ## Confirmed
 
@@ -1037,10 +1049,15 @@
    water, collision, engine-transition, and too-high branches; establish
    x87-versus-portable numeric tolerances and deterministic replacement PRNG
    sequencing before composing the statically recovered 12 ms flight law.
-3. Recover the trigger-to-AFS-process scheduling and downstream
-   campaign/save consumer before wiring the isolated mission-outcome state.
-   Preserve one already-ordered call per transition; do not batch, sort,
-   deduplicate, replay, or invent a priority when both native flags are true.
+3. Keep the isolated mission-outcome state and implemented downstream
+   result/progression consumer unwired until the remaining AFS compiler flag,
+   compiled-function source order, representative bytecode, extra process
+   owners, and global dispatcher/presentation order are proven. Then recover
+   the roster lifecycle, score/stat contract, schema, corruption recovery, and
+   atomic modern save boundary before implementing `THRD`/`AXMI`/`ALMI`/`SCOR`
+   storage. Preserve one already-ordered outcome call per transition; do not
+   batch, sort, deduplicate, replay, or let the value-only consumer execute UI
+   or disk effects.
 4. Expose the implemented ADR-0015 bounded remap transaction through explicit
    text pickers on Windows and iOS. Preserve its cancel-first conflicts,
    protected recovery controls, unique-supported-action-only atomic swap, and
@@ -1088,6 +1105,19 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The value-only mission outcome consumer preserves the exact
+  `missionExists && accomplished && !failed` predicate, failure precedence,
+  typed campaign side, signed maximum comparison, and always-set-thread
+  success directive while failing closed on unknown sides and
+  `INT32_MAX`. The complete portable GCC/Ninja build passes 116/116 CTests;
+  the complete MSVC 19.51/Ninja Windows product links and passes 126/126
+  CTests, including both D3D11 product smokes. Focused Clang 22
+  warnings-as-errors, clang-format, synthetic public-boundary tests, the
+  600-file repository scan, the 322-row/14-column unique catalogue, and
+  `git diff --check` pass. Independent review reproduces the GCC Release
+  build and all 116 CTests, checks the implementation against the raw Ghidra
+  evidence, and returns GO with no P0-P3 finding. Hosted platform builds
+  remain the publication gate.
 - The ADR-0015 portable binding-remap core exposes seven typed gameplay actions
   through cancel-first move, unique-supported-action-only atomic swap, and
   default-binding reset operations while preserving calibration and the
