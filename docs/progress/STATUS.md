@@ -330,10 +330,17 @@
   Active nonzero products clear the shared signed rest duration; active zero
   writes positive zero without clearing it; inactive events do not mutate
   either field. Keyboard, successfully range-configured DirectInput, and AI
-  producers are separately bounded. Exact full-domain PC53/RN vectors are a
-  startup-compatible conditional model, not a branch-time observation:
-  process-wide live x87 precision and rounding control, cross-producer
-  ordering, and the nominal-12-ms sample phase remain explicitly unproven. The
+  producers are separately bounded. The follow-up static call/data-flow pass
+  now proves immediate producer order: the head-inserted input list traverses
+  joystick, mouse, keyboard; one joystick snapshot supplies bank before pitch;
+  mapped keyboard commands follow buffered-record and binding-text order; AI
+  fully processes changed pitch before changed bank. Local input drains before
+  `SetTime`; its periodic heap can run zero, one, or multiple 12 ms AirCraft
+  refreshes, and eligible AI work occurs near each vehicle refresh end. Exact
+  full-domain PC53/RN vectors remain a startup-compatible conditional model,
+  not a branch-time observation. Process-wide live x87 control, DirectInput
+  driver conformance, remote-network ordering, and wall-clock cadence remain
+  explicitly unproven. The
   isolated turn/pitch/bank typed-write reducers are implemented over the full
   signed native payload domain. They return exact binary32 bits under an
   explicitly named startup-compatible PC53/nearest-even policy using shared
