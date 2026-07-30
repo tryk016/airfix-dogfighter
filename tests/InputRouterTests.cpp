@@ -647,6 +647,18 @@ void testDefaultBindingsCoverNativeV1Surface() {
             menuDpadUp.analog(AnalogAxis::flightThrottleDelta) == q15Zero,
         "controller menu D-pad up leaked into gameplay or mapped downward");
 
+    InputRouter menuDpadHorizontalRouter;
+    menuDpadHorizontalRouter.setContext(InputContext::menu);
+    require(menuDpadHorizontalRouter.enqueue(PhysicalEvent::button(
+                1U, 0U, controllerOne,
+                airfix::input::controls::controller::dpadLeft, true)),
+            "controller menu D-pad left was rejected");
+    const auto menuDpadLeft = menuDpadHorizontalRouter.tick(1U);
+    require(
+        menuDpadLeft.analog(AnalogAxis::uiNavigateX) == airfix::input::q15Min &&
+            menuDpadLeft.analog(AnalogAxis::flightBank) == q15Zero,
+        "controller menu D-pad left leaked into gameplay or mapped rightward");
+
     InputRouter modalDpadRouter;
     modalDpadRouter.setContext(InputContext::modal);
     require(modalDpadRouter.enqueue(PhysicalEvent::axis(

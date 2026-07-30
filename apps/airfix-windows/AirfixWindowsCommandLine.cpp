@@ -99,6 +99,7 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
   std::optional<std::uint32_t> startIndex;
   std::optional<std::filesystem::path> captureFrameOutput;
   std::optional<std::filesystem::path> captureDiagnosticFrameOutput;
+  std::optional<std::filesystem::path> captureSettingsPanelOutput;
   std::optional<AirfixWindowsCaptureSize> captureSize;
   bool scenePresentationSeen = false;
   bool visualProfileSeen = false;
@@ -198,6 +199,16 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
       if (extension != ".bmp" && extension != ".BMP") {
         invalidCommandLine();
       }
+    } else if (option == "--capture-settings-panel") {
+      if (captureSettingsPanelOutput.has_value()) {
+        invalidCommandLine();
+      }
+      captureSettingsPanelOutput =
+          std::filesystem::path(requireValue(arguments, index));
+      const auto extension = captureSettingsPanelOutput->extension().string();
+      if (extension != ".bmp" && extension != ".BMP") {
+        invalidCommandLine();
+      }
     } else if (option == "--capture-size") {
       if (captureSize.has_value()) {
         invalidCommandLine();
@@ -215,21 +226,27 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
   const bool hasContentSpecificOption =
       hasAnyMissionOption || captureFrameOutput.has_value();
   const bool hasAnyCapture = captureFrameOutput.has_value() ||
-                             captureDiagnosticFrameOutput.has_value();
+                             captureDiagnosticFrameOutput.has_value() ||
+                             captureSettingsPanelOutput.has_value();
   if ((options.smokeTest &&
        (options.contentRoot.has_value() || hasContentSpecificOption ||
-        captureDiagnosticFrameOutput.has_value() || captureSize.has_value())) ||
+        captureDiagnosticFrameOutput.has_value() ||
+        captureSettingsPanelOutput.has_value() || captureSize.has_value())) ||
       (!options.contentRoot.has_value() && hasContentSpecificOption) ||
       (options.contentRoot.has_value() &&
-       captureDiagnosticFrameOutput.has_value()) ||
+       (captureDiagnosticFrameOutput.has_value() ||
+        captureSettingsPanelOutput.has_value())) ||
       (hasAnyMissionOption && !hasMissionPair) ||
       (captureFrameOutput.has_value() &&
        (options.validateContentOnly || !hasMissionPair)) ||
       (captureDiagnosticFrameOutput.has_value() &&
        (hasAnyMissionOption || options.validateContentOnly)) ||
+      (captureSettingsPanelOutput.has_value() &&
+       (hasAnyMissionOption || options.validateContentOnly)) ||
       (captureSize.has_value() && !hasAnyCapture) ||
-      (captureFrameOutput.has_value() &&
-       captureDiagnosticFrameOutput.has_value())) {
+      ((static_cast<unsigned>(captureFrameOutput.has_value()) +
+        static_cast<unsigned>(captureDiagnosticFrameOutput.has_value()) +
+        static_cast<unsigned>(captureSettingsPanelOutput.has_value())) > 1U)) {
     invalidCommandLine();
   }
   if (hasMissionPair) {
@@ -243,6 +260,7 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
   options.captureFrameOutput = std::move(captureFrameOutput);
   options.captureDiagnosticFrameOutput =
       std::move(captureDiagnosticFrameOutput);
+  options.captureSettingsPanelOutput = std::move(captureSettingsPanelOutput);
   options.captureSize = captureSize;
   if (options.captureDiagnosticFrameOutput.has_value()) {
     if (options.renderOverrides.diagnosticsOverlayEnabled == false) {

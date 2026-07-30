@@ -250,4 +250,4 @@ area, orientation, memory pressure, and target-allocation fallback on iPhone SE
   coverage.
 - [ ] Capture and compare the public synthetic Windows matrix.
 - [x] Add the iOS touch/controller render-settings UI as a separate slice.
-- [ ] Add the equivalent Windows product settings UI.
+- [x] Add the equivalent Windows keyboard/mouse/controller product settings UI.

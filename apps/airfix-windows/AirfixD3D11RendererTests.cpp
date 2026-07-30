@@ -9,6 +9,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace airfix::windows {
 
@@ -55,6 +56,11 @@ struct AirfixD3D11RendererTestAccess final {
       const AirfixD3D11Renderer &renderer) noexcept {
     return renderer.hasDiagnosticsOverlayResourcesForTesting();
   }
+
+  [[nodiscard]] static bool
+  hasProductUiOverlayResources(const AirfixD3D11Renderer &renderer) noexcept {
+    return renderer.hasProductUiOverlayResourcesForTesting();
+  }
 };
 
 } // namespace airfix::windows
@@ -64,6 +70,7 @@ namespace {
 using airfix::render::RenderPresentationSettings;
 using airfix::windows::AirfixD3D11Renderer;
 using airfix::windows::AirfixD3D11RendererTestAccess;
+using airfix::windows::AirfixWindowsUiRaster;
 using airfix::windows::RenderPresentationSettingsApplyIssueKind;
 using airfix::windows::RenderPresentationSettingsApplyResult;
 using airfix::windows::RenderPresentationSettingsPublicationGate;
@@ -185,6 +192,35 @@ void testTransactionalSettingsRuntime() {
       emptyIdentity(identity),
       "100 percent unexpectedly allocated scaled scene targets");
   renderAndRequireLayout(renderer, settings, "initial 100 percent frame");
+
+  AirfixWindowsUiRaster productUi{
+      .width = 960U,
+      .height = 540U,
+      .rowPitchBytes = 960U * 4U,
+      .premultipliedBgra8 = std::vector<std::uint8_t>(960U * 540U * 4U),
+  };
+  for (std::size_t offset = 0U;
+       offset + 3U < productUi.premultipliedBgra8.size(); offset += 4U) {
+    productUi.premultipliedBgra8[offset] = 16U;
+    productUi.premultipliedBgra8[offset + 1U] = 32U;
+    productUi.premultipliedBgra8[offset + 2U] = 64U;
+    productUi.premultipliedBgra8[offset + 3U] = 128U;
+  }
+  require(renderer.setProductUiRaster(productUi) &&
+              AirfixD3D11RendererTestAccess::hasProductUiOverlayResources(
+                  renderer) &&
+              renderer.renderFrame(true),
+          "premultiplied product UI was not published to the backbuffer");
+  auto invalidUi = productUi;
+  invalidUi.width = 959U;
+  require(
+      !renderer.setProductUiRaster(invalidUi) &&
+          AirfixD3D11RendererTestAccess::hasProductUiOverlayResources(renderer),
+      "invalid product UI replaced the published resources");
+  renderer.clearProductUiRaster();
+  require(
+      !AirfixD3D11RendererTestAccess::hasProductUiOverlayResources(renderer),
+      "clearing product UI retained its GPU resources");
 
   settings.renderScalePercent = 50.0F;
   requireApplied(

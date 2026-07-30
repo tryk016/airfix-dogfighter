@@ -133,12 +133,14 @@ sdlGamepadButton(const SDL_GamepadButton button) noexcept {
     return {ControllerDigitalControl::throttleUp};
   case SDL_GAMEPAD_BUTTON_DPAD_DOWN:
     return {ControllerDigitalControl::throttleDown};
+  case SDL_GAMEPAD_BUTTON_DPAD_LEFT:
+    return {ControllerDigitalControl::uiPrevious};
+  case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:
+    return {ControllerDigitalControl::uiNext};
   case SDL_GAMEPAD_BUTTON_INVALID:
   case SDL_GAMEPAD_BUTTON_BACK:
   case SDL_GAMEPAD_BUTTON_GUIDE:
   case SDL_GAMEPAD_BUTTON_LEFT_STICK:
-  case SDL_GAMEPAD_BUTTON_DPAD_LEFT:
-  case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:
   case SDL_GAMEPAD_BUTTON_MISC1:
   case SDL_GAMEPAD_BUTTON_RIGHT_PADDLE1:
   case SDL_GAMEPAD_BUTTON_LEFT_PADDLE1:
@@ -320,6 +322,15 @@ bool AirfixSdlInputAdapter::focusGained() noexcept {
 bool AirfixSdlInputAdapter::resetForGameplayBoundary() noexcept {
   bridge_.resetForGameplayBoundary();
   return gamepad_ == nullptr || restartControllerGeneration();
+}
+
+void AirfixSdlInputAdapter::setContext(
+    const airfix::input::InputContext context) noexcept {
+  bridge_.setContext(context);
+}
+
+airfix::input::InputContext AirfixSdlInputAdapter::context() const noexcept {
+  return bridge_.context();
 }
 
 bool AirfixSdlInputAdapter::controllerConnected() const noexcept {

@@ -113,6 +113,10 @@ bool ControllerSample::pressed(
         return uiCancelPressed;
     case ControllerDigitalControl::cameraRecenter:
         return cameraRecenterPressed;
+    case ControllerDigitalControl::uiPrevious:
+      return uiPreviousPressed;
+    case ControllerDigitalControl::uiNext:
+      return uiNextPressed;
     case ControllerDigitalControl::count:
         break;
     }
@@ -158,6 +162,12 @@ void ControllerSample::setPressed(
     case ControllerDigitalControl::cameraRecenter:
         cameraRecenterPressed = value;
         break;
+    case ControllerDigitalControl::uiPrevious:
+      uiPreviousPressed = value;
+      break;
+    case ControllerDigitalControl::uiNext:
+      uiNextPressed = value;
+      break;
     case ControllerDigitalControl::count:
         break;
     }

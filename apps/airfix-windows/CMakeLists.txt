@@ -91,6 +91,61 @@ target_link_libraries(airfix_windows_settings_root PRIVATE
     SDL3::SDL3-static
 )
 
+add_library(airfix_windows_settings_panel STATIC
+    AirfixWindowsRenderSettingsPanel.cpp
+    AirfixWindowsRenderSettingsPanel.hpp
+)
+target_include_directories(airfix_windows_settings_panel PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+target_compile_features(airfix_windows_settings_panel PUBLIC cxx_std_20)
+if(MSVC)
+    target_compile_options(airfix_windows_settings_panel PRIVATE
+        /W4 /permissive-)
+else()
+    target_compile_options(airfix_windows_settings_panel PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+endif()
+target_link_libraries(airfix_windows_settings_panel PUBLIC
+    airfix::input
+    airfix::settings
+)
+
+add_library(airfix_windows_ui_rasterizer STATIC
+    AirfixWindowsUiRasterizer.cpp
+    AirfixWindowsUiRasterizer.hpp
+)
+target_include_directories(airfix_windows_ui_rasterizer PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+target_compile_features(airfix_windows_ui_rasterizer PUBLIC cxx_std_20)
+target_compile_definitions(airfix_windows_ui_rasterizer PRIVATE
+    NOMINMAX
+    WIN32_LEAN_AND_MEAN
+)
+if(MSVC)
+    target_compile_options(airfix_windows_ui_rasterizer PRIVATE
+        /W4 /permissive-)
+else()
+    target_compile_options(airfix_windows_ui_rasterizer PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+endif()
+target_link_libraries(airfix_windows_ui_rasterizer
+    PUBLIC
+        airfix_windows_settings_panel
+    PRIVATE
+        d2d1
+        dwrite
+        ole32
+        windowscodecs
+)
+
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/AirfixSmoke.hlsl")
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/AirfixSmoke.hlsl"
@@ -132,11 +187,38 @@ target_link_libraries(airfix_windows_renderer
     PUBLIC
         airfix::content
         airfix::render
+        airfix_windows_ui_rasterizer
     PRIVATE
         SDL3::SDL3-static
         d3d11
         d3dcompiler
         dxgi
+)
+
+add_library(airfix_windows_render_settings_coordinator STATIC
+    AirfixWindowsRenderSettingsCoordinator.cpp
+    AirfixWindowsRenderSettingsCoordinator.hpp
+)
+target_include_directories(airfix_windows_render_settings_coordinator PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+target_compile_features(airfix_windows_render_settings_coordinator
+    PUBLIC cxx_std_20)
+if(MSVC)
+    target_compile_options(
+        airfix_windows_render_settings_coordinator PRIVATE
+        /W4 /permissive-)
+else()
+    target_compile_options(
+        airfix_windows_render_settings_coordinator PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+endif()
+target_link_libraries(airfix_windows_render_settings_coordinator PUBLIC
+    airfix_windows_renderer
+    airfix::settings
 )
 
 add_executable(airfix_windows WIN32
@@ -166,6 +248,8 @@ target_link_libraries(airfix_windows PRIVATE
     airfix_windows_command_line
     airfix_windows_input
     airfix_windows_renderer
+    airfix_windows_render_settings_coordinator
+    airfix_windows_settings_panel
     airfix_windows_settings_root
     airfix::audio
     airfix::content
@@ -276,6 +360,69 @@ if(AIRFIX_BUILD_TESTS)
     set_tests_properties(airfix_windows_renderer_tests PROPERTIES
         TIMEOUT 60
     )
+
+    add_executable(airfix_windows_render_settings_coordinator_tests
+        AirfixWindowsRenderSettingsCoordinatorTests.cpp)
+    target_compile_features(
+        airfix_windows_render_settings_coordinator_tests
+        PRIVATE cxx_std_20)
+    if(MSVC)
+        target_compile_options(
+            airfix_windows_render_settings_coordinator_tests PRIVATE
+            /W4 /permissive-)
+    else()
+        target_compile_options(
+            airfix_windows_render_settings_coordinator_tests PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+    endif()
+    target_link_libraries(
+        airfix_windows_render_settings_coordinator_tests PRIVATE
+        airfix_windows_render_settings_coordinator)
+    add_test(NAME airfix_windows_render_settings_coordinator_tests
+        COMMAND airfix_windows_render_settings_coordinator_tests)
+
+    add_executable(airfix_windows_render_settings_panel_tests
+        AirfixWindowsRenderSettingsPanelTests.cpp)
+    target_compile_features(airfix_windows_render_settings_panel_tests
+        PRIVATE cxx_std_20)
+    if(MSVC)
+        target_compile_options(
+            airfix_windows_render_settings_panel_tests PRIVATE
+            /W4 /permissive-)
+    else()
+        target_compile_options(
+            airfix_windows_render_settings_panel_tests PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+    endif()
+    target_link_libraries(airfix_windows_render_settings_panel_tests PRIVATE
+        airfix_windows_settings_panel)
+    add_test(NAME airfix_windows_render_settings_panel_tests
+        COMMAND airfix_windows_render_settings_panel_tests)
+
+    add_executable(airfix_windows_ui_rasterizer_tests
+        AirfixWindowsUiRasterizerTests.cpp)
+    target_compile_features(airfix_windows_ui_rasterizer_tests
+        PRIVATE cxx_std_20)
+    if(MSVC)
+        target_compile_options(airfix_windows_ui_rasterizer_tests PRIVATE
+            /W4 /permissive-)
+    else()
+        target_compile_options(airfix_windows_ui_rasterizer_tests PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+    endif()
+    target_link_libraries(airfix_windows_ui_rasterizer_tests PRIVATE
+        airfix_windows_ui_rasterizer)
+    add_test(NAME airfix_windows_ui_rasterizer_tests
+        COMMAND airfix_windows_ui_rasterizer_tests)
 
     add_test(NAME airfix_windows_product_smoke_tests
         COMMAND airfix_windows --smoke-test --render-diagnostics)

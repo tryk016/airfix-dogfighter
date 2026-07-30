@@ -29,17 +29,18 @@
   4:3 comparison math, safe-area/UI fitting, and input transforms. Both native
   backends consume the same 100% direct path and now allocate private
   color/depth scene targets plus a linear native-output presentation pass at
-  non-100% scales. Windows exposes validated 50-200% and Original 4:3 command
-  switches; Metal exposes the equivalent backend setting boundary. Windows
+  non-100% scales. Windows exposes validated 50-200% and Original 4:3 through
+  both command-line switches and its product settings surface; Metal exposes
+  the equivalent backend setting boundary through the iOS panel. Windows
   direct D3D11 readbacks verify 1080p, 1440p, 4K, and 32:9. A controlled
   960x540 comparison uses 480x270 at 50% and 1920x1080 at 200%; owner-content
   images remain private. The shared renderer now also publishes smoothed FPS,
   CPU/GPU frame time, output and scene extents, render scale, draw calls,
   triangles, lights, and labelled GPU-memory measurements. D3D11 and Metal
   composite the same output-resolution developer panel after scene
-  presentation; Metal applies UIKit safe-area offsets. The iOS render-settings
-  UI is now implemented; the equivalent Windows UI, modern visual stages, and
-  iOS runtime/device acceptance remain pending.
+  presentation; Metal applies UIKit safe-area offsets. Both native products
+  now expose render settings through explicit pause/menu boundaries. Modern
+  visual stages and iOS runtime/device acceptance remain pending.
   Hosted iPhoneOS and iPhoneSimulator builds compile the complete Metal path;
   only physical-device visual/timing acceptance remains for this slice.
 - ADR-0014 defines one cross-platform render-presentation settings transaction.
@@ -79,10 +80,15 @@
   through a safe-area UIKit panel backed by a portable applied/draft/ticket
   model. Apply reports success only after durable save and Metal publication;
   touch and controller navigation use an explicit pause/menu/modal input
-  boundary and closing never auto-resumes. Pull-request Actions compile and
-  link the complete iPhoneOS and iPhoneSimulator products successfully;
-  physical-device interaction/persistence acceptance and the equivalent
-  Windows settings UI remain pending.
+  boundary and closing never auto-resumes. Windows binds the same model to a
+  DPI-aware DirectWrite/Direct2D raster composed by D3D11, with keyboard,
+  physical-pixel mouse, wheel, and gamepad navigation. Its synchronous
+  transaction prepares GPU state, durably saves only the unmasked persistent
+  base, and publishes last; an ambiguous save is accepted only when a fresh
+  valid current record matches. Session-only launch overrides never enter the
+  store. Pull-request Actions compile and link the complete iPhoneOS and
+  iPhoneSimulator products successfully; physical-device iOS interaction and
+  persistence acceptance remain pending.
 - The native Windows x64 product foundation is implemented. A statically
   linked SDL3 shell owns the window and lifecycle events; a separate
   D3D11/DXGI backend compiles HLSL, uploads the same public scene used by Metal,
