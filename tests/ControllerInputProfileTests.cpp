@@ -122,6 +122,51 @@ findBinding(const ControllerInputProfileRecord &record, const ControlId control,
   throw std::runtime_error("expected default binding was not found");
 }
 
+void testControllerControlTraitsAreCompleteAndTyped() {
+  using namespace airfix::input::controls::controller;
+  constexpr std::array analogAxes{
+      leftStickX,
+      leftStickY,
+      rightStickX,
+      rightStickY,
+  };
+  for (const auto control : analogAxes) {
+    const auto traits = airfix::input::controllerControlTraits(control);
+    require(traits.has_value() &&
+                traits->physicalKind == PhysicalEventKind::analog &&
+                !traits->binaryTrigger,
+            "stick axis has the wrong controller traits");
+  }
+
+  constexpr std::array triggers{rightTrigger, leftTrigger};
+  for (const auto control : triggers) {
+    const auto traits = airfix::input::controllerControlTraits(control);
+    require(traits.has_value() &&
+                traits->physicalKind == PhysicalEventKind::analog &&
+                traits->binaryTrigger,
+            "trigger has the wrong controller traits");
+  }
+
+  constexpr std::array buttons{
+      dpadUp,      dpadDown,      rightShoulder,   leftShoulder,
+      faceLeft,    faceTop,       rightStickClick, menu,
+      facePrimary, faceSecondary, dpadLeft,        dpadRight,
+  };
+  for (const auto control : buttons) {
+    const auto traits = airfix::input::controllerControlTraits(control);
+    require(traits.has_value() &&
+                traits->physicalKind == PhysicalEventKind::digital &&
+                !traits->binaryTrigger,
+            "button has the wrong controller traits");
+  }
+  require(!airfix::input::controllerControlTraits(airfix::input::ControlId{0U})
+                  .has_value() &&
+              !airfix::input::controllerControlTraits(
+                   airfix::input::ControlId{65000U})
+                   .has_value(),
+          "forged controller control acquired transport traits");
+}
+
 void testDefaultProfileAndCompilation() {
   const auto record = makeDefaultControllerInputProfileRecord();
   const auto resolved = resolveControllerInputProfile(record);
@@ -539,6 +584,7 @@ void testValidRemapCompilesAtomically() {
 
 int main() {
   try {
+    testControllerControlTraitsAreCompleteAndTyped();
     testDefaultProfileAndCompilation();
     testDefaultAxisTransformIsFullQ15Identity();
     testAxisCalibrationAndNearestEvenRounding();

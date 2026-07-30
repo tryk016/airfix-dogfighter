@@ -5,6 +5,35 @@
 #include <cstdint>
 
 namespace airfix::input {
+
+std::optional<ControllerControlTraits>
+controllerControlTraits(const ControlId control) noexcept {
+  using namespace controls::controller;
+  if (control == leftStickX || control == leftStickY ||
+      control == rightStickX || control == rightStickY) {
+    return ControllerControlTraits{
+        .physicalKind = PhysicalEventKind::analog,
+        .binaryTrigger = false,
+    };
+  }
+  if (control == rightTrigger || control == leftTrigger) {
+    return ControllerControlTraits{
+        .physicalKind = PhysicalEventKind::analog,
+        .binaryTrigger = true,
+    };
+  }
+  if (control == dpadUp || control == dpadDown || control == rightShoulder ||
+      control == leftShoulder || control == faceLeft || control == faceTop ||
+      control == rightStickClick || control == menu || control == facePrimary ||
+      control == faceSecondary || control == dpadLeft || control == dpadRight) {
+    return ControllerControlTraits{
+        .physicalKind = PhysicalEventKind::digital,
+        .binaryTrigger = false,
+    };
+  }
+  return std::nullopt;
+}
+
 namespace {
 
 [[nodiscard]] constexpr ControllerInputProfileIssue
@@ -17,35 +46,6 @@ issue(const ControllerInputProfileIssueKind kind,
 validContexts(const ContextMask contexts) noexcept {
   return contexts != 0U &&
          (contexts & static_cast<ContextMask>(~allContexts)) == 0U;
-}
-
-[[nodiscard]] constexpr bool
-validControllerControl(const ControlId control) noexcept {
-  using namespace controls::controller;
-  return control == leftStickX || control == leftStickY ||
-         control == rightStickX || control == rightStickY ||
-         control == dpadUp || control == dpadDown || control == rightTrigger ||
-         control == leftTrigger || control == rightShoulder ||
-         control == leftShoulder || control == faceLeft || control == faceTop ||
-         control == rightStickClick || control == menu ||
-         control == facePrimary || control == faceSecondary ||
-         control == dpadLeft || control == dpadRight;
-}
-
-[[nodiscard]] constexpr PhysicalEventKind
-expectedPhysicalKind(const ControlId control) noexcept {
-  using namespace controls::controller;
-  if (control == leftStickX || control == leftStickY ||
-      control == rightStickX || control == rightStickY ||
-      control == rightTrigger || control == leftTrigger) {
-    return PhysicalEventKind::analog;
-  }
-  return PhysicalEventKind::digital;
-}
-
-[[nodiscard]] constexpr bool isTrigger(const ControlId control) noexcept {
-  using namespace controls::controller;
-  return control == rightTrigger || control == leftTrigger;
 }
 
 [[nodiscard]] constexpr bool activeIn(const ControllerBindingRecord &binding,
@@ -219,14 +219,15 @@ validateBinding(const ControllerBindingRecord &candidate,
   if (candidate.sourceKind != SourceKind::controller) {
     return issue(ControllerInputProfileIssueKind::nonControllerSource, index);
   }
-  if (!validControllerControl(candidate.control)) {
+  const auto traits = controllerControlTraits(candidate.control);
+  if (!traits.has_value()) {
     return issue(ControllerInputProfileIssueKind::invalidControl, index);
   }
   if (candidate.physicalKind >= PhysicalEventKind::count ||
       candidate.physicalKind == PhysicalEventKind::weaponSelection) {
     return issue(ControllerInputProfileIssueKind::invalidPhysicalKind, index);
   }
-  if (candidate.physicalKind != expectedPhysicalKind(candidate.control)) {
+  if (candidate.physicalKind != traits->physicalKind) {
     return issue(ControllerInputProfileIssueKind::physicalControlKindMismatch,
                  index);
   }
@@ -238,7 +239,7 @@ validateBinding(const ControllerBindingRecord &candidate,
   // transitions carried in an analog physical event (0 or q15One). Do not
   // accept records that imply continuous trigger transport or a configurable
   // actuation threshold that the platform layer cannot honor.
-  if (isTrigger(candidate.control) &&
+  if (traits->binaryTrigger &&
       (candidate.targetKind != BindingTargetKind::digital ||
        candidate.scale != q15One ||
        candidate.meaningfulThreshold != controllerTriggerActuationQ15)) {

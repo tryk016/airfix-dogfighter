@@ -34,6 +34,21 @@ enum class ControllerResponseCurve : std::uint8_t {
   count = 3,
 };
 
+struct ControllerControlTraits final {
+  PhysicalEventKind physicalKind{PhysicalEventKind::digital};
+  bool binaryTrigger{};
+
+  [[nodiscard]] friend constexpr bool
+  operator==(const ControllerControlTraits &,
+             const ControllerControlTraits &) noexcept = default;
+};
+
+// Returns the stable AFIP transport traits for one standardized controller
+// element. Device identity and platform-specific button labels are outside this
+// contract.
+[[nodiscard]] std::optional<ControllerControlTraits>
+controllerControlTraits(ControlId control) noexcept;
+
 // Storage-neutral semantic fields. A codec must serialize named values rather
 // than the in-memory representation. The default transform is exact identity
 // for every valid symmetric-Q15 input.

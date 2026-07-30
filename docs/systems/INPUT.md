@@ -1,8 +1,9 @@
 # Input, controls, and haptics system
 
 **Status:** portable core, controller-profile V1, safe native startup seams,
-native gameplay transport, and Windows/iOS calibration/save UI implemented;
-binding remapping, haptics, glyphs, and device acceptance pending
+native gameplay transport, Windows/iOS calibration/save UI, and the bounded
+binding-remap model implemented; native remap pickers, haptics, glyphs, and
+device acceptance pending
 
 **Priority:** P0 for the Windows x64 and iOS vertical slices
 
@@ -72,8 +73,8 @@ private persisted controller profile and constructs its initial router/bridge
 pair from that immutable configuration. Its pause surface now edits the four
 stick-axis calibration records, previews raw and adjusted Q15 values through
 the exact runtime transform, and durably saves a complete AFIP for the next
-launch. Live replacement, binding remapping, glyphs, and rumble policy remain
-pending.
+launch. The portable remap model is implemented, while its Windows picker,
+live replacement, glyphs, and rumble policy remain pending.
 
 The native iOS layer feeds the complete current gameplay-action surface from a
 safe-area-aware UIKit overlay and Apple's Game Controller framework; none of
@@ -82,8 +83,9 @@ default through a one-time pre-start seam. Its calibration panel uses the same
 portable draft/persisted/active model and exact integer runtime transform as
 Windows, saves only for the next launch, and never publishes draft state to the
 active router. Live replacement requires a future host-owned pause transaction.
-Binding remapping, controller glyphs, finished product menus, physical-device
-acceptance, and haptic adapters remain follow-up layers.
+The portable remap model is implemented, while its iOS picker, controller
+glyphs, finished product menus, physical-device acceptance, and haptic
+adapters remain follow-up layers.
 
 The portable simulation consumer is also implemented.
 `airfix::simulation::PlayerAircraftState` accepts one eligible `InputFrame` at
@@ -189,8 +191,38 @@ queued edges, and re-enter the two-tick neutral gate. An input context enum
   alone is not authorization to replace active state. The implemented Windows
   and iOS calibration editors therefore change only a validated draft and
   persistent AFIP. They never rebuild or mutate the active adapter; successful
-  changed saves clearly require restart. Binding remapping remains a later
-  slice.
+  changed saves clearly require restart.
+
+### Implemented bounded binding-remap model
+
+ADR-0015 limits the first remapping stage to seven gameplay-only digital
+actions: primary fire, secondary fire, next weapon, rear view, camera cycle,
+camera recenter, and mission status. Portable C++20 owns the typed action and
+standardized-control catalogs, classifies each profile action as uniquely
+editable, missing, ambiguous, or unsupported, and keeps raw AFIP transport
+fields out of native interfaces.
+
+Moving an action to an unused controller button or trigger is atomic. Trigger
+and button transports are normalized to the fixed AFIP V1 policy before the
+complete candidate is resolved. A menu-only use of the same physical control
+is allowed because its context is disjoint. An overlapping binding instead
+returns a typed, non-mutating conflict:
+
+- the default outcome is cancel;
+- an explicit swap is available only when the other binding is another unique
+  member of the same seven-action catalog;
+- pause, global back, menu navigation, D-pad throttle, analog targets, and
+  custom or multi-binding layouts are protected; and
+- replace, delete, unassign, physical event capture, and live application are
+  not part of this stage.
+
+An explicit reset restores the complete default binding table while preserving
+all four calibration records. Remapping extends the existing single
+active/persisted/draft owner, so save failure retains the entire draft for
+retry, a successful changed save still applies only on next launch, and the
+active position-indexed router is never edited in place. The Windows and iOS
+text-picker surfaces remain follow-up work; this core does not yet expose
+remapping to players.
 
 ### Implemented native iOS slice
 
@@ -245,9 +277,10 @@ path, checksum, controller identity, GUID or Bluetooth address. Settings panels
 remain in the validated menu context, so a valid custom profile need not
 contain modal/control-editor bindings.
 
-This completes calibration/save transport, not control-system acceptance.
-Binding remapping, persistent touch layout/visibility profiles, prompt glyphs,
-haptics, finished touch/controller menus, and physical validation of
+This completes calibration/save transport and the portable remap transaction,
+not control-system acceptance. The iOS remap picker, persistent touch
+layout/visibility profiles, prompt glyphs, haptics, finished touch/controller
+menus, and physical validation of
 Application Support protection, save/force-quit/relaunch and lifecycle recovery
 on both target iPhones remain pending.
 
@@ -285,8 +318,9 @@ an explicit `Save for next launch` action. A repair-only save is available
 after safe backup/default recovery. Storage errors disable saving without
 disabling input or aborting the session, and no UI/log includes a path,
 checksum, SDL identity, GUID, controller name, or Bluetooth address.
-Selected-device UI, binding remapping, glyphs, digital menu repeat, rumble,
-and physical Xbox/PlayStation/generic-controller testing remain pending.
+Selected-device UI, the Windows remap picker, glyphs, digital menu repeat,
+rumble, and physical Xbox/PlayStation/generic-controller testing remain
+pending.
 
 ## Input contexts
 
@@ -549,9 +583,9 @@ destruction all synthesize releases.
 
 The transport mapping is implemented, but remains provisional until reference
 scenarios establish action timing and on-device usability tests approve its
-conflicts. Profile-level conflict and recovery validation is implemented;
-user-facing remapping UI, action glyphs, and live profile application remain
-pending.
+conflicts. Profile-level validation and the bounded cancel-first move/atomic
+swap model are implemented; native text pickers, action glyphs, and live
+profile application remain pending.
 
 ### Connection and loss
 
