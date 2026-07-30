@@ -12,6 +12,9 @@
 namespace {
 
 using airfix::render::RenderPresentationSettings;
+using airfix::windows::AirfixWindowsControllerAxisInputSnapshot;
+using airfix::windows::AirfixWindowsControllerProfilePanelState;
+using airfix::windows::AirfixWindowsRenderSettingsItem;
 using airfix::windows::AirfixWindowsRenderSettingsPanel;
 using airfix::windows::AirfixWindowsUiPixelExtent;
 using airfix::windows::AirfixWindowsUiRaster;
@@ -44,6 +47,47 @@ displaySettingsPanel(const AirfixWindowsUiPixelExtent output) {
       .primaryPressed = true,
   });
   require(intent.empty(), "opening Display settings emitted an intent");
+  return result;
+}
+
+[[nodiscard]] AirfixWindowsRenderSettingsPanel
+controllerAxisPanel(const AirfixWindowsUiPixelExtent output) {
+  const auto profile = airfix::input::makeDefaultControllerInputProfileRecord();
+  auto created = AirfixWindowsRenderSettingsPanel::create(
+      RenderPresentationSettings{}, true, output, 0U, false,
+      AirfixWindowsControllerProfilePanelState{
+          .active = profile,
+          .persisted = profile,
+          .capabilities =
+              {
+                  .persistenceAvailable = true,
+                  .repairRequired = false,
+              },
+      });
+  require(created.has_value(),
+          "valid controller raster panel fixture was rejected");
+  auto result = *created;
+  const auto activate = [&](const AirfixWindowsRenderSettingsItem item) {
+    const auto snapshot = result.snapshot();
+    const auto found = std::find_if(
+        snapshot.items.begin(), snapshot.items.begin() + snapshot.itemCount,
+        [item](const auto &candidate) { return candidate.item == item; });
+    require(found != snapshot.items.begin() + snapshot.itemCount,
+            "controller raster fixture item was not found");
+    const auto intent = result.consumePointer({
+        .xPixels = found->bounds.x + found->bounds.width * 0.5F,
+        .yPixels = found->bounds.y + found->bounds.height * 0.5F,
+        .wheelY = 0,
+        .primaryPressed = true,
+    });
+    require(intent.empty(), "controller raster navigation emitted an intent");
+  };
+  activate(AirfixWindowsRenderSettingsItem::controllerCalibration);
+  activate(AirfixWindowsRenderSettingsItem::leftStickX);
+  AirfixWindowsControllerAxisInputSnapshot input{};
+  input.rawAxes[0] = 19661;
+  input.connected = true;
+  result.setControllerAxisInput(input);
   return result;
 }
 
@@ -129,6 +173,28 @@ void rasterizesAdaptiveSettingsAtSupportedSmallOutputs() {
   }
 }
 
+void rasterizesControllerCalibrationPreviewAtRepresentativeOutputs() {
+  AirfixWindowsUiRasterizer rasterizer;
+  constexpr std::array outputs{
+      AirfixWindowsUiPixelExtent{
+          .width = 1920U, .height = 1080U, .dpiScale = 1.0F},
+      AirfixWindowsUiPixelExtent{
+          .width = 2560U, .height = 1440U, .dpiScale = 1.5F},
+      AirfixWindowsUiPixelExtent{
+          .width = 3440U, .height = 1440U, .dpiScale = 1.0F},
+      AirfixWindowsUiPixelExtent{
+          .width = 640U, .height = 360U, .dpiScale = 1.0F},
+  };
+  for (const auto output : outputs) {
+    auto subject = controllerAxisPanel(output);
+    const auto raster = rasterizer.rasterize(subject.snapshot());
+    require(raster.complete(),
+            "controller calibration preview rasterization failed");
+    requireValidPremultipliedRaster(*raster.raster, output.width,
+                                    output.height);
+  }
+}
+
 void invalidDimensionsFailClosed() {
   auto subject = panel({.width = 1920U, .height = 1080U, .dpiScale = 1.0F});
   auto snapshot = subject.snapshot();
@@ -144,6 +210,27 @@ void invalidDimensionsFailClosed() {
   require(!escaped.complete() && escaped.issue.has_value() &&
               *escaped.issue == AirfixWindowsUiRasterizeIssue::invalidSnapshot,
           "out-of-output UI geometry did not fail closed");
+
+  auto controller =
+      controllerAxisPanel({.width = 1920U, .height = 1080U, .dpiScale = 1.0F});
+  snapshot = controller.snapshot();
+  snapshot.controllerDraftAxes[0].outerSaturationQ15 =
+      snapshot.controllerDraftAxes[0].innerDeadzoneQ15;
+  const auto invalidCalibration =
+      AirfixWindowsUiRasterizer{}.rasterize(snapshot);
+  require(!invalidCalibration.complete() &&
+              invalidCalibration.issue.has_value() &&
+              *invalidCalibration.issue ==
+                  AirfixWindowsUiRasterizeIssue::invalidSnapshot,
+          "invalid controller calibration snapshot did not fail closed");
+
+  snapshot = controller.snapshot();
+  snapshot.selectedControllerAxis = airfix::input::ControllerAxisElement::count;
+  const auto invalidAxis = AirfixWindowsUiRasterizer{}.rasterize(snapshot);
+  require(!invalidAxis.complete() && invalidAxis.issue.has_value() &&
+              *invalidAxis.issue ==
+                  AirfixWindowsUiRasterizeIssue::invalidSnapshot,
+          "invalid controller axis snapshot did not fail closed");
 }
 
 } // namespace
@@ -152,6 +239,7 @@ int main() {
   try {
     rasterizesFullHdAndUltrawideAtDpiScale();
     rasterizesAdaptiveSettingsAtSupportedSmallOutputs();
+    rasterizesControllerCalibrationPreviewAtRepresentativeOutputs();
     invalidDimensionsFailClosed();
   } catch (const std::exception &error) {
     std::cerr << "AirfixWindowsUiRasterizerTests failed: " << error.what()

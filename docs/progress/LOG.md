@@ -4149,3 +4149,31 @@ superseded evidence.
   completes 362 steps and passes 113/113 CTests. Native Apple compilation and
   physical Data Protection/lifecycle acceptance remain publication and device
   gates.
+
+## 2026-07-30 - Windows controller calibration for next launch
+
+- Added a portable controller-profile menu model with distinct immutable
+  active, persisted, and draft records. Complete-profile validation and exact
+  binding preservation apply to every edit; immutable save tickets promote only
+  durable/draft state, so changed calibration remains explicitly
+  restart-required.
+- Extracted the exact configured controller transport/profile transform into
+  one shared runtime/UI helper. The Windows pause surface now provides four
+  per-axis editors, resets, raw/adjusted Q15 preview, repair-only save after
+  recovery, and `Save for next launch` without replacing or mutating the active
+  SDL adapter.
+- Added a storage-only Windows coordinator with typed unavailable, blocked,
+  failed, committed, unchanged, and commit-unknown outcomes. Ambiguous
+  publication is accepted only after exact readback of a valid current AFIP;
+  backup/default recovery is not accepted as proof.
+- Added a mutually exclusive data-less controller-panel capture mode. It uses
+  only a synthetic profile/sample, never reads private settings or game data,
+  and generated an inspected 1920x1080 D3D11 frame.
+- Targeted GCC/MSVC model and bridge tests pass. MSVC builds and links the
+  complete Windows application, and targeted command-line, coordinator, panel,
+  rasterizer, SDL mapping, profile-model, and bridge tests pass 7/7. A fresh GCC
+  15.2/Ninja build completes 365 steps and passes 114/114 portable CTests; the
+  complete MSVC 19.51/Ninja Windows product passes 124/124 CTests including both
+  D3D11 product smokes. Synthetic public-boundary tests and the 586-file scan
+  pass. Independent review reports GO with no P0-P3 finding. Hosted Actions
+  remain the publication gate.

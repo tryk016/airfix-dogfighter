@@ -251,6 +251,19 @@ five-call AirCraft audio cadence through engine start, running, shutdown,
 destroyed dive, and recovery; a runner without an output endpoint remains
 supported. This is a platform-shell milestone, not yet a playable build.
 
+Interactive startup loads the owner-private AFIP controller profile before
+constructing the SDL input adapter. The pause menu exposes four-axis
+calibration with raw/adjusted live preview and an explicit
+`Save for next launch` action; it never mutates the active input pipeline.
+A public, synthetic screenshot can be generated without reading game data or
+the private settings store:
+
+```powershell
+AirfixDogfighter.exe `
+  --capture-controller-calibration-panel <public-output.bmp> `
+  --capture-size 1920x1080
+```
+
 ### Private content for local Windows validation
 
 The tools can build and atomically install an owner-private AFPACK without
@@ -353,8 +366,10 @@ triggers, D-pad, shoulders, and face buttons into the same fixed-rate
 release, per-source neutral gates, and focus-loss neutralization are covered
 by data-less tests.
 iOS supplies the corresponding landscape touch and Game Controller adapters.
-Persistent remapping/calibration profiles, controller glyphs, polished menus,
-and end-to-end device usability acceptance remain pending.
+Persistent AFIP profiles and the Windows save-on-next-launch calibration
+surface are implemented. Binding-remapping UI, iOS profile save/editor UI,
+controller glyphs, polished menus, and end-to-end device usability acceptance
+remain pending.
 
 See [Input, controls, and haptics](docs/systems/INPUT.md).
 

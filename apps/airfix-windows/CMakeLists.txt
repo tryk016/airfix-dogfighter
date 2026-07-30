@@ -195,6 +195,33 @@ target_link_libraries(airfix_windows_renderer
         dxgi
 )
 
+add_library(airfix_windows_controller_profile_coordinator STATIC
+    AirfixWindowsControllerProfileCoordinator.cpp
+    AirfixWindowsControllerProfileCoordinator.hpp
+)
+target_include_directories(
+    airfix_windows_controller_profile_coordinator PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+target_compile_features(
+    airfix_windows_controller_profile_coordinator PUBLIC cxx_std_20)
+if(MSVC)
+    target_compile_options(
+        airfix_windows_controller_profile_coordinator PRIVATE
+        /W4 /permissive-)
+else()
+    target_compile_options(
+        airfix_windows_controller_profile_coordinator PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+endif()
+target_link_libraries(
+    airfix_windows_controller_profile_coordinator PUBLIC
+    airfix::settings
+)
+
 add_library(airfix_windows_render_settings_coordinator STATIC
     AirfixWindowsRenderSettingsCoordinator.cpp
     AirfixWindowsRenderSettingsCoordinator.hpp
@@ -246,6 +273,7 @@ else()
 endif()
 target_link_libraries(airfix_windows PRIVATE
     airfix_windows_command_line
+    airfix_windows_controller_profile_coordinator
     airfix_windows_input
     airfix_windows_renderer
     airfix_windows_render_settings_coordinator
@@ -383,6 +411,29 @@ if(AIRFIX_BUILD_TESTS)
         airfix_windows_render_settings_coordinator)
     add_test(NAME airfix_windows_render_settings_coordinator_tests
         COMMAND airfix_windows_render_settings_coordinator_tests)
+
+    add_executable(airfix_windows_controller_profile_coordinator_tests
+        AirfixWindowsControllerProfileCoordinatorTests.cpp)
+    target_compile_features(
+        airfix_windows_controller_profile_coordinator_tests
+        PRIVATE cxx_std_20)
+    if(MSVC)
+        target_compile_options(
+            airfix_windows_controller_profile_coordinator_tests PRIVATE
+            /W4 /permissive-)
+    else()
+        target_compile_options(
+            airfix_windows_controller_profile_coordinator_tests PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+    endif()
+    target_link_libraries(
+        airfix_windows_controller_profile_coordinator_tests PRIVATE
+        airfix_windows_controller_profile_coordinator)
+    add_test(NAME airfix_windows_controller_profile_coordinator_tests
+        COMMAND airfix_windows_controller_profile_coordinator_tests)
 
     add_executable(airfix_windows_render_settings_panel_tests
         AirfixWindowsRenderSettingsPanelTests.cpp)

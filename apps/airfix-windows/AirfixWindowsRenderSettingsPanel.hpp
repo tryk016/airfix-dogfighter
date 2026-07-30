@@ -1,6 +1,7 @@
 #pragma once
 
 #include "airfix/input/InputFrame.hpp"
+#include "airfix/settings/ControllerInputProfileMenuModel.hpp"
 #include "airfix/settings/RenderPresentationSettingsMenuModel.hpp"
 
 #include <array>
@@ -18,10 +19,13 @@ inline constexpr std::int32_t airfixWindowsUiNavigationRelease =
 enum class AirfixWindowsRenderSettingsScreen : std::uint8_t {
   pause,
   displaySettings,
+  controllerCalibration,
+  controllerAxisCalibration,
 };
 
 enum class AirfixWindowsRenderSettingsItem : std::uint8_t {
   displaySettings,
+  controllerCalibration,
   resume,
   renderScale,
   presentation,
@@ -29,6 +33,19 @@ enum class AirfixWindowsRenderSettingsItem : std::uint8_t {
   rendererStatistics,
   apply,
   cancel,
+  leftStickX,
+  leftStickY,
+  rightStickX,
+  rightStickY,
+  innerDeadzone,
+  outerSaturation,
+  sensitivity,
+  responseCurve,
+  inversion,
+  resetAxis,
+  resetAllCalibration,
+  saveControllerProfile,
+  back,
   count,
 };
 
@@ -40,6 +57,14 @@ enum class AirfixWindowsRenderSettingsStatus : std::uint8_t {
   applyFailed,
   persistenceUnavailable,
   invalidSettings,
+  controllerProfileReady,
+  controllerProfileNoChanges,
+  controllerProfileSaving,
+  controllerProfileSaved,
+  controllerProfileSavedRestartRequired,
+  controllerProfileSaveFailed,
+  controllerProfilePersistenceUnavailable,
+  invalidControllerProfile,
 };
 
 enum class AirfixWindowsRenderSettingsSessionOverride : std::uint8_t {
@@ -127,7 +152,22 @@ struct AirfixWindowsRenderSettingsViewItem final {
              const AirfixWindowsRenderSettingsViewItem &) noexcept = default;
 };
 
-inline constexpr std::size_t airfixWindowsRenderSettingsMaximumViewItems = 6U;
+inline constexpr std::size_t airfixWindowsRenderSettingsMaximumViewItems = 7U;
+
+struct AirfixWindowsControllerProfilePanelState final {
+  input::ControllerInputProfileRecord active;
+  input::ControllerInputProfileRecord persisted;
+  settings::ControllerInputProfileMenuCapabilities capabilities;
+};
+
+struct AirfixWindowsControllerAxisInputSnapshot final {
+  std::array<input::Q15, input::controllerProfileAxisCount> rawAxes{};
+  bool connected{};
+
+  [[nodiscard]] friend constexpr bool operator==(
+      const AirfixWindowsControllerAxisInputSnapshot &,
+      const AirfixWindowsControllerAxisInputSnapshot &) noexcept = default;
+};
 
 // A storage-neutral, bounded view description. It intentionally contains no
 // paths, persistence records, checksums, texture identities, or arbitrary
@@ -151,9 +191,23 @@ struct AirfixWindowsRenderSettingsViewSnapshot final {
       items{};
   std::uint8_t itemCount{};
   AirfixWindowsRenderSettingsSessionOverrideMask sessionOverrideMask{};
+  std::array<input::ControllerAxisCalibrationRecord,
+             input::controllerProfileAxisCount>
+      controllerDraftAxes{};
+  input::ControllerAxisElement selectedControllerAxis{
+      input::ControllerAxisElement::leftStickX};
+  input::Q15 controllerPreviewRaw{};
+  input::Q15 controllerPreviewEffective{};
   bool dirty{};
   bool applying{};
   bool persistenceAvailable{true};
+  bool controllerProfileAvailable{};
+  bool controllerProfileDirty{};
+  bool controllerProfileSaving{};
+  bool controllerProfilePersistenceAvailable{};
+  bool controllerProfileRepairRequired{};
+  bool controllerProfileRestartRequired{};
+  bool controllerConnected{};
 
   [[nodiscard]] friend constexpr bool operator==(
       const AirfixWindowsRenderSettingsViewSnapshot &,
@@ -170,10 +224,13 @@ struct AirfixWindowsPointerInput final {
 struct AirfixWindowsRenderSettingsIntent final {
   std::optional<settings::RenderPresentationSettingsMenuApplyTicket>
       applyTicket;
+  std::optional<settings::ControllerInputProfileMenuSaveTicket>
+      controllerProfileSaveTicket;
   bool resumeRequested{};
 
   [[nodiscard]] constexpr bool empty() const noexcept {
-    return !applyTicket.has_value() && !resumeRequested;
+    return !applyTicket.has_value() &&
+           !controllerProfileSaveTicket.has_value() && !resumeRequested;
   }
 };
 
@@ -186,7 +243,9 @@ public:
       const render::RenderPresentationSettings &applied,
       bool persistenceAvailable = true, AirfixWindowsUiPixelExtent output = {},
       AirfixWindowsRenderSettingsSessionOverrideMask sessionOverrideMask = 0U,
-      bool resumeAvailable = true) noexcept;
+      bool resumeAvailable = true,
+      std::optional<AirfixWindowsControllerProfilePanelState>
+          controllerProfile = std::nullopt) noexcept;
 
   AirfixWindowsRenderSettingsPanel(const AirfixWindowsRenderSettingsPanel &) =
       default;
@@ -212,6 +271,9 @@ public:
   void setSessionOverrideMask(
       AirfixWindowsRenderSettingsSessionOverrideMask mask) noexcept;
   void setResumeAvailable(bool available) noexcept;
+  void setControllerProfilePersistenceAvailable(bool available) noexcept;
+  void setControllerAxisInput(
+      const AirfixWindowsControllerAxisInputSnapshot &input) noexcept;
 
   [[nodiscard]] bool
   finishApplySuccess(const settings::RenderPresentationSettingsMenuApplyTicket
@@ -219,6 +281,10 @@ public:
   [[nodiscard]] bool
   finishApplyFailure(const settings::RenderPresentationSettingsMenuApplyTicket
                          &ticket) noexcept;
+  [[nodiscard]] bool finishControllerProfileSaveSuccess(
+      const settings::ControllerInputProfileMenuSaveTicket &ticket) noexcept;
+  [[nodiscard]] bool finishControllerProfileSaveFailure(
+      const settings::ControllerInputProfileMenuSaveTicket &ticket) noexcept;
 
   [[nodiscard]] AirfixWindowsRenderSettingsScreen screen() const noexcept {
     return screen_;
@@ -227,6 +293,8 @@ public:
 private:
   AirfixWindowsRenderSettingsPanel(
       settings::RenderPresentationSettingsMenuModel model,
+      std::optional<settings::ControllerInputProfileMenuModel>
+          controllerProfileModel,
       AirfixWindowsUiPixelExtent output,
       AirfixWindowsRenderSettingsSessionOverrideMask sessionOverrideMask,
       bool resumeAvailable) noexcept;
@@ -236,18 +304,35 @@ private:
   [[nodiscard]] AirfixWindowsRenderSettingsIntent
   activateSelectedItem() noexcept;
   void closeDisplaySettings() noexcept;
+  void closeControllerCalibration() noexcept;
+  void openSelectedControllerAxis() noexcept;
+  [[nodiscard]] AirfixWindowsRenderSettingsItem &
+  selectionForCurrentScreen() noexcept;
+  [[nodiscard]] const AirfixWindowsRenderSettingsItem &
+  selectionForCurrentScreen() const noexcept;
 
   settings::RenderPresentationSettingsMenuModel model_;
+  std::optional<settings::ControllerInputProfileMenuModel>
+      controllerProfileModel_;
   AirfixWindowsUiPixelExtent output_;
   AirfixWindowsRenderSettingsSessionOverrideMask sessionOverrideMask_{};
   std::optional<settings::RenderPresentationSettingsMenuApplyTicket>
       activeTicket_;
+  std::optional<settings::ControllerInputProfileMenuSaveTicket>
+      activeControllerProfileTicket_;
+  AirfixWindowsControllerAxisInputSnapshot controllerAxisInput_;
   AirfixWindowsRenderSettingsScreen screen_{
       AirfixWindowsRenderSettingsScreen::pause};
   AirfixWindowsRenderSettingsItem selectedPauseItem_{
       AirfixWindowsRenderSettingsItem::displaySettings};
   AirfixWindowsRenderSettingsItem selectedSettingsItem_{
       AirfixWindowsRenderSettingsItem::renderScale};
+  AirfixWindowsRenderSettingsItem selectedControllerProfileItem_{
+      AirfixWindowsRenderSettingsItem::leftStickX};
+  AirfixWindowsRenderSettingsItem selectedControllerAxisItem_{
+      AirfixWindowsRenderSettingsItem::innerDeadzone};
+  input::ControllerAxisElement selectedControllerAxis_{
+      input::ControllerAxisElement::leftStickX};
   AirfixWindowsRenderSettingsStatus status_{
       AirfixWindowsRenderSettingsStatus::ready};
   bool verticalNavigationLatched_{};

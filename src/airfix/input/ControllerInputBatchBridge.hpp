@@ -167,32 +167,43 @@ struct ControllerBatchResult final {
         const ControllerBatchResult&) noexcept = default;
 };
 
+inline constexpr std::int32_t controllerStickTransportDeadzoneQ15 = 4096;
+
+// Applies the legacy controller transport floor and then the resolved profile
+// transform. Runtime ingestion and native calibration previews must share this
+// exact operation so the UI cannot promise values the active bridge would not
+// emit. Invalid -32768 or a forged axis returns no value.
+[[nodiscard]] std::optional<Q15> transformControllerAxisForTransport(
+    Q15 raw, ControllerAxisElement axis,
+    const ResolvedControllerInputProfile &profile) noexcept;
+
 class ControllerInputBatchBridge final {
 public:
-    static constexpr std::int32_t stickDeadzone = 4096;
-    static constexpr std::int32_t meaningfulAxisDelta = 1024;
-    static constexpr std::size_t maximumEmissionCount =
-        controllerAxisCount + (controllerDigitalControlCount * 2U) +
-        ControllerInputBatch::edgeCapacity;
+  static constexpr std::int32_t stickDeadzone =
+      controllerStickTransportDeadzoneQ15;
+  static constexpr std::int32_t meaningfulAxisDelta = 1024;
+  static constexpr std::size_t maximumEmissionCount =
+      controllerAxisCount + (controllerDigitalControlCount * 2U) +
+      ControllerInputBatch::edgeCapacity;
 
-    ControllerInputBatchBridge() noexcept = default;
-    explicit ControllerInputBatchBridge(
-        const ControllerInputRuntimeConfiguration& configuration) noexcept
-        : configuration_(configuration) {}
+  ControllerInputBatchBridge() noexcept = default;
+  explicit ControllerInputBatchBridge(
+      const ControllerInputRuntimeConfiguration &configuration) noexcept
+      : configuration_(configuration) {}
 
-    // The output order is deterministic: final continuous axes, a starting
-    // digital full-state for a new generation, ordered edges, then any final
-    // digital reconciliation. No caller output or bridge state changes on
-    // rejection, including insufficient output capacity.
-    [[nodiscard]] ControllerBatchResult process(
-        const ControllerInputBatch& batch,
-        std::span<ControllerInputEmission> output) noexcept;
+  // The output order is deterministic: final continuous axes, a starting
+  // digital full-state for a new generation, ordered edges, then any final
+  // digital reconciliation. No caller output or bridge state changes on
+  // rejection, including insufficient output capacity.
+  [[nodiscard]] ControllerBatchResult
+  process(const ControllerInputBatch &batch,
+          std::span<ControllerInputEmission> output) noexcept;
 
-    void reset() noexcept;
+  void reset() noexcept;
 
-    [[nodiscard]] constexpr std::uint64_t currentGeneration() const noexcept {
-        return hasGeneration_ ? generation_ : 0U;
-    }
+  [[nodiscard]] constexpr std::uint64_t currentGeneration() const noexcept {
+    return hasGeneration_ ? generation_ : 0U;
+  }
 
     [[nodiscard]] constexpr const ResolvedControllerInputProfile*
     controllerProfile() const noexcept {

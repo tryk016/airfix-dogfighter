@@ -356,6 +356,21 @@ AirfixSdlInputAdapter::activeControllerProfile() const noexcept {
   return bridge_.controllerProfile();
 }
 
+SdlControllerAxisSnapshot
+AirfixSdlInputAdapter::controllerAxisSnapshot() const noexcept {
+  const auto sample = sampleController();
+  return {
+      .rawAxes =
+          {
+              sample.bank,
+              sample.pitch,
+              sample.lookX,
+              sample.lookY,
+          },
+      .connected = gamepad_ != nullptr,
+  };
+}
+
 bool AirfixSdlInputAdapter::openGamepad(
     const SDL_JoystickID instanceId) noexcept {
   if (gamepad_ != nullptr) {

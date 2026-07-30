@@ -269,6 +269,7 @@ endif()
 
 add_library(airfix_settings
     src/airfix/settings/ControllerInputProfileCodec.cpp
+    src/airfix/settings/ControllerInputProfileMenuModel.cpp
     src/airfix/settings/ControllerInputProfileStore.cpp
     src/airfix/settings/RenderPresentationPersistenceGate.cpp
     src/airfix/settings/RenderPresentationRequestQueue.cpp
@@ -642,6 +643,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::input)
     add_test(NAME airfix_controller_input_profile_tests
         COMMAND airfix_controller_input_profile_tests)
+
+    add_executable(airfix_controller_input_profile_menu_model_tests
+        tests/ControllerInputProfileMenuModelTests.cpp)
+    target_link_libraries(airfix_controller_input_profile_menu_model_tests
+        PRIVATE airfix::settings)
+    add_test(NAME airfix_controller_input_profile_menu_model_tests
+        COMMAND airfix_controller_input_profile_menu_model_tests)
 
     add_executable(airfix_controller_input_runtime_configuration_tests
         tests/ControllerInputRuntimeConfigurationTests.cpp)

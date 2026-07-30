@@ -1,9 +1,12 @@
 #include "AirfixWindowsRenderSettingsPanel.hpp"
 
+#include "airfix/input/ControllerInputBatchBridge.hpp"
+
 #include <array>
 #include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -14,6 +17,8 @@ using airfix::input::AnalogAxis;
 using airfix::input::DigitalAction;
 using airfix::input::InputFrame;
 using airfix::render::RenderPresentationSettings;
+using airfix::windows::AirfixWindowsControllerAxisInputSnapshot;
+using airfix::windows::AirfixWindowsControllerProfilePanelState;
 using airfix::windows::AirfixWindowsPointerInput;
 using airfix::windows::AirfixWindowsRenderSettingsItem;
 using airfix::windows::AirfixWindowsRenderSettingsPanel;
@@ -75,6 +80,26 @@ makePanel(const float scale = 100.0F, const bool persistenceAvailable = true,
   return *panel;
 }
 
+[[nodiscard]] AirfixWindowsRenderSettingsPanel
+makeControllerPanel(const bool persistenceAvailable = true,
+                    const bool repairRequired = false,
+                    const AirfixWindowsUiPixelExtent output = {}) {
+  const auto profile = airfix::input::makeDefaultControllerInputProfileRecord();
+  auto panel = AirfixWindowsRenderSettingsPanel::create(
+      RenderPresentationSettings{}, true, output, 0U, true,
+      AirfixWindowsControllerProfilePanelState{
+          .active = profile,
+          .persisted = profile,
+          .capabilities =
+              {
+                  .persistenceAvailable = persistenceAvailable,
+                  .repairRequired = repairRequired,
+              },
+      });
+  require(panel.has_value(), "valid controller panel fixture was rejected");
+  return *panel;
+}
+
 [[nodiscard]] const AirfixWindowsRenderSettingsViewItem &
 findItem(const AirfixWindowsRenderSettingsViewSnapshot &snapshot,
          const AirfixWindowsRenderSettingsItem item) {
@@ -94,6 +119,37 @@ click(const AirfixWindowsRenderSettingsViewItem &item) noexcept {
       .wheelY = 0,
       .primaryPressed = true,
   };
+}
+
+[[nodiscard]] AirfixWindowsPointerInput
+clickNext(const AirfixWindowsRenderSettingsViewItem &item) noexcept {
+  return {
+      .xPixels = item.nextBounds.x + item.nextBounds.width * 0.5F,
+      .yPixels = item.nextBounds.y + item.nextBounds.height * 0.5F,
+      .wheelY = 0,
+      .primaryPressed = true,
+  };
+}
+
+void activateItem(AirfixWindowsRenderSettingsPanel &panel,
+                  const AirfixWindowsRenderSettingsItem item) {
+  const auto snapshot = panel.snapshot();
+  const auto intent = panel.consumePointer(click(findItem(snapshot, item)));
+  require(intent.empty(), "navigation-only item emitted an intent");
+}
+
+void openControllerCalibration(AirfixWindowsRenderSettingsPanel &panel) {
+  activateItem(panel, AirfixWindowsRenderSettingsItem::controllerCalibration);
+  require(panel.screen() ==
+              AirfixWindowsRenderSettingsScreen::controllerCalibration,
+          "Controller calibration did not open");
+}
+
+void openLeftStickXCalibration(AirfixWindowsRenderSettingsPanel &panel) {
+  activateItem(panel, AirfixWindowsRenderSettingsItem::leftStickX);
+  require(panel.screen() ==
+              AirfixWindowsRenderSettingsScreen::controllerAxisCalibration,
+          "left-stick X calibration did not open");
 }
 
 [[nodiscard]] bool
@@ -416,6 +472,205 @@ void pointerUsesPhysicalLayoutAndWheel() {
           "pointer did not select Original 4:3");
 }
 
+void controllerCalibrationUsesSharedPreviewAndSavesForNextLaunch() {
+  auto panel = makeControllerPanel();
+  const auto pause = panel.snapshot();
+  require(pause.controllerProfileAvailable && pause.itemCount == 3U,
+          "controller-enabled pause view omitted calibration");
+  openControllerCalibration(panel);
+  openLeftStickXCalibration(panel);
+
+  AirfixWindowsControllerAxisInputSnapshot input{};
+  input.connected = true;
+  input.rawAxes[static_cast<std::size_t>(
+      airfix::input::ControllerAxisElement::leftStickX)] = 4095;
+  panel.setControllerAxisInput(input);
+  auto snapshot = panel.snapshot();
+  require(snapshot.controllerConnected &&
+              snapshot.controllerPreviewRaw == 4095 &&
+              snapshot.controllerPreviewEffective == 0,
+          "panel preview did not preserve the exact transport floor");
+
+  input.rawAxes[0] = 4096;
+  panel.setControllerAxisInput(input);
+  snapshot = panel.snapshot();
+  require(snapshot.controllerPreviewEffective == 4096,
+          "panel preview rejected the first value above the transport floor");
+
+  input.rawAxes[0] = 19661;
+  panel.setControllerAxisInput(input);
+  const auto defaults =
+      airfix::input::makeDefaultControllerInputProfileRecord();
+  const auto resolvedDefaults =
+      airfix::input::resolveControllerInputProfile(defaults);
+  require(resolvedDefaults.complete(),
+          "default controller profile did not resolve in panel test");
+  const auto expectedDefault =
+      airfix::input::transformControllerAxisForTransport(
+          input.rawAxes[0], airfix::input::ControllerAxisElement::leftStickX,
+          *resolvedDefaults.profile);
+  require(expectedDefault.has_value() &&
+              panel.snapshot().controllerPreviewEffective == *expectedDefault,
+          "panel preview diverged from the runtime transform");
+
+  snapshot = panel.snapshot();
+  const auto &sensitivity =
+      findItem(snapshot, AirfixWindowsRenderSettingsItem::sensitivity);
+  require(panel.consumePointer(clickNext(sensitivity)).empty(),
+          "sensitivity edit emitted an intent");
+  snapshot = panel.snapshot();
+  require(snapshot.controllerDraftAxes[0].sensitivityPermille == 1050U &&
+              snapshot.controllerProfileDirty,
+          "axis edit did not update the controller draft");
+  auto edited = defaults;
+  edited.axes[0].sensitivityPermille = 1050U;
+  const auto resolvedEdited =
+      airfix::input::resolveControllerInputProfile(edited);
+  const auto expectedEdited =
+      resolvedEdited.complete()
+          ? airfix::input::transformControllerAxisForTransport(
+                input.rawAxes[0],
+                airfix::input::ControllerAxisElement::leftStickX,
+                *resolvedEdited.profile)
+          : std::nullopt;
+  require(expectedEdited.has_value() &&
+              snapshot.controllerPreviewEffective == *expectedEdited,
+          "draft calibration did not drive the exact shared preview");
+
+  activateItem(panel, AirfixWindowsRenderSettingsItem::back);
+  const auto save = panel.consumePointer(
+      click(findItem(panel.snapshot(),
+                     AirfixWindowsRenderSettingsItem::saveControllerProfile)));
+  require(save.controllerProfileSaveTicket.has_value() &&
+              !save.applyTicket.has_value() && !save.resumeRequested,
+          "controller save did not emit exactly one save ticket");
+  const auto &ticket = *save.controllerProfileSaveTicket;
+  require(ticket.candidate.axes[0].sensitivityPermille == 1050U &&
+              ticket.candidate.bindings == defaults.bindings &&
+              ticket.candidate.bindingCount == defaults.bindingCount &&
+              !ticket.repairsPersistence,
+          "controller save ticket changed unrelated profile state");
+  require(panel.finishControllerProfileSaveSuccess(ticket),
+          "exact controller save ticket did not complete");
+  snapshot = panel.snapshot();
+  require(panel.screen() == AirfixWindowsRenderSettingsScreen::pause &&
+              !snapshot.controllerProfileDirty &&
+              snapshot.controllerProfileRestartRequired &&
+              snapshot.status == AirfixWindowsRenderSettingsStatus::
+                                     controllerProfileSavedRestartRequired,
+          "successful controller save did not remain restart-only");
+  require(!panel.finishControllerProfileSaveSuccess(ticket),
+          "duplicate controller save completion was accepted");
+}
+
+void controllerCalibrationCancelFailureAndRetryAreAtomic() {
+  auto cancelled = makeControllerPanel();
+  openControllerCalibration(cancelled);
+  openLeftStickXCalibration(cancelled);
+  const auto sensitivity = findItem(
+      cancelled.snapshot(), AirfixWindowsRenderSettingsItem::sensitivity);
+  static_cast<void>(cancelled.consumePointer(clickNext(sensitivity)));
+  static_cast<void>(
+      cancelled.consumeInputFrame(pressedFrame(DigitalAction::uiCancel)));
+  require(cancelled.screen() ==
+              AirfixWindowsRenderSettingsScreen::controllerCalibration,
+          "axis cancel did not return to controller overview");
+  static_cast<void>(
+      cancelled.consumeInputFrame(pressedFrame(DigitalAction::uiCancel)));
+  require(cancelled.screen() == AirfixWindowsRenderSettingsScreen::pause &&
+              !cancelled.snapshot().controllerProfileDirty,
+          "controller cancel did not restore the persisted draft");
+
+  auto retry = makeControllerPanel();
+  openControllerCalibration(retry);
+  openLeftStickXCalibration(retry);
+  static_cast<void>(retry.consumePointer(clickNext(findItem(
+      retry.snapshot(), AirfixWindowsRenderSettingsItem::sensitivity))));
+  activateItem(retry, AirfixWindowsRenderSettingsItem::back);
+  const auto first = retry.consumePointer(
+      click(findItem(retry.snapshot(),
+                     AirfixWindowsRenderSettingsItem::saveControllerProfile)));
+  require(first.controllerProfileSaveTicket.has_value(),
+          "retry fixture did not begin its first save");
+  require(retry.finishControllerProfileSaveFailure(
+              *first.controllerProfileSaveTicket),
+          "exact failed controller save ticket was rejected");
+  auto snapshot = retry.snapshot();
+  require(
+      snapshot.controllerProfileDirty &&
+          snapshot.status ==
+              AirfixWindowsRenderSettingsStatus::controllerProfileSaveFailed &&
+          findItem(snapshot,
+                   AirfixWindowsRenderSettingsItem::saveControllerProfile)
+              .enabled,
+      "failed controller save did not preserve a retryable draft");
+  const auto second = retry.consumePointer(click(findItem(
+      snapshot, AirfixWindowsRenderSettingsItem::saveControllerProfile)));
+  require(second.controllerProfileSaveTicket.has_value() &&
+              second.controllerProfileSaveTicket->serial !=
+                  first.controllerProfileSaveTicket->serial,
+          "controller retry did not issue a fresh immutable ticket");
+}
+
+void controllerPersistenceCapabilitiesFailClosedAndPermitRepair() {
+  auto unavailable = makeControllerPanel(false);
+  openControllerCalibration(unavailable);
+  openLeftStickXCalibration(unavailable);
+  static_cast<void>(unavailable.consumePointer(clickNext(findItem(
+      unavailable.snapshot(), AirfixWindowsRenderSettingsItem::sensitivity))));
+  activateItem(unavailable, AirfixWindowsRenderSettingsItem::back);
+  auto snapshot = unavailable.snapshot();
+  const auto &save = findItem(
+      snapshot, AirfixWindowsRenderSettingsItem::saveControllerProfile);
+  require(!save.enabled &&
+              snapshot.status == AirfixWindowsRenderSettingsStatus::
+                                     controllerProfilePersistenceUnavailable &&
+              unavailable.consumePointer(click(save)).empty(),
+          "unavailable controller persistence did not fail closed");
+
+  auto repair = makeControllerPanel(true, true);
+  openControllerCalibration(repair);
+  snapshot = repair.snapshot();
+  const auto &repairSave = findItem(
+      snapshot, AirfixWindowsRenderSettingsItem::saveControllerProfile);
+  require(!snapshot.controllerProfileDirty &&
+              snapshot.controllerProfileRepairRequired && repairSave.enabled,
+          "recovered controller profile did not expose explicit repair");
+  const auto intent = repair.consumePointer(click(repairSave));
+  require(intent.controllerProfileSaveTicket.has_value() &&
+              intent.controllerProfileSaveTicket->repairsPersistence,
+          "repair-only save did not emit a repair ticket");
+  require(repair.finishControllerProfileSaveSuccess(
+              *intent.controllerProfileSaveTicket),
+          "repair-only save did not complete");
+  snapshot = repair.snapshot();
+  require(!snapshot.controllerProfileRestartRequired &&
+              snapshot.status ==
+                  AirfixWindowsRenderSettingsStatus::controllerProfileSaved,
+          "repair-only save falsely required a restart");
+}
+
+void controllerLayoutsFitSupportedOutputs() {
+  constexpr std::array outputs{
+      AirfixWindowsUiPixelExtent{
+          .width = 1920U, .height = 1080U, .dpiScale = 1.0F},
+      AirfixWindowsUiPixelExtent{
+          .width = 2560U, .height = 1440U, .dpiScale = 1.5F},
+      AirfixWindowsUiPixelExtent{
+          .width = 3440U, .height = 1440U, .dpiScale = 1.0F},
+      AirfixWindowsUiPixelExtent{
+          .width = 640U, .height = 360U, .dpiScale = 1.0F},
+  };
+  for (const auto output : outputs) {
+    auto panel = makeControllerPanel(true, false, output);
+    requireSnapshotInsideOutput(panel.snapshot());
+    openControllerCalibration(panel);
+    requireSnapshotInsideOutput(panel.snapshot());
+    openLeftStickXCalibration(panel);
+    requireSnapshotInsideOutput(panel.snapshot());
+  }
+}
+
 void snapshotExposesOnlyBoundedOperationalMetadata() {
   auto panel = makePanel();
   panel.setSessionOverrideMask(0xFFU);
@@ -450,6 +705,10 @@ int main() {
     resumeRemainsDisabledWithoutReadyGameplay();
     layoutFitsDefaultSmallAndHighDpiOutputs();
     pointerUsesPhysicalLayoutAndWheel();
+    controllerCalibrationUsesSharedPreviewAndSavesForNextLaunch();
+    controllerCalibrationCancelFailureAndRetryAreAtomic();
+    controllerPersistenceCapabilitiesFailClosedAndPermitRepair();
+    controllerLayoutsFitSupportedOutputs();
     snapshotExposesOnlyBoundedOperationalMetadata();
   } catch (const std::exception &error) {
     std::cerr << "AirfixWindowsRenderSettingsPanelTests failed: "
