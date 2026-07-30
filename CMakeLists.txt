@@ -105,6 +105,8 @@ add_library(airfix_simulation
     src/airfix/simulation/LegacyAircraftControlCommandReducer.cpp
     src/airfix/simulation/LegacyAircraftControlCommandStep.cpp
     src/airfix/simulation/LegacyAircraftControlEventStateOwner.cpp
+    src/airfix/simulation/LegacyAircraftTypeCatalog.cpp
+    src/airfix/simulation/LegacyAircraftVehicleRefreshGate.cpp
     src/airfix/simulation/LegacyAircraftPitchBankEventStep.cpp
     src/airfix/simulation/LegacyAircraftDestroyedDiveAudioState.cpp
     src/airfix/simulation/LegacyAircraftEngineAudioState.cpp
@@ -781,6 +783,27 @@ if(AIRFIX_BUILD_TESTS)
         NAME airfix_legacy_aircraft_control_command_step_tests
         COMMAND
             airfix_legacy_aircraft_control_command_step_tests)
+
+    add_executable(
+        airfix_legacy_aircraft_type_catalog_tests
+        tests/LegacyAircraftTypeCatalogTests.cpp)
+    target_link_libraries(
+        airfix_legacy_aircraft_type_catalog_tests
+        PRIVATE airfix::simulation)
+    add_test(
+        NAME airfix_legacy_aircraft_type_catalog_tests
+        COMMAND airfix_legacy_aircraft_type_catalog_tests)
+
+    add_executable(
+        airfix_legacy_aircraft_vehicle_refresh_gate_tests
+        tests/LegacyAircraftVehicleRefreshGateTests.cpp)
+    target_link_libraries(
+        airfix_legacy_aircraft_vehicle_refresh_gate_tests
+        PRIVATE airfix::simulation)
+    add_test(
+        NAME airfix_legacy_aircraft_vehicle_refresh_gate_tests
+        COMMAND
+            airfix_legacy_aircraft_vehicle_refresh_gate_tests)
 
     add_executable(airfix_legacy_aircraft_engine_audio_state_tests
         tests/LegacyAircraftEngineAudioStateTests.cpp)

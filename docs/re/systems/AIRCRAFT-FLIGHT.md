@@ -6,6 +6,7 @@
 `EV-20260728-010`, `EV-20260728-011`, `EV-20260728-012`,
 `EV-20260728-013`, `EV-20260728-014`, `EV-20260729-007`,
 `EV-20260730-001`, `EV-20260730-003`, `EV-20260730-004`
+and `EV-20260730-007`
 **Reference build:** SHA-256 values in `docs/evidence/source-manifest.sha256`
 
 This note records the current clean-room boundary around
@@ -79,9 +80,22 @@ constructor at `0x100017F0`:
 `AcBlackWidow`, `AcKomet`, `AuJunker86`, `AuLancaster`, and `AuB17`.
 
 Each registration supplies the name plus the same ten-field numeric tuple.
-The tuple values differ by aircraft, but their field meanings are not yet
-proven. They must not be named as speed, mass, maneuverability, or another
-gameplay property merely because the values appear plausible.
+`LegacyAircraftTypeCatalog` now preserves the complete registry order and
+every tuple member as its exact source `uint32_t` word. Typed float accessors
+use `bit_cast` and perform no arithmetic, so this catalogue does not select a
+floating-point policy. The authenticated player descriptor resolves a type
+only from the exact canonical
+`Game\Objects\AirCrafts\<Ac-name>.object` or
+`Game\Objects\Units\<Au-name>.object` identity; generic MODL-root visuals
+retain no aircraft type. A name in the wrong directory is rejected. The
+publication boundary rejects a missing or forged association. The catalogue
+and cross-tool evidence are recorded in
+[EXP-20260730-077](../../experiments/EXP-20260730-077-aircraft-runtime-prerequisites.md).
+
+Constructor transformations and behavior-backed roles are recorded in
+`AIRCRAFT-FLIGHT-LAW.md`. Unproven members remain neutral `parameter9` and
+`parameter10`; they must not be renamed as speed, maneuverability, or another
+gameplay property merely because their values appear plausible.
 
 ### Instance and rigid-body construction
 
@@ -423,6 +437,16 @@ control state changes only after a decoded typed write commits. This staged
 behavior does not claim atomicity across the native callback and
 `ProcessEvent`, and it adds no queue, producer, Q15, or clock. See
 [EXP-20260730-063](../../experiments/EXP-20260730-063-native-control-command-step.md).
+
+`LegacyAircraftVehicleRefreshGate` now supplies the next isolated composition
+boundary. After the caller has applied every already-ordered control event for
+one refresh, it passes the committed five controls, shared signed rest
+duration, sampled movement/ground predicates, and signed delta through the
+existing sleep helper. Success commits only the returned rest duration;
+rejection retains the complete input state. The returned integrate/clear
+directives remain unwired from rigid-body state. This helper owns no producer,
+event order, clock, scheduler, force law, or render publication; see
+[EXP-20260730-077](../../experiments/EXP-20260730-077-aircraft-runtime-prerequisites.md).
 
 The native keyboard path obtains one buffered DirectInput record per device
 request and executes its mapped binding synchronously. It has no fixed

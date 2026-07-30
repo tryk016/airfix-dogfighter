@@ -7,6 +7,7 @@ implemented for parity
 `EV-20260724-003`, `EV-20260724-004`, `EV-20260727-002`,
 `EV-20260728-011`, `EV-20260728-012`, `EV-20260728-013`,
 `EV-20260728-014`, `EV-20260730-004`
+and `EV-20260730-007`
 
 **Reference build:** SHA-256 values in
 `docs/evidence/source-manifest.sha256`
@@ -242,6 +243,14 @@ applies to this class. The exported `AfVehicle::IsOnGround` proves that byte
 
 The constructor also scales inherited `+0xD8` by `0.01`, writes
 `+0x74 = 6.0`, and creates five engine-sound dependencies.
+
+The public `LegacyAircraftTypeCatalog` now preserves all 17 registration
+records and all ten source values as exact 32-bit words. It deliberately
+stores the pre-constructor tuple: the `0.01` transformations above remain
+documented behavior rather than implicit catalogue arithmetic. Authenticated
+player object identities can carry the matching typed record into the mission
+snapshot, but no type values are yet consumed by a live force step. See
+[EXP-20260730-077](../../experiments/EXP-20260730-077-aircraft-runtime-prerequisites.md).
 
 The exported `NfActor::GetHealth` returns the float at instance `+0x98`;
 Ghidra and Rizin independently confirm the getter and the AirCraft reads.
@@ -619,6 +628,13 @@ order is the complete ordering contract. It owns no batch, source identity,
 producer cache, retry, replay, Q15 conversion, scheduler, or clock. In
 particular, the adapter itself cannot replay an inactive drop and cannot
 strengthen the conditional startup-compatible PC53/RNE model into live parity.
+
+The separate `LegacyAircraftVehicleRefreshGate` composes the committed
+five-control snapshot with the recovered signed rest/sleep transition. It
+commits only rest duration and returns the recovered integrate/clear
+directives; it does not mutate rigid-body state or create a scheduler. This
+closes the control-to-sleep entry prerequisite without claiming the active
+physics chain is implemented.
 
 Until the runtime evidence exists, `PlayerAircraftState` remains a frozen-pose
 transport. It must not encode these equations as claimed gameplay behavior

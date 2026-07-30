@@ -853,6 +853,26 @@ void testPlayerActorPublicationBoundary() {
     }
     {
         auto room = validPlayerRoom();
+        room.playerVisual->aircraftType =
+            airfix::simulation::LegacyAircraftTypeId::spitfire;
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 invalidPlayerVisualDescriptor},
+            "aircraft type unrelated to the player object was accepted");
+    }
+    {
+        auto room = validPlayerRoom();
+        room.playerVisual->objectDefinitionSource.logicalPath =
+            "Game\\Objects\\AirCrafts\\AcSpitfire.object";
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 invalidPlayerVisualDescriptor},
+            "canonical aircraft object without its type was accepted");
+    }
+    {
+        auto room = validPlayerRoom();
         room.playerVisualCcfCacheIndex = 3U;
         requireIssue(
             room,

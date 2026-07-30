@@ -4,6 +4,7 @@
 #include "airfix/assets/MissionEntryResolver.hpp"
 #include "airfix/assets/MissionSetup.hpp"
 #include "airfix/content/VerifiedContentSession.hpp"
+#include "airfix/simulation/LegacyAircraftTypeCatalog.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -151,6 +152,10 @@ struct MissionPlayerVisualDescriptor {
     MissionArchiveEntryIdentity modelCcfSource;
     std::string blueprintSelector;
     std::optional<std::string> textureRoot;
+    // Present only when the authenticated canonical object path names one of
+    // the 17 exact AirCraft.type registry records. Generic MODL-root visuals
+    // remain renderable without claiming aircraft simulation parameters.
+    std::optional<simulation::LegacyAircraftTypeId> aircraftType;
     // Legacy SetSkin slot zero is the neutral/default player visual slot.
     std::uint8_t legacySkinSlot{};
     // storedSize + unpackedSize for compressed entries, otherwise storedSize.
@@ -158,10 +163,20 @@ struct MissionPlayerVisualDescriptor {
     std::uint64_t modelCcfSourceAllocationFootprintBytes{};
 
     [[nodiscard]] bool valid() const noexcept {
+        const auto* expectedAircraftType =
+            simulation::findLegacyAircraftTypeForObjectLogicalPath(
+                objectDefinitionSource.logicalPath);
+        const bool aircraftTypeMatches =
+            expectedAircraftType == nullptr
+            ? !aircraftType.has_value()
+            : aircraftType ==
+                std::optional<simulation::LegacyAircraftTypeId>{
+                    expectedAircraftType->id};
         return !objectDefinitionSource.logicalPath.empty() &&
             !modelCcfSource.logicalPath.empty() &&
             !blueprintSelector.empty() &&
-            legacySkinSlot == 0U;
+            legacySkinSlot == 0U &&
+            aircraftTypeMatches;
     }
 
     friend bool operator==(

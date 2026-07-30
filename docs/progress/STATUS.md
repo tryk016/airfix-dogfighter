@@ -987,6 +987,17 @@
   mission refresh also now has a static process-before-trigger-poll boundary,
   but unresolved compiler/bytecode/global-order evidence still forbids live
   AFS integration.
+- `EV-20260730-007` independently cross-checks the complete 17-record
+  `AirCraft.type` registry in Ghidra and Rizin. The portable catalogue retains
+  exact source words and registration order without applying constructor
+  arithmetic or assigning speculative meanings. Authenticated canonical player
+  object identities now carry the matching typed record; generic visuals carry
+  none, and the native publication boundary rejects forged or missing
+  associations. A separate allocation-free refresh gate composes the already
+  committed five-control state with the recovered signed rest/sleep helper,
+  committing only rest duration and returning integrate/clear directives.
+  Producer ordering, the 12 ms scheduler, rigid-body mutation, the force law,
+  and live pose publication remain intentionally unwired.
 
 ## Confirmed
 
