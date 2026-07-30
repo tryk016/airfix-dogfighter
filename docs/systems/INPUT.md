@@ -170,13 +170,18 @@ does reach it.
 
 Profiles are installed only while constructing the Windows adapter or through
 the one-time iOS coordinator seam before input starts. Live replacement is not
-implemented: changing the durable Windows AFIP requires a process restart, and
-iOS currently uses the canonical default. A future live editor must obtain a
-host-owned pause transaction, prepare a fresh router/bridge pair, rebase a
-complete physical snapshot, discard old queued edges, and re-enter the
-two-tick neutral gate. An input context enum alone is not authorization to
-replace active state. No calibration/remapping editor UI is included in this
-slice.
+implemented: changing a durable AFIP requires a process restart. Windows loads
+through its SDL preference leaf. iOS resolves its protected Application Support
+settings leaf off-main and completes `current -> backup -> canonical default`
+recovery before the fixed input pump may start. Storage failure still installs
+the in-memory canonical default through the same one-time seam. AFRS and AFIP
+share one native serial persistence queue so directory creation, permission
+hardening, reads, and future writes cannot race inside the common settings
+leaf. A future live editor must obtain a host-owned pause transaction, prepare
+a fresh router/bridge pair, rebase a complete physical snapshot, discard old
+queued edges, and re-enter the two-tick neutral gate. An input context enum
+alone is not authorization to replace active state. No calibration/remapping
+editor UI is included in this slice.
 
 ### Implemented native iOS slice
 
@@ -216,10 +221,12 @@ safe ticks. Foreground activation and room publication never resume gameplay;
 the player must explicitly use pause/menu.
 
 This completes action transport and the safe startup-profile seam, not
-control-system acceptance. Private iOS profile persistence,
+control-system acceptance. The private iOS AFIP adapter is load-only in this
+slice: it does not import, edit, save, or replace an active profile. The
 calibration/remapping UI, persistent touch layout/visibility profiles, prompt
-glyphs, haptics, finished touch/controller menus, and runtime validation on
-both target iPhones remain pending.
+glyphs, haptics, finished touch/controller menus, and runtime validation of
+Application Support protection and profile recovery on both target iPhones
+remain pending.
 
 ### Implemented native Windows slice
 

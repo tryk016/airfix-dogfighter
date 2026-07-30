@@ -83,8 +83,13 @@ add_executable(airfix_ios MACOSX_BUNDLE
     AirfixIOSInputCoordinator.h
     AirfixIOSInputCoordinator.mm
     AirfixIOSInputCoordinator+Private.hpp
+    AirfixIOSInputStartupPolicy.hpp
+    AirfixIOSControllerInputProfileStore.h
+    AirfixIOSControllerInputProfileStore.mm
     AirfixIOSRenderSettingsStore.h
     AirfixIOSRenderSettingsStore.mm
+    AirfixIOSSettingsStoreSupport.hpp
+    AirfixIOSSettingsStoreSupport.mm
     AirfixMetalRenderer.h
     AirfixMetalRenderer.mm
     AirfixRenderSettingsCoordinator.h

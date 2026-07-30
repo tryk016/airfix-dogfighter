@@ -620,6 +620,22 @@ if(AIRFIX_BUILD_TESTS)
     target_link_libraries(airfix_input_tests PRIVATE airfix::input)
     add_test(NAME airfix_input_tests COMMAND airfix_input_tests)
 
+    add_executable(airfix_ios_input_startup_policy_tests
+        tests/AirfixIOSInputStartupPolicyTests.cpp)
+    target_include_directories(airfix_ios_input_startup_policy_tests
+        PRIVATE apps/airfix-ios)
+    target_compile_features(airfix_ios_input_startup_policy_tests
+        PRIVATE cxx_std_20)
+    if(MSVC)
+        target_compile_options(airfix_ios_input_startup_policy_tests
+            PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(airfix_ios_input_startup_policy_tests
+            PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME airfix_ios_input_startup_policy_tests
+        COMMAND airfix_ios_input_startup_policy_tests)
+
     add_executable(airfix_controller_input_profile_tests
         tests/ControllerInputProfileTests.cpp)
     target_link_libraries(airfix_controller_input_profile_tests

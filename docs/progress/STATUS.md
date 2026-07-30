@@ -147,13 +147,18 @@
   private durable current/backup/default store. An immutable runtime
   configuration now binds the resolved profile to its exact compiled table and
   used-control mask. Windows interactive startup loads the private AFIP store;
-  iOS installs the canonical default through a one-time pre-start seam.
+  iOS now loads the same AFIP store asynchronously from a protected private
+  Application Support settings leaf before using the one-time pre-start seam.
+  AFIP and render settings share one native serial persistence queue. Missing
+  or unavailable storage selects the in-memory canonical default without
+  starting input early; backup/default recovery and read-only state are shown
+  only as path-free diagnostic categories.
   Unmapped controls are omitted from full snapshots and later events without
   weakening router rejection. Live replacement remains deferred until a
-  host-owned pause transaction exists; a changed Windows profile applies after
+  host-owned pause transaction exists; a changed durable profile applies after
   restart. Configured axes preserve every changed calibrated value, triggers
   use an explicit fixed binary V1 policy, and iOS covers D-pad left/right.
-  Native editor UI, private iOS persistence, glyphs, haptics, and device
+  Native editor/save UI, glyphs, haptics, and physical-device persistence
   acceptance remain.
 - Local Git repository initialized on branch `main`; planning baseline committed
   as `59828ed`.
@@ -1018,14 +1023,14 @@
    campaign/save consumer before wiring the isolated mission-outcome state.
    Preserve one already-ordered call per transition; do not batch, sort,
    deduplicate, replay, or invent a priority when both native flags are true.
-4. Add the native calibration/remapping editor and private iOS AFIP adapter on
-   top of the implemented startup installation seam. Before supporting live
-   replacement, add a host-owned pause transaction that prepares a fresh pair.
-   Then add persistent touch layout/visibility profiles, controller glyphs,
-   haptics, and finished menu bindings before touch-only and controller-only
-   acceptance on both target iPhones. Never mutate position-indexed active
-   router state in place or accept a live caller's unauthenticated mission
-   claim.
+4. Add the native calibration/remapping editor and save-on-next-launch flow on
+   top of the implemented Windows and load-only iOS AFIP startup adapters.
+   Before supporting live replacement, add a host-owned pause transaction that
+   prepares a fresh pair. Then add persistent touch layout/visibility profiles,
+   controller glyphs, haptics, and finished menu bindings before touch-only and
+   controller-only acceptance on both target iPhones. Never mutate
+   position-indexed active router state in place or accept a live caller's
+   unauthenticated mission claim.
 5. Connect the implemented weak camera-runtime endpoint to the recovered live
    AirCraft producer once it supplies distinct chase position, world anchor,
    vehicle rotation, live health, inactive state, and the confirmed scheduler
@@ -1063,7 +1068,7 @@ These questions do not block static analysis or the archive work.
 ## Latest validation
 
 - Controller Profile Core V1 and its native startup slice pass a fresh
-  360-step Windows GCC 15.2/Ninja build with 112/112 CTests and a fresh
+  362-step Windows GCC 15.2/Ninja build with 113/113 CTests and a fresh
   642-step MSVC 19.51/Ninja build of `AirfixDogfighter.exe` with 121/121
   CTests. Its default
   transform is exhaustively identical over all 65,535 valid Q15 values on all
@@ -1071,8 +1076,9 @@ These questions do not block static analysis or the archive work.
   a held full snapshot stays blocked, exactly two neutral ticks reopen input,
   and the next press uses the replacement table. Sparse-profile tests prove
   unmapped full-state and later events never poison the router. Clang 22
-  warnings-as-errors, synthetic public-boundary tests, and the 572-file
-  repository scan pass.
+  warnings-as-errors, synthetic public-boundary tests, and the 579-file
+  repository scan pass. The iOS startup policy independently covers late
+  profile completion, hidden/background completion, and paused Resume gating.
   Independent final re-review reproduces the old sparse-profile failure,
   confirms the fix, and reports GO with no P0-P3 finding. Hosted Apple
   compilation remains the release gate for this new slice.
