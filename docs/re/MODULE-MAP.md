@@ -23,15 +23,17 @@ flowchart LR
     PACK --> UP["Resource.up and language.up"]
 ```
 
-Arrows above are confirmed PE imports. Runtime loading edges from the executable
-or engine to `.mode`, `.type`, and graphics adapter modules remain to be located
-because those plugins do not appear in static import tables.
+Arrows above are confirmed PE imports. The dynamic edges are also recovered:
+`AfEngine.dll` loads `.type` and `.mode` plugins, probes setup graphics
+adapters, and lazily loads a selected mission; `Cc.dll::GtOpenDevice` owns the
+actual runtime graphics-adapter load. `Dogfighter.exe` does not import
+`LoadLibrary*` or `GetProcAddress`.
 
 ## Module register
 
 | Module ID | File | Role hypothesis | Confidence | First question |
 |---|---|---|---:|---|
-| `DOGFIGHTER` | `Dogfighter.exe` | launcher/bootstrap | 1 | Does it launch `.icd`, or contain the patched game entry? |
+| `DOGFIGHTER` | `Dogfighter.exe` | v1.01 application/bootstrap shell | 3 | What formal names correspond to the recovered wrapper vtable slots? |
 | `DOGFIGHTER_ICD` | `Dogfighter.icd` | older protected/compressed executable body | 2 | Is it retained only as a SafeDisc-era artifact after the v1.01 patch? |
 | `AFENGINE` | `AfEngine.dll` | core runtime and service interfaces | 2 | What is its exported bootstrap/update API? |
 | `CC` | `Cc.dll` | scene graph plus CCF/GTI asset runtime | 3 | What are the exact nested mesh/material field contracts? |
@@ -52,9 +54,9 @@ because those plugins do not appear in static import tables.
 
 - Section entropy and compiler/RTTI classification.
 - Export-to-export similarity between both graphics adapters.
-- Module load order and dynamic lookup strings (`LoadLibrary`/`GetProcAddress`).
 - Remaining MSVC RTTI, vtables, exception data, and decorated names.
-- Cross-module factory/registration interfaces.
+- Shared-handle teardown coordination across multiple types registered by one
+  `.type` module.
 
 ## Confirmed aircraft boundary
 
@@ -153,6 +155,15 @@ tree.
 
 This gives reconstruction seams for actor registration, mission creation, and
 renderer selection without preserving the original Windows DLL ABI on iOS.
+
+`EV-20260730-002` closes the loader ownership and lifetime map. The recovered
+order is package-chain construction, setup driver probe/configuration, runtime
+graphics-device open, core service creation, type registration, mission
+catalogue registration, then lazy selected-mission creation. Setup-time
+graphics enumeration is distinct from the retained runtime device. See
+[`EXP-20260730-066`](../experiments/EXP-20260730-066-bootstrap-module-loading.md)
+and
+[`STARTUP-PLUGINS.md`](systems/STARTUP-PLUGINS.md).
 
 ## Report inventory
 
