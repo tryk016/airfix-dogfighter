@@ -254,6 +254,15 @@ requires a separately specified ordered semantic-command stream or an explicit
 portable policy; see
 [EXP-20260730-062](../experiments/EXP-20260730-062-native-control-command-reducer.md).
 
+The separate `LegacyAircraftControlCommandStep` composes exactly one such
+already-ordered invocation through the typed native-event decoder and
+control-field owner. It deliberately has no collection, producer identifier,
+timestamp, tick, sort, or replay serialization. Inactive or rejected downstream
+processing can leave the earlier callback flag update intact without changing
+vehicle control state. This is a staged compatibility boundary, not a route
+from the current final-axis `InputFrame`; see
+[EXP-20260730-063](../experiments/EXP-20260730-063-native-control-command-step.md).
+
 ## Semantic state and deterministic sampling
 
 Each action state contains:
