@@ -50,7 +50,8 @@ void testEmptyAndSmokeModes() {
               !defaultOptions.renderOverrides.diagnosticsOverlayEnabled &&
               !defaultOptions.captureDiagnosticFrameOutput &&
               !defaultOptions.captureSettingsPanelOutput &&
-              !defaultOptions.captureControllerCalibrationPanelOutput,
+              !defaultOptions.captureControllerCalibrationPanelOutput &&
+              !defaultOptions.captureControllerBindingsPanelOutput,
           "empty command line must retain a sparse data-less shell");
 
   const std::array smoke{"--smoke-test"sv};
@@ -227,6 +228,11 @@ void testValidationAndRejections() {
                  "controller.bmp"sv},
       "public controller calibration capture and smoke mode must remain "
       "exclusive");
+  requireRejected(
+      std::array{"--smoke-test"sv, "--capture-controller-bindings-panel"sv,
+                 "bindings.bmp"sv},
+      "public controller bindings capture and smoke mode must remain "
+      "exclusive");
   requireRejected(std::array{"--content-root"sv, "private-pack"sv,
                              "--capture-settings-panel"sv, "settings.bmp"sv},
                   "public settings capture must reject private content");
@@ -235,6 +241,10 @@ void testValidationAndRejections() {
                  "--capture-controller-calibration-panel"sv,
                  "controller.bmp"sv},
       "public controller calibration capture must reject private content");
+  requireRejected(
+      std::array{"--content-root"sv, "private-pack"sv,
+                 "--capture-controller-bindings-panel"sv, "bindings.bmp"sv},
+      "public controller bindings capture must reject private content");
   requireRejected(std::array{"--capture-diagnostic-frame"sv,
                              "diagnostics.bmp"sv, "--capture-settings-panel"sv,
                              "settings.bmp"sv},
@@ -243,11 +253,22 @@ void testValidationAndRejections() {
                              "--capture-controller-calibration-panel"sv,
                              "controller.bmp"sv},
                   "public panel captures must remain mutually exclusive");
+  requireRejected(
+      std::array{"--capture-controller-calibration-panel"sv, "controller.bmp"sv,
+                 "--capture-controller-bindings-panel"sv, "bindings.bmp"sv},
+      "public controller panel captures must remain mutually exclusive");
   requireRejected(std::array{"--capture-settings-panel"sv, "settings.png"sv},
                   "settings-panel capture must require BMP output");
   requireRejected(std::array{"--capture-controller-calibration-panel"sv,
                              "controller.png"sv},
                   "controller calibration capture must require BMP output");
+  requireRejected(
+      std::array{"--capture-controller-bindings-panel"sv, "bindings.png"sv},
+      "controller bindings capture must require BMP output");
+  requireRejected(
+      std::array{"--capture-controller-bindings-panel"sv, "one.bmp"sv,
+                 "--capture-controller-bindings-panel"sv, "two.bmp"sv},
+      "duplicate controller bindings capture must fail closed");
   requireRejected(std::array{"--capture-diagnostic-frame"sv, "public.bmp"sv,
                              "--no-render-diagnostics"sv},
                   "diagnostic capture and disabled diagnostics must conflict");
@@ -350,6 +371,29 @@ void testPublicControllerCalibrationPanelCaptureRequest() {
           "public controller calibration capture request was not retained");
 }
 
+void testPublicControllerBindingsPanelCaptureRequest() {
+  const std::array arguments{
+      "--capture-controller-bindings-panel"sv,
+      "bindings.BMP"sv,
+      "--capture-size"sv,
+      "640x360"sv,
+      "--visual-profile"sv,
+      "enhanced"sv,
+  };
+  const auto options = parse(arguments);
+  require(options.captureControllerBindingsPanelOutput ==
+                  std::filesystem::path("bindings.BMP") &&
+              options.captureSize ==
+                  airfix::windows::AirfixWindowsCaptureSize{640U, 360U} &&
+              options.renderOverrides.visualProfile ==
+                  VisualProfile::enhanced &&
+              !options.captureDiagnosticFrameOutput &&
+              !options.captureSettingsPanelOutput &&
+              !options.captureControllerCalibrationPanelOutput &&
+              !options.contentRoot && !options.mission,
+          "public controller bindings capture request was not retained");
+}
+
 } // namespace
 
 int main() {
@@ -362,6 +406,7 @@ int main() {
     testPublicDiagnosticCaptureRequest();
     testPublicSettingsPanelCaptureRequest();
     testPublicControllerCalibrationPanelCaptureRequest();
+    testPublicControllerBindingsPanelCaptureRequest();
     std::cout << "Airfix Windows command-line tests passed\n";
     return 0;
   } catch (const std::exception &error) {

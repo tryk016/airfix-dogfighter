@@ -4263,3 +4263,30 @@ superseded evidence.
   and all 116 CTests, checks the implementation against the raw Ghidra
   evidence, and returns GO with no P0-P3 finding. Hosted platform builds remain
   the publication gate.
+
+## 2026-07-30 - native controller binding pickers
+
+- Added one allocation-free typed picker model above the existing complete
+  AFIP draft. It preselects the exact current control, bounds every action and
+  assignment index, applies moves cancel-first, and revalidates a conflict
+  before an explicit atomic swap.
+- Extended the Windows controller-settings panel with a compact five-row
+  keyboard/mouse/controller picker and a separate conflict screen whose
+  initial selection is `Cancel`. The bounded raster snapshot carries only
+  typed action, status, control-index, phase, and conflicting-action metadata;
+  it exposes no controller identity or raw AFIP record.
+- Extended the iOS safe-area panel into one shared calibration/remap editor.
+  Touch and controller navigation reach all seven gameplay actions and fourteen
+  assignable controls, keep long selections visible, use Dynamic Type and
+  accessibility labels, and require a separate swap or reset confirmation.
+- Both platforms retain one complete draft, one outer Cancel, and one
+  next-launch-only save. Missing, ambiguous, custom, protected, stale, invalid,
+  and save-in-progress states fail closed without mutating the active router.
+- The complete portable GCC/Ninja build passes 117/117 CTests. The complete
+  MSVC 19.51/Ninja Windows product links `AirfixDogfighter.exe` and passes
+  127/127 CTests, including both D3D11 product smokes. Synthetic
+  public-boundary tests and the 604-file scan pass. Independent review found a
+  controller-input save-freeze gap and one non-localized selected label,
+  verified both fixes, and returned GO with no remaining P0-P3 finding. Hosted
+  Apple compilation and physical-device acceptance remain publication or
+  device gates.

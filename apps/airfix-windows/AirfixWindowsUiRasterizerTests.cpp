@@ -16,6 +16,9 @@ using airfix::windows::AirfixWindowsControllerAxisInputSnapshot;
 using airfix::windows::AirfixWindowsControllerProfilePanelState;
 using airfix::windows::AirfixWindowsRenderSettingsItem;
 using airfix::windows::AirfixWindowsRenderSettingsPanel;
+using airfix::windows::AirfixWindowsRenderSettingsScreen;
+using airfix::windows::AirfixWindowsRenderSettingsViewItem;
+using airfix::windows::AirfixWindowsRenderSettingsViewSnapshot;
 using airfix::windows::AirfixWindowsUiPixelExtent;
 using airfix::windows::AirfixWindowsUiRaster;
 using airfix::windows::AirfixWindowsUiRasterizeIssue;
@@ -89,6 +92,78 @@ controllerAxisPanel(const AirfixWindowsUiPixelExtent output) {
   input.connected = true;
   result.setControllerAxisInput(input);
   return result;
+}
+
+[[nodiscard]] const AirfixWindowsRenderSettingsViewItem &
+findItem(const AirfixWindowsRenderSettingsViewSnapshot &snapshot,
+         const AirfixWindowsRenderSettingsItem item) {
+  const auto found = std::find_if(
+      snapshot.items.begin(), snapshot.items.begin() + snapshot.itemCount,
+      [item](const auto &candidate) { return candidate.item == item; });
+  require(found != snapshot.items.begin() + snapshot.itemCount,
+          "raster fixture item was not found");
+  return *found;
+}
+
+void activate(AirfixWindowsRenderSettingsPanel &panel,
+              const AirfixWindowsRenderSettingsItem item) {
+  const auto snapshot = panel.snapshot();
+  const auto &found = findItem(snapshot, item);
+  const auto intent = panel.consumePointer({
+      .xPixels = found.bounds.x + found.bounds.width * 0.5F,
+      .yPixels = found.bounds.y + found.bounds.height * 0.5F,
+      .wheelY = 0,
+      .primaryPressed = true,
+  });
+  require(intent.empty(), "raster fixture navigation emitted an intent");
+}
+
+void increment(AirfixWindowsRenderSettingsPanel &panel,
+               const AirfixWindowsRenderSettingsItem item,
+               const std::size_t count = 1U) {
+  for (std::size_t index = 0U; index < count; ++index) {
+    const auto snapshot = panel.snapshot();
+    const auto &found = findItem(snapshot, item);
+    const auto intent = panel.consumePointer({
+        .xPixels = found.nextBounds.x + found.nextBounds.width * 0.5F,
+        .yPixels = found.nextBounds.y + found.nextBounds.height * 0.5F,
+        .wheelY = 0,
+        .primaryPressed = true,
+    });
+    require(intent.empty(), "raster fixture carousel emitted an intent");
+  }
+}
+
+[[nodiscard]] AirfixWindowsRenderSettingsPanel
+controllerBindingsPanelWithProfile(
+    const AirfixWindowsUiPixelExtent output,
+    const airfix::input::ControllerInputProfileRecord &profile) {
+  auto created = AirfixWindowsRenderSettingsPanel::create(
+      RenderPresentationSettings{}, true, output, 0U, false,
+      AirfixWindowsControllerProfilePanelState{
+          .active = profile,
+          .persisted = profile,
+          .capabilities =
+              {
+                  .persistenceAvailable = true,
+                  .repairRequired = false,
+              },
+      });
+  require(created.has_value(),
+          "valid binding raster panel fixture was rejected");
+  auto result = *created;
+  activate(result, AirfixWindowsRenderSettingsItem::controllerCalibration);
+  activate(result, AirfixWindowsRenderSettingsItem::buttonBindings);
+  require(result.screen() ==
+              AirfixWindowsRenderSettingsScreen::controllerButtonBindings,
+          "binding raster picker did not open");
+  return result;
+}
+
+[[nodiscard]] AirfixWindowsRenderSettingsPanel
+controllerBindingsPanel(const AirfixWindowsUiPixelExtent output) {
+  return controllerBindingsPanelWithProfile(
+      output, airfix::input::makeDefaultControllerInputProfileRecord());
 }
 
 [[nodiscard]] bool containsBytes(const AirfixWindowsUiRaster &raster,
@@ -195,6 +270,52 @@ void rasterizesControllerCalibrationPreviewAtRepresentativeOutputs() {
   }
 }
 
+void rasterizesTextOnlyBindingPickerConflictAndProtectedStates() {
+  AirfixWindowsUiRasterizer rasterizer;
+  constexpr std::array outputs{
+      AirfixWindowsUiPixelExtent{
+          .width = 1920U, .height = 1080U, .dpiScale = 1.0F},
+      AirfixWindowsUiPixelExtent{
+          .width = 640U, .height = 360U, .dpiScale = 1.0F},
+  };
+  for (const auto output : outputs) {
+    auto picker = controllerBindingsPanel(output);
+    const auto initial = rasterizer.rasterize(picker.snapshot());
+    require(initial.complete(), "text-only binding picker failed to rasterize");
+    requireValidPremultipliedRaster(*initial.raster, output.width,
+                                    output.height);
+
+    increment(picker, AirfixWindowsRenderSettingsItem::bindingAction);
+    const auto nextAction = rasterizer.rasterize(picker.snapshot());
+    require(nextAction.complete() && nextAction.raster->premultipliedBgra8 !=
+                                         initial.raster->premultipliedBgra8,
+            "text action/assignment names did not affect the picker raster");
+
+    auto conflict = controllerBindingsPanel(output);
+    increment(conflict, AirfixWindowsRenderSettingsItem::bindingAssignment);
+    activate(conflict, AirfixWindowsRenderSettingsItem::moveBinding);
+    require(conflict.screen() ==
+                AirfixWindowsRenderSettingsScreen::controllerBindingConflict,
+            "conflict raster fixture did not enter confirmation");
+    const auto conflictRaster = rasterizer.rasterize(conflict.snapshot());
+    require(conflictRaster.complete(),
+            "cancel-first binding conflict failed to rasterize");
+    requireValidPremultipliedRaster(*conflictRaster.raster, output.width,
+                                    output.height);
+
+    auto protectedPanel = controllerBindingsPanel(output);
+    increment(protectedPanel,
+              AirfixWindowsRenderSettingsItem::bindingAssignment, 13U);
+    activate(protectedPanel, AirfixWindowsRenderSettingsItem::moveBinding);
+    const auto protectedRaster =
+        rasterizer.rasterize(protectedPanel.snapshot());
+    require(protectedRaster.complete(),
+            "protected assignment status failed to rasterize");
+    requireValidPremultipliedRaster(*protectedRaster.raster, output.width,
+                                    output.height);
+  }
+}
+
 void invalidDimensionsFailClosed() {
   auto subject = panel({.width = 1920U, .height = 1080U, .dpiScale = 1.0F});
   auto snapshot = subject.snapshot();
@@ -231,6 +352,46 @@ void invalidDimensionsFailClosed() {
               *invalidAxis.issue ==
                   AirfixWindowsUiRasterizeIssue::invalidSnapshot,
           "invalid controller axis snapshot did not fail closed");
+
+  auto bindings = controllerBindingsPanel(
+      {.width = 1920U, .height = 1080U, .dpiScale = 1.0F});
+  snapshot = bindings.snapshot();
+  snapshot.selectedControllerBindingAction =
+      airfix::input::ControllerDigitalGameplayAction::count;
+  const auto invalidAction = AirfixWindowsUiRasterizer{}.rasterize(snapshot);
+  require(!invalidAction.complete() && invalidAction.issue.has_value() &&
+              *invalidAction.issue ==
+                  AirfixWindowsUiRasterizeIssue::invalidSnapshot,
+          "out-of-catalog binding action did not fail closed");
+
+  snapshot = bindings.snapshot();
+  snapshot.selectedControllerBindingControlIndex = static_cast<std::uint8_t>(
+      airfix::input::controllerAssignableControlCount);
+  const auto invalidControl = AirfixWindowsUiRasterizer{}.rasterize(snapshot);
+  require(!invalidControl.complete() && invalidControl.issue.has_value() &&
+              *invalidControl.issue ==
+                  AirfixWindowsUiRasterizeIssue::invalidSnapshot,
+          "editable binding with no control did not fail closed");
+
+  snapshot = bindings.snapshot();
+  snapshot.controllerBindingPickerPhase =
+      airfix::settings::ControllerInputBindingPickerPhase::confirmingSwap;
+  const auto invalidPhase = AirfixWindowsUiRasterizer{}.rasterize(snapshot);
+  require(!invalidPhase.complete() && invalidPhase.issue.has_value() &&
+              *invalidPhase.issue ==
+                  AirfixWindowsUiRasterizeIssue::invalidSnapshot,
+          "inconsistent binding picker phase did not fail closed");
+
+  increment(bindings, AirfixWindowsRenderSettingsItem::bindingAssignment);
+  activate(bindings, AirfixWindowsRenderSettingsItem::moveBinding);
+  snapshot = bindings.snapshot();
+  snapshot.conflictingControllerBindingAction.reset();
+  const auto missingConflict = AirfixWindowsUiRasterizer{}.rasterize(snapshot);
+  require(
+      !missingConflict.complete() && missingConflict.issue.has_value() &&
+          *missingConflict.issue ==
+              AirfixWindowsUiRasterizeIssue::invalidSnapshot,
+      "conflict screen without typed conflicting action did not fail closed");
 }
 
 } // namespace
@@ -240,6 +401,7 @@ int main() {
     rasterizesFullHdAndUltrawideAtDpiScale();
     rasterizesAdaptiveSettingsAtSupportedSmallOutputs();
     rasterizesControllerCalibrationPreviewAtRepresentativeOutputs();
+    rasterizesTextOnlyBindingPickerConflictAndProtectedStates();
     invalidDimensionsFailClosed();
   } catch (const std::exception &error) {
     std::cerr << "AirfixWindowsUiRasterizerTests failed: " << error.what()

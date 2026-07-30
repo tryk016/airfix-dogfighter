@@ -524,7 +524,8 @@ int run(const int argumentCount, char *arguments[]) {
       options.captureFrameOutput.has_value() ||
       options.captureDiagnosticFrameOutput.has_value() ||
       options.captureSettingsPanelOutput.has_value() ||
-      options.captureControllerCalibrationPanelOutput.has_value();
+      options.captureControllerCalibrationPanelOutput.has_value() ||
+      options.captureControllerBindingsPanelOutput.has_value();
   SDL_WindowFlags flags = SDL_WINDOW_HIGH_PIXEL_DENSITY;
   flags |= sessionOnlyInvocation ? SDL_WINDOW_HIDDEN : SDL_WINDOW_RESIZABLE;
   const auto initialWindowSize = options.captureSize.value_or(
@@ -786,6 +787,57 @@ int run(const int argumentCount, char *arguments[]) {
     renderer.capturePublicSettingsPanelFrameToBmp(
         *options.captureControllerCalibrationPanelOutput);
     std::cout << "Public D3D11 controller-calibration panel frame captured\n";
+    return 0;
+  }
+  if (options.captureControllerBindingsPanelOutput.has_value()) {
+    auto panel = airfix::windows::AirfixWindowsRenderSettingsPanel::create(
+        startupSettings, true, windowsUiExtent(*window),
+        airfix::windows::airfixWindowsRenderSettingsSessionOverrideMask(
+            options.renderOverrides),
+        false,
+        airfix::windows::AirfixWindowsControllerProfilePanelState{
+            .active = defaultControllerRecord,
+            .persisted = defaultControllerRecord,
+            .capabilities =
+                {
+                    .persistenceAvailable = true,
+                    .repairRequired = false,
+                },
+        });
+    if (!panel.has_value()) {
+      throw std::runtime_error(
+          "public controller-bindings capture model is invalid");
+    }
+    const auto activateItem =
+        [&](const airfix::windows::AirfixWindowsRenderSettingsItem item) {
+          const auto snapshot = panel->snapshot();
+          const auto found = std::find_if(
+              snapshot.items.begin(),
+              snapshot.items.begin() + snapshot.itemCount,
+              [item](const auto &candidate) { return candidate.item == item; });
+          if (found == snapshot.items.begin() + snapshot.itemCount) {
+            throw std::runtime_error(
+                "public controller-bindings capture item is unavailable");
+          }
+          (void)panel->consumePointer({
+              .xPixels = found->bounds.x + found->bounds.width * 0.5F,
+              .yPixels = found->bounds.y + found->bounds.height * 0.5F,
+              .wheelY = 0,
+              .primaryPressed = true,
+          });
+        };
+    activateItem(airfix::windows::AirfixWindowsRenderSettingsItem::
+                     controllerCalibration);
+    activateItem(
+        airfix::windows::AirfixWindowsRenderSettingsItem::buttonBindings);
+    const auto raster = uiRasterizer.rasterize(panel->snapshot());
+    if (!raster.complete() || !renderer.setProductUiRaster(*raster.raster)) {
+      throw std::runtime_error(
+          "public controller-bindings raster could not be published");
+    }
+    renderer.capturePublicSettingsPanelFrameToBmp(
+        *options.captureControllerBindingsPanelOutput);
+    std::cout << "Public D3D11 controller-bindings panel frame captured\n";
     return 0;
   }
   airfix::windows::AirfixXAudio2Backend audio;

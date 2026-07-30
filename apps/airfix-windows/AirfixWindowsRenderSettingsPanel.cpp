@@ -33,15 +33,29 @@ constexpr std::array<Item, 6U> displaySettingsItems{
     Item::renderScale,        Item::presentation, Item::visualProfile,
     Item::rendererStatistics, Item::apply,        Item::cancel,
 };
-constexpr std::array<Item, 7U> controllerProfileItems{
-    Item::leftStickX,  Item::leftStickY,          Item::rightStickX,
-    Item::rightStickY, Item::resetAllCalibration, Item::saveControllerProfile,
+constexpr std::array<Item, 8U> controllerProfileItems{
+    Item::leftStickX,
+    Item::leftStickY,
+    Item::rightStickX,
+    Item::rightStickY,
+    Item::buttonBindings,
+    Item::resetAllCalibration,
+    Item::saveControllerProfile,
     Item::cancel,
 };
 constexpr std::array<Item, 7U> controllerAxisItems{
     Item::innerDeadzone, Item::outerSaturation, Item::sensitivity,
     Item::responseCurve, Item::inversion,       Item::resetAxis,
     Item::back,
+};
+constexpr std::array<Item, 5U> controllerBindingItems{
+    Item::bindingAction, Item::bindingAssignment,
+    Item::moveBinding,   Item::resetAllAssignments,
+    Item::back,
+};
+constexpr std::array<Item, 2U> controllerBindingConflictItems{
+    Item::cancel,
+    Item::swapAssignments,
 };
 
 [[nodiscard]] bool
@@ -53,6 +67,14 @@ validOutput(const AirfixWindowsUiPixelExtent &output) noexcept {
 [[nodiscard]] AirfixWindowsUiPixelExtent
 sanitizedOutput(const AirfixWindowsUiPixelExtent output) noexcept {
   return validOutput(output) ? output : AirfixWindowsUiPixelExtent{};
+}
+
+[[nodiscard]] constexpr bool
+controllerProfileScreen(const Screen screen) noexcept {
+  return screen == Screen::controllerCalibration ||
+         screen == Screen::controllerAxisCalibration ||
+         screen == Screen::controllerButtonBindings ||
+         screen == Screen::controllerBindingConflict;
 }
 
 [[nodiscard]] constexpr std::span<const Item>
@@ -69,6 +91,10 @@ itemsForScreen(const Screen screen,
     return controllerProfileItems;
   case Screen::controllerAxisCalibration:
     return controllerAxisItems;
+  case Screen::controllerButtonBindings:
+    return controllerBindingItems;
+  case Screen::controllerBindingConflict:
+    return controllerBindingConflictItems;
   }
   return {};
 }
@@ -91,6 +117,8 @@ isValueItem(const AirfixWindowsRenderSettingsItem item) noexcept {
   case Item::sensitivity:
   case Item::responseCurve:
   case Item::inversion:
+  case Item::bindingAction:
+  case Item::bindingAssignment:
     return true;
   case Item::displaySettings:
   case Item::controllerCalibration:
@@ -101,8 +129,12 @@ isValueItem(const AirfixWindowsRenderSettingsItem item) noexcept {
   case Item::leftStickY:
   case Item::rightStickX:
   case Item::rightStickY:
+  case Item::buttonBindings:
   case Item::resetAxis:
   case Item::resetAllCalibration:
+  case Item::moveBinding:
+  case Item::resetAllAssignments:
+  case Item::swapAssignments:
   case Item::saveControllerProfile:
   case Item::back:
   case Item::count:
@@ -146,7 +178,9 @@ makeLayout(const AirfixWindowsUiPixelExtent output,
       std::clamp(output.dpiScale, minimumDpiScale, maximumDpiScale);
   const bool pause = screen == Screen::pause;
   const bool controller = screen == Screen::controllerCalibration ||
-                          screen == Screen::controllerAxisCalibration;
+                          screen == Screen::controllerAxisCalibration ||
+                          screen == Screen::controllerButtonBindings ||
+                          screen == Screen::controllerBindingConflict;
   const float basePanelWidth = pause ? 590.0F : (controller ? 920.0F : 840.0F);
   const float itemCount = static_cast<float>(visibleItemCount);
   const float baseRowHeight = pause ? 78.0F : (controller ? 61.0F : 67.0F);
@@ -297,9 +331,19 @@ AirfixWindowsRenderSettingsPanel::consumeInputFrame(
   using input::AnalogAxis;
   using input::DigitalAction;
 
+  if (controllerProfileScreen(screen_) && controllerProfileModel_.has_value() &&
+      controllerProfileModel_->phase() ==
+          settings::ControllerInputProfileMenuPhase::saving) {
+    return {};
+  }
+
   if (frame.pressed(DigitalAction::uiCancel)) {
     if (screen_ == Screen::displaySettings) {
       closeDisplaySettings();
+    } else if (screen_ == Screen::controllerBindingConflict) {
+      cancelControllerBindingSwap();
+    } else if (screen_ == Screen::controllerButtonBindings) {
+      closeControllerButtonBindings();
     } else if (screen_ == Screen::controllerAxisCalibration) {
       screen_ = Screen::controllerCalibration;
       selectedControllerProfileItem_ = Item::leftStickX;
@@ -411,6 +455,14 @@ AirfixWindowsRenderSettingsPanel::snapshot() const noexcept {
       .sessionOverrideMask = sessionOverrideMask_,
       .controllerDraftAxes = {},
       .selectedControllerAxis = selectedControllerAxis_,
+      .selectedControllerBindingAction = selectedControllerBindingAction_,
+      .selectedControllerBindingStatus =
+          input::ControllerDigitalGameplayBindingStatus::missing,
+      .selectedControllerBindingControlIndex =
+          airfixWindowsControllerBindingNoControlIndex,
+      .controllerBindingPickerPhase = controllerBindingPicker_.phase(),
+      .conflictingControllerBindingAction =
+          controllerBindingPicker_.conflictingAction(),
       .controllerPreviewRaw = input::q15Zero,
       .controllerPreviewEffective = input::q15Zero,
       .dirty = model_.dirty(),
@@ -428,6 +480,15 @@ AirfixWindowsRenderSettingsPanel::snapshot() const noexcept {
 
   if (controllerProfileModel_.has_value()) {
     result.controllerDraftAxes = controllerProfileModel_->draftRecord().axes;
+    const auto binding = controllerProfileModel_->draftDigitalGameplayBinding(
+        selectedControllerBindingAction_);
+    result.selectedControllerBindingStatus = binding.status;
+    const auto selectedControlIndex =
+        controllerBindingPicker_.selectedControlIndex();
+    if (selectedControlIndex < input::controllerAssignableControlCount) {
+      result.selectedControllerBindingControlIndex =
+          static_cast<std::uint8_t>(selectedControlIndex);
+    }
     result.controllerProfileDirty = controllerProfileModel_->dirty();
     result.controllerProfileSaving =
         controllerProfileModel_->phase() ==
@@ -481,6 +542,7 @@ AirfixWindowsRenderSettingsPanel::snapshot() const noexcept {
     case Item::leftStickY:
     case Item::rightStickX:
     case Item::rightStickY:
+    case Item::buttonBindings:
     case Item::innerDeadzone:
     case Item::outerSaturation:
     case Item::sensitivity:
@@ -488,8 +550,25 @@ AirfixWindowsRenderSettingsPanel::snapshot() const noexcept {
     case Item::inversion:
     case Item::resetAxis:
     case Item::resetAllCalibration:
+    case Item::bindingAction:
+    case Item::resetAllAssignments:
       enabled = controllerProfileModel_.has_value() &&
                 !result.controllerProfileSaving;
+      break;
+    case Item::bindingAssignment:
+    case Item::moveBinding:
+      enabled =
+          controllerProfileModel_.has_value() &&
+          !result.controllerProfileSaving &&
+          result.controllerBindingPickerPhase ==
+              settings::ControllerInputBindingPickerPhase::choosingControl &&
+          result.selectedControllerBindingStatus ==
+              input::ControllerDigitalGameplayBindingStatus::editable;
+      break;
+    case Item::swapAssignments:
+      enabled = controllerProfileModel_.has_value() &&
+                result.controllerBindingPickerPhase ==
+                    settings::ControllerInputBindingPickerPhase::confirmingSwap;
       break;
     case Item::saveControllerProfile:
       enabled = controllerProfileModel_.has_value() &&
@@ -498,8 +577,12 @@ AirfixWindowsRenderSettingsPanel::snapshot() const noexcept {
     case Item::cancel:
       enabled = screen_ == Screen::displaySettings
                     ? model_.canCancel()
-                    : (!controllerProfileModel_.has_value() ||
-                       controllerProfileModel_->canCancel());
+                    : (screen_ == Screen::controllerBindingConflict
+                           ? controllerBindingPicker_.phase() ==
+                                 settings::ControllerInputBindingPickerPhase::
+                                     confirmingSwap
+                           : (!controllerProfileModel_.has_value() ||
+                              controllerProfileModel_->canCancel()));
       break;
     case Item::back:
       enabled = controllerProfileModel_.has_value() &&
@@ -618,6 +701,7 @@ bool AirfixWindowsRenderSettingsPanel::finishControllerProfileSaveSuccess(
     return false;
   }
   activeControllerProfileTicket_.reset();
+  controllerBindingPicker_.close();
   status_ = controllerProfileModel_->restartRequired()
                 ? AirfixWindowsRenderSettingsStatus::
                       controllerProfileSavedRestartRequired
@@ -674,6 +758,10 @@ AirfixWindowsRenderSettingsPanel::selectionForCurrentScreen() noexcept {
     return selectedControllerProfileItem_;
   case Screen::controllerAxisCalibration:
     return selectedControllerAxisItem_;
+  case Screen::controllerButtonBindings:
+    return selectedControllerBindingItem_;
+  case Screen::controllerBindingConflict:
+    return selectedControllerBindingConflictItem_;
   }
   return selectedPauseItem_;
 }
@@ -689,6 +777,10 @@ AirfixWindowsRenderSettingsPanel::selectionForCurrentScreen() const noexcept {
     return selectedControllerProfileItem_;
   case Screen::controllerAxisCalibration:
     return selectedControllerAxisItem_;
+  case Screen::controllerButtonBindings:
+    return selectedControllerBindingItem_;
+  case Screen::controllerBindingConflict:
+    return selectedControllerBindingConflictItem_;
   }
   return selectedPauseItem_;
 }
@@ -700,6 +792,31 @@ void AirfixWindowsRenderSettingsPanel::adjustSelectedValue(
   }
   if (screen_ == Screen::pause || screen_ == Screen::controllerCalibration) {
     moveSelection(direction);
+    return;
+  }
+  if (screen_ == Screen::controllerBindingConflict) {
+    moveSelection(direction);
+    return;
+  }
+  if (screen_ == Screen::controllerButtonBindings) {
+    if (!controllerProfileModel_.has_value() ||
+        controllerProfileModel_->phase() ==
+            settings::ControllerInputProfileMenuPhase::saving) {
+      return;
+    }
+    if (selectedControllerBindingItem_ == Item::bindingAction) {
+      selectControllerBindingAction(direction);
+      return;
+    }
+    if (selectedControllerBindingItem_ == Item::bindingAssignment &&
+        controllerBindingPicker_.phase() ==
+            settings::ControllerInputBindingPickerPhase::choosingControl) {
+      controllerBindingPicker_.moveControlSelection(direction);
+      status_ = controllerProfileModel_->persistenceAvailable()
+                    ? AirfixWindowsRenderSettingsStatus::controllerProfileReady
+                    : AirfixWindowsRenderSettingsStatus::
+                          controllerProfilePersistenceUnavailable;
+    }
     return;
   }
   if (screen_ == Screen::displaySettings) {
@@ -807,6 +924,12 @@ void AirfixWindowsRenderSettingsPanel::adjustSelectedValue(
 
 AirfixWindowsRenderSettingsIntent
 AirfixWindowsRenderSettingsPanel::activateSelectedItem() noexcept {
+  if (controllerProfileScreen(screen_) && controllerProfileModel_.has_value() &&
+      controllerProfileModel_->phase() ==
+          settings::ControllerInputProfileMenuPhase::saving) {
+    return {};
+  }
+
   if (screen_ == Screen::pause) {
     if (selectedPauseItem_ == Item::displaySettings) {
       screen_ = Screen::displaySettings;
@@ -891,6 +1014,9 @@ AirfixWindowsRenderSettingsPanel::activateSelectedItem() noexcept {
     case Item::rightStickY:
       openSelectedControllerAxis();
       return {};
+    case Item::buttonBindings:
+      openControllerButtonBindings();
+      return {};
     case Item::resetAllCalibration: {
       const auto result = controllerProfileModel_->resetAllAxes();
       status_ =
@@ -926,6 +1052,45 @@ AirfixWindowsRenderSettingsPanel::activateSelectedItem() noexcept {
     }
     case Item::cancel:
       closeControllerCalibration();
+      return {};
+    default:
+      return {};
+    }
+  }
+
+  if (screen_ == Screen::controllerButtonBindings) {
+    switch (selectedControllerBindingItem_) {
+    case Item::bindingAction:
+    case Item::bindingAssignment:
+      adjustSelectedValue(1);
+      return {};
+    case Item::moveBinding:
+      applyControllerBindingSelection();
+      return {};
+    case Item::resetAllAssignments: {
+      const auto result = controllerProfileModel_->resetAllControllerBindings();
+      if (result.accepted()) {
+        refreshControllerBindingPicker();
+      } else {
+        status_ = AirfixWindowsRenderSettingsStatus::invalidControllerProfile;
+      }
+      return {};
+    }
+    case Item::back:
+      closeControllerButtonBindings();
+      return {};
+    default:
+      return {};
+    }
+  }
+
+  if (screen_ == Screen::controllerBindingConflict) {
+    switch (selectedControllerBindingConflictItem_) {
+    case Item::cancel:
+      cancelControllerBindingSwap();
+      return {};
+    case Item::swapAssignments:
+      confirmControllerBindingSwap();
       return {};
     default:
       return {};
@@ -1006,6 +1171,7 @@ void AirfixWindowsRenderSettingsPanel::closeControllerCalibration() noexcept {
       settings::ControllerInputProfileMenuPhase::idle) {
     (void)controllerProfileModel_->cancelDraft();
   }
+  controllerBindingPicker_.close();
   screen_ = Screen::pause;
   selectedPauseItem_ = Item::controllerCalibration;
   status_ =
@@ -1041,6 +1207,166 @@ void AirfixWindowsRenderSettingsPanel::openSelectedControllerAxis() noexcept {
                 ? AirfixWindowsRenderSettingsStatus::controllerProfileReady
                 : AirfixWindowsRenderSettingsStatus::
                       controllerProfilePersistenceUnavailable;
+}
+
+void AirfixWindowsRenderSettingsPanel::openControllerButtonBindings() noexcept {
+  if (!controllerProfileModel_.has_value()) {
+    return;
+  }
+  screen_ = Screen::controllerButtonBindings;
+  selectedControllerBindingItem_ = Item::bindingAction;
+  selectedControllerBindingAction_ =
+      input::ControllerDigitalGameplayAction::primaryFire;
+  refreshControllerBindingPicker();
+}
+
+void AirfixWindowsRenderSettingsPanel::
+    closeControllerButtonBindings() noexcept {
+  controllerBindingPicker_.close();
+  screen_ = Screen::controllerCalibration;
+  selectedControllerProfileItem_ = Item::buttonBindings;
+  if (!controllerProfileModel_.has_value()) {
+    status_ = AirfixWindowsRenderSettingsStatus::invalidControllerProfile;
+    return;
+  }
+  status_ =
+      !controllerProfileModel_->persistenceAvailable()
+          ? AirfixWindowsRenderSettingsStatus::
+                controllerProfilePersistenceUnavailable
+          : (controllerProfileModel_->restartRequired()
+                 ? AirfixWindowsRenderSettingsStatus::
+                       controllerProfileSavedRestartRequired
+                 : AirfixWindowsRenderSettingsStatus::controllerProfileReady);
+}
+
+void AirfixWindowsRenderSettingsPanel::selectControllerBindingAction(
+    const std::int32_t direction) noexcept {
+  if (direction == 0) {
+    return;
+  }
+  const auto current =
+      static_cast<std::int32_t>(selectedControllerBindingAction_);
+  const auto maximum =
+      static_cast<std::int32_t>(input::ControllerDigitalGameplayAction::count) -
+      1;
+  selectedControllerBindingAction_ =
+      static_cast<input::ControllerDigitalGameplayAction>(
+          std::clamp(current + (direction < 0 ? -1 : 1), 0, maximum));
+  refreshControllerBindingPicker();
+}
+
+void AirfixWindowsRenderSettingsPanel::
+    refreshControllerBindingPicker() noexcept {
+  if (!controllerProfileModel_.has_value()) {
+    controllerBindingPicker_.close();
+    status_ = AirfixWindowsRenderSettingsStatus::invalidControllerProfile;
+    return;
+  }
+  const auto result = controllerBindingPicker_.begin(
+      *controllerProfileModel_, selectedControllerBindingAction_);
+  setControllerBindingPickerStatus(result);
+}
+
+void AirfixWindowsRenderSettingsPanel::
+    applyControllerBindingSelection() noexcept {
+  if (!controllerProfileModel_.has_value()) {
+    status_ = AirfixWindowsRenderSettingsStatus::invalidControllerProfile;
+    return;
+  }
+  if (controllerBindingPicker_.phase() !=
+      settings::ControllerInputBindingPickerPhase::choosingControl) {
+    const auto binding = controllerProfileModel_->draftDigitalGameplayBinding(
+        selectedControllerBindingAction_);
+    status_ = binding.editable()
+                  ? AirfixWindowsRenderSettingsStatus::invalidControllerProfile
+                  : AirfixWindowsRenderSettingsStatus::
+                        controllerBindingActionUnavailable;
+    return;
+  }
+
+  const auto result =
+      controllerBindingPicker_.applySelection(*controllerProfileModel_);
+  if (result.accepted()) {
+    refreshControllerBindingPicker();
+    return;
+  }
+  setControllerBindingPickerStatus(result);
+  if (result.needsSwapConfirmation()) {
+    screen_ = Screen::controllerBindingConflict;
+    selectedControllerBindingConflictItem_ = Item::cancel;
+  }
+}
+
+void AirfixWindowsRenderSettingsPanel::confirmControllerBindingSwap() noexcept {
+  if (!controllerProfileModel_.has_value()) {
+    status_ = AirfixWindowsRenderSettingsStatus::invalidControllerProfile;
+    return;
+  }
+  const auto result =
+      controllerBindingPicker_.confirmSwap(*controllerProfileModel_);
+  if (result.accepted()) {
+    screen_ = Screen::controllerButtonBindings;
+    selectedControllerBindingItem_ = Item::moveBinding;
+    refreshControllerBindingPicker();
+    return;
+  }
+  setControllerBindingPickerStatus(result);
+  if (!result.needsSwapConfirmation()) {
+    screen_ = Screen::controllerButtonBindings;
+    selectedControllerBindingItem_ = Item::moveBinding;
+  }
+}
+
+void AirfixWindowsRenderSettingsPanel::cancelControllerBindingSwap() noexcept {
+  if (!controllerBindingPicker_.cancelSwapConfirmation()) {
+    status_ = AirfixWindowsRenderSettingsStatus::invalidControllerProfile;
+    return;
+  }
+  screen_ = Screen::controllerButtonBindings;
+  selectedControllerBindingItem_ = Item::moveBinding;
+  status_ = controllerProfileModel_.has_value() &&
+                    !controllerProfileModel_->persistenceAvailable()
+                ? AirfixWindowsRenderSettingsStatus::
+                      controllerProfilePersistenceUnavailable
+                : AirfixWindowsRenderSettingsStatus::controllerProfileReady;
+}
+
+void AirfixWindowsRenderSettingsPanel::setControllerBindingPickerStatus(
+    const settings::ControllerInputBindingPickerResult &result) noexcept {
+  using PickerStatus = settings::ControllerInputBindingPickerStatus;
+  switch (result.status) {
+  case PickerStatus::opened:
+  case PickerStatus::accepted:
+    status_ = controllerProfileModel_.has_value() &&
+                      !controllerProfileModel_->persistenceAvailable()
+                  ? AirfixWindowsRenderSettingsStatus::
+                        controllerProfilePersistenceUnavailable
+                  : AirfixWindowsRenderSettingsStatus::controllerProfileReady;
+    return;
+  case PickerStatus::conflict:
+    status_ = AirfixWindowsRenderSettingsStatus::controllerBindingConflict;
+    return;
+  case PickerStatus::protectedConflict:
+    status_ =
+        AirfixWindowsRenderSettingsStatus::controllerBindingProtectedConflict;
+    return;
+  case PickerStatus::actionUnavailable:
+    status_ =
+        AirfixWindowsRenderSettingsStatus::controllerBindingActionUnavailable;
+    return;
+  case PickerStatus::saveInProgress:
+    status_ = AirfixWindowsRenderSettingsStatus::controllerProfileSaving;
+    return;
+  case PickerStatus::invalidControl:
+    status_ =
+        AirfixWindowsRenderSettingsStatus::controllerBindingActionUnavailable;
+    return;
+  case PickerStatus::invalidAction:
+  case PickerStatus::invalidProfile:
+  case PickerStatus::invalidPhase:
+    status_ = AirfixWindowsRenderSettingsStatus::invalidControllerProfile;
+    return;
+  }
 }
 
 } // namespace airfix::windows

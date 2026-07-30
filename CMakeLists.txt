@@ -270,6 +270,7 @@ else()
 endif()
 
 add_library(airfix_settings
+    src/airfix/settings/ControllerInputBindingPickerModel.cpp
     src/airfix/settings/ControllerInputProfileCodec.cpp
     src/airfix/settings/ControllerInputProfileMenuModel.cpp
     src/airfix/settings/ControllerInputProfileStore.cpp
@@ -659,6 +660,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::settings)
     add_test(NAME airfix_controller_input_profile_menu_model_tests
         COMMAND airfix_controller_input_profile_menu_model_tests)
+
+    add_executable(airfix_controller_input_binding_picker_model_tests
+        tests/ControllerInputBindingPickerModelTests.cpp)
+    target_link_libraries(airfix_controller_input_binding_picker_model_tests
+        PRIVATE airfix::settings)
+    add_test(NAME airfix_controller_input_binding_picker_model_tests
+        COMMAND airfix_controller_input_binding_picker_model_tests)
 
     add_executable(airfix_controller_input_runtime_configuration_tests
         tests/ControllerInputRuntimeConfigurationTests.cpp)

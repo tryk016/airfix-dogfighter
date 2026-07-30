@@ -5,6 +5,7 @@
 
 #include "airfix/input/ControllerInputBatchBridge.hpp"
 #include "airfix/input/InputFrame.hpp"
+#include "airfix/settings/ControllerInputBindingPickerModel.hpp"
 #include "airfix/settings/ControllerInputProfileMenuModel.hpp"
 
 #include <algorithm>
@@ -21,12 +22,22 @@ constexpr int16_t kNavigationActuation =
 constexpr int16_t kNavigationRelease = airfix::input::uiNavigationReleaseQ15;
 constexpr std::uint16_t kDeadzoneStep = 512U;
 constexpr std::uint16_t kSensitivityStep = 50U;
-constexpr NSUInteger kRowCount = 7U;
+constexpr NSUInteger kOverviewRowCount = 8U;
+constexpr NSUInteger kAxisRowCount = 7U;
+constexpr NSUInteger kBindingRowCount =
+    airfix::input::controllerDigitalGameplayActionCount + 2U;
+constexpr NSUInteger kPickerRowCount =
+    airfix::input::controllerAssignableControlCount + 1U;
+constexpr NSUInteger kConfirmationRowCount = 2U;
 constexpr std::uint64_t kPreviewTickDivisor = 4U;
 
-enum class CalibrationScreen : std::uint8_t {
+enum class ControllerSettingsScreen : std::uint8_t {
   overview,
   axis,
+  bindings,
+  picker,
+  conflict,
+  resetBindingsConfirmation,
 };
 
 enum class OverviewRow : NSUInteger {
@@ -34,9 +45,10 @@ enum class OverviewRow : NSUInteger {
   leftStickY = 1U,
   rightStickX = 2U,
   rightStickY = 3U,
-  resetAll = 4U,
-  save = 5U,
-  close = 6U,
+  buttonBindings = 4U,
+  resetAllAxes = 5U,
+  save = 6U,
+  cancel = 7U,
 };
 
 enum class AxisRow : NSUInteger {
@@ -48,6 +60,24 @@ enum class AxisRow : NSUInteger {
   resetAxis = 5U,
   back = 6U,
 };
+
+enum class BindingRow : NSUInteger {
+  primaryFire = 0U,
+  secondaryFire = 1U,
+  weaponNext = 2U,
+  rearView = 3U,
+  cameraCycle = 4U,
+  cameraRecenter = 5U,
+  missionStatus = 6U,
+  resetAll = 7U,
+  back = 8U,
+};
+
+static_assert(kOverviewRowCount ==
+              static_cast<NSUInteger>(OverviewRow::cancel) + 1U);
+static_assert(kAxisRowCount == static_cast<NSUInteger>(AxisRow::back) + 1U);
+static_assert(kBindingRowCount ==
+              static_cast<NSUInteger>(BindingRow::back) + 1U);
 
 [[nodiscard]] BOOL magnitudeAtMost(const int16_t value,
                                    const int16_t limit) noexcept {
@@ -90,6 +120,93 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
   return NSLocalizedString(@"Invalid", nil);
 }
 
+[[nodiscard]] NSString *
+actionTitle(const airfix::input::ControllerDigitalGameplayAction action) {
+  using airfix::input::ControllerDigitalGameplayAction;
+  switch (action) {
+  case ControllerDigitalGameplayAction::primaryFire:
+    return NSLocalizedString(@"Primary fire", nil);
+  case ControllerDigitalGameplayAction::secondaryFire:
+    return NSLocalizedString(@"Secondary fire", nil);
+  case ControllerDigitalGameplayAction::weaponNext:
+    return NSLocalizedString(@"Next weapon", nil);
+  case ControllerDigitalGameplayAction::rearView:
+    return NSLocalizedString(@"Rear view", nil);
+  case ControllerDigitalGameplayAction::cameraCycle:
+    return NSLocalizedString(@"Cycle camera", nil);
+  case ControllerDigitalGameplayAction::cameraRecenter:
+    return NSLocalizedString(@"Recenter camera", nil);
+  case ControllerDigitalGameplayAction::missionStatus:
+    return NSLocalizedString(@"Mission status", nil);
+  case ControllerDigitalGameplayAction::count:
+    return NSLocalizedString(@"Unknown action", nil);
+  }
+  return NSLocalizedString(@"Unknown action", nil);
+}
+
+[[nodiscard]] NSString *controlTitle(const airfix::input::ControlId control) {
+  using namespace airfix::input::controls::controller;
+  if (control == rightTrigger) {
+    return NSLocalizedString(@"Right trigger", nil);
+  }
+  if (control == leftTrigger) {
+    return NSLocalizedString(@"Left trigger", nil);
+  }
+  if (control == rightShoulder) {
+    return NSLocalizedString(@"Right shoulder", nil);
+  }
+  if (control == leftShoulder) {
+    return NSLocalizedString(@"Left shoulder", nil);
+  }
+  if (control == facePrimary) {
+    return NSLocalizedString(@"Primary face button", nil);
+  }
+  if (control == faceSecondary) {
+    return NSLocalizedString(@"Secondary face button", nil);
+  }
+  if (control == faceLeft) {
+    return NSLocalizedString(@"Left face button", nil);
+  }
+  if (control == faceTop) {
+    return NSLocalizedString(@"Top face button", nil);
+  }
+  if (control == rightStickClick) {
+    return NSLocalizedString(@"Right stick click", nil);
+  }
+  if (control == dpadUp) {
+    return NSLocalizedString(@"D-pad up", nil);
+  }
+  if (control == dpadDown) {
+    return NSLocalizedString(@"D-pad down", nil);
+  }
+  if (control == dpadLeft) {
+    return NSLocalizedString(@"D-pad left", nil);
+  }
+  if (control == dpadRight) {
+    return NSLocalizedString(@"D-pad right", nil);
+  }
+  if (control == menu) {
+    return NSLocalizedString(@"Menu button", nil);
+  }
+  return NSLocalizedString(@"Unknown control", nil);
+}
+
+[[nodiscard]] NSString *unavailableBindingTitle(
+    const airfix::input::ControllerDigitalGameplayBindingStatus status) {
+  using airfix::input::ControllerDigitalGameplayBindingStatus;
+  switch (status) {
+  case ControllerDigitalGameplayBindingStatus::missing:
+    return NSLocalizedString(@"Unavailable — missing", nil);
+  case ControllerDigitalGameplayBindingStatus::ambiguous:
+    return NSLocalizedString(@"Unavailable — multiple assignments", nil);
+  case ControllerDigitalGameplayBindingStatus::unsupportedLayout:
+    return NSLocalizedString(@"Unavailable — custom layout", nil);
+  case ControllerDigitalGameplayBindingStatus::editable:
+    break;
+  }
+  return NSLocalizedString(@"Unavailable", nil);
+}
+
 [[nodiscard]] UILabel *makeTextLabel(NSString *text, UIFontTextStyle style,
                                      UIColor *color) {
   UILabel *label = [[UILabel alloc] initWithFrame:CGRectZero];
@@ -128,6 +245,9 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
   button.titleLabel.font =
       [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
   button.titleLabel.adjustsFontForContentSizeCategory = YES;
+  button.titleLabel.numberOfLines = 0;
+  button.contentHorizontalAlignment =
+      UIControlContentHorizontalAlignmentLeading;
   button.accessibilityIdentifier = identifier;
   return button;
 }
@@ -150,12 +270,21 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
 @interface AirfixControllerCalibrationPanelViewController () {
   __weak AirfixControllerInputProfileCoordinator *_coordinator;
   std::optional<airfix::settings::ControllerInputProfileMenuModel> _model;
+  airfix::settings::ControllerInputBindingPickerModel _bindingPicker;
   std::optional<airfix::settings::ControllerInputProfileMenuSaveTicket>
       _activeTicket;
-  __strong UIView *_overviewRows[kRowCount];
-  __strong UIView *_axisRows[kRowCount];
-  CalibrationScreen _screen;
+  __strong UIView *_overviewRows[kOverviewRowCount];
+  __strong UIView *_axisRows[kAxisRowCount];
+  __strong UIView *_bindingRows[kBindingRowCount];
+  __strong UIView *_pickerRows[kPickerRowCount];
+  __strong UIView *_confirmationRows[kConfirmationRowCount];
+  __strong UIButton *_bindingActionButtons
+      [airfix::input::controllerDigitalGameplayActionCount];
+  __strong UIButton
+      *_pickerControlButtons[airfix::input::controllerAssignableControlCount];
+  ControllerSettingsScreen _screen;
   airfix::input::ControllerAxisElement _selectedAxis;
+  airfix::input::ControllerDigitalGameplayAction _selectedAction;
   NSUInteger _selectedRow;
   BOOL _verticalNavigationLatched;
   BOOL _horizontalNavigationLatched;
@@ -170,8 +299,14 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
 @property(nonatomic, strong) UILabel *previewLabel;
 @property(nonatomic, strong) UIProgressView *rawPreviewBar;
 @property(nonatomic, strong) UIProgressView *adjustedPreviewBar;
+@property(nonatomic, strong) UIStackView *previewStack;
+@property(nonatomic, strong) UIScrollView *scrollView;
 @property(nonatomic, strong) UIStackView *overviewStack;
 @property(nonatomic, strong) UIStackView *axisStack;
+@property(nonatomic, strong) UIStackView *bindingsStack;
+@property(nonatomic, strong) UIStackView *pickerStack;
+@property(nonatomic, strong) UIStackView *confirmationStack;
+@property(nonatomic, strong) UILabel *confirmationLabel;
 @property(nonatomic, strong) UISlider *innerDeadzoneSlider;
 @property(nonatomic, strong) UILabel *innerDeadzoneValueLabel;
 @property(nonatomic, strong) UISlider *outerSaturationSlider;
@@ -181,10 +316,14 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
 @property(nonatomic, strong) UISegmentedControl *responseCurveControl;
 @property(nonatomic, strong) UISwitch *invertSwitch;
 @property(nonatomic, strong) UIButton *resetAllButton;
+@property(nonatomic, strong) UIButton *buttonBindingsButton;
+@property(nonatomic, strong) UIButton *resetAllBindingsButton;
 @property(nonatomic, strong) UIButton *saveButton;
 @property(nonatomic, strong) UIButton *closeButton;
 @property(nonatomic, strong) UIButton *resetAxisButton;
 @property(nonatomic, strong) UIButton *backButton;
+@property(nonatomic, strong) UIButton *confirmationCancelButton;
+@property(nonatomic, strong) UIButton *confirmationActionButton;
 @property(nonatomic, strong) UILabel *statusLabel;
 @property(nonatomic, readwrite) BOOL persistedDuringPresentation;
 
@@ -197,16 +336,30 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
 - (void)invertChanged:(UISwitch *)sender;
 - (void)resetSelectedAxis;
 - (void)resetAllAxes;
+- (void)showBindings;
+- (void)selectBindingActionButton:(UIButton *)sender;
+- (void)selectPickerControlButton:(UIButton *)sender;
+- (void)showResetBindingsConfirmation;
+- (void)cancelConfirmation;
+- (void)confirmSwapOrReset;
 - (void)saveProfile;
 - (void)backToOverview;
+- (void)goBack;
 - (void)cancelOrClose;
 - (void)refreshControls;
+- (void)refreshBindingRows;
+- (void)refreshPickerRows;
 - (void)refreshPreview;
+- (NSUInteger)currentRowCount;
+- (UIView *_Nullable)rowViewAtIndex:(NSUInteger)index;
 - (void)setSelectedRow:(NSUInteger)row announce:(BOOL)announce;
 - (void)moveSelection:(NSInteger)direction;
 - (void)adjustSelectedValue:(NSInteger)direction;
 - (void)activateSelectedRow;
 - (void)showAxis:(airfix::input::ControllerAxisElement)axis;
+- (void)showBindingPickerForAction:
+    (airfix::input::ControllerDigitalGameplayAction)action;
+- (void)applyPickerSelection;
 
 @end
 
@@ -223,8 +376,10 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
           .persistenceAvailable = coordinator.persistenceAvailable == YES,
           .repairRequired = coordinator.repairRequired == YES,
         });
-    _screen = CalibrationScreen::overview;
+    _screen = ControllerSettingsScreen::overview;
     _selectedAxis = airfix::input::ControllerAxisElement::leftStickX;
+    _selectedAction =
+        airfix::input::ControllerDigitalGameplayAction::primaryFire;
     _selectedRow = 0U;
     _lastPreviewTick = std::numeric_limits<std::uint64_t>::max();
     self.modalPresentationStyle = UIModalPresentationOverFullScreen;
@@ -239,12 +394,11 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
   root.accessibilityViewIsModal = YES;
   self.view = root;
 
-  UILabel *title =
-      makeTextLabel(NSLocalizedString(@"Controller calibration", nil),
-                    UIFontTextStyleTitle1, UIColor.labelColor);
+  UILabel *title = makeTextLabel(NSLocalizedString(@"Controller settings", nil),
+                                 UIFontTextStyleTitle1, UIColor.labelColor);
   title.textAlignment = NSTextAlignmentCenter;
   title.accessibilityTraits |= UIAccessibilityTraitHeader;
-  title.accessibilityIdentifier = @"airfix.controller-calibration.title";
+  title.accessibilityIdentifier = @"airfix.controller-settings.title";
   self.titleLabel = title;
 
   UILabel *explanation = makeTextLabel(
@@ -263,7 +417,7 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
   UIFont *bodyFont = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
   preview.font = [UIFont monospacedDigitSystemFontOfSize:bodyFont.pointSize
                                                   weight:UIFontWeightMedium];
-  preview.accessibilityIdentifier = @"airfix.controller-calibration.preview";
+  preview.accessibilityIdentifier = @"airfix.controller-settings.preview";
   self.previewLabel = preview;
 
   UIProgressView *rawBar =
@@ -289,6 +443,7 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
   previewStack.translatesAutoresizingMaskIntoConstraints = NO;
   previewStack.axis = UILayoutConstraintAxisVertical;
   previewStack.spacing = 6.0;
+  self.previewStack = previewStack;
 
   NSMutableArray<UIView *> *axisButtons = [NSMutableArray arrayWithCapacity:4U];
   const std::array<airfix::input::ControllerAxisElement, 4U> axes{{
@@ -300,7 +455,7 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
   for (NSUInteger index = 0U; index < axes.size(); ++index) {
     UIButton *button = makeActionButton(
         axisTitle(axes[index]),
-        [NSString stringWithFormat:@"airfix.controller-calibration.axis.%lu",
+        [NSString stringWithFormat:@"airfix.controller-settings.axis.%lu",
                                    static_cast<unsigned long>(index)]);
     button.tag = static_cast<NSInteger>(index);
     button.contentHorizontalAlignment =
@@ -312,18 +467,30 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
     [axisButtons addObject:button];
   }
 
+  UIButton *buttonBindings =
+      makeActionButton(NSLocalizedString(@"Button bindings", nil),
+                       @"airfix.controller-settings.bindings.open");
+  buttonBindings.accessibilityHint =
+      NSLocalizedString(@"Shows editable gameplay button assignments.", nil);
+  [buttonBindings addTarget:self
+                     action:@selector(showBindings)
+           forControlEvents:UIControlEventTouchUpInside];
+  self.buttonBindingsButton = buttonBindings;
+  _overviewRows[static_cast<NSUInteger>(OverviewRow::buttonBindings)] =
+      buttonBindings;
+
   UIButton *resetAll =
       makeActionButton(NSLocalizedString(@"Reset all axes", nil),
-                       @"airfix.controller-calibration.reset-all");
+                       @"airfix.controller-settings.axes.reset-all");
   [resetAll addTarget:self
                 action:@selector(resetAllAxes)
       forControlEvents:UIControlEventTouchUpInside];
   self.resetAllButton = resetAll;
-  _overviewRows[static_cast<NSUInteger>(OverviewRow::resetAll)] = resetAll;
+  _overviewRows[static_cast<NSUInteger>(OverviewRow::resetAllAxes)] = resetAll;
 
   UIButton *save =
       makeActionButton(NSLocalizedString(@"Save for next launch", nil),
-                       @"airfix.controller-calibration.save");
+                       @"airfix.controller-settings.save");
   [save addTarget:self
                 action:@selector(saveProfile)
       forControlEvents:UIControlEventTouchUpInside];
@@ -331,18 +498,21 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
   _overviewRows[static_cast<NSUInteger>(OverviewRow::save)] = save;
 
   UIButton *close = makeActionButton(NSLocalizedString(@"Cancel", nil),
-                                     @"airfix.controller-calibration.close");
+                                     @"airfix.controller-settings.cancel");
   [close addTarget:self
                 action:@selector(cancelOrClose)
       forControlEvents:UIControlEventTouchUpInside];
   self.closeButton = close;
-  _overviewRows[static_cast<NSUInteger>(OverviewRow::close)] = close;
+  close.accessibilityHint = NSLocalizedString(
+      @"Discards the complete unsaved controller draft.", nil);
+  _overviewRows[static_cast<NSUInteger>(OverviewRow::cancel)] = close;
 
   UIStackView *overview = [[UIStackView alloc] initWithArrangedSubviews:@[
     axisButtons[0],
     axisButtons[1],
     axisButtons[2],
     axisButtons[3],
+    buttonBindings,
     resetAll,
     save,
     close,
@@ -358,8 +528,7 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
   inner.maximumValue = static_cast<float>(airfix::input::q15One - 1);
   inner.continuous = YES;
   inner.accessibilityLabel = NSLocalizedString(@"Inner deadzone", nil);
-  inner.accessibilityIdentifier =
-      @"airfix.controller-calibration.inner-deadzone";
+  inner.accessibilityIdentifier = @"airfix.controller-settings.inner-deadzone";
   [inner addTarget:self
                 action:@selector(innerDeadzoneChanged:)
       forControlEvents:UIControlEventValueChanged];
@@ -385,7 +554,7 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
   outer.continuous = YES;
   outer.accessibilityLabel = NSLocalizedString(@"Outer saturation", nil);
   outer.accessibilityIdentifier =
-      @"airfix.controller-calibration.outer-saturation";
+      @"airfix.controller-settings.outer-saturation";
   [outer addTarget:self
                 action:@selector(outerSaturationChanged:)
       forControlEvents:UIControlEventValueChanged];
@@ -413,7 +582,7 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
   sensitivity.continuous = YES;
   sensitivity.accessibilityLabel = NSLocalizedString(@"Sensitivity", nil);
   sensitivity.accessibilityIdentifier =
-      @"airfix.controller-calibration.sensitivity";
+      @"airfix.controller-settings.sensitivity";
   [sensitivity addTarget:self
                   action:@selector(sensitivityChanged:)
         forControlEvents:UIControlEventValueChanged];
@@ -443,7 +612,7 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
   response.translatesAutoresizingMaskIntoConstraints = NO;
   response.accessibilityLabel = NSLocalizedString(@"Response curve", nil);
   response.accessibilityIdentifier =
-      @"airfix.controller-calibration.response-curve";
+      @"airfix.controller-settings.response-curve";
   [response addTarget:self
                 action:@selector(responseCurveChanged:)
       forControlEvents:UIControlEventValueChanged];
@@ -455,7 +624,7 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
   UISwitch *invert = [[UISwitch alloc] initWithFrame:CGRectZero];
   invert.translatesAutoresizingMaskIntoConstraints = NO;
   invert.accessibilityLabel = NSLocalizedString(@"Invert axis", nil);
-  invert.accessibilityIdentifier = @"airfix.controller-calibration.invert";
+  invert.accessibilityIdentifier = @"airfix.controller-settings.invert";
   [invert addTarget:self
                 action:@selector(invertChanged:)
       forControlEvents:UIControlEventValueChanged];
@@ -466,15 +635,15 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
 
   UIButton *resetAxis =
       makeActionButton(NSLocalizedString(@"Reset this axis", nil),
-                       @"airfix.controller-calibration.reset-axis");
+                       @"airfix.controller-settings.axis.reset");
   [resetAxis addTarget:self
                 action:@selector(resetSelectedAxis)
       forControlEvents:UIControlEventTouchUpInside];
   self.resetAxisButton = resetAxis;
   _axisRows[static_cast<NSUInteger>(AxisRow::resetAxis)] = resetAxis;
 
-  UIButton *back = makeActionButton(NSLocalizedString(@"Back to axes", nil),
-                                    @"airfix.controller-calibration.back");
+  UIButton *back = makeActionButton(NSLocalizedString(@"Back to settings", nil),
+                                    @"airfix.controller-settings.axis.back");
   [back addTarget:self
                 action:@selector(backToOverview)
       forControlEvents:UIControlEventTouchUpInside];
@@ -496,10 +665,140 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
   axisStack.hidden = YES;
   self.axisStack = axisStack;
 
+  NSMutableArray<UIView *> *bindingViews = [NSMutableArray
+      arrayWithCapacity:airfix::input::controllerDigitalGameplayActionCount +
+                        2U];
+  for (const auto &descriptor :
+       airfix::input::controllerDigitalGameplayActionCatalog()) {
+    const auto index = static_cast<NSUInteger>(descriptor.action);
+    UIButton *button = makeActionButton(
+        actionTitle(descriptor.action),
+        [NSString stringWithFormat:@"airfix.controller-settings.binding.%lu",
+                                   static_cast<unsigned long>(index)]);
+    button.tag = static_cast<NSInteger>(index);
+    button.accessibilityHint = NSLocalizedString(
+        @"Chooses a controller control for this action.", nil);
+    [button.heightAnchor constraintGreaterThanOrEqualToConstant:48.0].active =
+        YES;
+    [button addTarget:self
+                  action:@selector(selectBindingActionButton:)
+        forControlEvents:UIControlEventTouchUpInside];
+    _bindingActionButtons[index] = button;
+    _bindingRows[index] = button;
+    [bindingViews addObject:button];
+  }
+
+  UIButton *resetBindings =
+      makeActionButton(NSLocalizedString(@"Reset all assignments", nil),
+                       @"airfix.controller-settings.bindings.reset-all");
+  resetBindings.accessibilityHint = NSLocalizedString(
+      @"Requires confirmation and preserves stick calibration.", nil);
+  [resetBindings addTarget:self
+                    action:@selector(showResetBindingsConfirmation)
+          forControlEvents:UIControlEventTouchUpInside];
+  self.resetAllBindingsButton = resetBindings;
+  _bindingRows[static_cast<NSUInteger>(BindingRow::resetAll)] = resetBindings;
+  [bindingViews addObject:resetBindings];
+
+  UIButton *bindingsBack =
+      makeActionButton(NSLocalizedString(@"Back to settings", nil),
+                       @"airfix.controller-settings.bindings.back");
+  [bindingsBack addTarget:self
+                   action:@selector(goBack)
+         forControlEvents:UIControlEventTouchUpInside];
+  _bindingRows[static_cast<NSUInteger>(BindingRow::back)] = bindingsBack;
+  [bindingViews addObject:bindingsBack];
+
+  UIStackView *bindingsStack =
+      [[UIStackView alloc] initWithArrangedSubviews:bindingViews];
+  bindingsStack.translatesAutoresizingMaskIntoConstraints = NO;
+  bindingsStack.axis = UILayoutConstraintAxisVertical;
+  bindingsStack.spacing = 10.0;
+  bindingsStack.hidden = YES;
+  self.bindingsStack = bindingsStack;
+
+  NSMutableArray<UIView *> *pickerViews = [NSMutableArray
+      arrayWithCapacity:airfix::input::controllerAssignableControlCount + 1U];
+  const auto controls = airfix::input::controllerAssignableControlCatalog();
+  for (NSUInteger index = 0U; index < controls.size(); ++index) {
+    UIButton *button = makeActionButton(
+        controlTitle(controls[index].control),
+        [NSString
+            stringWithFormat:@"airfix.controller-settings.picker.control.%lu",
+                             static_cast<unsigned long>(index)]);
+    button.tag = static_cast<NSInteger>(index);
+    button.accessibilityHint =
+        NSLocalizedString(@"Assigns this control. A conflict requires a "
+                          @"separate swap confirmation.",
+                          nil);
+    [button.heightAnchor constraintGreaterThanOrEqualToConstant:48.0].active =
+        YES;
+    [button addTarget:self
+                  action:@selector(selectPickerControlButton:)
+        forControlEvents:UIControlEventTouchUpInside];
+    _pickerControlButtons[index] = button;
+    _pickerRows[index] = button;
+    [pickerViews addObject:button];
+  }
+
+  UIButton *pickerBack =
+      makeActionButton(NSLocalizedString(@"Back to button bindings", nil),
+                       @"airfix.controller-settings.picker.back");
+  [pickerBack addTarget:self
+                 action:@selector(goBack)
+       forControlEvents:UIControlEventTouchUpInside];
+  _pickerRows[airfix::input::controllerAssignableControlCount] = pickerBack;
+  [pickerViews addObject:pickerBack];
+
+  UIStackView *pickerStack =
+      [[UIStackView alloc] initWithArrangedSubviews:pickerViews];
+  pickerStack.translatesAutoresizingMaskIntoConstraints = NO;
+  pickerStack.axis = UILayoutConstraintAxisVertical;
+  pickerStack.spacing = 10.0;
+  pickerStack.hidden = YES;
+  self.pickerStack = pickerStack;
+
+  UILabel *confirmationLabel =
+      makeTextLabel(@"", UIFontTextStyleBody, UIColor.labelColor);
+  confirmationLabel.textAlignment = NSTextAlignmentCenter;
+  confirmationLabel.accessibilityIdentifier =
+      @"airfix.controller-settings.confirmation.message";
+  self.confirmationLabel = confirmationLabel;
+
+  UIButton *confirmationCancel =
+      makeActionButton(NSLocalizedString(@"Cancel", nil),
+                       @"airfix.controller-settings.confirmation.cancel");
+  [confirmationCancel addTarget:self
+                         action:@selector(cancelConfirmation)
+               forControlEvents:UIControlEventTouchUpInside];
+  self.confirmationCancelButton = confirmationCancel;
+  _confirmationRows[0U] = confirmationCancel;
+
+  UIButton *confirmationAction =
+      makeActionButton(NSLocalizedString(@"Swap", nil),
+                       @"airfix.controller-settings.confirmation.action");
+  [confirmationAction addTarget:self
+                         action:@selector(confirmSwapOrReset)
+               forControlEvents:UIControlEventTouchUpInside];
+  self.confirmationActionButton = confirmationAction;
+  _confirmationRows[1U] = confirmationAction;
+
+  UIStackView *confirmationStack =
+      [[UIStackView alloc] initWithArrangedSubviews:@[
+        confirmationLabel,
+        confirmationCancel,
+        confirmationAction,
+      ]];
+  confirmationStack.translatesAutoresizingMaskIntoConstraints = NO;
+  confirmationStack.axis = UILayoutConstraintAxisVertical;
+  confirmationStack.spacing = 12.0;
+  confirmationStack.hidden = YES;
+  self.confirmationStack = confirmationStack;
+
   UILabel *status =
       makeTextLabel(@"", UIFontTextStyleFootnote, UIColor.secondaryLabelColor);
   status.textAlignment = NSTextAlignmentCenter;
-  status.accessibilityIdentifier = @"airfix.controller-calibration.status";
+  status.accessibilityIdentifier = @"airfix.controller-settings.status";
   self.statusLabel = status;
 
   UIStackView *form = [[UIStackView alloc] initWithArrangedSubviews:@[
@@ -508,6 +807,9 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
     previewStack,
     overview,
     axisStack,
+    bindingsStack,
+    pickerStack,
+    confirmationStack,
     status,
   ]];
   form.translatesAutoresizingMaskIntoConstraints = NO;
@@ -518,6 +820,8 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
   UIScrollView *scroll = [[UIScrollView alloc] initWithFrame:CGRectZero];
   scroll.translatesAutoresizingMaskIntoConstraints = NO;
   scroll.alwaysBounceVertical = NO;
+  scroll.accessibilityIdentifier = @"airfix.controller-settings.scroll";
+  self.scrollView = scroll;
   [root addSubview:scroll];
   [scroll addSubview:form];
 
@@ -546,6 +850,14 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
     [close.heightAnchor constraintGreaterThanOrEqualToConstant:48.0],
     [resetAxis.heightAnchor constraintGreaterThanOrEqualToConstant:48.0],
     [back.heightAnchor constraintGreaterThanOrEqualToConstant:48.0],
+    [buttonBindings.heightAnchor constraintGreaterThanOrEqualToConstant:48.0],
+    [resetBindings.heightAnchor constraintGreaterThanOrEqualToConstant:48.0],
+    [bindingsBack.heightAnchor constraintGreaterThanOrEqualToConstant:48.0],
+    [pickerBack.heightAnchor constraintGreaterThanOrEqualToConstant:48.0],
+    [confirmationCancel.heightAnchor
+        constraintGreaterThanOrEqualToConstant:48.0],
+    [confirmationAction.heightAnchor
+        constraintGreaterThanOrEqualToConstant:48.0],
   ]];
 
   [self refreshControls];
@@ -554,19 +866,23 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
 
 - (void)viewDidAppear:(BOOL)animated {
   [super viewDidAppear:animated];
-  UIView *selected = _screen == CalibrationScreen::overview
-                         ? _overviewRows[_selectedRow]
-                         : _axisRows[_selectedRow];
+  UIView *selected = [self rowViewAtIndex:_selectedRow];
   UIAccessibilityPostNotification(UIAccessibilityScreenChangedNotification,
                                   selected);
 }
 
-- (BOOL)accessibilityPerformEscape {
-  if (_screen == CalibrationScreen::axis) {
-    [self backToOverview];
-  } else {
-    [self cancelOrClose];
+- (void)viewSafeAreaInsetsDidChange {
+  [super viewSafeAreaInsetsDidChange];
+  UIView *selected = [self rowViewAtIndex:_selectedRow];
+  if (selected != nil) {
+    [self.scrollView scrollRectToVisible:[selected convertRect:selected.bounds
+                                                        toView:self.scrollView]
+                                animated:NO];
   }
+}
+
+- (BOOL)accessibilityPerformEscape {
+  [self goBack];
   return YES;
 }
 
@@ -679,6 +995,278 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
   }
 }
 
+- (void)showBindings {
+  if (!_model.has_value() || _activeTicket.has_value()) {
+    return;
+  }
+  _bindingPicker.close();
+  _screen = ControllerSettingsScreen::bindings;
+  self.overviewStack.hidden = YES;
+  self.axisStack.hidden = YES;
+  self.pickerStack.hidden = YES;
+  self.confirmationStack.hidden = YES;
+  self.bindingsStack.hidden = NO;
+  self.previewStack.hidden = YES;
+  self.titleLabel.text = NSLocalizedString(@"Button bindings", nil);
+  self.explanationLabel.text = NSLocalizedString(
+      @"Choose one of the seven gameplay actions. Actions marked unavailable "
+      @"cannot be safely edited from this bounded list.",
+      nil);
+  _verticalNavigationLatched = NO;
+  _horizontalNavigationLatched = NO;
+  [self refreshControls];
+  [self setSelectedRow:static_cast<NSUInteger>(_selectedAction) announce:YES];
+}
+
+- (void)selectBindingActionButton:(UIButton *)sender {
+  const auto index = static_cast<std::size_t>(sender.tag);
+  if (index >= airfix::input::controllerDigitalGameplayActionCount) {
+    return;
+  }
+  [self showBindingPickerForAction:
+            static_cast<airfix::input::ControllerDigitalGameplayAction>(index)];
+}
+
+- (void)selectPickerControlButton:(UIButton *)sender {
+  const auto index = static_cast<std::size_t>(sender.tag);
+  if (!_model.has_value() || !_bindingPicker.selectControlIndex(index)) {
+    return;
+  }
+  [self setSelectedRow:static_cast<NSUInteger>(index) announce:NO];
+  [self applyPickerSelection];
+}
+
+- (void)showBindingPickerForAction:
+    (airfix::input::ControllerDigitalGameplayAction)action {
+  if (!_model.has_value() || _activeTicket.has_value()) {
+    return;
+  }
+  const auto result = _bindingPicker.begin(*_model, action);
+  if (result.status !=
+      airfix::settings::ControllerInputBindingPickerStatus::opened) {
+    self.statusLabel.text =
+        NSLocalizedString(@"This action is unavailable for remapping.", nil);
+    UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification,
+                                    self.statusLabel.text);
+    [self refreshControls];
+    return;
+  }
+
+  _selectedAction = action;
+  _screen = ControllerSettingsScreen::picker;
+  self.overviewStack.hidden = YES;
+  self.axisStack.hidden = YES;
+  self.bindingsStack.hidden = YES;
+  self.confirmationStack.hidden = YES;
+  self.pickerStack.hidden = NO;
+  self.previewStack.hidden = YES;
+  self.titleLabel.text = actionTitle(action);
+  self.explanationLabel.text = NSLocalizedString(
+      @"Choose a controller control. If another editable action uses it, "
+      @"you can cancel or explicitly swap the two assignments.",
+      nil);
+  _verticalNavigationLatched = NO;
+  _horizontalNavigationLatched = NO;
+  [self refreshControls];
+  [self setSelectedRow:_bindingPicker.selectedControlIndex() announce:YES];
+}
+
+- (void)applyPickerSelection {
+  if (!_model.has_value() ||
+      _bindingPicker.phase() !=
+          airfix::settings::ControllerInputBindingPickerPhase::
+              choosingControl) {
+    return;
+  }
+  const auto result = _bindingPicker.applySelection(*_model);
+  if (result.accepted()) {
+    NSString *message = [NSString
+        stringWithFormat:NSLocalizedString(@"%@ is now assigned to %@.", nil),
+                         actionTitle(_selectedAction),
+                         result.control.has_value()
+                             ? controlTitle(*result.control)
+                             : NSLocalizedString(@"the selected control", nil)];
+    const BOOL dirty = _model->dirty();
+    [self showBindings];
+    self.statusLabel.text = [message
+        stringByAppendingString:(dirty ? NSLocalizedString(@" Unsaved changes.",
+                                                           nil)
+                                       : NSLocalizedString(
+                                             @" No unsaved assignment change.",
+                                             nil))];
+    UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification,
+                                    self.statusLabel.text);
+    return;
+  }
+
+  if (result.needsSwapConfirmation()) {
+    _screen = ControllerSettingsScreen::conflict;
+    self.pickerStack.hidden = YES;
+    self.confirmationStack.hidden = NO;
+    self.titleLabel.text = NSLocalizedString(@"Assignment conflict", nil);
+    self.explanationLabel.text = NSLocalizedString(
+        @"Cancel is selected by default. Swap is a separate action.", nil);
+    self.confirmationLabel.text = [NSString
+        stringWithFormat:NSLocalizedString(
+                             @"%@ is already assigned to %@. Swap %@ and %@?",
+                             nil),
+                         result.control.has_value()
+                             ? controlTitle(*result.control)
+                             : NSLocalizedString(@"This control", nil),
+                         result.conflictingAction.has_value()
+                             ? actionTitle(*result.conflictingAction)
+                             : NSLocalizedString(@"another action", nil),
+                         actionTitle(_selectedAction),
+                         result.conflictingAction.has_value()
+                             ? actionTitle(*result.conflictingAction)
+                             : NSLocalizedString(@"the other action", nil)];
+    [self.confirmationActionButton
+        setTitle:NSLocalizedString(@"Swap assignments", nil)
+        forState:UIControlStateNormal];
+    self.confirmationActionButton.accessibilityIdentifier =
+        @"airfix.controller-settings.conflict.swap";
+    [self refreshControls];
+    [self setSelectedRow:0U announce:YES];
+    return;
+  }
+
+  using airfix::settings::ControllerInputBindingPickerStatus;
+  switch (result.status) {
+  case ControllerInputBindingPickerStatus::protectedConflict:
+    self.statusLabel.text = NSLocalizedString(
+        @"That control is reserved by a protected controller assignment.", nil);
+    break;
+  case ControllerInputBindingPickerStatus::saveInProgress:
+    self.statusLabel.text =
+        NSLocalizedString(@"Wait for the save to finish.", nil);
+    break;
+  case ControllerInputBindingPickerStatus::actionUnavailable:
+    self.statusLabel.text =
+        NSLocalizedString(@"This action is unavailable for remapping.", nil);
+    break;
+  case ControllerInputBindingPickerStatus::invalidControl:
+  case ControllerInputBindingPickerStatus::invalidProfile:
+  case ControllerInputBindingPickerStatus::invalidAction:
+  case ControllerInputBindingPickerStatus::invalidPhase:
+    self.statusLabel.text =
+        NSLocalizedString(@"That assignment could not be applied.", nil);
+    break;
+  case ControllerInputBindingPickerStatus::opened:
+  case ControllerInputBindingPickerStatus::accepted:
+  case ControllerInputBindingPickerStatus::conflict:
+    self.statusLabel.text =
+        NSLocalizedString(@"That assignment could not be applied.", nil);
+    break;
+  }
+  UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification,
+                                  self.statusLabel.text);
+  [self refreshControls];
+}
+
+- (void)showResetBindingsConfirmation {
+  if (!_model.has_value() || _activeTicket.has_value()) {
+    return;
+  }
+  _bindingPicker.close();
+  _screen = ControllerSettingsScreen::resetBindingsConfirmation;
+  self.bindingsStack.hidden = YES;
+  self.confirmationStack.hidden = NO;
+  self.titleLabel.text = NSLocalizedString(@"Reset all assignments?", nil);
+  self.explanationLabel.text = NSLocalizedString(
+      @"Cancel is selected by default. Stick calibration will be preserved.",
+      nil);
+  self.confirmationLabel.text = NSLocalizedString(
+      @"This restores all controller button assignments to their defaults.",
+      nil);
+  [self.confirmationActionButton
+      setTitle:NSLocalizedString(@"Reset assignments", nil)
+      forState:UIControlStateNormal];
+  self.confirmationActionButton.accessibilityIdentifier =
+      @"airfix.controller-settings.bindings.confirm-reset";
+  [self refreshControls];
+  [self setSelectedRow:0U announce:YES];
+}
+
+- (void)cancelConfirmation {
+  if (_activeTicket.has_value()) {
+    return;
+  }
+  if (_screen == ControllerSettingsScreen::conflict) {
+    (void)_bindingPicker.cancelSwapConfirmation();
+    _screen = ControllerSettingsScreen::picker;
+    self.confirmationStack.hidden = YES;
+    self.pickerStack.hidden = NO;
+    self.titleLabel.text = actionTitle(_selectedAction);
+    self.explanationLabel.text = NSLocalizedString(
+        @"Choose a controller control. No assignment was changed.", nil);
+    [self refreshControls];
+    [self setSelectedRow:_bindingPicker.selectedControlIndex() announce:YES];
+    return;
+  }
+  if (_screen == ControllerSettingsScreen::resetBindingsConfirmation) {
+    [self showBindings];
+    [self setSelectedRow:static_cast<NSUInteger>(BindingRow::resetAll)
+                announce:YES];
+  }
+}
+
+- (void)confirmSwapOrReset {
+  if (!_model.has_value() || _activeTicket.has_value()) {
+    return;
+  }
+  if (_screen == ControllerSettingsScreen::conflict) {
+    const auto result = _bindingPicker.confirmSwap(*_model);
+    if (result.accepted()) {
+      NSString *message =
+          _model->dirty()
+              ? NSLocalizedString(@"Assignments swapped. Unsaved changes.", nil)
+              : NSLocalizedString(@"Assignments swapped back to the saved "
+                                  @"profile.",
+                                  nil);
+      [self showBindings];
+      self.statusLabel.text = message;
+      UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification,
+                                      message);
+      return;
+    }
+    self.statusLabel.text = NSLocalizedString(
+        @"The assignments changed before the swap could be completed.", nil);
+    UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification,
+                                    self.statusLabel.text);
+    if (_bindingPicker.phase() ==
+        airfix::settings::ControllerInputBindingPickerPhase::choosingControl) {
+      _screen = ControllerSettingsScreen::picker;
+      self.confirmationStack.hidden = YES;
+      self.pickerStack.hidden = NO;
+      [self refreshControls];
+      [self setSelectedRow:_bindingPicker.selectedControlIndex() announce:YES];
+    }
+    return;
+  }
+  if (_screen == ControllerSettingsScreen::resetBindingsConfirmation) {
+    const auto result = _model->resetAllControllerBindings();
+    if (result.accepted()) {
+      const BOOL dirty = _model->dirty();
+      [self showBindings];
+      self.statusLabel.text =
+          dirty ? NSLocalizedString(
+                      @"Default assignments restored. Stick calibration was "
+                      @"preserved. Unsaved changes.",
+                      nil)
+                : NSLocalizedString(
+                      @"Default assignments restored. Stick calibration was "
+                      @"preserved.",
+                      nil);
+      UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification,
+                                      self.statusLabel.text);
+    } else {
+      self.statusLabel.text =
+          NSLocalizedString(@"Assignments could not be reset.", nil);
+      [self refreshControls];
+    }
+  }
+}
+
 - (void)updateStatusAfterDraftEdit {
   if (!_model.has_value()) {
     return;
@@ -701,7 +1289,7 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
   if (coordinator == nil) {
     _model->setPersistenceAvailable(false);
     self.statusLabel.text = NSLocalizedString(
-        @"Controller calibration cannot be saved on this installation.", nil);
+        @"Controller settings cannot be saved on this installation.", nil);
     [self refreshControls];
     return;
   }
@@ -710,18 +1298,16 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
   if (!_activeTicket.has_value()) {
     self.statusLabel.text =
         _model->persistenceAvailable()
-            ? NSLocalizedString(@"No controller calibration changes to save.",
-                                nil)
-            : NSLocalizedString(
-                  @"Controller calibration cannot be saved on this "
-                  @"installation.",
-                  nil);
+            ? NSLocalizedString(@"No controller setting changes to save.", nil)
+            : NSLocalizedString(@"Controller settings cannot be saved on this "
+                                @"installation.",
+                                nil);
     [self refreshControls];
     return;
   }
 
   self.statusLabel.text =
-      NSLocalizedString(@"Saving controller calibration...", nil);
+      NSLocalizedString(@"Saving controller settings...", nil);
   UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification,
                                   self.statusLabel.text);
   [self refreshControls];
@@ -768,20 +1354,21 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
                         return;
                       }
                       strongSelf->_activeTicket.reset();
+                      strongSelf->_bindingPicker.close();
                       NSString *message = NSLocalizedString(
-                          @"Controller calibration was not saved. Try again.",
+                          @"Controller settings were not saved. Try again.",
                           nil);
                       if (result ==
                           AirfixControllerInputProfileSaveResultInvalidCandidate) {
                         message = NSLocalizedString(
-                            @"The selected controller calibration is invalid.",
+                            @"The selected controller settings are invalid.",
                             nil);
                       } else if (
                           result ==
                           AirfixControllerInputProfileSaveResultPersistenceUnavailable) {
                         strongSelf->_model->setPersistenceAvailable(false);
                         message = NSLocalizedString(
-                            @"Controller calibration cannot be saved on this "
+                            @"Controller settings cannot be saved on this "
                             @"installation.",
                             nil);
                       } else if (result ==
@@ -802,17 +1389,54 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
   if (_activeTicket.has_value()) {
     return;
   }
-  _screen = CalibrationScreen::overview;
+  const NSUInteger destination =
+      _screen == ControllerSettingsScreen::axis
+          ? static_cast<NSUInteger>(_selectedAxis)
+          : static_cast<NSUInteger>(OverviewRow::buttonBindings);
+  _bindingPicker.close();
+  _screen = ControllerSettingsScreen::overview;
   self.axisStack.hidden = YES;
+  self.bindingsStack.hidden = YES;
+  self.pickerStack.hidden = YES;
+  self.confirmationStack.hidden = YES;
   self.overviewStack.hidden = NO;
-  self.titleLabel.text = NSLocalizedString(@"Controller calibration", nil);
+  self.previewStack.hidden = NO;
+  self.titleLabel.text = NSLocalizedString(@"Controller settings", nil);
   self.explanationLabel.text = NSLocalizedString(
-      @"Choose an axis to edit. Changes are saved for the next launch.", nil);
-  _selectedRow = static_cast<NSUInteger>(_selectedAxis);
+      @"Edit stick calibration or button bindings, then save the complete "
+      @"profile for the next launch.",
+      nil);
   _verticalNavigationLatched = NO;
   _horizontalNavigationLatched = NO;
   [self refreshControls];
-  [self setSelectedRow:_selectedRow announce:YES];
+  [self setSelectedRow:destination announce:YES];
+}
+
+- (void)goBack {
+  if (_activeTicket.has_value()) {
+    self.statusLabel.text =
+        NSLocalizedString(@"Wait for the save to finish.", nil);
+    UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification,
+                                    self.statusLabel.text);
+    return;
+  }
+  switch (_screen) {
+  case ControllerSettingsScreen::overview:
+    [self cancelOrClose];
+    break;
+  case ControllerSettingsScreen::axis:
+  case ControllerSettingsScreen::bindings:
+    [self backToOverview];
+    break;
+  case ControllerSettingsScreen::picker:
+    _bindingPicker.close();
+    [self showBindings];
+    break;
+  case ControllerSettingsScreen::conflict:
+  case ControllerSettingsScreen::resetBindingsConfirmation:
+    [self cancelConfirmation];
+    break;
+  }
 }
 
 - (void)cancelOrClose {
@@ -826,6 +1450,7 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
   if (_model.has_value() && !_activeTicket.has_value()) {
     (void)_model->cancelDraft();
   }
+  _bindingPicker.close();
   id<AirfixControllerCalibrationPanelViewControllerDelegate> delegate =
       self.delegate;
   [delegate controllerCalibrationPanelViewControllerDidFinish:self];
@@ -834,15 +1459,17 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
 - (void)refreshControls {
   if (!_model.has_value()) {
     self.statusLabel.text =
-        NSLocalizedString(@"Controller calibration is unavailable.", nil);
+        NSLocalizedString(@"Controller settings are unavailable.", nil);
     self.saveButton.enabled = NO;
+    self.closeButton.enabled = YES;
     return;
   }
   const auto *axis = _model->draftAxisCalibration(_selectedAxis);
   if (axis == nullptr) {
     self.statusLabel.text =
-        NSLocalizedString(@"Controller calibration is unavailable.", nil);
+        NSLocalizedString(@"Controller settings are unavailable.", nil);
     self.saveButton.enabled = NO;
+    self.closeButton.enabled = YES;
     return;
   }
 
@@ -884,17 +1511,90 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
   self.invertSwitch.enabled = !saving;
   self.resetAxisButton.enabled = !saving;
   self.resetAllButton.enabled = !saving;
+  self.buttonBindingsButton.enabled = !saving;
+  self.resetAllBindingsButton.enabled = !saving;
   self.backButton.enabled = !saving;
   self.saveButton.enabled = _model->canSave();
-  [self.closeButton
-      setTitle:(_model->dirty() ? NSLocalizedString(@"Cancel", nil)
-                                : NSLocalizedString(@"Close", nil))
-      forState:UIControlStateNormal];
+  self.closeButton.enabled = !saving;
+  [self.closeButton setTitle:NSLocalizedString(@"Cancel", nil)
+                    forState:UIControlStateNormal];
+
+  for (NSUInteger index = 0U; index < kOverviewRowCount; ++index) {
+    if ([_overviewRows[index] isKindOfClass:UIButton.class]) {
+      ((UIButton *)_overviewRows[index]).enabled =
+          index == static_cast<NSUInteger>(OverviewRow::save)
+              ? _model->canSave()
+              : !saving;
+    }
+  }
+  for (NSUInteger index = 0U; index < kBindingRowCount; ++index) {
+    ((UIButton *)_bindingRows[index]).enabled = !saving;
+  }
+  for (NSUInteger index = 0U; index < kPickerRowCount; ++index) {
+    ((UIButton *)_pickerRows[index]).enabled = !saving;
+  }
+  self.confirmationCancelButton.enabled = !saving;
+  self.confirmationActionButton.enabled = !saving;
+
+  [self refreshBindingRows];
+  [self refreshPickerRows];
   if (!_model->persistenceAvailable() && self.statusLabel.text.length == 0U) {
     self.statusLabel.text = NSLocalizedString(
-        @"Controller calibration cannot be saved on this installation.", nil);
+        @"Controller settings cannot be saved on this installation.", nil);
   }
   [self refreshPreview];
+}
+
+- (void)refreshBindingRows {
+  if (!_model.has_value()) {
+    return;
+  }
+  for (const auto &descriptor :
+       airfix::input::controllerDigitalGameplayActionCatalog()) {
+    const auto index = static_cast<NSUInteger>(descriptor.action);
+    const auto lookup = _model->draftDigitalGameplayBinding(descriptor.action);
+    NSString *value = unavailableBindingTitle(lookup.status);
+    if (lookup.editable()) {
+      const auto *binding = _model->draftBinding(lookup.bindingIndex);
+      if (binding != nullptr) {
+        value = controlTitle(binding->control);
+      }
+    }
+    UIButton *button = _bindingActionButtons[index];
+    [button setTitle:[NSString stringWithFormat:@"%@ - %@",
+                                                actionTitle(descriptor.action),
+                                                value]
+            forState:UIControlStateNormal];
+    button.accessibilityLabel = actionTitle(descriptor.action);
+    button.accessibilityValue = value;
+  }
+}
+
+- (void)refreshPickerRows {
+  const auto controls = airfix::input::controllerAssignableControlCatalog();
+  const auto chosen = _bindingPicker.selectedControlIndex();
+  for (NSUInteger index = 0U; index < controls.size(); ++index) {
+    UIButton *button = _pickerControlButtons[index];
+    const BOOL selected =
+        _bindingPicker.phase() !=
+            airfix::settings::ControllerInputBindingPickerPhase::closed &&
+        index == chosen;
+    NSString *title = controlTitle(controls[index].control);
+    [button setTitle:(selected ? [NSString
+                                     stringWithFormat:NSLocalizedString(
+                                                          @"Selected: %@", nil),
+                                                      title]
+                               : title)
+            forState:UIControlStateNormal];
+    button.accessibilityLabel = title;
+    button.accessibilityValue =
+        selected ? NSLocalizedString(@"Selected control", nil) : nil;
+    if (selected) {
+      button.accessibilityTraits |= UIAccessibilityTraitSelected;
+    } else {
+      button.accessibilityTraits &= ~UIAccessibilityTraitSelected;
+    }
+  }
 }
 
 - (void)refreshPreview {
@@ -933,14 +1633,56 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
       [NSString stringWithFormat:@"%+d", calibrated];
 }
 
+- (NSUInteger)currentRowCount {
+  switch (_screen) {
+  case ControllerSettingsScreen::overview:
+    return kOverviewRowCount;
+  case ControllerSettingsScreen::axis:
+    return kAxisRowCount;
+  case ControllerSettingsScreen::bindings:
+    return kBindingRowCount;
+  case ControllerSettingsScreen::picker:
+    return kPickerRowCount;
+  case ControllerSettingsScreen::conflict:
+  case ControllerSettingsScreen::resetBindingsConfirmation:
+    return kConfirmationRowCount;
+  }
+  return 0U;
+}
+
+- (UIView *)rowViewAtIndex:(NSUInteger)index {
+  if (index >= [self currentRowCount]) {
+    return nil;
+  }
+  switch (_screen) {
+  case ControllerSettingsScreen::overview:
+    return _overviewRows[index];
+  case ControllerSettingsScreen::axis:
+    return _axisRows[index];
+  case ControllerSettingsScreen::bindings:
+    return _bindingRows[index];
+  case ControllerSettingsScreen::picker:
+    return _pickerRows[index];
+  case ControllerSettingsScreen::conflict:
+  case ControllerSettingsScreen::resetBindingsConfirmation:
+    return _confirmationRows[index];
+  }
+  return nil;
+}
+
 - (void)setSelectedRow:(NSUInteger)row announce:(BOOL)announce {
-  if (row >= kRowCount) {
+  const NSUInteger count = [self currentRowCount];
+  if (row >= count) {
     return;
   }
   _selectedRow = row;
-  for (NSUInteger index = 0U; index < kRowCount; ++index) {
-    UIView *view = _screen == CalibrationScreen::overview ? _overviewRows[index]
-                                                          : _axisRows[index];
+  if (_screen == ControllerSettingsScreen::picker &&
+      row < airfix::input::controllerAssignableControlCount) {
+    (void)_bindingPicker.selectControlIndex(row);
+    [self refreshPickerRows];
+  }
+  for (NSUInteger index = 0U; index < count; ++index) {
+    UIView *view = [self rowViewAtIndex:index];
     const BOOL active = index == row;
     view.layer.borderColor = (active ? UIColor.systemYellowColor
                                      : [UIColor colorWithWhite:1.0 alpha:0.18])
@@ -948,19 +1690,27 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
     view.layer.borderWidth = active ? 2.5 : 1.0;
     view.layer.cornerRadius = 10.0;
   }
-  if (announce) {
-    UIView *selected = _screen == CalibrationScreen::overview
-                           ? _overviewRows[row]
-                           : _axisRows[row];
+  UIView *selected = [self rowViewAtIndex:row];
+  if (selected != nil) {
+    [self.view layoutIfNeeded];
+    [self.scrollView scrollRectToVisible:[selected convertRect:selected.bounds
+                                                        toView:self.scrollView]
+                                animated:YES];
+  }
+  if (announce && selected != nil) {
     UIAccessibilityPostNotification(UIAccessibilityLayoutChangedNotification,
                                     selected);
   }
 }
 
 - (void)moveSelection:(NSInteger)direction {
-  const NSInteger next = std::clamp(
-      static_cast<NSInteger>(_selectedRow) + direction,
-      static_cast<NSInteger>(0), static_cast<NSInteger>(kRowCount - 1U));
+  const NSUInteger count = [self currentRowCount];
+  if (count == 0U) {
+    return;
+  }
+  const NSInteger next =
+      std::clamp(static_cast<NSInteger>(_selectedRow) + direction,
+                 static_cast<NSInteger>(0), static_cast<NSInteger>(count - 1U));
   [self setSelectedRow:static_cast<NSUInteger>(next) announce:YES];
 }
 
@@ -968,7 +1718,7 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
   if (!_model.has_value() || direction == 0 ||
       _model->phase() ==
           airfix::settings::ControllerInputProfileMenuPhase::saving ||
-      _screen != CalibrationScreen::axis) {
+      _screen != ControllerSettingsScreen::axis) {
     return;
   }
   const auto *axis = _model->draftAxisCalibration(_selectedAxis);
@@ -1022,7 +1772,12 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
 }
 
 - (void)activateSelectedRow {
-  if (_screen == CalibrationScreen::overview) {
+  if (!_model.has_value() ||
+      _model->phase() ==
+          airfix::settings::ControllerInputProfileMenuPhase::saving) {
+    return;
+  }
+  if (_screen == ControllerSettingsScreen::overview) {
     switch (static_cast<OverviewRow>(_selectedRow)) {
     case OverviewRow::leftStickX:
     case OverviewRow::leftStickY:
@@ -1031,27 +1786,30 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
       [self showAxis:static_cast<airfix::input::ControllerAxisElement>(
                          _selectedRow)];
       return;
-    case OverviewRow::resetAll:
+    case OverviewRow::buttonBindings:
+      [self showBindings];
+      return;
+    case OverviewRow::resetAllAxes:
       [self resetAllAxes];
       return;
     case OverviewRow::save:
       [self saveProfile];
       return;
-    case OverviewRow::close:
+    case OverviewRow::cancel:
       [self cancelOrClose];
       return;
     }
   }
 
-  switch (static_cast<AxisRow>(_selectedRow)) {
-  case AxisRow::innerDeadzone:
-  case AxisRow::outerSaturation:
-  case AxisRow::sensitivity:
-  case AxisRow::responseCurve:
-    [self adjustSelectedValue:1];
-    break;
-  case AxisRow::invert:
-    if (_model.has_value()) {
+  if (_screen == ControllerSettingsScreen::axis) {
+    switch (static_cast<AxisRow>(_selectedRow)) {
+    case AxisRow::innerDeadzone:
+    case AxisRow::outerSaturation:
+    case AxisRow::sensitivity:
+    case AxisRow::responseCurve:
+      [self adjustSelectedValue:1];
+      break;
+    case AxisRow::invert: {
       const auto *axis = _model->draftAxisCalibration(_selectedAxis);
       if (axis != nullptr) {
         const auto result =
@@ -1061,14 +1819,48 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
         }
         [self refreshControls];
       }
+      break;
     }
-    break;
-  case AxisRow::resetAxis:
-    [self resetSelectedAxis];
-    break;
-  case AxisRow::back:
-    [self backToOverview];
-    break;
+    case AxisRow::resetAxis:
+      [self resetSelectedAxis];
+      break;
+    case AxisRow::back:
+      [self backToOverview];
+      break;
+    }
+    return;
+  }
+
+  if (_screen == ControllerSettingsScreen::bindings) {
+    if (_selectedRow < airfix::input::controllerDigitalGameplayActionCount) {
+      [self showBindingPickerForAction:
+                static_cast<airfix::input::ControllerDigitalGameplayAction>(
+                    _selectedRow)];
+    } else if (_selectedRow == static_cast<NSUInteger>(BindingRow::resetAll)) {
+      [self showResetBindingsConfirmation];
+    } else {
+      [self backToOverview];
+    }
+    return;
+  }
+
+  if (_screen == ControllerSettingsScreen::picker) {
+    if (_selectedRow < airfix::input::controllerAssignableControlCount) {
+      (void)_bindingPicker.selectControlIndex(_selectedRow);
+      [self applyPickerSelection];
+    } else {
+      [self goBack];
+    }
+    return;
+  }
+
+  if (_screen == ControllerSettingsScreen::conflict ||
+      _screen == ControllerSettingsScreen::resetBindingsConfirmation) {
+    if (_selectedRow == 0U) {
+      [self cancelConfirmation];
+    } else {
+      [self confirmSwapOrReset];
+    }
   }
 }
 
@@ -1078,9 +1870,13 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
     return;
   }
   _selectedAxis = axis;
-  _screen = CalibrationScreen::axis;
+  _screen = ControllerSettingsScreen::axis;
   self.overviewStack.hidden = YES;
+  self.bindingsStack.hidden = YES;
+  self.pickerStack.hidden = YES;
+  self.confirmationStack.hidden = YES;
   self.axisStack.hidden = NO;
+  self.previewStack.hidden = NO;
   self.titleLabel.text = axisTitle(axis);
   self.explanationLabel.text = NSLocalizedString(
       @"Raw and calibrated values update live. The draft affects this "
@@ -1093,8 +1889,7 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
 }
 
 - (void)consumeUIInputSnapshot:(AirfixUIInputSnapshot *)input {
-  NSAssert(NSThread.isMainThread,
-           @"Controller-calibration input belongs to main");
+  NSAssert(NSThread.isMainThread, @"Controller-settings input belongs to main");
   if (input == nil) {
     return;
   }
@@ -1115,11 +1910,14 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
   }
 
   if (input.cancelPressed) {
-    if (_screen == CalibrationScreen::axis) {
-      [self backToOverview];
-    } else {
-      [self cancelOrClose];
-    }
+    [self goBack];
+    return;
+  }
+
+  if (_activeTicket.has_value() ||
+      (_model.has_value() &&
+       _model->phase() ==
+           airfix::settings::ControllerInputProfileMenuPhase::saving)) {
     return;
   }
 
@@ -1142,21 +1940,31 @@ curveTitle(const airfix::input::ControllerResponseCurve curve) {
   if (magnitudeAtMost(input.navigationX, kNavigationRelease)) {
     _horizontalNavigationLatched = NO;
   }
-  if (!movedVertically && !_horizontalNavigationLatched &&
+  if (_screen == ControllerSettingsScreen::axis && !movedVertically &&
+      !_horizontalNavigationLatched &&
       input.navigationX >= kNavigationActuation) {
     _horizontalNavigationLatched = YES;
     [self adjustSelectedValue:1];
-  } else if (!movedVertically && !_horizontalNavigationLatched &&
+  } else if (_screen == ControllerSettingsScreen::axis && !movedVertically &&
+             !_horizontalNavigationLatched &&
              input.navigationX <= -kNavigationActuation) {
     _horizontalNavigationLatched = YES;
     [self adjustSelectedValue:-1];
   }
 
   if (input.tabPreviousPressed) {
-    [self adjustSelectedValue:-1];
+    if (_screen == ControllerSettingsScreen::axis) {
+      [self adjustSelectedValue:-1];
+    } else {
+      [self moveSelection:-1];
+    }
   }
   if (input.tabNextPressed) {
-    [self adjustSelectedValue:1];
+    if (_screen == ControllerSettingsScreen::axis) {
+      [self adjustSelectedValue:1];
+    } else {
+      [self moveSelection:1];
+    }
   }
   if (input.confirmPressed) {
     [self activateSelectedRow];

@@ -265,16 +265,17 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     UIButton* controllerCalibrationButton =
         [UIButton buttonWithType:UIButtonTypeSystem];
     controllerCalibrationButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [controllerCalibrationButton setTitle:@"Controller calibration"
+    [controllerCalibrationButton setTitle:@"Controller settings"
                                  forState:UIControlStateNormal];
     controllerCalibrationButton.titleLabel.font =
         [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
     controllerCalibrationButton.titleLabel.adjustsFontForContentSizeCategory =
         YES;
     controllerCalibrationButton.accessibilityIdentifier =
-        @"airfix.settings.controller-calibration.open";
+        @"airfix.settings.controller.open";
     controllerCalibrationButton.accessibilityHint =
-        @"Pauses gameplay and edits controller calibration for the next launch.";
+        @"Pauses gameplay and edits controller calibration and button "
+         "bindings for the next launch.";
     [controllerCalibrationButton
         addTarget:self
            action:@selector(showControllerCalibration)
@@ -809,7 +810,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
 
 - (void)showControllerCalibration {
     NSAssert(NSThread.isMainThread,
-        @"The controller-calibration overlay belongs to main");
+        @"The controller-settings overlay belongs to main");
     AirfixControllerInputProfileCoordinator* coordinator =
         self.controllerInputProfileCoordinator;
     if ([self isSettingsPanelOpen] || coordinator == nil ||
@@ -846,12 +847,12 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     self.controllerCalibrationButton.enabled = NO;
     self.statusLabel.text =
         @"Airfix Dogfighter reconstruction\n"
-         "Gameplay paused while controller calibration is open";
+         "Gameplay paused while controller settings are open";
 }
 
 - (void)closeControllerCalibrationPanel {
     NSAssert(NSThread.isMainThread,
-        @"The controller-calibration overlay belongs to main");
+        @"The controller-settings overlay belongs to main");
     AirfixControllerCalibrationPanelViewController* panel =
         self.controllerCalibrationPanel;
     if (panel == nil) {
@@ -904,7 +905,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     if (gameplayReady) {
         self.statusLabel.text =
             @"Airfix Dogfighter reconstruction\n"
-             "Calibration closed; select Resume or press controller B";
+             "Controller settings closed; select Resume or press controller B";
     }
     _pausedSettingsSelection = 1U;
     [self setPausedSettingsSelection:_pausedSettingsSelection announce:NO];
