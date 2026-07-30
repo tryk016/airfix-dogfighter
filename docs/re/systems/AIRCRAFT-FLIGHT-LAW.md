@@ -6,7 +6,7 @@ implemented for parity
 **Evidence:** `EV-20260724-001`, `EV-20260724-002`,
 `EV-20260724-003`, `EV-20260724-004`, `EV-20260727-002`,
 `EV-20260728-011`, `EV-20260728-012`, `EV-20260728-013`,
-`EV-20260728-014`
+`EV-20260728-014`, `EV-20260730-004`
 
 **Reference build:** SHA-256 values in
 `docs/evidence/source-manifest.sha256`
@@ -17,6 +17,11 @@ This document is the durable, implementation-facing contract for
 constants, state transitions, and rigid-body calls recovered from the reference
 executable. It does not assign aerodynamic names or physical units where the
 binary does not prove them.
+
+The called integrator's separate 13-float layout, exact equations, x87 store
+schedule, and numeric-policy NO-GO are maintained in
+[CC-RIGID-BODY.md](CC-RIGID-BODY.md). This force-law document does not
+redefine that lower-level contract.
 
 The main result is:
 
