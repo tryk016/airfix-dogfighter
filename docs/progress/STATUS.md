@@ -79,7 +79,7 @@
   waits for startup resolution. iOS now exposes the four persisted fields
   through a safe-area UIKit panel backed by a portable applied/draft/ticket
   model. Apply reports success only after durable save and Metal publication;
-  touch and controller navigation use an explicit pause/menu/modal input
+  touch and controller navigation use an explicit paused menu-input
   boundary and closing never auto-resumes. Windows binds the same model to a
   DPI-aware DirectWrite/Direct2D raster composed by D3D11, with keyboard,
   physical-pixel mouse, wheel, and gamepad navigation. Its synchronous
@@ -165,8 +165,14 @@
   mutating the active SDL adapter. Backup/default recovery can request an
   explicit repair write; unavailable or blocked persistence disables only the
   save action. A synthetic, data-less capture mode proves the surface without
-  reading the private store. iOS profile saving/editing, binding remapping,
-  glyphs, haptics, and physical-device persistence acceptance remain.
+  reading the private store. iOS now provides the corresponding safe-area,
+  touch/controller-operated editor and asynchronous durable save. It exposes
+  only a connected flag and four raw standardized Q15 axes, rate-limits the
+  exact shared raw/adjusted preview, uses validated menu bindings, and never
+  mutates the active pre-start configuration. Current-only exact readback is
+  the sole recovery proof for an ambiguous commit; all preview samples are
+  zeroed at reset/lifecycle boundaries. Binding remapping, glyphs, haptics, and
+  physical-device persistence acceptance remain.
 - Local Git repository initialized on branch `main`; planning baseline committed
   as `59828ed`.
 - GitHub remote `tryk016/airfix-dogfighter` connected and the planning baseline
@@ -1030,10 +1036,9 @@
    campaign/save consumer before wiring the isolated mission-outcome state.
    Preserve one already-ordered call per transition; do not batch, sort,
    deduplicate, replay, or invent a priority when both native flags are true.
-4. Extend the implemented Windows save-on-next-launch calibration surface with
-   binding remapping only after its conflict/recovery UX is specified, and add
-   the corresponding private save/editor flow above the load-only iOS AFIP
-   startup adapter. Before supporting live replacement, add a host-owned pause
+4. Extend the implemented Windows and iOS save-on-next-launch calibration
+   surfaces with binding remapping only after its conflict/recovery UX is
+   specified. Before supporting live replacement, add a host-owned pause
    transaction that prepares a fresh pair. Then add persistent touch
    layout/visibility profiles, controller glyphs, haptics, and finished menu
    bindings before touch-only and controller-only acceptance on both target
@@ -1075,6 +1080,14 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The private iOS controller-calibration slice reuses the complete portable
+  active/persisted/draft model and exact runtime preview transform. Repair
+  classification now has portable coverage for clean defaults, current,
+  backup, invalid-current fallback, and future-schema blocking. A complete
+  GCC/Ninja build passes 114/114 CTests; a complete MSVC 19.51/Ninja rebuild
+  links `AirfixDogfighter.exe` and passes 124/124 CTests. Hosted Apple
+  `iphoneos`/`iphonesimulator` compilation, independent final review, and
+  physical iPhone save/lifecycle acceptance remain gates.
 - Controller Profile Core V1 and its native startup slice pass a fresh
   362-step Windows GCC 15.2/Ninja build with 113/113 CTests and a fresh
   642-step MSVC 19.51/Ninja build of `AirfixDogfighter.exe` with 121/121

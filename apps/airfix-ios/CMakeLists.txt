@@ -80,6 +80,10 @@ add_executable(airfix_ios MACOSX_BUNDLE
     AirfixGameControllerAdapter.mm
     AirfixGameViewController.h
     AirfixGameViewController.mm
+    AirfixControllerCalibrationPanelViewController.h
+    AirfixControllerCalibrationPanelViewController.mm
+    AirfixControllerInputProfileCoordinator.h
+    AirfixControllerInputProfileCoordinator.mm
     AirfixIOSInputCoordinator.h
     AirfixIOSInputCoordinator.mm
     AirfixIOSInputCoordinator+Private.hpp
