@@ -1,8 +1,8 @@
 # Input, controls, and haptics system
 
-**Status:** portable core, controller-profile V1 foundation, and native gameplay
-transport implemented; live profile application, editor UI, haptics, glyphs,
-and device acceptance pending
+**Status:** portable core, controller-profile V1, safe native startup seams,
+and native gameplay transport implemented; editor UI, iOS profile persistence,
+haptics, glyphs, and device acceptance pending
 
 **Priority:** P0 for the Windows x64 and iOS vertical slices
 
@@ -67,13 +67,16 @@ Default semantic bindings cover touch, an extended controller, and the baseline
 Windows keyboard/mouse profile. The Windows x64 application now uses SDL3 for
 keyboard/mouse focus and standardized-controller discovery/hot-plug, converts
 those native values into stable USB HID/control IDs and Q15 values, and emits
-the same normalized events as iOS. A portable persisted controller-profile
-foundation is implemented below; applying it to a live native product, glyphs,
-and rumble policy remain pending.
+the same normalized events as iOS. Windows interactive startup now loads the
+private persisted controller profile and constructs its initial router/bridge
+pair from that immutable configuration. Live replacement, the settings editor,
+glyphs, and rumble policy remain pending.
 
 The native iOS layer feeds the complete current gameplay-action surface from a
 safe-area-aware UIKit overlay and Apple's Game Controller framework; none of
-those platform types enter `InputFrame`. Profile persistence/remapping,
+those platform types enter `InputFrame`. Startup applies the canonical default
+through a one-time pre-start seam. Live replacement requires a future
+host-owned pause transaction. Private iOS profile persistence,
 controller glyphs, finished menu UI, physical device acceptance, and haptic
 adapters remain follow-up layers.
 
@@ -128,9 +131,19 @@ The pure axis transform supports inner deadzone, outer saturation,
 `250-2000` permille sensitivity, inversion, and linear/squared/cubic curves.
 It uses integer-only Q15 arithmetic with round-to-nearest, ties-to-even and
 rejects the excluded `-32768` value. The canonical default transform is exact
-identity over all 65,535 valid Q15 values. The existing batch bridge still owns
-its baseline transport deadzone: the new transform is deliberately unwired
-until native application creates a new router/bridge pair at a safe boundary.
+identity over all 65,535 valid Q15 values. A configured batch bridge first
+applies the V1 transport floor (`abs(raw) < 4096` becomes neutral), then the
+profile transform. This layering is an explicit V1 compatibility contract:
+profile deadzone zero does not bypass the transport floor. Unlike the legacy
+unconfigured bridge's `1024` change filter, a configured bridge emits every
+changed calibrated Q15 value so no binding or recovery threshold crossing can
+be lost.
+
+V1 triggers are a fixed binary transport. Native adapters detect actuation at
+Q15 `16384` and emit only `0` or `32767`; accepted trigger bindings therefore
+must remain digital, use full positive scale, and retain the same `16384`
+threshold. Continuous trigger mapping and user-adjustable trigger thresholds
+require a later schema and native transport revision.
 
 The separate `controller-input.afip` document is a canonical little-endian,
 SHA-256-protected envelope bounded to 4 KiB. Only active bindings are encoded.
@@ -148,13 +161,22 @@ outcome. Diagnostics expose neither host paths nor encoded profile bytes.
 Runtime device IDs, names, GUIDs, Bluetooth addresses, and serial-like values
 do not enter AFIP.
 
-This slice does not mutate an active `InputRouter`, configure the native
-adapters, or add UI. Router state is indexed by binding position, so live
-in-place replacement is forbidden. A later native transaction must save a
-pending profile, pause or cross a mission boundary, construct a fresh
-router/bridge pair, cancel the old controller source, sample the complete new
-device state, and require the existing two neutral ticks. Failure must retain
-the old active pair without replaying held controls.
+Router state is indexed by binding position, so live in-place replacement is
+forbidden. `ControllerInputRuntimeConfiguration` keeps one resolved profile and
+its exact compiled binding table and physical-control usage mask together.
+Full controller snapshots and later native events omit controls that have no
+binding in that profile; the router still rejects any unexpected event that
+does reach it.
+
+Profiles are installed only while constructing the Windows adapter or through
+the one-time iOS coordinator seam before input starts. Live replacement is not
+implemented: changing the durable Windows AFIP requires a process restart, and
+iOS currently uses the canonical default. A future live editor must obtain a
+host-owned pause transaction, prepare a fresh router/bridge pair, rebase a
+complete physical snapshot, discard old queued edges, and re-enter the
+two-tick neutral gate. An input context enum alone is not authorization to
+replace active state. No calibration/remapping editor UI is included in this
+slice.
 
 ### Implemented native iOS slice
 
@@ -169,7 +191,7 @@ releases only the affected control. Full cancellation releases every held
 control while preserving the absolute throttle target.
 
 `AirfixGameControllerAdapter` assigns one extended controller and maps both
-sticks, both triggers, D-pad up/down, shoulders, face buttons, optional
+sticks, both triggers, all four D-pad directions, shoulders, face buttons, optional
 right-stick click, and combined menu/options pause while leaving Bluetooth
 pairing system-managed. Its fixed-capacity, generation- and order-tagged FIFO
 preserves complete digital taps between input ticks. The portable
@@ -193,10 +215,11 @@ excluded from neutral-gate blocking and is restored only after the required two
 safe ticks. Foreground activation and room publication never resume gameplay;
 the player must explicitly use pause/menu.
 
-This completes action transport, not control-system acceptance. Applying the
-portable controller profile, calibration/remapping UI, persistent touch
-layout/visibility profiles, prompt glyphs, haptics, finished touch/controller
-menus, and runtime validation on both target iPhones remain pending.
+This completes action transport and the safe startup-profile seam, not
+control-system acceptance. Private iOS profile persistence,
+calibration/remapping UI, persistent touch layout/visibility profiles, prompt
+glyphs, haptics, finished touch/controller menus, and runtime validation on
+both target iPhones remain pending.
 
 ### Implemented native Windows slice
 
@@ -221,11 +244,13 @@ view, `C`/`F` for camera cycle/recenter, `M` for mission status, and `Escape`
 for pause. Menu bindings use arrows, `Enter`, `Escape`, and `Q`/`E` tabs.
 Standard gamepad bindings match the implemented controller table below.
 
-This is the tested physical transport baseline, not finished input acceptance.
-The portable remapping/calibration record and store exist but are not applied
-by the SDL adapter. Selected-device UI, glyphs, digital menu repeat, rumble,
-safe profile activation, and physical Xbox/PlayStation/generic-controller
-testing remain pending.
+This is the tested physical transport and profile-startup baseline, not
+finished input acceptance. Interactive Windows startup loads the private AFIP
+store with `current -> backup -> default` recovery; session-only smoke and
+capture modes never read it. Runtime replacement is deliberately unavailable;
+a changed profile takes effect after restart. Selected-device UI, glyphs,
+digital menu repeat, rumble, settings editing, and physical
+Xbox/PlayStation/generic-controller testing remain pending.
 
 ## Input contexts
 
@@ -507,8 +532,9 @@ pending.
 
 ### Calibration and mapping
 
-- Inner deadzone, outer saturation, response curve, Y inversion, sensitivity,
-  and trigger threshold are configurable.
+- Inner deadzone, outer saturation, response curve, Y inversion, and
+  sensitivity are configurable. Trigger actuation remains the fixed binary V1
+  threshold described above.
 - Default calibration is per device class, not stored against personal hardware
   serial data.
 - Detect stick drift and recommend deadzone adjustment without silently changing

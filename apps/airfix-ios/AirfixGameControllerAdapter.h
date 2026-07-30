@@ -29,6 +29,8 @@ typedef struct AirfixGameControllerSample {
     int16_t secondaryTrigger;
     BOOL dpadUpPressed;
     BOOL dpadDownPressed;
+    BOOL dpadLeftPressed;
+    BOOL dpadRightPressed;
     BOOL rightShoulderPressed;
     BOOL leftShoulderPressed;
     BOOL faceLeftPressed;
@@ -53,6 +55,8 @@ typedef NS_ENUM(uint8_t, AirfixGameControllerDigitalControl) {
     AirfixGameControllerDigitalControlFacePrimary = 9,
     AirfixGameControllerDigitalControlFaceSecondary = 10,
     AirfixGameControllerDigitalControlRightStickClick = 11,
+    AirfixGameControllerDigitalControlDpadLeft = 12,
+    AirfixGameControllerDigitalControlDpadRight = 13,
 };
 
 enum {

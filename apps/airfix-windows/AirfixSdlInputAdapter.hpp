@@ -39,6 +39,8 @@ sdlGamepadButton(SDL_GamepadButton button) noexcept;
 class AirfixSdlInputAdapter final {
 public:
   AirfixSdlInputAdapter();
+  explicit AirfixSdlInputAdapter(
+      const airfix::input::ControllerInputRuntimeConfiguration &configuration);
   ~AirfixSdlInputAdapter();
 
   AirfixSdlInputAdapter(const AirfixSdlInputAdapter &) = delete;
@@ -59,6 +61,8 @@ public:
 
   [[nodiscard]] bool controllerConnected() const noexcept;
   [[nodiscard]] const char *controllerName() const noexcept;
+  [[nodiscard]] const airfix::input::ResolvedControllerInputProfile *
+  activeControllerProfile() const noexcept;
 
 private:
   [[nodiscard]] bool openGamepad(SDL_JoystickID instanceId) noexcept;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "airfix/input/ControllerInputBatchBridge.hpp"
+#include "airfix/input/ControllerInputRuntimeConfiguration.hpp"
 
 #include <array>
 #include <cstddef>
@@ -30,6 +31,10 @@ public:
   static constexpr SourceHandle keyboardSource{SourceKind::keyboard, 1U};
   static constexpr SourceHandle mouseSource{SourceKind::mouse, 1U};
   static constexpr SourceHandle controllerSource{SourceKind::controller, 1U};
+
+  DesktopInputBridge() noexcept = default;
+  explicit DesktopInputBridge(
+      const ControllerInputRuntimeConfiguration &configuration) noexcept;
 
   [[nodiscard]] bool key(ControlId control, bool pressed,
                          std::uint64_t timestamp = 0U) noexcept;
@@ -73,6 +78,11 @@ public:
 
   [[nodiscard]] constexpr std::uint64_t controllerGeneration() const noexcept {
     return controllerConnected_ ? controllerBatch_.generation : 0U;
+  }
+
+  [[nodiscard]] constexpr const ResolvedControllerInputProfile *
+  controllerProfile() const noexcept {
+    return controllerBridge_.controllerProfile();
   }
 
 private:

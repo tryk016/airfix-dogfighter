@@ -9,7 +9,8 @@ namespace airfix::windows {
 namespace {
 
 constexpr std::int32_t mouseQ15PerLogicalPixel = 2048;
-constexpr Sint16 triggerActuation = 16384;
+constexpr Sint16 triggerActuation =
+    airfix::input::controllerTriggerActuationQ15;
 
 [[nodiscard]] airfix::input::Q15 signedAxis(const Sint16 value,
                                             const bool inverted) noexcept {
@@ -163,6 +164,12 @@ bool sdlGamepadTriggerPressed(const Sint16 value) noexcept {
 }
 
 AirfixSdlInputAdapter::AirfixSdlInputAdapter() {
+  static_cast<void>(openFirstAvailableGamepad());
+}
+
+AirfixSdlInputAdapter::AirfixSdlInputAdapter(
+    const airfix::input::ControllerInputRuntimeConfiguration &configuration)
+    : bridge_(configuration) {
   static_cast<void>(openFirstAvailableGamepad());
 }
 
@@ -342,6 +349,11 @@ const char *AirfixSdlInputAdapter::controllerName() const noexcept {
     return nullptr;
   }
   return SDL_GetGamepadName(gamepad_);
+}
+
+const airfix::input::ResolvedControllerInputProfile *
+AirfixSdlInputAdapter::activeControllerProfile() const noexcept {
+  return bridge_.controllerProfile();
 }
 
 bool AirfixSdlInputAdapter::openGamepad(

@@ -100,6 +100,7 @@ enum class ControllerInputProfileIssueKind : std::uint8_t {
   invalidScale,
   invalidMeaningfulThreshold,
   invalidBlocksNeutralGate,
+  triggerRequiresBinaryBinding,
   contextConflict,
   bindingTableCapacityExceeded,
   missingPause,

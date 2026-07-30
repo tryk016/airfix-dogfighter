@@ -140,10 +140,10 @@ BindingTable makeDefaultBindings() noexcept {
         q15Min, 1));
     add(Binding::digital(SourceKind::controller,
         controls::controller::rightTrigger, DigitalAction::combatPrimaryFire,
-        gameplay, PhysicalEventKind::analog, 16384));
+        gameplay, PhysicalEventKind::analog, controllerTriggerActuationQ15));
     add(Binding::digital(SourceKind::controller,
         controls::controller::leftTrigger, DigitalAction::combatSecondaryFire,
-        gameplay, PhysicalEventKind::analog, 16384));
+        gameplay, PhysicalEventKind::analog, controllerTriggerActuationQ15));
     add(Binding::digital(SourceKind::controller,
         controls::controller::rightShoulder, DigitalAction::combatWeaponNext,
         gameplay));

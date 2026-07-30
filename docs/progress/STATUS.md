@@ -144,8 +144,17 @@
   bounded immutable profile, strict controller-only remapping and recovery
   validation, deterministic integer Q15 calibration, complete replacement
   binding compilation, a canonical SHA-256-protected AFIP document, and a
-  private durable current/backup/default store. It is intentionally not wired
-  into active routers or native settings UI yet.
+  private durable current/backup/default store. An immutable runtime
+  configuration now binds the resolved profile to its exact compiled table and
+  used-control mask. Windows interactive startup loads the private AFIP store;
+  iOS installs the canonical default through a one-time pre-start seam.
+  Unmapped controls are omitted from full snapshots and later events without
+  weakening router rejection. Live replacement remains deferred until a
+  host-owned pause transaction exists; a changed Windows profile applies after
+  restart. Configured axes preserve every changed calibrated value, triggers
+  use an explicit fixed binary V1 policy, and iOS covers D-pad left/right.
+  Native editor UI, private iOS persistence, glyphs, haptics, and device
+  acceptance remain.
 - Local Git repository initialized on branch `main`; planning baseline committed
   as `59828ed`.
 - GitHub remote `tryk016/airfix-dogfighter` connected and the planning baseline
@@ -1009,13 +1018,14 @@
    campaign/save consumer before wiring the isolated mission-outcome state.
    Preserve one already-ordered call per transition; do not batch, sort,
    deduplicate, replay, or invent a priority when both native flags are true.
-4. Apply the implemented controller-profile/AFIP foundation only at a
-   pause-or-mission boundary by constructing a fresh router/bridge pair and
-   re-entering the neutral gate; never mutate position-indexed active router
-   state in place. Then add calibration/remapping UI, persistent touch
-   layout/visibility profiles, controller glyphs, haptics, and finished menu
-   bindings before touch-only and controller-only acceptance on both target
-   iPhones.
+4. Add the native calibration/remapping editor and private iOS AFIP adapter on
+   top of the implemented startup installation seam. Before supporting live
+   replacement, add a host-owned pause transaction that prepares a fresh pair.
+   Then add persistent touch layout/visibility profiles, controller glyphs,
+   haptics, and finished menu bindings before touch-only and controller-only
+   acceptance on both target iPhones. Never mutate position-indexed active
+   router state in place or accept a live caller's unauthenticated mission
+   claim.
 5. Connect the implemented weak camera-runtime endpoint to the recovered live
    AirCraft producer once it supplies distinct chase position, world anchor,
    vehicle rotation, live health, inactive state, and the confirmed scheduler
@@ -1052,14 +1062,20 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
-- Controller Profile Core V1 passes fresh 357-step Windows GCC 15.2/Ninja and
-  MSVC 19.51/Ninja builds plus all 111 CTests under each compiler. Its default
+- Controller Profile Core V1 and its native startup slice pass a fresh
+  360-step Windows GCC 15.2/Ninja build with 112/112 CTests and a fresh
+  642-step MSVC 19.51/Ninja build of `AirfixDogfighter.exe` with 121/121
+  CTests. Its default
   transform is exhaustively identical over all 65,535 valid Q15 values on all
-  four axes; standalone Clang 22 warnings-as-errors builds pass for the profile,
-  AFIP codec, and durable store. Independent final re-review reports GO with no
-  remaining P0-P3 finding after unreachable recovery thresholds/directions and
-  backup persistence diagnostics were corrected. The profile/store remain
-  unwired from native adapters and active runtime state.
+  four axes. Portable fresh-pair tests prove old queued input is discarded,
+  a held full snapshot stays blocked, exactly two neutral ticks reopen input,
+  and the next press uses the replacement table. Sparse-profile tests prove
+  unmapped full-state and later events never poison the router. Clang 22
+  warnings-as-errors, synthetic public-boundary tests, and the 572-file
+  repository scan pass.
+  Independent final re-review reproduces the old sparse-profile failure,
+  confirms the fix, and reports GO with no P0-P3 finding. Hosted Apple
+  compilation remains the release gate for this new slice.
 - The isolated mission-outcome state passes fresh complete Windows GCC
   15.2/Ninja and MSVC 19.51/Ninja builds plus 108/108 CTests in each. Clang
   22.1.8 passes a warnings-as-errors syntax check. Ghidra and Rizin agree on

@@ -2,6 +2,8 @@
 
 #import <GameController/GameController.h>
 
+#include "airfix/input/InputFrame.hpp"
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -12,7 +14,8 @@
 
 namespace {
 
-constexpr int16_t kControllerTriggerActuation = 16384;
+constexpr int16_t kControllerTriggerActuation =
+    airfix::input::controllerTriggerActuationQ15;
 
 [[nodiscard]] int16_t signedQ15(const float value) noexcept {
     if (!std::isfinite(value)) {
@@ -59,6 +62,10 @@ constexpr int16_t kControllerTriggerActuation = 16384;
         return sample.dpadUpPressed;
     case AirfixGameControllerDigitalControlDpadDown:
         return sample.dpadDownPressed;
+    case AirfixGameControllerDigitalControlDpadLeft:
+        return sample.dpadLeftPressed;
+    case AirfixGameControllerDigitalControlDpadRight:
+        return sample.dpadRightPressed;
     case AirfixGameControllerDigitalControlRightShoulder:
         return sample.rightShoulderPressed;
     case AirfixGameControllerDigitalControlLeftShoulder:
@@ -87,6 +94,12 @@ void setDigitalControlPressed(
         break;
     case AirfixGameControllerDigitalControlDpadDown:
         sample.dpadDownPressed = pressed;
+        break;
+    case AirfixGameControllerDigitalControlDpadLeft:
+        sample.dpadLeftPressed = pressed;
+        break;
+    case AirfixGameControllerDigitalControlDpadRight:
+        sample.dpadRightPressed = pressed;
         break;
     case AirfixGameControllerDigitalControlRightShoulder:
         sample.rightShoulderPressed = pressed;
@@ -130,6 +143,8 @@ void setDigitalControlPressed(
     sample.secondaryTrigger = positiveQ15(profile.leftTrigger.value);
     sample.dpadUpPressed = profile.dpad.up.isPressed;
     sample.dpadDownPressed = profile.dpad.down.isPressed;
+    sample.dpadLeftPressed = profile.dpad.left.isPressed;
+    sample.dpadRightPressed = profile.dpad.right.isPressed;
     sample.rightShoulderPressed = profile.rightShoulder.isPressed;
     sample.leftShoulderPressed = profile.leftShoulder.isPressed;
     sample.faceLeftPressed = profile.buttonX.isPressed;
@@ -548,6 +563,10 @@ void setDigitalControlPressed(
         AirfixGameControllerDigitalControlDpadUp);
     installDigitalButton(profile.dpad.down,
         AirfixGameControllerDigitalControlDpadDown);
+    installDigitalButton(profile.dpad.left,
+        AirfixGameControllerDigitalControlDpadLeft);
+    installDigitalButton(profile.dpad.right,
+        AirfixGameControllerDigitalControlDpadRight);
     installDigitalButton(profile.rightShoulder,
         AirfixGameControllerDigitalControlRightShoulder);
     installDigitalButton(profile.leftShoulder,
@@ -629,6 +648,8 @@ void setDigitalControlPressed(
     profile.leftTrigger.valueChangedHandler = nil;
     profile.dpad.up.pressedChangedHandler = nil;
     profile.dpad.down.pressedChangedHandler = nil;
+    profile.dpad.left.pressedChangedHandler = nil;
+    profile.dpad.right.pressedChangedHandler = nil;
     profile.rightShoulder.pressedChangedHandler = nil;
     profile.leftShoulder.pressedChangedHandler = nil;
     profile.buttonX.pressedChangedHandler = nil;
@@ -708,6 +729,8 @@ void setDigitalControlPressed(
     switch (control) {
     case AirfixGameControllerDigitalControlDpadUp:
     case AirfixGameControllerDigitalControlDpadDown:
+    case AirfixGameControllerDigitalControlDpadLeft:
+    case AirfixGameControllerDigitalControlDpadRight:
     case AirfixGameControllerDigitalControlRightShoulder:
     case AirfixGameControllerDigitalControlLeftShoulder:
     case AirfixGameControllerDigitalControlFaceLeft:

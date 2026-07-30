@@ -2,6 +2,7 @@
 
 #import "AirfixIOSInputCoordinator.h"
 
+#include "airfix/input/ControllerInputRuntimeConfiguration.hpp"
 #include "airfix/input/InputFrame.hpp"
 
 #include <functional>
@@ -26,6 +27,9 @@ bool installInputFrameConsumer(
     const InputFrameConsumer& consumer) noexcept;
 void reportInputFrameConsumerFailure(
     AirfixIOSInputCoordinator* coordinator) noexcept;
+bool installControllerInputProfileBeforeStart(
+    AirfixIOSInputCoordinator* coordinator,
+    const input::ResolvedControllerInputProfile& profile) noexcept;
 
 } // namespace detail
 

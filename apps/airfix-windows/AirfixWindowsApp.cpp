@@ -15,6 +15,7 @@
 #include "airfix/package/AfPackRecovery.hpp"
 #include "airfix/runtime/AppSession.hpp"
 #include "airfix/runtime/PlayerAircraftPresentationCoordinator.hpp"
+#include "airfix/settings/ControllerInputProfileStore.hpp"
 #include "airfix/settings/RenderPresentationSettingsStore.hpp"
 #include "airfix/simulation/LegacyAircraftAudioCoordinator.hpp"
 #include "airfix/simulation/PlayerSpawnPose.hpp"
@@ -556,6 +557,55 @@ int run(const int argumentCount, char *arguments[]) {
         "Windows render settings coordinator could not be created");
   }
 
+  const auto defaultControllerProfile =
+      airfix::input::resolveControllerInputProfile(
+          airfix::input::makeDefaultControllerInputProfileRecord());
+  if (!defaultControllerProfile.complete()) {
+    throw std::runtime_error(
+        "canonical controller profile could not be resolved");
+  }
+  auto preparedControllerInput =
+      airfix::input::prepareControllerInputRuntimeConfiguration(
+          *defaultControllerProfile.profile);
+  if (!preparedControllerInput.complete()) {
+    throw std::runtime_error(
+        "canonical controller runtime configuration could not be prepared");
+  }
+  auto controllerInputConfiguration = *preparedControllerInput.configuration;
+  if (!sessionOnlyInvocation &&
+      persistenceContext.settingsDirectory.has_value()) {
+    try {
+      const auto loaded = airfix::settings::loadControllerInputProfile(
+          *persistenceContext.settingsDirectory);
+      const auto prepared =
+          airfix::input::prepareControllerInputRuntimeConfiguration(
+              loaded.profile);
+      if (!prepared.complete()) {
+        throw std::runtime_error(
+            "validated controller profile did not prepare");
+      }
+      controllerInputConfiguration = *prepared.configuration;
+      switch (loaded.source) {
+      case airfix::settings::ControllerInputProfileLoadSource::current:
+        std::cerr << "Controller input profile: current\n";
+        break;
+      case airfix::settings::ControllerInputProfileLoadSource::backup:
+        std::cerr << "Controller input profile: backup\n";
+        break;
+      case airfix::settings::ControllerInputProfileLoadSource::defaults:
+        std::cerr << "Controller input profile: defaults\n";
+        break;
+      }
+      if (loaded.persistenceBlocked) {
+        std::cerr << "Controller input profile: persistence-blocked\n";
+      }
+    } catch (...) {
+      // The canonical in-memory profile remains active. Never reveal a
+      // settings path, document bytes, checksum, or platform error here.
+      std::cerr << "Controller input profile: storage-unavailable\n";
+    }
+  }
+
   airfix::windows::AirfixWindowsUiRasterizer uiRasterizer;
   if (options.captureSettingsPanelOutput.has_value()) {
     auto panel = airfix::windows::AirfixWindowsRenderSettingsPanel::create(
@@ -701,7 +751,7 @@ int run(const int argumentCount, char *arguments[]) {
     // milestone.
     session.setContentState(airfix::runtime::ContentState::ready);
   }
-  airfix::windows::AirfixSdlInputAdapter input;
+  airfix::windows::AirfixSdlInputAdapter input{controllerInputConfiguration};
   airfix::runtime::PlayerAircraftPresentationCoordinator
       playerAircraftPresentation;
   std::optional<airfix::windows::AirfixWindowsRenderSettingsPanel>
