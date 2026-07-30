@@ -997,6 +997,14 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The bootstrap/module-loading cross-check matches all nine published
+  representative function boundaries exactly between Ghidra 12.1.2 and Rizin
+  0.9.1. The Ghidra, working-copy, and Rizin wrapper suites, 12 normalized
+  Rizin exporter tests, changed-document links, changed-scope local-path scan,
+  the 280-row unique function catalogue with only its two known historical
+  missing references, the 547-file public-boundary scan, `git diff --check`,
+  and the complete existing 115-test Windows product suite pass. No original
+  executable or plugin was run.
 - The staged native control-command step passes fresh complete Windows GCC
   15.2/Ninja and isolated WSL Ubuntu GCC 13.3/Ninja builds plus all 104 CTests.
   A fresh Clang 22.1.8 build passes the dedicated exhaustive test; one

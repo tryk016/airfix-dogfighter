@@ -3891,3 +3891,21 @@ superseded evidence.
 - A clean Windows MSVC/Ninja product build passes all 115 CTests. The isolated
   `Airfix-Dev` WSL clone builds all 302 Linux targets and passes 106/106 CTests.
   Clang-format, `git diff --check`, and the 546-file public-boundary scan pass.
+
+## 2026-07-30 - bootstrap and module-loader cross-check
+
+- `EV-20260730-002`: a complete 16-module PE scan confirmed that only
+  `AfEngine.dll` and `Cc.dll` own recovered dynamic-loading paths;
+  `Dogfighter.exe` is the v1.01 Win32 application shell and does not dynamically
+  load the historical plugins.
+- Recovered the executable wrapper vtable and exact message-pump,
+  input/time-update, active-frame-event loop order.
+- Separated setup metadata probing, setup-only device enumeration, and the
+  retained runtime `Cc.dll::GtOpenDevice` path. Confirmed graphics and mission
+  handle teardown and bounded the remaining shared type-handle question.
+- Ghidra 12.1.2 and Rizin 0.9.1 agree on representative function boundaries,
+  direct calls, loader gates, and data references. No original binary or plugin
+  was executed.
+- Promoted bootstrap/resource loading from `not-investigated` to `observed`;
+  portable implementation remains a deterministic C++20 registry rather than
+  a recreation of Windows wildcard order or DLL loading.

@@ -5,7 +5,7 @@ Statuses: `not-investigated`, `observed`, `specified`, `implemented`, `verified`
 
 | Area | Priority | Status | Reference scenarios | Notes |
 |---|---:|---|---|---|
-| Bootstrap and resource loading | P0 | not-investigated | SCN-BOOT-001 | Launcher/ICD boundary unknown |
+| Bootstrap and resource loading | P0 | observed | SCN-BOOT-001 | Patched executable wrapper loop, package-first startup phases, dynamic loader ownership, plugin gates, and module lifetimes are statically cross-checked; the protected `.icd` relationship remains intentionally unknown and is not required by the portable products |
 | Main menu and settings | P1 | not-investigated | SCN-UI-001 | |
 | iOS render-presentation settings UI | P1 | implemented | SCN-IOS-SETTINGS-001 | Safe-area UIKit panel edits the four ADR-0014 fields through one portable draft/apply model and the existing durable Metal transaction; touch and controller menu/modal routing are implemented, while original-menu parity and physical-device acceptance remain pending |
 | Level/room loading | P0 | implemented | SCN-LEVEL-001 | Bounded atomic authenticated aggregate loader with ordered multi-CCF room/start lookup, shared physical CCF cache, global texture namespace, combined room/player draw model, retained all-room BSP arena, owned placed/player dynamic colliders, exact CPU budget, native publication boundary, and non-moving iOS runtime ownership with exact reusable line-frame buffers; stateful producer application and device acceptance pending |

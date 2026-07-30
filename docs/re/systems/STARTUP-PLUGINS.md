@@ -1,15 +1,19 @@
 # Startup, package chain, and plugin registration
 
-**Owner modules:** `Dogfighter.exe`, `AfEngine.dll`
+**Owner modules:** `Dogfighter.exe`, `AfEngine.dll`, `Cc.dll`
 
-**Status:** Windows behavior understood statically; portable registry not yet implemented
+**Status:** Windows behavior cross-checked statically; portable registry not
+yet implemented
 
-**Confidence:** 3/3 for discovery names/version checks/order; 2/3 for factory
-parameter types not confirmed by source headers
+**Confidence:** 3/3 for loader ownership, discovery names, version checks,
+startup phase order, and graphics/mode handle lifetime; 2/3 for formal factory
+parameter types and shared type-module teardown coordination
 
-**Evidence IDs:** `EV-20260721-011`, `EV-20260721-013`, `EV-20260721-014`
+**Evidence IDs:** `EV-20260721-011`, `EV-20260721-013`, `EV-20260721-014`,
+`EV-20260730-002`
 
-**Scenario IDs:** `SCN-STARTUP-001`, `SCN-PACKAGE-001`, `SCN-PLUGIN-001`
+**Scenario IDs:** `SCN-BOOT-001`, `SCN-STARTUP-001`, `SCN-PACKAGE-001`,
+`SCN-PLUGIN-001`
 
 ## Responsibilities and boundaries
 
@@ -37,8 +41,20 @@ Windows DLLs or exposing the historical ABI.
    methods in order.
 7. Destroy the object/window and unregister the class.
 
-The exact meaning of the two per-frame virtual calls still needs naming, but
-their order is stable evidence for the future application loop.
+The wrapper vtable at VA `0x004393FC` identifies the used slots:
+
+| Slot | RVA | Working name | Behavior |
+|---:|---:|---|---|
+| `+0x04` | `0x00010A10` | `ApplicationOpen` | closes prior state and calls `NfMain::Open` |
+| `+0x08` | `0x00010AD0` | `ApplicationClose` | releases wrapper render objects and calls `NfMain::Close` |
+| `+0x0C` | `0x00010C00` | `ApplicationWindowMessage` | activation, character input, CD notification, and device state |
+| `+0x10` | `0x00010FF0` | `PumpMessagesAndContinue` | drains messages and stops after `WM_QUIT` |
+| `+0x14` | `0x00010FA0` | `PollInputAndAdvanceTime` | input/console work followed by game and real-time advancement |
+| `+0x18` | `0x00011460` | `DispatchActiveFrameEvent` | resets the timer and saves/processes the active-frame event |
+
+The exact loop is message pump/continue, input/time, then active-frame event.
+The event is constructed with `0xFF000000` and `4`; its semantic enum name
+remains unclaimed.
 
 ## Package-chain initialization
 
@@ -75,8 +91,8 @@ candidate, `NfDatabase::AddTypes`:
 3. requires both exports and `*(uint32_t*)nfVersion == 0x6D`;
 4. calls the factory with `(NfDatabase*, HMODULE, modulePath)`;
 5. unloads the DLL on any failure;
-6. retains successful type modules so their registered factories/code remain
-   valid.
+6. retains successful type modules through registered `NfType` ownership so
+   their code remains valid.
 
 Recovered semantic signature (some concrete C++ types remain provisional):
 
@@ -113,17 +129,31 @@ its destructor. `Dogfight.mode` additionally exports `setupServer` and
 
 ## Graphics-adapter plugin contract
 
-The setup path first probes a candidate with `LoadLibraryEx(...,
-DONT_RESOLVE_DLL_REFERENCES)`, requires `dllVer == 0x3B`, reads `dllName`, and
-unloads it. Actual creation loads the module normally, resolves `dllCreate`, and
-calls approximately:
+There are three distinct graphics paths.
+
+`AfSetup::Open` first probes each `gt*.dll` candidate with
+`LoadLibraryEx(..., DONT_RESOLVE_DLL_REFERENCES)`, requires
+`dllVer == 0x3B`, reads `dllName`, and unloads it. It skips `_debug` and
+`_profile` candidates. Setup-time card/mode enumeration then loads the accepted
+adapter normally, resolves `dllCreate`, creates a temporary device, enumerates
+it, and releases it.
+
+The actual runtime device is opened later by `NfMain::ChangeDevice` through
+exported `Cc.dll::GtOpenDevice`. That function requires `dllVer`, `dllName`,
+and `dllCreate`, then calls approximately:
 
 ```text
-GtDevice* dllCreate(ModuleHandle, 0)
+GtDevice* dllCreate(ModuleHandle, WindowHandle)
 ```
 
-The created device exposes virtual enumeration/initialization behavior. Both
-`gtDirect3D.dll` and `gt3DFX.dll` implement this same three-export boundary.
+It opens the selected card through the returned device's virtual interface.
+The successful device retains the module handle until `GtDevice::Release`
+destroys the device and unloads the DLL. `Cc.dll::GtEnumDevices` is a separate
+public callback-based enumeration API; the recovered `AfSetup` path performs
+its own enumeration rather than calling it.
+
+Both `gtDirect3D.dll` and `gt3DFX.dll` implement the same three-export
+boundary.
 
 ## Startup ordering inside `NfMain::Open`
 
@@ -146,6 +176,9 @@ They are platform artifacts, not dependencies of the portable core.
 - Missing `missionCreate` unloads the mode and returns no mission.
 - Missing/invalid graphics metadata or creation exports produce setup errors and
   unload the module.
+- Type and mode scans use unsorted `FindFirstFileA`/`FindNextFileA` order.
+  Portable registry order must be explicit rather than inheriting filesystem
+  enumeration order.
 - A missing `Packlist.ini` falls back to every `*.up` file in the working
   directory; the iOS importer will not use this nondeterministic fallback.
 - Starting/changing a mission issues `cd play` for a random legacy CD track.
@@ -178,7 +211,11 @@ multiplayer mode are not registered in the v1 product build.
 ## Known unknowns
 
 - Concrete C++ parameter/ownership types behind the three factory calls.
-- Names and exact contracts of the two per-frame executable virtual calls.
-- Whether successful type plugins are unloaded only at process shutdown or by a
-  database-specific teardown path.
+- The formal source-level name of the frame event constructed with
+  `(0xFF000000, 4)`.
+- Exact coordination of `NfType::Release` when several registered types share
+  one plugin handle.
 - All commands executed from obfuscated startup data in `NfMain::Open`.
+
+The full cross-tool comparison and exact function boundaries are recorded in
+[`EXP-20260730-066`](../../experiments/EXP-20260730-066-bootstrap-module-loading.md).
