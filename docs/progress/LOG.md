@@ -3790,4 +3790,7 @@ superseded evidence.
   22.1.8 build passes the dedicated test. The public-boundary tests, all three
   reverse-engineering wrapper suites, 12 Rizin export tests, 523-file public
   scan, 268-row/14-column function catalogue, changed-document links,
-  changed-scope local-path scan, and `git diff --check` pass.
+  changed-scope local-path scan, and `git diff --check` pass. Pull-request
+  Actions runs `30511495498` and `30511495515` pass all seven hosted Windows
+  product, Windows/Ubuntu/macOS portable, clangd, iPhoneOS, and
+  iPhoneSimulator jobs.

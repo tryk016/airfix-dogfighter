@@ -982,8 +982,9 @@ These questions do not block static analysis or the archive work.
   12 Rizin export tests, synthetic boundary tests, the 523-file public scan,
   268-row function catalogue, changed-document links, local-path scan, and
   `git diff --check` pass. Independent review's sole P2 catalogue overclaim is
-  fixed; final review reports no open P0-P3. Hosted publication gates remain
-  pending for this slice.
+  fixed; final review reports no open P0-P3. Pull-request Actions runs
+  `30511495498` and `30511495515` pass all seven hosted Windows product,
+  Windows/Ubuntu/macOS portable, clangd, iPhoneOS, and iPhoneSimulator gates.
 - The backend render-scale slice passes independent complete MSVC 19.51 and
   MinGW GCC 15.2 Windows product rebuilds and all 94 tests in each build. Both
   public D3D11 smoke modes render a visible frame; the added scaled mode

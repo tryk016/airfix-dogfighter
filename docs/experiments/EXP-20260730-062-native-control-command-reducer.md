@@ -211,6 +211,10 @@ now remains `in_progress` and names the implemented subset. Re-review reports
 GO with no open P0-P3 findings; an additional GCC 15.2
 `-Wall -Wextra -Wpedantic -Werror` build and dedicated test pass.
 
+Pull-request Actions runs `30511495498` and `30511495515` pass all seven
+hosted Windows product, Windows/Ubuntu/macOS portable, clangd, iPhoneOS, and
+iPhoneSimulator jobs.
+
 ## Deliberate exclusions
 
 This stage does not implement or infer:
