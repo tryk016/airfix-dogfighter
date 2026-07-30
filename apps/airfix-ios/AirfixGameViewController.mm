@@ -5,6 +5,7 @@
 #import "AirfixIOSInputCoordinator.h"
 #import "AirfixMetalRenderer.h"
 #import "AirfixRenderSettingsCoordinator.h"
+#import "AirfixRenderSettingsPanelViewController.h"
 #import "AirfixTouchControlsView.h"
 #import "AirfixMissionWorldRoomSnapshot.h"
 
@@ -88,7 +89,8 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
 } // namespace
 
 @interface AirfixGameViewController ()
-    <AirfixContentCoordinatorDelegate, AirfixIOSInputCoordinatorDelegate> {
+    <AirfixContentCoordinatorDelegate, AirfixIOSInputCoordinatorDelegate,
+     AirfixRenderSettingsPanelViewControllerDelegate> {
     airfix::runtime::AppSession _session;
     airfix::runtime::PlayerAircraftPresentationCoordinator
         _playerAircraftPresentation;
@@ -108,9 +110,16 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
 @property(nonatomic, strong) AirfixContentCoordinator* contentCoordinator;
 @property(nonatomic, strong) AirfixTouchControlsView* touchControlsView;
 @property(nonatomic, strong) AirfixIOSInputCoordinator* inputCoordinator;
+@property(nonatomic, strong) UIButton* resumeButton;
+@property(nonatomic, strong) UIButton* renderSettingsButton;
+@property(nonatomic, strong)
+    AirfixRenderSettingsPanelViewController* renderSettingsPanel;
 @property(nonatomic) BOOL inputPipelineReady;
 @property(nonatomic) BOOL simulationPipelineReady;
 
+- (void)showRenderSettings;
+- (void)closeRenderSettingsPanel;
+- (void)resumeGameplay;
 - (void)updateDiagnosticsLabelWithInputDiagnostics:
     (AirfixInputDiagnostics*)diagnostics;
 - (void)handleAudioForcedPause:
@@ -176,6 +185,42 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     self.contentCoordinator = [[AirfixContentCoordinator alloc]
         initWithPresentingViewController:self];
     self.contentCoordinator.delegate = self;
+    UIButton* resumeButton =
+        [UIButton buttonWithType:UIButtonTypeSystem];
+    resumeButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [resumeButton setTitle:@"Resume"
+                  forState:UIControlStateNormal];
+    resumeButton.titleLabel.font =
+        [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
+    resumeButton.titleLabel.adjustsFontForContentSizeCategory = YES;
+    resumeButton.accessibilityIdentifier =
+        @"airfix.pause.resume";
+    resumeButton.accessibilityHint =
+        @"Resumes gameplay after resetting physical input.";
+    resumeButton.hidden = YES;
+    [resumeButton addTarget:self
+                     action:@selector(resumeGameplay)
+           forControlEvents:UIControlEventTouchUpInside];
+    self.resumeButton = resumeButton;
+
+    UIButton* renderSettingsButton =
+        [UIButton buttonWithType:UIButtonTypeSystem];
+    renderSettingsButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [renderSettingsButton setTitle:@"Display settings"
+                          forState:UIControlStateNormal];
+    renderSettingsButton.titleLabel.font =
+        [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
+    renderSettingsButton.titleLabel.adjustsFontForContentSizeCategory = YES;
+    renderSettingsButton.accessibilityIdentifier =
+        @"airfix.settings.display.open";
+    renderSettingsButton.accessibilityHint =
+        @"Pauses gameplay and opens display settings.";
+    [renderSettingsButton addTarget:self
+                             action:@selector(showRenderSettings)
+                   forControlEvents:UIControlEventTouchUpInside];
+    renderSettingsButton.enabled =
+        self.renderSettingsCoordinator != nil;
+    self.renderSettingsButton = renderSettingsButton;
     _rendererPreparationQueue = dispatch_queue_create(
         "com.tryk016.airfixdogfighter.renderer-preparation",
         DISPATCH_QUEUE_SERIAL);
@@ -229,6 +274,8 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     }
     UIStackView* stack = [[UIStackView alloc] initWithArrangedSubviews:@[
         label,
+        resumeButton,
+        renderSettingsButton,
         self.contentCoordinator.controlsView,
     ]];
     stack.translatesAutoresizingMaskIntoConstraints = NO;
@@ -386,6 +433,143 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     [super viewDidDisappear:animated];
 }
 
+- (void)showRenderSettings {
+    NSAssert(NSThread.isMainThread,
+        @"The display-settings overlay belongs to main");
+    if (self.renderSettingsPanel != nil ||
+        self.renderSettingsCoordinator == nil) {
+        return;
+    }
+    if (!self.renderSettingsCoordinator.readyForPresentation) {
+        self.statusLabel.text =
+            @"Airfix Dogfighter reconstruction\n"
+             "Display settings are still starting";
+        return;
+    }
+    if (self.renderSettingsCoordinator.applying) {
+        self.statusLabel.text =
+            @"Airfix Dogfighter reconstruction\n"
+             "Display settings are still being applied";
+        return;
+    }
+
+    _audioBackend->setActive(false);
+    _session.pause();
+    ((MTKView*)self.view).paused = YES;
+    [self.inputCoordinator
+        setInputContext:AirfixNativeInputContextModal];
+    self.touchControlsView.hidden = YES;
+
+    AirfixRenderSettingsPanelViewController* panel =
+        [[AirfixRenderSettingsPanelViewController alloc]
+            initWithCoordinator:self.renderSettingsCoordinator];
+    panel.delegate = self;
+    [self addChildViewController:panel];
+    panel.view.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:panel.view];
+    [NSLayoutConstraint activateConstraints:@[
+        [panel.view.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [panel.view.bottomAnchor
+            constraintEqualToAnchor:self.view.bottomAnchor],
+        [panel.view.leadingAnchor
+            constraintEqualToAnchor:self.view.leadingAnchor],
+        [panel.view.trailingAnchor
+            constraintEqualToAnchor:self.view.trailingAnchor],
+    ]];
+    [panel didMoveToParentViewController:self];
+    self.renderSettingsPanel = panel;
+    self.renderSettingsButton.enabled = NO;
+    self.statusLabel.text =
+        @"Airfix Dogfighter reconstruction\n"
+         "Gameplay paused while display settings are open";
+}
+
+- (void)closeRenderSettingsPanel {
+    NSAssert(NSThread.isMainThread,
+        @"The display-settings overlay belongs to main");
+    AirfixRenderSettingsPanelViewController* panel =
+        self.renderSettingsPanel;
+    if (panel == nil) {
+        return;
+    }
+
+    panel.delegate = nil;
+    [panel willMoveToParentViewController:nil];
+    [panel.view removeFromSuperview];
+    [panel removeFromParentViewController];
+    self.renderSettingsPanel = nil;
+    self.renderSettingsButton.enabled =
+        self.renderSettingsCoordinator != nil;
+
+    [self.inputCoordinator
+        setInputContext:AirfixNativeInputContextMenu];
+    [self.inputCoordinator resetForGameplayBoundary];
+    const BOOL gameplayReady =
+        _session.contentState() == airfix::runtime::ContentState::ready &&
+        self.inputPipelineReady &&
+        self.simulationPipelineReady &&
+        self.inputCoordinator.isOperational &&
+        self.renderer.missionWorldRoomInstalled;
+    self.touchControlsView.hidden = YES;
+    self.resumeButton.hidden = !gameplayReady;
+    _audioBackend->setActive(false);
+    _session.pause();
+    ((MTKView*)self.view).paused = YES;
+    if (gameplayReady) {
+        self.statusLabel.text =
+            @"Airfix Dogfighter reconstruction\n"
+             "Settings closed; select Resume or press controller B";
+    }
+    UIAccessibilityPostNotification(
+        UIAccessibilityScreenChangedNotification,
+        self.renderSettingsButton);
+}
+
+- (void)resumeGameplay {
+    NSAssert(NSThread.isMainThread,
+        @"Explicit gameplay resume belongs to main");
+    if (self.renderSettingsPanel != nil) {
+        return;
+    }
+    const BOOL mayResume =
+        UIApplication.sharedApplication.applicationState ==
+            UIApplicationStateActive &&
+        self.inputPipelineReady &&
+        self.simulationPipelineReady &&
+        self.inputCoordinator.isOperational &&
+        self.renderSettingsCoordinator.readyForPresentation &&
+        self.renderer.missionWorldRoomInstalled;
+    if (!mayResume) {
+        return;
+    }
+
+    [self.inputCoordinator
+        setInputContext:AirfixNativeInputContextGameplay];
+    [self.inputCoordinator resetForGameplayBoundary];
+    const bool resumed = _session.resume();
+    ((MTKView*)self.view).paused = !resumed;
+    if (!resumed) {
+        [self.inputCoordinator
+            setInputContext:AirfixNativeInputContextMenu];
+        [self.inputCoordinator resetForGameplayBoundary];
+        return;
+    }
+
+    _audioBackend->setActive(true);
+    self.resumeButton.hidden = YES;
+    self.touchControlsView.hidden = NO;
+    self.statusLabel.text =
+        @"Airfix Dogfighter reconstruction\nGameplay running";
+}
+
+- (void)renderSettingsPanelViewControllerDidFinish:
+    (AirfixRenderSettingsPanelViewController*)panel {
+    if (panel != self.renderSettingsPanel) {
+        return;
+    }
+    [self closeRenderSettingsPanel];
+}
+
 - (BOOL)prefersStatusBarHidden {
     return YES;
 }
@@ -430,13 +614,18 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     // Becoming active never resumes gameplay. The player must use the pause
     // control or a controller menu button after every lifecycle transition.
     ((MTKView*)self.view).paused = YES;
-    if (_session.contentState() == airfix::runtime::ContentState::ready &&
+    if (self.renderSettingsPanel == nil &&
+        _session.contentState() == airfix::runtime::ContentState::ready &&
         self.inputPipelineReady &&
         self.simulationPipelineReady &&
         self.inputCoordinator.isOperational) {
+        [self.inputCoordinator
+            setInputContext:AirfixNativeInputContextMenu];
+        self.touchControlsView.hidden = YES;
+        self.resumeButton.hidden = NO;
         self.statusLabel.text =
             @"Airfix Dogfighter reconstruction\n"
-             @"Gameplay paused; press pause or controller menu to resume";
+             @"Gameplay paused; A opens settings, B resumes";
     }
 }
 
@@ -467,6 +656,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
         [self.inputCoordinator resetForGameplayBoundary];
         ((MTKView*)self.view).paused = YES;
         self.touchControlsView.hidden = YES;
+        self.resumeButton.hidden = YES;
     }
 }
 
@@ -482,6 +672,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
         self.inputCoordinator.diagnostics];
     ((MTKView*)self.view).paused = YES;
     self.touchControlsView.hidden = YES;
+    self.resumeButton.hidden = YES;
     self.statusLabel.text =
         @"Airfix Dogfighter reconstruction\nLoading private mission...";
 }
@@ -740,17 +931,23 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
 
             strongSelf->_session.setContentState(
                 airfix::runtime::ContentState::ready);
+            [strongSelf.inputCoordinator
+                setInputContext:AirfixNativeInputContextMenu];
             [strongSelf.inputCoordinator resetForGameplayBoundary];
             const BOOL inputOperational =
                 strongSelf.inputPipelineReady &&
                 strongSelf.simulationPipelineReady &&
                 strongSelf.inputCoordinator.isOperational;
-            strongSelf.touchControlsView.hidden = !inputOperational;
+            strongSelf.touchControlsView.hidden =
+                YES;
+            strongSelf.resumeButton.hidden =
+                strongSelf.renderSettingsPanel != nil ||
+                !inputOperational;
             if (inputOperational) {
                 strongSelf.statusLabel.text = [NSString stringWithFormat:
                     @"Airfix Dogfighter reconstruction\n"
                      @"Private mission ready: %lu meshes, %lu textures, %lu draws\n"
-                     @"Press pause or controller menu to start",
+                     @"Select Resume or press controller B to start",
                     static_cast<unsigned long>(snapshot.meshCount),
                     static_cast<unsigned long>(snapshot.textureCount),
                     static_cast<unsigned long>(snapshot.drawCommandCount)];
@@ -779,6 +976,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     [self.inputCoordinator resetForGameplayBoundary];
     ((MTKView*)self.view).paused = YES;
     self.touchControlsView.hidden = YES;
+    self.resumeButton.hidden = YES;
     self.statusLabel.text =
         @"Airfix Dogfighter reconstruction\nPrivate mission could not be loaded";
 }
@@ -790,6 +988,13 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     }
 
     MTKView* metalView = (MTKView*)self.view;
+    if (self.renderSettingsPanel != nil &&
+        reason == AirfixInputPauseReasonUserControl) {
+        _audioBackend->setActive(false);
+        _session.pause();
+        metalView.paused = YES;
+        return;
+    }
     if (reason != AirfixInputPauseReasonUserControl) {
         _audioBackend->setActive(false);
         _session.pause();
@@ -797,15 +1002,30 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
         if (reason == AirfixInputPauseReasonInputPipelineFailure) {
             self.inputPipelineReady = NO;
             self.touchControlsView.hidden = YES;
+            self.resumeButton.hidden = YES;
             self.statusLabel.text =
                 @"Airfix Dogfighter reconstruction\nInput pipeline failed";
         }
         else if (reason == AirfixInputPauseReasonControllerDisconnected) {
+            if (self.renderSettingsPanel == nil) {
+                [self.inputCoordinator
+                    setInputContext:AirfixNativeInputContextMenu];
+                self.resumeButton.hidden =
+                    !self.renderer.missionWorldRoomInstalled;
+            }
+            self.touchControlsView.hidden = YES;
             self.statusLabel.text =
                 @"Airfix Dogfighter reconstruction\n"
                  @"Controller disconnected; gameplay paused";
         }
         else if (reason == AirfixInputPauseReasonInputOverflow) {
+            if (self.renderSettingsPanel == nil) {
+                [self.inputCoordinator
+                    setInputContext:AirfixNativeInputContextMenu];
+                self.resumeButton.hidden =
+                    !self.renderer.missionWorldRoomInstalled;
+            }
+            self.touchControlsView.hidden = YES;
             self.statusLabel.text =
                 @"Airfix Dogfighter reconstruction\n"
                  @"Input stream reset; gameplay paused";
@@ -817,27 +1037,17 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
         _audioBackend->setActive(false);
         _session.pause();
         metalView.paused = YES;
+        [self.inputCoordinator
+            setInputContext:AirfixNativeInputContextMenu];
+        self.touchControlsView.hidden = YES;
+        self.resumeButton.hidden = NO;
         self.statusLabel.text =
             @"Airfix Dogfighter reconstruction\n"
-             @"Gameplay paused; press pause or controller menu to resume";
+             @"Gameplay paused; A opens settings, B resumes";
         return;
     }
 
-    const BOOL mayResume =
-        UIApplication.sharedApplication.applicationState ==
-            UIApplicationStateActive &&
-        self.inputPipelineReady &&
-        self.simulationPipelineReady &&
-        self.inputCoordinator.isOperational &&
-        self.renderSettingsCoordinator.readyForPresentation &&
-        self.renderer.missionWorldRoomInstalled;
-    const bool resumed = mayResume && _session.resume();
-    metalView.paused = !resumed;
-    if (resumed) {
-        _audioBackend->setActive(true);
-        self.statusLabel.text =
-            @"Airfix Dogfighter reconstruction\nGameplay running";
-    }
+    [self resumeGameplay];
 }
 
 - (void)handleAudioForcedPause:
@@ -845,6 +1055,13 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     _session.pause();
     [self.inputCoordinator resetForGameplayBoundary];
     ((MTKView*)self.view).paused = YES;
+    if (self.renderSettingsPanel == nil) {
+        [self.inputCoordinator
+            setInputContext:AirfixNativeInputContextMenu];
+        self.touchControlsView.hidden = YES;
+        self.resumeButton.hidden =
+            !self.renderer.missionWorldRoomInstalled;
+    }
 
     NSString* detail = @"Audio interrupted; gameplay paused";
     switch (reason) {
@@ -868,6 +1085,23 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
         return;
     }
     (void)state;
+}
+
+- (void)inputCoordinator:(AirfixIOSInputCoordinator*)coordinator
+        didUpdateUIInput:(AirfixUIInputSnapshot*)input {
+    if (coordinator != self.inputCoordinator) {
+        return;
+    }
+    if (self.renderSettingsPanel != nil) {
+        [self.renderSettingsPanel consumeUIInputSnapshot:input];
+        return;
+    }
+    if (input.cancelPressed) {
+        [self resumeGameplay];
+    }
+    else if (input.confirmPressed) {
+        [self showRenderSettings];
+    }
 }
 
 - (void)inputCoordinator:(AirfixIOSInputCoordinator*)coordinator

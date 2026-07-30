@@ -89,6 +89,8 @@ add_executable(airfix_ios MACOSX_BUNDLE
     AirfixMetalRenderer.mm
     AirfixRenderSettingsCoordinator.h
     AirfixRenderSettingsCoordinator.mm
+    AirfixRenderSettingsPanelViewController.h
+    AirfixRenderSettingsPanelViewController.mm
     AirfixShaders.metal
     AirfixTouchControlsView.h
     AirfixTouchControlsView.mm

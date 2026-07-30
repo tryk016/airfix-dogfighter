@@ -4,6 +4,7 @@
 #import "AirfixMetalRenderer.h"
 
 #include "airfix/settings/RenderPresentationPersistenceGate.hpp"
+#include "airfix/settings/RenderPresentationRequestQueue.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -32,14 +33,20 @@ constexpr std::uint64_t kMaximumPreparationRetryMilliseconds = 2'000U;
     __strong AirfixIOSRenderSettingsStore* _store;
     dispatch_queue_t _preparationQueue;
     airfix::settings::RenderPresentationPersistenceGate _gate;
+    airfix::settings::RenderPresentationRequestQueue _requestQueue;
     airfix::render::RenderPresentationSettings _persistentBase;
     airfix::render::RenderPresentationSettingsOverride
         _sessionOverrides;
-    std::optional<airfix::render::RenderPresentationSettings>
-        _pendingPersistentBase;
+    __strong AirfixRenderSettingsApplyCompletion
+        _pendingCompletion;
     std::optional<
         airfix::settings::RenderPresentationPersistenceTicket>
         _activeTicket;
+    __strong AirfixRenderSettingsApplyCompletion
+        _activeCompletion;
+    std::optional<
+        airfix::settings::RenderPresentationRequestTicket>
+        _activeRequest;
     std::optional<
         airfix::settings::RenderPresentationPersistenceTicket>
         _scheduledRetryTicket;
@@ -54,7 +61,17 @@ constexpr std::uint64_t kMaximumPreparationRetryMilliseconds = 2'000U;
 
 - (void)beginCandidate:
     (const airfix::render::RenderPresentationSettings&)persistentBase
-    alreadyDurable:(BOOL)alreadyDurable;
+    alreadyDurable:(BOOL)alreadyDurable
+    request:(const std::optional<
+        airfix::settings::RenderPresentationRequestTicket>&)request;
+- (void)completeActiveTicket:
+            (const airfix::settings::
+                RenderPresentationPersistenceTicket&)ticket
+    result:(AirfixRenderSettingsApplyResult)result;
+- (void)completeActiveRequest:
+            (const airfix::settings::
+                RenderPresentationRequestTicket&)request
+    result:(AirfixRenderSettingsApplyResult)result;
 - (void)launchPreparation:
     (const airfix::settings::
         RenderPresentationPersistenceTicket&)ticket;
@@ -116,6 +133,7 @@ constexpr std::uint64_t kMaximumPreparationRetryMilliseconds = 2'000U;
             AirfixMetalRenderer* renderer = strongSelf->_renderer;
             if (!resolved.accepted() || renderer == nil) {
                 strongSelf->_startupResolved = YES;
+                [strongSelf finishCurrentAndStartPending];
                 return;
             }
             if ([renderer renderPresentationSettings] ==
@@ -126,26 +144,61 @@ constexpr std::uint64_t kMaximumPreparationRetryMilliseconds = 2'000U;
             }
             [strongSelf
                 beginCandidate:strongSelf->_persistentBase
-                alreadyDurable:YES];
+                alreadyDurable:YES
+                request:std::nullopt];
         }];
 }
 
 - (void)requestPersistentSettings:
-    (const airfix::render::RenderPresentationSettings&)settings {
+            (const airfix::render::RenderPresentationSettings&)settings
+    completion:(AirfixRenderSettingsApplyCompletion)completion {
     NSAssert(NSThread.isMainThread,
         @"Render settings requests are main-thread confined");
+    NSParameterAssert(completion != nil);
     if (airfix::render::validateRenderPresentationSettings(settings)
             .has_value()) {
+        completion(
+            AirfixRenderSettingsApplyResultInvalidCandidate);
         return;
     }
-    if (!_loadCompleted || _gate.busy()) {
-        _pendingPersistentBase = settings;
+    if (_persistenceBlocked || _renderer == nil) {
+        completion(
+            AirfixRenderSettingsApplyResultPersistenceUnavailable);
         return;
     }
-    if (_persistenceBlocked) {
+    const auto submission = _requestQueue.submit(
+        settings, _loadCompleted && !_gate.busy());
+    if (submission.disposition ==
+        airfix::settings::
+            RenderPresentationRequestDisposition::exhausted) {
+        completion(
+            AirfixRenderSettingsApplyResultPersistenceUnavailable);
         return;
     }
-    [self beginCandidate:settings alreadyDurable:NO];
+    if (submission.disposition ==
+        airfix::settings::
+            RenderPresentationRequestDisposition::queued) {
+        AirfixRenderSettingsApplyCompletion superseded =
+            _pendingCompletion;
+        _pendingCompletion = [completion copy];
+        if (submission.superseded.has_value() &&
+            superseded != nil) {
+            superseded(
+                AirfixRenderSettingsApplyResultSuperseded);
+        }
+        return;
+    }
+
+    if (!submission.request.has_value()) {
+        completion(
+            AirfixRenderSettingsApplyResultPersistenceUnavailable);
+        return;
+    }
+    _activeRequest = submission.request;
+    _activeCompletion = [completion copy];
+    [self beginCandidate:settings
+          alreadyDurable:NO
+                 request:submission.request];
 }
 
 - (void)notifyPresentationSurfaceAvailable {
@@ -179,6 +232,12 @@ constexpr std::uint64_t kMaximumPreparationRetryMilliseconds = 2'000U;
     return _loadCompleted && !_persistenceBlocked;
 }
 
+- (BOOL)applying {
+    NSAssert(NSThread.isMainThread,
+        @"Render settings application state is main-thread confined");
+    return _gate.busy() || _requestQueue.hasOutstandingWork();
+}
+
 - (airfix::render::RenderPresentationSettings)
     persistentSettings {
     NSAssert(NSThread.isMainThread,
@@ -186,9 +245,22 @@ constexpr std::uint64_t kMaximumPreparationRetryMilliseconds = 2'000U;
     return _persistentBase;
 }
 
+- (airfix::render::RenderPresentationSettings)
+    activeSettings {
+    NSAssert(NSThread.isMainThread,
+        @"Active render settings are main-thread confined");
+    AirfixMetalRenderer* renderer = _renderer;
+    if (renderer == nil) {
+        return {};
+    }
+    return [renderer renderPresentationSettings];
+}
+
 - (void)beginCandidate:
     (const airfix::render::RenderPresentationSettings&)persistentBase
-    alreadyDurable:(BOOL)alreadyDurable {
+    alreadyDurable:(BOOL)alreadyDurable
+    request:(const std::optional<
+        airfix::settings::RenderPresentationRequestTicket>&)request {
     NSAssert(NSThread.isMainThread,
         @"Render settings publication gate is main-thread confined");
     const auto ticket = _gate.begin(
@@ -196,8 +268,11 @@ constexpr std::uint64_t kMaximumPreparationRetryMilliseconds = 2'000U;
         _sessionOverrides,
         alreadyDurable == YES);
     if (!ticket.has_value()) {
-        if (!alreadyDurable) {
-            _pendingPersistentBase = persistentBase;
+        if (!alreadyDurable && request.has_value()) {
+            [self
+                completeActiveRequest:*request
+                result:
+                    AirfixRenderSettingsApplyResultPersistenceUnavailable];
         }
         return;
     }
@@ -206,6 +281,46 @@ constexpr std::uint64_t kMaximumPreparationRetryMilliseconds = 2'000U;
     _scheduledRetryTicket.reset();
     _preparationFailureCount = 0U;
     [self launchPreparation:*ticket];
+}
+
+- (void)completeActiveTicket:
+            (const airfix::settings::
+                RenderPresentationPersistenceTicket&)ticket
+    result:(const AirfixRenderSettingsApplyResult)result {
+    NSAssert(NSThread.isMainThread,
+        @"Render settings completions are main-thread confined");
+    if (!_activeRequest.has_value() ||
+        _activeRequest->candidate != ticket.persistentBase) {
+        [self finishCurrentAndStartPending];
+        return;
+    }
+    [self completeActiveRequest:*_activeRequest result:result];
+}
+
+- (void)completeActiveRequest:
+            (const airfix::settings::
+                RenderPresentationRequestTicket&)request
+    result:(const AirfixRenderSettingsApplyResult)result {
+    NSAssert(NSThread.isMainThread,
+        @"Render settings request completions are main-thread confined");
+    const auto completedRequest = request;
+    if (!_activeRequest.has_value() ||
+        *_activeRequest != completedRequest ||
+        !_requestQueue.beginCompletion(completedRequest)) {
+        return;
+    }
+
+    AirfixRenderSettingsApplyCompletion completion = nil;
+    completion = _activeCompletion;
+    _activeCompletion = nil;
+    _activeRequest.reset();
+    if (completion != nil) {
+        completion(result);
+    }
+    if (!_requestQueue.finishCompletion(completedRequest)) {
+        return;
+    }
+    [self finishCurrentAndStartPending];
 }
 
 - (void)launchPreparation:
@@ -300,9 +415,35 @@ constexpr std::uint64_t kMaximumPreparationRetryMilliseconds = 2'000U;
                 }
                 if (!outcome.durable ||
                     !strongSelf->_gate.saveSucceeded(ticket)) {
+                    AirfixRenderSettingsApplyResult result =
+                        AirfixRenderSettingsApplyResultSaveFailed;
+                    switch (outcome.error) {
+                    case airfix::ios::
+                        RenderSettingsStorageError::storageUnavailable:
+                    case airfix::ios::
+                        RenderSettingsStorageError::persistenceBlocked:
+                        strongSelf->_persistenceBlocked = YES;
+                        result =
+                            AirfixRenderSettingsApplyResultPersistenceUnavailable;
+                        break;
+                    case airfix::ios::
+                        RenderSettingsStorageError::invalidSettings:
+                        result =
+                            AirfixRenderSettingsApplyResultInvalidCandidate;
+                        break;
+                    case airfix::ios::
+                        RenderSettingsStorageError::none:
+                    case airfix::ios::
+                        RenderSettingsStorageError::saveFailed:
+                    case airfix::ios::
+                        RenderSettingsStorageError::commitUnknown:
+                        break;
+                    }
                     (void)strongSelf->_gate.abandon(ticket);
                     strongSelf->_activeTicket.reset();
-                    [strongSelf finishCurrentAndStartPending];
+                    [strongSelf
+                        completeActiveTicket:ticket
+                        result:result];
                     return;
                 }
                 strongSelf->_persistentBase =
@@ -327,7 +468,9 @@ constexpr std::uint64_t kMaximumPreparationRetryMilliseconds = 2'000U;
         }
         _activeTicket.reset();
         _startupResolved = YES;
-        [self finishCurrentAndStartPending];
+        [self
+            completeActiveTicket:ticket
+            result:AirfixRenderSettingsApplyResultApplied];
         return;
     }
     (void)publicationError;
@@ -392,15 +535,28 @@ constexpr std::uint64_t kMaximumPreparationRetryMilliseconds = 2'000U;
 
 - (void)finishCurrentAndStartPending {
     if (_gate.busy() || !_loadCompleted ||
-        !_pendingPersistentBase.has_value()) {
+        !_requestQueue.hasOutstandingWork()) {
         return;
     }
-    const auto pending = *_pendingPersistentBase;
-    _pendingPersistentBase.reset();
-    if (_persistenceBlocked) {
+    const auto pending = _requestQueue.activatePending();
+    if (!pending.has_value()) {
         return;
     }
-    [self beginCandidate:pending alreadyDurable:NO];
+    AirfixRenderSettingsApplyCompletion completion =
+        _pendingCompletion;
+    _pendingCompletion = nil;
+    _activeRequest = pending;
+    _activeCompletion = completion;
+    if (_persistenceBlocked || _renderer == nil) {
+        [self
+            completeActiveRequest:*pending
+            result:
+                AirfixRenderSettingsApplyResultPersistenceUnavailable];
+        return;
+    }
+    [self beginCandidate:pending->candidate
+          alreadyDurable:NO
+                 request:pending];
 }
 
 @end
