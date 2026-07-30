@@ -3953,3 +3953,33 @@ superseded evidence.
   287-row/14-column unique function catalog, changed-document links,
   changed-scope local-path scan, reserved-ID scan, and `git diff --check`
   pass.
+
+## 2026-07-30 - one-event pitch/bank state step
+
+- `EXP-20260730-069` implements the conditional GO from the producer-order
+  report as one narrow, allocation-free composition point for an
+  already-formed `PITCH_SET` or `BANK_SET`.
+- Each call uses the existing exact typed decoder and the existing
+  simulation-thread-confined state owner. A committed event returns one typed
+  write and the complete next snapshot; inactive and rejected inputs return
+  the original snapshot unchanged.
+- The API is deliberately pitch/bank-only. It has no event collection,
+  producer/source tag, timestamp, sequence number, cache, retry, replay,
+  sorting, deduplication, interpolation, `InputFrame`, Q15 conversion,
+  scheduler, clock, physics, or renderer ownership.
+- Synthetic tests preserve joystick BANK-before-PITCH, AI PITCH-before-BANK,
+  arbitrary caller order, last processed SET per axis, equal repeated writes,
+  active positive zero, inactive drop without replay, and fail-closed invalid
+  event/policy behavior. Exact PC53/RNE arithmetic remains owned by the
+  lower-level decoder and remains explicitly conditional on the unobserved
+  live x87 control word.
+- This is not live input integration. The adapter remains unwired pending
+  controlled evidence for `_ftol`, DirectInput conformance, remote ordering,
+  wall-clock cadence, and the input-to-12-ms sample-and-hold join.
+- Fresh complete Windows GCC 15.2/Ninja and MSVC 19.51/Ninja builds each pass
+  107/107 CTests. Independent review reports GO with no P0-P3 findings after a
+  separate clean GCC build and Clang 22 warnings-enabled syntax check.
+  Clang-format, all three reverse-engineering wrapper suites, 12 Rizin
+  exporter tests, changed-document links, local-path scanning, the 553-file
+  public-boundary scan, and `git diff --check` pass. Hosted platforms remain
+  the publication gate.
