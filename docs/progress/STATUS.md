@@ -379,8 +379,14 @@
   `SetTime`; its periodic heap can run zero, one, or multiple 12 ms AirCraft
   refreshes, and eligible AI work occurs near each vehicle refresh end. Exact
   full-domain PC53/RN vectors remain a startup-compatible conditional model,
-  not a branch-time observation. Process-wide live x87 control, DirectInput
-  driver conformance, remote-network ordering, and wall-clock cadence remain
+  not a branch-time observation. `EV-20260730-008` now extends the static
+  numeric-policy audit across all 15 supplied runtime modules: only the
+  executable imports `_controlfp`, its PC53 request precedes the game shell,
+  its local initializer ranges are empty, and 4,277 Rizin-recognized functions
+  contain no decoded environment writer. Live consumer-thread RC/exception
+  state and external Windows/DirectX/driver behavior remain unobserved, so the
+  compatibility label is not promoted to native parity. DirectInput driver
+  conformance, remote-network ordering, and wall-clock cadence also remain
   explicitly unproven. The
   isolated turn/pitch/bank typed-write reducers are implemented over the full
   signed native payload domain. They return exact binary32 bits under an
@@ -447,7 +453,10 @@
   12.1.2 and Rizin 0.9.1 agree on all main and helper boundaries. Exact
   PC24/RNE, PC53/RNE, and PC64/RNE discriminators are documented, but the live
   x87 control word and exception state remain unknown, so no pure kernel or
-  runtime integration was added.
+  runtime integration was added. The complete supplied-module static audit
+  finds no later recognized environment writer or mutator import, narrowing
+  the remaining numeric work to a hardware-breakpoint consumer-site CW/SW
+  capture without changing that implementation NO-GO.
 - Recovered the complete player spawn/type/primary-actor event chain and the
   fixed 16-entry mission start table. The selector uses requested index modulo
   count, with the primary receiving CCF room as the empty-table fallback.
@@ -1055,9 +1064,11 @@
    pitch/bank-only one-event step separately accepts already-formed analog/AI
    events and preserves caller order without a queue, producer cache, replay,
    or source identity.
-   Keep all control reducers and that owner unwired from
-   `PlayerAircraftState` until controlled traces prove
-   numeric mode, Q15-to-event ordering, and sample-and-hold timing; do not
+   The game-owned static x87-writer search is complete, but external-library
+   behavior, RC, exception state, and the actual consumer-thread CW/SW remain
+   unobserved. Keep all control reducers and that owner unwired from
+   `PlayerAircraftState` until controlled traces prove that numeric mode,
+   Q15-to-event ordering, and sample-and-hold timing; do not
    manufacture a complete native flight-control scheduler from the nominal
    12 ms interval.
 2. Obtain controlled runtime traces for free flight and the ground, inverted,

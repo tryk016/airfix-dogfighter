@@ -130,10 +130,13 @@ The comparison constant at VA `0x1007C7BC` is positive zero, bits
 
 Startup code at Dogfighter VA `[0x00435D5C, 0x00435D6E)` calls
 `_controlfp(0x10000, 0x30000)`. This sets x87 precision control to 53 bits.
-A full-image Rizin search found no later real `FLDCW` or `FNINIT` in
-`Dogfighter.exe` or `AfEngine.dll`; one apparent result at `0x0041BD00` is a
-misaligned byte inside the instruction beginning at `0x0041BCFF`.
-`AfEngine.dll` does not import `_controlfp`.
+The follow-up
+[EXP-20260730-078](EXP-20260730-078-x87-runtime-policy-static-audit.md)
+extends that check to all 15 supplied runtime modules. A function-aware Rizin
+scan of 4,277 recognized functions finds no decoded x87-environment writer;
+only `Dogfighter.exe` imports a known environment mutator (`_controlfp`). One
+apparent result at `0x0041BD00` remains a misaligned byte inside the real
+instruction beginning at `0x0041BCFF`.
 
 The instruction-level path is confirmed:
 
@@ -146,9 +149,10 @@ The instruction-level path is confirmed:
 The startup observation supports a compatibility model with precision control
 53 and round-to-nearest/even. It does not prove that either control field still
 has that value when an event is processed: the cited `_controlfp` call does not
-set rounding control, and the static search does not exclude `AirCraft.type`,
-another DLL, a runtime library, or a later `_controlfp` call changing precision
-or rounding control. The vectors below are exact only under the explicit
+set rounding control. The expanded static search excludes obvious writers in
+the supplied AirCraft/type/mode/render modules, but it cannot observe the live
+consumer thread or exclude MSVCRT, Windows, DirectX, DirectInput, or driver
+code outside those images. The vectors below are exact only under the explicit
 condition `PC=53, RC=nearest-even` at the branch. They are not a dynamic
 observation of the process-wide live x87 control word.
 

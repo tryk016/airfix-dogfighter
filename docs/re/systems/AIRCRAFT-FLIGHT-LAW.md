@@ -6,8 +6,8 @@ implemented for parity
 **Evidence:** `EV-20260724-001`, `EV-20260724-002`,
 `EV-20260724-003`, `EV-20260724-004`, `EV-20260727-002`,
 `EV-20260728-011`, `EV-20260728-012`, `EV-20260728-013`,
-`EV-20260728-014`, `EV-20260730-004`
-and `EV-20260730-007`
+`EV-20260728-014`, `EV-20260730-004`,
+`EV-20260730-007`, and `EV-20260730-008`
 
 **Reference build:** SHA-256 values in
 `docs/evidence/source-manifest.sha256`
@@ -628,6 +628,12 @@ order is the complete ordering contract. It owns no batch, source identity,
 producer cache, retry, replay, Q15 conversion, scheduler, or clock. In
 particular, the adapter itself cannot replay an inactive drop and cannot
 strengthen the conditional startup-compatible PC53/RNE model into live parity.
+
+The complete supplied-runtime-module audit now rules out recognized later x87
+environment writers and additional environment-mutator imports in every
+supplied DLL, type, and mode plugin. It does not observe RC or external
+Windows/DirectX/driver behavior at the consuming instruction, so the
+PC53/RNE model remains conditional and the live wiring decision is unchanged.
 
 The separate `LegacyAircraftVehicleRefreshGate` composes the committed
 five-control snapshot with the recovered signed rest/sleep transition. It

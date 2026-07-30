@@ -2,7 +2,7 @@
 
 **Status:** exact static layout and instruction schedule recovered; no portable
 kernel implemented
-**Evidence:** `EV-20260724-003`, `EV-20260730-004`
+**Evidence:** `EV-20260724-003`, `EV-20260730-004`, `EV-20260730-008`
 **Reference build:** SHA-256 values in `docs/evidence/source-manifest.sha256`
 
 This note is the durable system boundary for the `Cc.dll` rigid-body
@@ -94,3 +94,11 @@ control, exception masks, and non-finite behavior are not observed. Therefore:
   numeric policy is explicitly selected or captured; and
 - no scheduler, collision, renderer, or live-input ownership belongs in this
   isolated boundary.
+
+The process-wide static follow-up in
+[EXP-20260730-078](../../experiments/EXP-20260730-078-x87-runtime-policy-static-audit.md)
+finds the executable's startup PC53 request and no recognized later
+environment writer or additional mutator import in any supplied runtime
+module. It narrows the remaining work to a consumer-site CW/SW capture, but it
+does not establish RC, exception state, external-library behavior, or
+branch-time policy. The bit-parity implementation NO-GO therefore remains.

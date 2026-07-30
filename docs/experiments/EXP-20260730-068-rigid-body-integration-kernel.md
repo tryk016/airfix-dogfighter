@@ -710,6 +710,12 @@ at a different phase.
 No dynamic experiment was run. If separately authorized, the minimum
 experiment needed to lift the numeric NO-GO is:
 
+[EXP-20260730-078](EXP-20260730-078-x87-runtime-policy-static-audit.md)
+now rules out recognized later environment writers and additional mutator
+imports in all supplied runtime modules. It does not observe RC, exception
+state, external Windows/DirectX/driver code, or the consumer thread, so this
+dynamic requirement remains.
+
 1. break at `EulerODE`, `Derive`, and `Normalize` in the verified PE32 process;
 2. record x87 control and status words immediately at each entry and exit;
 3. record the 13 state DWORDs, mass double, body inverse inertia, damping,
