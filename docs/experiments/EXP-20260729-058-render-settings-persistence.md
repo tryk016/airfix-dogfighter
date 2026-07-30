@@ -120,6 +120,11 @@ durable base, never the launch overlay, is saved.
 - Native MSVC 19.51 Windows product: complete build; 104/104 CTests passed.
 - WSL Ubuntu GCC 13.3 clean portable build: 317/317 steps; 98/98 CTests passed.
 - D3D11 renderer, default smoke, and 50% Original 4:3 smoke: passed.
+- Hosted PR #61 validation: all seven checks passed. Portable/macOS/Windows/
+  clangd and native D3D11/XAudio2 used
+  [run 30502869591](https://github.com/tryk016/airfix-dogfighter/actions/runs/30502869591);
+  unsigned iPhoneOS and iPhoneSimulator used
+  [run 30502869598](https://github.com/tryk016/airfix-dogfighter/actions/runs/30502869598).
 - Independent review: one linked-directory P2 found, fixed, and re-reviewed;
   final verdict GO with no remaining P0-P2.
 

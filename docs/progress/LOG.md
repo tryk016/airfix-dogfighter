@@ -3640,5 +3640,8 @@ superseded evidence.
 - Clean WSL Ubuntu GCC 13.3/Ninja builds all 317 steps and passes 98/98 tests.
   Native MSVC 19.51/Ninja builds the complete Windows product and passes
   104/104 tests, including D3D11 renderer and both data-less product smokes.
+  All seven PR checks also pass: hosted portable/macOS/Windows/clangd and the
+  native Windows product in run `30502869591`, plus unsigned iPhoneOS and
+  iPhoneSimulator in run `30502869598`.
   No original asset, private setting, owner path, or generated AFRS record is
   committed.
