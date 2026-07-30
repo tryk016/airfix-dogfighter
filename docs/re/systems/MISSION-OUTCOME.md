@@ -21,7 +21,10 @@ AFS bytecode evidence `EV-20260731-002` is recorded by
 [`EXP-20260731-080`](../../experiments/EXP-20260731-080-afs-mission-outcome-bytecode.md).
 Ghidra 12.1.2 is the canonical static source; Rizin 0.9.1 independently
 confirms the selected `AfEngine.dll` function boundaries and instructions and
-supplies the new compiler-emission evidence.
+supplies the compiler-emission evidence. `EV-20260731-001`, recorded by
+[`EXP-20260731-079`](../../experiments/EXP-20260731-079-afs-function-order.md),
+separately closes the compiled-function Autoexec flag and single-process
+declaration-order boundary.
 
 ## Native state
 
@@ -198,11 +201,20 @@ between script processes.
 
 ### Recovered process refresh order
 
-`NfMission::Load` creates the `mission` process after level setup and before
-the optional server setup. A process constructor walks the compiled-function
-list and appends one execution for each function whose `+0x20` flag is set.
-Executions within a process are refreshed FIFO; newer processes are placed at
-the head of the global process list.
+`NfMission::Load` creates the `mission` process after loading the selected AFS,
+then explicitly invokes `SetupLevelData` and conditionally `SetupServer`. A
+process constructor walks the compiled-function list and appends one execution
+for each function whose `+0x20` Autoexec flag is set. The compiler maps
+`event` to Autoexec off and `action`/`timer` to Autoexec on. It visits object
+declarations in source order but prepends every
+new compiled record, so initial action/timer executions are queued in reverse
+source declaration order. Executions within a process are refreshed FIFO;
+newer processes are placed at the head of the global process list.
+
+The separate named invocation accepts only Autoexec-off records. Events are
+therefore explicit named calls rather than initial process executions.
+`LegacyAfsFunctionSchedule` implements only this classification and initial
+single-process order as a synthetic, fail-closed C++20 boundary.
 
 Each ordinary `NfMission::Refresh` calls `AfDatabase::RefreshAll` before it
 polls `NfTrigger::Refresh`. Consequently an ordinary trigger condition set by
@@ -212,9 +224,10 @@ Events `0x6B`, `0x6C`, and `0x92` are a separate exception:
 the AFS function `Spawned`.
 
 This evidence is not yet a live AFS integration contract. The compiler's
-`action` case and the complete five-word outcome call site are now bounded,
-but the complete representative action condition bytecode, compiled-function
-source order, all additional process owners, and global
+`action` case, the complete five-word outcome call site, and the initial
+single-process schedule are now bounded, but the live relationship between the
+two mission creation paths, all additional process owners, mutation during
+refresh, custom-script dynamic process operations, and global
 dispatcher/mission/presentation order remain unproven.
 
 Selected scheduler ranges are image virtual addresses with exclusive ends:
@@ -223,11 +236,26 @@ Selected scheduler ranges are image virtual addresses with exclusive ends:
 |---|---:|---:|
 | `NfMission::ProcessEvent` | `0x1002B310–0x1002C083` | 2 |
 | `NfMission::Refresh` | `0x1002C830–0x1002CB41` | 2 |
+| AFS compiler entry | `0x10060C60–0x10060E15` | 2 |
+| recursive AFS compiler | `0x100612C0–0x10066A15` | 2 |
 | `AfDatabase::NewProcess` | `0x100680F0–0x10068125` | 2 |
 | `AfDatabase::RefreshAll` | `0x100681A0–0x100681C1` | 2 |
+| compiled-record prepend | `0x10069340–0x10069360` | 2 |
+| compiled-record constructor | `0x10069360–0x10069393` | 2 |
 | mission-process constructor | `0x10069BC0–0x10069C73` | 2 |
+| named function invocation | `0x10069CF0–0x10069D95` | 2 |
 | mission-process refresh | `0x10069DA0–0x10069DE6` | 2 |
+| execution-node constructor | `0x10069DF0–0x10069E98` | 2 |
 | AFS interpreter | `0x10069F10–0x1006AC84` | 2 |
+| forward lexer | `0x1007A800–0x1007AA3C` | 2 |
+| token-list append | `0x1007AA70–0x1007AACF` | 2 |
+| grammar/AST parser | `0x1007AEF0–0x1007B069` | 2 |
+
+The authenticated local corpus contains 52 AFS objects with 114 events, 328
+actions, and no timers. It contains 47 `MissionFail` and 20 `MissionSuccess`
+calls, but no dynamic `Call`, `KillProcess`, or `LoadScript` use. These are
+aggregate compatibility observations only; no script text, logical path, or
+per-file result is public.
 
 ## Downstream result and progression
 
@@ -319,6 +347,17 @@ boundary without embedding the original console or AFS runtime.
 It does not parse `mission_thread`, serialize FourCC chunks, register stats,
 calculate score, write a roster, or wire the earlier outcome state to AFS.
 
+`src/airfix/script/LegacyAfsFunctionSchedule.*` separately implements:
+
+- `event` as explicit-call and `action`/`timer` as Autoexec;
+- reverse-source initial Autoexec order for one process;
+- preservation of repeated declarations and source indices; and
+- atomic rejection of forged function kinds.
+
+It accepts already-classified declarations and does not parse source, compile
+bytecode, resolve names, execute scripts, own process state, or perform live
+mission integration.
+
 ## `Singleplayer.mode` exclusion
 
 The selected mode creates a derived `NfMission`, but no outcome-contract
@@ -340,14 +379,16 @@ Confirmed selected mode boundaries are:
 
 - What is the complete bytecode of representative success/failure actions,
   including each condition and surrounding control flow?
-- Does compiled list order equal source declaration order?
+- How do `NfMission::Load` and `NfMission::Start` replace or coexist with
+  database/process state in the live mission lifecycle?
 - What is the complete dispatcher/process/presentation order when several
-  processes and immediate `Spawned` calls interact?
+  processes, dynamic process operations, and immediate `Spawned` calls
+  interact?
 - What is the safe roster lifecycle, schema, corruption recovery, and atomic
   replacement contract behind `AfChunkContainer::Read/Write`?
 - How are score and registered player statistics calculated and migrated?
 - What are the network and multiplayer semantics?
-- What do the owner-private AFS scripts request in real missions?
 
 These questions block live integration and persistence, not the isolated
-two-flag transition or value-only result/progression decision.
+two-flag transition, value-only result/progression decision, or initial
+single-process function schedule.

@@ -100,6 +100,23 @@ else()
     target_compile_options(airfix_input PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+add_library(airfix_script
+    src/airfix/script/LegacyAfsFunctionSchedule.cpp
+)
+add_library(airfix::script ALIAS airfix_script)
+
+target_include_directories(airfix_script
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+)
+target_compile_features(airfix_script PUBLIC cxx_std_20)
+
+if(MSVC)
+    target_compile_options(airfix_script PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(airfix_script PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
 add_library(airfix_simulation
     src/airfix/simulation/LegacyAfsMissionOutcomeCall.cpp
     src/airfix/simulation/LegacyAircraftAudioCoordinator.cpp
@@ -389,6 +406,15 @@ if(AIRFIX_BUILD_WINDOWS_APP)
 endif()
 
 if(AIRFIX_BUILD_TESTS)
+    add_executable(airfix_legacy_afs_function_schedule_tests
+        tests/LegacyAfsFunctionScheduleTests.cpp)
+    target_link_libraries(
+        airfix_legacy_afs_function_schedule_tests
+        PRIVATE airfix::script)
+    add_test(
+        NAME airfix_legacy_afs_function_schedule_tests
+        COMMAND airfix_legacy_afs_function_schedule_tests)
+
     add_executable(airfix_udsp_tests tests/UdspArchiveTests.cpp)
     target_link_libraries(airfix_udsp_tests PRIVATE airfix::udsp)
     add_test(NAME airfix_udsp_tests COMMAND airfix_udsp_tests)
