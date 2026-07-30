@@ -1,8 +1,8 @@
 # Input, controls, and haptics system
 
 **Status:** portable core, controller-profile V1, safe native startup seams,
-native gameplay transport, and Windows calibration/save UI implemented; iOS
-profile saving/editor UI, haptics, glyphs, and device acceptance pending
+native gameplay transport, and Windows/iOS calibration/save UI implemented;
+binding remapping, haptics, glyphs, and device acceptance pending
 
 **Priority:** P0 for the Windows x64 and iOS vertical slices
 
@@ -77,10 +77,12 @@ pending.
 
 The native iOS layer feeds the complete current gameplay-action surface from a
 safe-area-aware UIKit overlay and Apple's Game Controller framework; none of
-those platform types enter `InputFrame`. Startup applies the canonical default
-through a one-time pre-start seam. Live replacement requires a future
-host-owned pause transaction. Private iOS profile saving/editing, controller
-glyphs, finished menu UI, physical device
+those platform types enter `InputFrame`. Startup loads the private AFIP or safe
+default through a one-time pre-start seam. Its calibration panel uses the same
+portable draft/persisted/active model and exact integer runtime transform as
+Windows, saves only for the next launch, and never publishes draft state to the
+active router. Live replacement requires a future host-owned pause transaction.
+Binding remapping, controller glyphs, finished product menus, physical-device
 acceptance, and haptic adapters remain follow-up layers.
 
 The portable simulation consumer is also implemented.
@@ -184,10 +186,11 @@ leaf. A future live-replacement editor must obtain a host-owned pause
 transaction, prepare
 a fresh router/bridge pair, rebase a complete physical snapshot, discard old
 queued edges, and re-enter the two-tick neutral gate. An input context enum
-alone is not authorization to replace active state. The implemented Windows
-calibration editor therefore changes only a validated draft and persistent
-AFIP. It never rebuilds or mutates the active adapter; successful saves clearly
-require restart. Binding remapping and iOS editing remain later slices.
+  alone is not authorization to replace active state. The implemented Windows
+  and iOS calibration editors therefore change only a validated draft and
+  persistent AFIP. They never rebuild or mutate the active adapter; successful
+  changed saves clearly require restart. Binding remapping remains a later
+  slice.
 
 ### Implemented native iOS slice
 
@@ -226,13 +229,27 @@ excluded from neutral-gate blocking and is restored only after the required two
 safe ticks. Foreground activation and room publication never resume gameplay;
 the player must explicitly use pause/menu.
 
-This completes action transport and the safe startup-profile seam, not
-control-system acceptance. The private iOS AFIP adapter is load-only in this
-slice: it does not import, edit, save, or replace an active profile. The
-calibration/remapping UI, persistent touch layout/visibility profiles, prompt
-glyphs, haptics, finished touch/controller menus, and runtime validation of
-Application Support protection and profile recovery on both target iPhones
-remain pending.
+The iOS pause surface now offers Display settings and Controller calibration as
+separate controller-selectable panels. The safe-area calibration flow edits all
+four standardized stick axes, exposes per-axis inner deadzone, outer
+saturation, sensitivity, linear/squared/cubic response, inversion and reset,
+and refreshes a value-only raw/adjusted Q15 preview at 15 Hz. The preview uses
+the draft only; gameplay continues to use the immutable startup profile.
+
+Saving serializes the complete AFIP on the shared settings queue. Ambiguous
+publication is accepted only after a fresh valid `current` readback exactly
+matches the candidate; backup/default is never commit proof. A recovered
+backup/default enables a repair-only save. Storage failures disable saving
+without disabling input, and neither snapshots, UI nor errors expose a local
+path, checksum, controller identity, GUID or Bluetooth address. Settings panels
+remain in the validated menu context, so a valid custom profile need not
+contain modal/control-editor bindings.
+
+This completes calibration/save transport, not control-system acceptance.
+Binding remapping, persistent touch layout/visibility profiles, prompt glyphs,
+haptics, finished touch/controller menus, and physical validation of
+Application Support protection, save/force-quit/relaunch and lifecycle recovery
+on both target iPhones remain pending.
 
 ### Implemented native Windows slice
 

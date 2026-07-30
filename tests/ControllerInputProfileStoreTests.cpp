@@ -160,6 +160,8 @@ void testMissingSaveUnchangedRotationAndFallback() {
       "missing store did not select safe defaults");
   requireLoadedRecord(missing, defaults,
                       "missing store did not resolve canonical defaults");
+  require(!airfix::settings::controllerInputProfileNeedsRepair(missing),
+          "clean first-run defaults incorrectly require repair");
 
   const auto first = profile(750U);
   const auto firstSave =
@@ -176,6 +178,8 @@ void testMissingSaveUnchangedRotationAndFallback() {
           "saved controller profile was not loaded as current");
   requireLoadedRecord(firstReload, first,
                       "saved controller profile did not survive restart");
+  require(!airfix::settings::controllerInputProfileNeedsRepair(firstReload),
+          "valid current profile incorrectly requires repair");
 
   const auto unchanged =
       airfix::settings::saveControllerInputProfile(temporary.settings(), first);
@@ -205,6 +209,8 @@ void testMissingSaveUnchangedRotationAndFallback() {
           "corrupt current did not select the validated backup");
   requireLoadedRecord(recovered, first,
                       "corrupt current recovered the wrong profile");
+  require(airfix::settings::controllerInputProfileNeedsRepair(recovered),
+          "backup recovery did not request durable repair");
 }
 
 void testMalformedCurrentNeverRotates() {
@@ -256,6 +262,8 @@ void testFutureCurrentAndBackupPreservation() {
     requireLoadedRecord(
         loaded, airfix::input::makeDefaultControllerInputProfileRecord(),
         "future current did not return resolved defaults");
+    require(!airfix::settings::controllerInputProfileNeedsRepair(loaded),
+            "blocked future-schema store incorrectly permits repair");
 
     const auto before = readFile(temporary.current());
     const auto requested = profile(1100U);
@@ -445,6 +453,8 @@ void testWrongTypesOversizeAndLinks() {
                 airfix::settings::ControllerInputProfileLoadSource::defaults &&
             !loaded.persistenceBlocked,
         "oversized current did not select safe defaults");
+    require(airfix::settings::controllerInputProfileNeedsRepair(loaded),
+            "replaceable invalid current did not request durable repair");
     const auto replacement = profile(1150U);
     (void)airfix::settings::saveControllerInputProfile(temporary.settings(),
                                                        replacement);

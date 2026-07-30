@@ -2,6 +2,8 @@
 
 #include "AirfixAVAudioEngineBackend.hpp"
 #import "AirfixContentCoordinator.h"
+#import "AirfixControllerCalibrationPanelViewController.h"
+#import "AirfixControllerInputProfileCoordinator.h"
 #import "AirfixIOSControllerInputProfileStore.h"
 #import "AirfixIOSInputCoordinator.h"
 #include "AirfixIOSInputStartupPolicy.hpp"
@@ -23,7 +25,9 @@
 #include "airfix/simulation/LegacyAircraftAudioCoordinator.hpp"
 #include "airfix/simulation/PlayerSpawnPose.hpp"
 
+#include <algorithm>
 #include <array>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string_view>
@@ -88,11 +92,19 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     };
 }
 
+[[nodiscard]] BOOL magnitudeAtMost(
+    const int16_t value, const int16_t limit) noexcept {
+    const auto wide = static_cast<std::int32_t>(value);
+    const auto magnitude = wide < 0 ? -wide : wide;
+    return magnitude <= static_cast<std::int32_t>(limit);
+}
+
 } // namespace
 
 @interface AirfixGameViewController ()
     <AirfixContentCoordinatorDelegate, AirfixIOSInputCoordinatorDelegate,
-     AirfixRenderSettingsPanelViewControllerDelegate> {
+     AirfixRenderSettingsPanelViewControllerDelegate,
+     AirfixControllerCalibrationPanelViewControllerDelegate> {
     airfix::runtime::AppSession _session;
     airfix::runtime::PlayerAircraftPresentationCoordinator
         _playerAircraftPresentation;
@@ -106,6 +118,8 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     BOOL _inputFrameConsumerInstalled;
     BOOL _controllerProfileLoadCompleted;
     BOOL _viewVisible;
+    NSUInteger _pausedSettingsSelection;
+    BOOL _pausedSettingsNavigationLatched;
 }
 @property(nonatomic, strong) AirfixMetalRenderer* renderer;
 @property(nonatomic, strong)
@@ -117,16 +131,28 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
 @property(nonatomic, strong) AirfixIOSInputCoordinator* inputCoordinator;
 @property(nonatomic, strong)
     AirfixIOSControllerInputProfileStore* controllerInputProfileStore;
+@property(nonatomic, strong)
+    AirfixControllerInputProfileCoordinator*
+        controllerInputProfileCoordinator;
 @property(nonatomic, copy) NSString* controllerInputProfileStatus;
 @property(nonatomic, strong) UIButton* resumeButton;
 @property(nonatomic, strong) UIButton* renderSettingsButton;
+@property(nonatomic, strong) UIButton* controllerCalibrationButton;
 @property(nonatomic, strong)
     AirfixRenderSettingsPanelViewController* renderSettingsPanel;
+@property(nonatomic, strong)
+    AirfixControllerCalibrationPanelViewController*
+        controllerCalibrationPanel;
 @property(nonatomic) BOOL inputPipelineReady;
 @property(nonatomic) BOOL simulationPipelineReady;
 
 - (void)showRenderSettings;
 - (void)closeRenderSettingsPanel;
+- (void)showControllerCalibration;
+- (void)closeControllerCalibrationPanel;
+- (BOOL)isSettingsPanelOpen;
+- (void)setPausedSettingsSelection:(NSUInteger)selection
+                          announce:(BOOL)announce;
 - (void)beginControllerInputProfileLoad;
 - (void)startInputCoordinatorIfReady;
 - (void)refreshPausedMissionReadiness;
@@ -235,6 +261,27 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     renderSettingsButton.enabled =
         self.renderSettingsCoordinator != nil;
     self.renderSettingsButton = renderSettingsButton;
+
+    UIButton* controllerCalibrationButton =
+        [UIButton buttonWithType:UIButtonTypeSystem];
+    controllerCalibrationButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [controllerCalibrationButton setTitle:@"Controller calibration"
+                                 forState:UIControlStateNormal];
+    controllerCalibrationButton.titleLabel.font =
+        [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
+    controllerCalibrationButton.titleLabel.adjustsFontForContentSizeCategory =
+        YES;
+    controllerCalibrationButton.accessibilityIdentifier =
+        @"airfix.settings.controller-calibration.open";
+    controllerCalibrationButton.accessibilityHint =
+        @"Pauses gameplay and edits controller calibration for the next launch.";
+    [controllerCalibrationButton
+        addTarget:self
+           action:@selector(showControllerCalibration)
+ forControlEvents:UIControlEventTouchUpInside];
+    controllerCalibrationButton.enabled = NO;
+    self.controllerCalibrationButton = controllerCalibrationButton;
+    _pausedSettingsSelection = 0U;
     _rendererPreparationQueue = dispatch_queue_create(
         "com.tryk016.airfixdogfighter.renderer-preparation",
         DISPATCH_QUEUE_SERIAL);
@@ -290,6 +337,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
         label,
         resumeButton,
         renderSettingsButton,
+        controllerCalibrationButton,
         self.contentCoordinator.controlsView,
     ]];
     stack.translatesAutoresizingMaskIntoConstraints = NO;
@@ -422,6 +470,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
         [touchControlsView.trailingAnchor
             constraintEqualToAnchor:metalView.trailingAnchor],
     ]];
+    [self setPausedSettingsSelection:0U announce:NO];
 }
 
 - (void)beginControllerInputProfileLoad {
@@ -445,9 +494,21 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
                 std::optional<
                     airfix::input::ResolvedControllerInputProfile>
                     selectedProfile;
+                std::optional<
+                    airfix::input::ControllerInputProfileRecord>
+                    selectedRecord;
+                BOOL persistenceAvailable = NO;
+                BOOL repairRequired = NO;
                 NSString* status = @"PROFILE defaults";
                 if (outcome.result.has_value()) {
                     selectedProfile = outcome.result->profile;
+                    selectedRecord = outcome.result->profile.record();
+                    persistenceAvailable =
+                        !outcome.result->persistenceBlocked;
+                    repairRequired =
+                        airfix::settings::
+                            controllerInputProfileNeedsRepair(
+                                *outcome.result);
                     switch (outcome.result->source) {
                     case airfix::settings::
                         ControllerInputProfileLoadSource::defaults:
@@ -494,6 +555,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
                                 makeDefaultControllerInputProfileRecord());
                     if (fallback.complete()) {
                         selectedProfile = *fallback.profile;
+                        selectedRecord = fallback.profile->record();
                     }
                     status =
                         @"PROFILE defaults  storage unavailable";
@@ -505,6 +567,18 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
                         installControllerInputProfileBeforeStart(
                             strongSelf.inputCoordinator,
                             *selectedProfile);
+                if (profileInstalled && selectedRecord.has_value()) {
+                    strongSelf.controllerInputProfileCoordinator =
+                        [[AirfixControllerInputProfileCoordinator alloc]
+                            initWithStore:
+                                strongSelf.controllerInputProfileStore
+                            activeProfile:*selectedRecord
+                            persistentProfile:*selectedRecord
+                            persistenceAvailable:persistenceAvailable
+                            repairRequired:repairRequired];
+                }
+                strongSelf.controllerCalibrationButton.enabled =
+                    strongSelf.controllerInputProfileCoordinator != nil;
                 strongSelf->_controllerProfileLoadCompleted = YES;
                 strongSelf.controllerInputProfileStatus =
                     profileInstalled ? status : @"PROFILE initialization failed";
@@ -547,9 +621,9 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
 - (void)refreshPausedMissionReadiness {
     NSAssert(NSThread.isMainThread,
         @"Paused mission readiness belongs to main");
-    if (self.renderSettingsPanel != nil) {
+    if ([self isSettingsPanelOpen]) {
         [self.inputCoordinator
-            setInputContext:AirfixNativeInputContextModal];
+            setInputContext:AirfixNativeInputContextMenu];
         [self.inputCoordinator resetForGameplayBoundary];
         self.touchControlsView.hidden = YES;
         self.resumeButton.hidden = YES;
@@ -584,6 +658,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
         });
     self.touchControlsView.hidden = YES;
     self.resumeButton.hidden = !gameplayReady;
+    [self setPausedSettingsSelection:_pausedSettingsSelection announce:NO];
     if (gameplayReady) {
         self.statusLabel.text =
             @"Airfix Dogfighter reconstruction\n"
@@ -637,7 +712,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
 - (void)showRenderSettings {
     NSAssert(NSThread.isMainThread,
         @"The display-settings overlay belongs to main");
-    if (self.renderSettingsPanel != nil ||
+    if ([self isSettingsPanelOpen] ||
         self.renderSettingsCoordinator == nil) {
         return;
     }
@@ -658,7 +733,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     _session.pause();
     ((MTKView*)self.view).paused = YES;
     [self.inputCoordinator
-        setInputContext:AirfixNativeInputContextModal];
+        setInputContext:AirfixNativeInputContextMenu];
     self.touchControlsView.hidden = YES;
 
     AirfixRenderSettingsPanelViewController* panel =
@@ -680,6 +755,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     [panel didMoveToParentViewController:self];
     self.renderSettingsPanel = panel;
     self.renderSettingsButton.enabled = NO;
+    self.controllerCalibrationButton.enabled = NO;
     self.statusLabel.text =
         @"Airfix Dogfighter reconstruction\n"
          "Gameplay paused while display settings are open";
@@ -701,6 +777,9 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     self.renderSettingsPanel = nil;
     self.renderSettingsButton.enabled =
         self.renderSettingsCoordinator != nil;
+    self.controllerCalibrationButton.enabled =
+        self.controllerInputProfileCoordinator != nil &&
+        !self.controllerInputProfileCoordinator.isSaving;
 
     [self.inputCoordinator
         setInputContext:AirfixNativeInputContextMenu];
@@ -721,15 +800,153 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
             @"Airfix Dogfighter reconstruction\n"
              "Settings closed; select Resume or press controller B";
     }
+    _pausedSettingsSelection = 0U;
+    [self setPausedSettingsSelection:_pausedSettingsSelection announce:NO];
     UIAccessibilityPostNotification(
         UIAccessibilityScreenChangedNotification,
         self.renderSettingsButton);
 }
 
+- (void)showControllerCalibration {
+    NSAssert(NSThread.isMainThread,
+        @"The controller-calibration overlay belongs to main");
+    AirfixControllerInputProfileCoordinator* coordinator =
+        self.controllerInputProfileCoordinator;
+    if ([self isSettingsPanelOpen] || coordinator == nil ||
+        coordinator.isSaving) {
+        return;
+    }
+
+    _audioBackend->setActive(false);
+    _session.pause();
+    ((MTKView*)self.view).paused = YES;
+    [self.inputCoordinator
+        setInputContext:AirfixNativeInputContextMenu];
+    self.touchControlsView.hidden = YES;
+
+    AirfixControllerCalibrationPanelViewController* panel =
+        [[AirfixControllerCalibrationPanelViewController alloc]
+            initWithCoordinator:coordinator];
+    panel.delegate = self;
+    [self addChildViewController:panel];
+    panel.view.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:panel.view];
+    [NSLayoutConstraint activateConstraints:@[
+        [panel.view.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [panel.view.bottomAnchor
+            constraintEqualToAnchor:self.view.bottomAnchor],
+        [panel.view.leadingAnchor
+            constraintEqualToAnchor:self.view.leadingAnchor],
+        [panel.view.trailingAnchor
+            constraintEqualToAnchor:self.view.trailingAnchor],
+    ]];
+    [panel didMoveToParentViewController:self];
+    self.controllerCalibrationPanel = panel;
+    self.renderSettingsButton.enabled = NO;
+    self.controllerCalibrationButton.enabled = NO;
+    self.statusLabel.text =
+        @"Airfix Dogfighter reconstruction\n"
+         "Gameplay paused while controller calibration is open";
+}
+
+- (void)closeControllerCalibrationPanel {
+    NSAssert(NSThread.isMainThread,
+        @"The controller-calibration overlay belongs to main");
+    AirfixControllerCalibrationPanelViewController* panel =
+        self.controllerCalibrationPanel;
+    if (panel == nil) {
+        return;
+    }
+    const BOOL persistedDuringPresentation =
+        panel.persistedDuringPresentation;
+
+    panel.delegate = nil;
+    [panel willMoveToParentViewController:nil];
+    [panel.view removeFromSuperview];
+    [panel removeFromParentViewController];
+    self.controllerCalibrationPanel = nil;
+    self.renderSettingsButton.enabled =
+        self.renderSettingsCoordinator != nil;
+    self.controllerCalibrationButton.enabled =
+        self.controllerInputProfileCoordinator != nil &&
+        !self.controllerInputProfileCoordinator.isSaving;
+
+    const auto active =
+        [self.controllerInputProfileCoordinator activeProfile];
+    const auto persistent =
+        [self.controllerInputProfileCoordinator persistentProfile];
+    if (active != persistent) {
+        self.controllerInputProfileStatus =
+            @"PROFILE saved for restart";
+        [self updateDiagnosticsLabelWithInputDiagnostics:
+            self.inputCoordinator.diagnostics];
+    }
+    else if (persistedDuringPresentation) {
+        self.controllerInputProfileStatus = @"PROFILE current";
+        [self updateDiagnosticsLabelWithInputDiagnostics:
+            self.inputCoordinator.diagnostics];
+    }
+
+    [self.inputCoordinator
+        setInputContext:AirfixNativeInputContextMenu];
+    [self.inputCoordinator resetForGameplayBoundary];
+    const BOOL gameplayReady =
+        _session.contentState() == airfix::runtime::ContentState::ready &&
+        self.inputPipelineReady &&
+        self.simulationPipelineReady &&
+        self.inputCoordinator.isOperational &&
+        self.renderer.missionWorldRoomInstalled;
+    self.touchControlsView.hidden = YES;
+    self.resumeButton.hidden = !gameplayReady;
+    _audioBackend->setActive(false);
+    _session.pause();
+    ((MTKView*)self.view).paused = YES;
+    if (gameplayReady) {
+        self.statusLabel.text =
+            @"Airfix Dogfighter reconstruction\n"
+             "Calibration closed; select Resume or press controller B";
+    }
+    _pausedSettingsSelection = 1U;
+    [self setPausedSettingsSelection:_pausedSettingsSelection announce:NO];
+    UIAccessibilityPostNotification(
+        UIAccessibilityScreenChangedNotification,
+        self.controllerCalibrationButton);
+}
+
+- (BOOL)isSettingsPanelOpen {
+    return self.renderSettingsPanel != nil ||
+        self.controllerCalibrationPanel != nil;
+}
+
+- (void)setPausedSettingsSelection:(NSUInteger)selection
+                          announce:(BOOL)announce {
+    const NSUInteger normalized =
+        std::min(selection, static_cast<NSUInteger>(1U));
+    _pausedSettingsSelection = normalized;
+    NSArray<UIButton*>* buttons = @[
+        self.renderSettingsButton,
+        self.controllerCalibrationButton,
+    ];
+    for (NSUInteger index = 0U; index < buttons.count; ++index) {
+        UIButton* button = buttons[index];
+        const BOOL active = index == normalized;
+        button.layer.borderColor =
+            (active ? UIColor.systemYellowColor
+                    : UIColor.clearColor).CGColor;
+        button.layer.borderWidth = active ? 2.5 : 0.0;
+        button.layer.cornerRadius = 8.0;
+    }
+    if (announce && buttons[normalized].enabled) {
+        UIAccessibilityPostNotification(
+            UIAccessibilityLayoutChangedNotification,
+            buttons[normalized]);
+    }
+}
+
 - (void)resumeGameplay {
     NSAssert(NSThread.isMainThread,
         @"Explicit gameplay resume belongs to main");
-    if (self.renderSettingsPanel != nil) {
+    if ([self isSettingsPanelOpen]) {
         return;
     }
     const BOOL mayResume =
@@ -769,6 +986,14 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
         return;
     }
     [self closeRenderSettingsPanel];
+}
+
+- (void)controllerCalibrationPanelViewControllerDidFinish:
+    (AirfixControllerCalibrationPanelViewController*)panel {
+    if (panel != self.controllerCalibrationPanel) {
+        return;
+    }
+    [self closeControllerCalibrationPanel];
 }
 
 - (BOOL)prefersStatusBarHidden {
@@ -816,7 +1041,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     // Becoming active never resumes gameplay. The player must use the pause
     // control or a controller menu button after every lifecycle transition.
     ((MTKView*)self.view).paused = YES;
-    if (self.renderSettingsPanel == nil &&
+    if (![self isSettingsPanelOpen] &&
         _session.contentState() == airfix::runtime::ContentState::ready &&
         self.inputPipelineReady &&
         self.simulationPipelineReady &&
@@ -827,7 +1052,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
         self.resumeButton.hidden = NO;
         self.statusLabel.text =
             @"Airfix Dogfighter reconstruction\n"
-             @"Gameplay paused; A opens settings, B resumes";
+             @"Gameplay paused; choose settings with the stick, A opens, B resumes";
     }
 }
 
@@ -1143,7 +1368,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
             strongSelf.touchControlsView.hidden =
                 YES;
             strongSelf.resumeButton.hidden =
-                strongSelf.renderSettingsPanel != nil ||
+                [strongSelf isSettingsPanelOpen] ||
                 !inputOperational;
             if (inputOperational) {
                 strongSelf.statusLabel.text = [NSString stringWithFormat:
@@ -1190,7 +1415,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     }
 
     MTKView* metalView = (MTKView*)self.view;
-    if (self.renderSettingsPanel != nil &&
+    if ([self isSettingsPanelOpen] &&
         reason == AirfixInputPauseReasonUserControl) {
         _audioBackend->setActive(false);
         _session.pause();
@@ -1209,7 +1434,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
                 @"Airfix Dogfighter reconstruction\nInput pipeline failed";
         }
         else if (reason == AirfixInputPauseReasonControllerDisconnected) {
-            if (self.renderSettingsPanel == nil) {
+            if (![self isSettingsPanelOpen]) {
                 [self.inputCoordinator
                     setInputContext:AirfixNativeInputContextMenu];
                 self.resumeButton.hidden =
@@ -1221,7 +1446,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
                  @"Controller disconnected; gameplay paused";
         }
         else if (reason == AirfixInputPauseReasonInputOverflow) {
-            if (self.renderSettingsPanel == nil) {
+            if (![self isSettingsPanelOpen]) {
                 [self.inputCoordinator
                     setInputContext:AirfixNativeInputContextMenu];
                 self.resumeButton.hidden =
@@ -1245,7 +1470,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
         self.resumeButton.hidden = NO;
         self.statusLabel.text =
             @"Airfix Dogfighter reconstruction\n"
-             @"Gameplay paused; A opens settings, B resumes";
+             @"Gameplay paused; choose settings with the stick, A opens, B resumes";
         return;
     }
 
@@ -1257,7 +1482,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     _session.pause();
     [self.inputCoordinator resetForGameplayBoundary];
     ((MTKView*)self.view).paused = YES;
-    if (self.renderSettingsPanel == nil) {
+    if (![self isSettingsPanelOpen]) {
         [self.inputCoordinator
             setInputContext:AirfixNativeInputContextMenu];
         self.touchControlsView.hidden = YES;
@@ -1294,15 +1519,52 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     if (coordinator != self.inputCoordinator) {
         return;
     }
+    if (self.controllerCalibrationPanel != nil) {
+        [self.controllerCalibrationPanel consumeUIInputSnapshot:input];
+        return;
+    }
     if (self.renderSettingsPanel != nil) {
         [self.renderSettingsPanel consumeUIInputSnapshot:input];
         return;
     }
     if (input.cancelPressed) {
         [self resumeGameplay];
+        return;
     }
-    else if (input.confirmPressed) {
-        [self showRenderSettings];
+
+    if (magnitudeAtMost(
+            input.navigationY,
+            airfix::input::uiNavigationReleaseQ15)) {
+        _pausedSettingsNavigationLatched = NO;
+    }
+    if (!_pausedSettingsNavigationLatched &&
+        input.navigationY >=
+            airfix::input::uiNavigationActuationQ15) {
+        _pausedSettingsNavigationLatched = YES;
+        [self setPausedSettingsSelection:0U announce:YES];
+    }
+    else if (!_pausedSettingsNavigationLatched &&
+             input.navigationY <=
+                 -airfix::input::uiNavigationActuationQ15 &&
+             self.controllerCalibrationButton.enabled) {
+        _pausedSettingsNavigationLatched = YES;
+        [self setPausedSettingsSelection:1U announce:YES];
+    }
+    if (input.tabPreviousPressed) {
+        [self setPausedSettingsSelection:0U announce:YES];
+    }
+    if (input.tabNextPressed &&
+        self.controllerCalibrationButton.enabled) {
+        [self setPausedSettingsSelection:1U announce:YES];
+    }
+    if (input.confirmPressed) {
+        if (_pausedSettingsSelection == 1U &&
+            self.controllerCalibrationButton.enabled) {
+            [self showControllerCalibration];
+        }
+        else {
+            [self showRenderSettings];
+        }
     }
 }
 

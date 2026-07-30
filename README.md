@@ -35,7 +35,10 @@ high-resolution `Classic` profile alongside `Enhanced`.
 > The iOS shell now consumes the same audio contract through AVAudioEngine and
 > enforces explicit-resume interruption and route-loss handling. Both products
 > can now bind the six recovered aircraft roles to PCM decoded from one
-> authenticated, owner-local AFPACK transaction.
+> authenticated, owner-local AFPACK transaction. Both native products also load
+> the same private AFIP controller profile before input starts and expose
+> four-axis calibration with exact raw/adjusted preview plus durable
+> save-for-next-launch semantics.
 > Neither target is **yet a complete playable release**.
 
 **Lawfully owned original game data is required for private use and is not
@@ -366,10 +369,12 @@ triggers, D-pad, shoulders, and face buttons into the same fixed-rate
 release, per-source neutral gates, and focus-loss neutralization are covered
 by data-less tests.
 iOS supplies the corresponding landscape touch and Game Controller adapters.
-Persistent AFIP profiles and the Windows save-on-next-launch calibration
-surface are implemented. Binding-remapping UI, iOS profile save/editor UI,
-controller glyphs, polished menus, and end-to-end device usability acceptance
-remain pending.
+Both native products load persistent AFIP profiles before input starts and
+provide four-axis save-for-next-launch calibration without replacing the active
+router. The iOS safe-area panel supports touch plus controller menu navigation
+and keeps private paths, device identity, and checksums outside the UI.
+Binding-remapping UI, controller glyphs, polished menus, and end-to-end device
+usability acceptance remain pending.
 
 See [Input, controls, and haptics](docs/systems/INPUT.md).
 

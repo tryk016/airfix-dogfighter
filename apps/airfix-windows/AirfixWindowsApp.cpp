@@ -321,20 +321,6 @@ reloadWindowsRenderSettings(void *const context) noexcept {
   }
 }
 
-[[nodiscard]] bool controllerProfileNeedsRepair(
-    const airfix::settings::ControllerInputProfileLoadResult &load) noexcept {
-  using Source = airfix::settings::ControllerInputProfileLoadSource;
-  using Status = airfix::settings::ControllerInputProfileFileStatus;
-  if (load.persistenceBlocked || load.source == Source::current) {
-    return false;
-  }
-  if (load.source == Source::backup) {
-    return true;
-  }
-  return load.current.status != Status::missing ||
-         load.backup.status != Status::missing;
-}
-
 [[nodiscard]] airfix::windows::AirfixWindowsControllerProfileStoreResult
 storeWindowsControllerProfile(
     void *const context,
@@ -671,7 +657,8 @@ int run(const int argumentCount, char *arguments[]) {
                     AirfixWindowsControllerProfilePersistenceState::blocked
               : airfix::windows::
                     AirfixWindowsControllerProfilePersistenceState::available;
-      controllerProfileRepairRequired = controllerProfileNeedsRepair(loaded);
+      controllerProfileRepairRequired =
+          airfix::settings::controllerInputProfileNeedsRepair(loaded);
       switch (loaded.source) {
       case airfix::settings::ControllerInputProfileLoadSource::current:
         std::cerr << "Controller input profile: current\n";

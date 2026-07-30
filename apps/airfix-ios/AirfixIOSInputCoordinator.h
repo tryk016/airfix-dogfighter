@@ -69,6 +69,12 @@ typedef NS_ENUM(NSInteger, AirfixNativeInputContext) {
 @property(nonatomic, readonly) BOOL cancelPressed;
 @property(nonatomic, readonly) BOOL tabPreviousPressed;
 @property(nonatomic, readonly) BOOL tabNextPressed;
+@property(nonatomic, readonly, getter=isControllerConnected)
+    BOOL controllerConnected;
+@property(nonatomic, readonly) int16_t controllerLeftStickX;
+@property(nonatomic, readonly) int16_t controllerLeftStickY;
+@property(nonatomic, readonly) int16_t controllerRightStickX;
+@property(nonatomic, readonly) int16_t controllerRightStickY;
 
 - (instancetype)init NS_UNAVAILABLE;
 
@@ -90,9 +96,10 @@ typedef NS_ENUM(NSInteger, AirfixNativeInputContext) {
         didUpdateDiagnostics:(AirfixInputDiagnostics*)diagnostics;
 
 // Delivered on main after the exact portable InputFrame has reached its
-// consumer and only while the active input context is menu or modal. A
-// reentrant input/lifecycle reset suppresses this callback for the stale
-// frame.
+// consumer and only while the active input context is menu or modal. The four
+// optional preview values are raw standardized Q15 stick axes; no device
+// identity is exposed. A reentrant input/lifecycle reset suppresses this
+// callback for the stale frame.
 - (void)inputCoordinator:(AirfixIOSInputCoordinator*)coordinator
         didUpdateUIInput:(AirfixUIInputSnapshot*)input;
 

@@ -4177,3 +4177,31 @@ superseded evidence.
   D3D11 product smokes. Synthetic public-boundary tests and the 586-file scan
   pass. Independent review reports GO with no P0-P3 finding. Hosted Actions
   remain the publication gate.
+
+## 2026-07-30 - private iOS controller calibration for next launch
+
+- Extended the private iOS AFIP adapter with asynchronous durable save on the
+  shared serial settings queue. Typed failure categories stay path-free, and a
+  commit-unknown result is accepted only after exact readback of a valid
+  current AFIP; backup/default recovery cannot confirm publication.
+- Added a main-thread controller-profile coordinator that owns immutable active
+  and mutable persistent records but has no reference to the active input
+  coordinator. The UIKit editor reuses the portable active/persisted/draft menu
+  model and saves only for the next process launch.
+- Added a safe-area two-level calibration panel for all four standardized stick
+  axes. Touch and controller navigation reach deadzone, saturation, sensitivity,
+  response curve, inversion, per-axis/all-axis reset and durable save. The pause
+  menu now selects Display settings or Controller calibration, and both panels
+  use the validated menu context rather than requiring modal/control-editor
+  bindings.
+- Added a value-only 15 Hz preview boundary containing only connection state and
+  four raw Q15 axes. Disconnect, input reset and lifecycle boundaries zero every
+  sample. Adjusted preview uses the exact shared transport/profile transform and
+  never publishes draft values to gameplay.
+- Extracted the backup/default repair predicate into portable settings code and
+  covered clean defaults, valid current, backup recovery, replaceable invalid
+  current and blocked future-schema cases. A complete GCC/Ninja build passes
+  114/114 CTests; a complete MSVC 19.51/Ninja Windows rebuild links the product
+  and passes 124/124 CTests. Hosted Apple compilation, independent final review
+  and physical iPhone persistence/lifecycle acceptance remain publication and
+  device gates.

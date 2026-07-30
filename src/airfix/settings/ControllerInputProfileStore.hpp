@@ -50,6 +50,22 @@ struct ControllerInputProfileLoadResult final {
   }
 };
 
+// True when a valid backup or canonical default was selected after a
+// non-missing current/backup document. A read-only future-schema boundary
+// cannot be repaired by this process and a valid current needs no repair.
+[[nodiscard]] constexpr bool controllerInputProfileNeedsRepair(
+    const ControllerInputProfileLoadResult &load) noexcept {
+  if (load.persistenceBlocked ||
+      load.source == ControllerInputProfileLoadSource::current) {
+    return false;
+  }
+  if (load.source == ControllerInputProfileLoadSource::backup) {
+    return true;
+  }
+  return load.current.status != ControllerInputProfileFileStatus::missing ||
+         load.backup.status != ControllerInputProfileFileStatus::missing;
+}
+
 enum class ControllerInputProfileSaveStatus : std::uint8_t {
   unchanged,
   committed,

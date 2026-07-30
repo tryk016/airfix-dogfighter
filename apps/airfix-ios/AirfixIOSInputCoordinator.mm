@@ -254,6 +254,11 @@ static_assert(AirfixGameControllerDigitalControlDpadRight ==
                cancelPressed:(BOOL)cancelPressed
           tabPreviousPressed:(BOOL)tabPreviousPressed
               tabNextPressed:(BOOL)tabNextPressed
+         controllerConnected:(BOOL)controllerConnected
+        controllerLeftStickX:(int16_t)controllerLeftStickX
+        controllerLeftStickY:(int16_t)controllerLeftStickY
+       controllerRightStickX:(int16_t)controllerRightStickX
+       controllerRightStickY:(int16_t)controllerRightStickY
     NS_DESIGNATED_INITIALIZER;
 
 @end
@@ -266,7 +271,12 @@ static_assert(AirfixGameControllerDigitalControlDpadRight ==
               confirmPressed:(BOOL)confirmPressed
                cancelPressed:(BOOL)cancelPressed
           tabPreviousPressed:(BOOL)tabPreviousPressed
-              tabNextPressed:(BOOL)tabNextPressed {
+              tabNextPressed:(BOOL)tabNextPressed
+         controllerConnected:(BOOL)controllerConnected
+        controllerLeftStickX:(int16_t)controllerLeftStickX
+        controllerLeftStickY:(int16_t)controllerLeftStickY
+       controllerRightStickX:(int16_t)controllerRightStickX
+       controllerRightStickY:(int16_t)controllerRightStickY {
     self = [super init];
     if (self != nil) {
         _tick = tick;
@@ -276,6 +286,11 @@ static_assert(AirfixGameControllerDigitalControlDpadRight ==
         _cancelPressed = cancelPressed;
         _tabPreviousPressed = tabPreviousPressed;
         _tabNextPressed = tabNextPressed;
+        _controllerConnected = controllerConnected;
+        _controllerLeftStickX = controllerLeftStickX;
+        _controllerLeftStickY = controllerLeftStickY;
+        _controllerRightStickX = controllerRightStickX;
+        _controllerRightStickY = controllerRightStickY;
     }
     return self;
 }
@@ -313,6 +328,7 @@ static_assert(AirfixGameControllerDigitalControlDpadRight ==
         airfix::input::ControllerInputEmission,
         airfix::input::ControllerInputBatchBridge::maximumEmissionCount>
         _controllerEmissions;
+    std::array<int16_t, 4U> _controllerPreviewAxes;
 
     AirfixInputSource _lastMeaningfulSource;
     BOOL _started;
@@ -372,6 +388,7 @@ static_assert(AirfixGameControllerDigitalControlDpadRight ==
         _touchControlsView = touchControlsView;
         _nextSequence = 1U;
         _lastMeaningfulSource = AirfixInputSourceNone;
+        _controllerPreviewAxes.fill(0);
         _controllerAdapter = [[AirfixGameControllerAdapter alloc]
             initWithDelegate:self];
         _controllerState = _controllerAdapter.state;
@@ -649,7 +666,12 @@ static_assert(AirfixGameControllerDigitalControlDpadRight ==
           tabPreviousPressed:frame.pressed(
               airfix::input::DigitalAction::uiTabPrevious)
               tabNextPressed:frame.pressed(
-                  airfix::input::DigitalAction::uiTabNext)];
+                  airfix::input::DigitalAction::uiTabNext)
+         controllerConnected:self.controllerState.isConnected
+        controllerLeftStickX:_controllerPreviewAxes[0U]
+        controllerLeftStickY:_controllerPreviewAxes[1U]
+       controllerRightStickX:_controllerPreviewAxes[2U]
+       controllerRightStickY:_controllerPreviewAxes[3U]];
         [self notifyUIInput:input];
         if (_terminalInputFailure || _resetEpoch != frameEpoch) {
             // The UI delegate crossed an input/lifecycle boundary. The
@@ -714,6 +736,7 @@ lastMeaningfulSource:_lastMeaningfulSource];
 
 - (BOOL)pollController {
     if (!self.controllerState.isConnected) {
+        _controllerPreviewAxes.fill(0);
         return YES;
     }
     const AirfixGameControllerInputBatch nativeBatch =
@@ -722,6 +745,12 @@ lastMeaningfulSource:_lastMeaningfulSource];
         [self handleInputFailureTerminal:NO];
         return NO;
     }
+    _controllerPreviewAxes = {
+        nativeBatch.finalState.bank,
+        nativeBatch.finalState.pitch,
+        nativeBatch.finalState.lookX,
+        nativeBatch.finalState.lookY,
+    };
 
     const auto portableBatch = controllerBatch(nativeBatch);
     const bool fullState =
@@ -848,6 +877,7 @@ lastMeaningfulSource:_lastMeaningfulSource];
     _touchAxes[kTouchThrottleAxisIndex] = latchedTouchThrottle;
     _touchButtons.fill(NO);
     _controllerBridge.reset();
+    _controllerPreviewAxes.fill(0);
     _lastMeaningfulSource = AirfixInputSourceNone;
     self.diagnostics = [[AirfixInputDiagnostics alloc]
         initWithTick:_inputTick
@@ -1170,6 +1200,9 @@ lastMeaningfulSource:AirfixInputSourceNone];
     }
     const BOOL wasConnected = self.controllerState.isConnected;
     self.controllerState = state;
+    if (!state.isConnected) {
+        _controllerPreviewAxes.fill(0);
+    }
     if (!wasConnected && state.isConnected) {
         // Every controller assignment starts behind its own neutral gate,
         // including a first hot-connect after the global gate has opened.
