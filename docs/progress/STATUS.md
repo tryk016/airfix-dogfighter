@@ -1,6 +1,6 @@
 # Project status
 
-**Updated:** 2026-07-29
+**Updated:** 2026-07-30
 **Stage:** Phase 1 — static analysis and archive recovery in progress
 
 ## Now
@@ -326,6 +326,12 @@
   host-FP-independent integer rounding. A simulation-thread-confined owner
   commits those writes and the thrust writes with their shared rest clear as
   one transaction and exposes the five controls in native sleep-gate order.
+  The discrete command callback is now also represented by a pure eight-flag
+  reducer: each already-ordered bool invocation updates exactly one flag and
+  emits one typed `TURN_SET`, `PITCH_SET`, `BANK_SET`, or `THRUST_APPLY`
+  input, including repeats, opposite-held releases, and zero releases. It is
+  intentionally separate from the Q15 `InputFrame`, which cannot retain
+  opposing-command order or in-tick taps.
   Live producer, scheduler, force-law, and player-state wiring remains
   intentionally absent.
 - Recovered the scheduler-visible aircraft order:
@@ -969,6 +975,15 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The discrete native control-command slice passes complete clean Windows GCC
+  15.2/Ninja and isolated WSL Ubuntu GCC 13.3/Ninja builds plus all 103 tests.
+  Fresh Clang 22.1.8 and independent GCC warnings-as-errors builds pass the
+  dedicated exhaustive reducer test. Ghidra/working-copy/Rizin wrapper suites,
+  12 Rizin export tests, synthetic boundary tests, the 523-file public scan,
+  268-row function catalogue, changed-document links, local-path scan, and
+  `git diff --check` pass. Independent review's sole P2 catalogue overclaim is
+  fixed; final review reports no open P0-P3. Hosted publication gates remain
+  pending for this slice.
 - The backend render-scale slice passes independent complete MSVC 19.51 and
   MinGW GCC 15.2 Windows product rebuilds and all 94 tests in each build. Both
   public D3D11 smoke modes render a visible frame; the added scaled mode

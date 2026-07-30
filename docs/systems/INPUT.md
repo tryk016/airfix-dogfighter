@@ -241,6 +241,19 @@ The future flight-law bridge must translate their Q15 values into the recovered
 reference payload domain and scheduler timing; this input layer does not invent
 engine or acceleration behavior.
 
+The separate reconstructed native command callback is intentionally not wired
+to `InputFrame`. It owns eight bool flags for turn left/right, pitch up/down,
+bank left/right, and thrust increase/decrease, and every already-ordered
+invocation emits one exact SET/APPLY event after updating its own flag.
+`InputFrame` contains final Q15 flight axes rather than ordered opposing-command
+edges, and it has no turn action, so it cannot recover native last-invocation
+behavior from a sampled frame. The implemented pure command reducer is an
+evidence tool and future pre-aggregation seam, not permission to bypass source
+arbitration, lifecycle neutralization, or the fixed-tick contract. Live wiring
+requires a separately specified ordered semantic-command stream or an explicit
+portable policy; see
+[EXP-20260730-062](../experiments/EXP-20260730-062-native-control-command-reducer.md).
+
 ## Semantic state and deterministic sampling
 
 Each action state contains:
