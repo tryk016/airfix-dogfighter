@@ -5,7 +5,7 @@
 `EV-20260724-003`, `EV-20260724-004`, `EV-20260724-005`,
 `EV-20260728-010`, `EV-20260728-011`, `EV-20260728-012`,
 `EV-20260728-013`, `EV-20260728-014`, `EV-20260729-007`,
-`EV-20260730-001`
+`EV-20260730-001`, `EV-20260730-003`
 **Reference build:** SHA-256 values in `docs/evidence/source-manifest.sha256`
 
 This note records the current clean-room boundary around
@@ -31,6 +31,9 @@ contract are recorded in
 The exact `PITCH_SET`/`BANK_SET` branch boundaries, signed payload, x87
 vectors, producer-specific bounds, and timing limits are recorded in
 [EXP-20260729-056](../../experiments/EXP-20260729-056-native-pitch-bank-event-research.md).
+The follow-up producer, device-priority, synchronous-dispatch, AI-cadence, and
+time-heap ordering proof is recorded in
+[EXP-20260730-067](../../experiments/EXP-20260730-067-native-pitch-bank-producer-ordering.md).
 The sibling `TURN_SET` field, discrete producer, and transactional
 five-control state owner are recorded in
 [EXP-20260730-061](../../experiments/EXP-20260730-061-native-turn-event-control-state.md).
@@ -276,9 +279,15 @@ The QPC clock is integer milliseconds. `NfTimeDependant` initially writes a
 1000 ms interval, then `AfVehicle::AfVehicle` selects 25 ms for a ground unit,
 33 ms for a water unit, or 12 ms for other vehicle types. Both AirCraft type
 predicates route to the shared zero-return implementation, proving the 12 ms
-choice. The dependant scheduler still skips large forward gaps in observed
-layers; those gap and target-mask policies are not yet a portable timing
-contract.
+choice. The input/time pump drains all currently obtainable local input before
+publishing this QPC-derived time. `NfMain::SetTime` polls remote input before
+emitting target-`0xFC` time event `0x4D`; its `NfEngine` branch reaches
+`NfTimeHeap::RefreshDependants` for forward differences below 699 ms and skips
+that heap call at 699 ms or more. The periodic heap repeatedly advances a due
+deadline by 12 ms, so one time publication can invoke zero, one, or multiple
+AirCraft refreshes. This is catch-up scheduling, not one input sample per
+12 ms. The full target-mask and remote-network policies remain outside the
+portable timing contract.
 
 ### Event names and vehicle dispatch
 
@@ -410,6 +419,19 @@ behavior does not claim atomicity across the native callback and
 `ProcessEvent`, and it adds no queue, producer, Q15, or clock. See
 [EXP-20260730-063](../../experiments/EXP-20260730-063-native-control-command-step.md).
 
+The native keyboard path obtains one buffered DirectInput record per device
+request and executes its mapped binding synchronously. It has no fixed
+PITCH-versus-BANK order beyond DirectInput record order and textual binding
+order. Its command held byte changes before `NfEvent::Process`; an event
+ignored by an inactive vehicle is not automatically replayed after activation.
+
+Input devices are registered at the head of the manager list. Construction in
+keyboard, mouse, joystick order therefore yields traversal in joystick, mouse,
+keyboard order. Every request restarts at joystick. One successful joystick
+state snapshot is exposed over successive requests in fixed axis-index order:
+bank first, pitch second, then other axes and changed buttons. Each returned
+raw event is mapped and its SET is processed before the next manager request.
+
 The broader input-event dispatcher at `0x00411BB0`
 (`FN-DOGFIGHTER-00011BB0`, working name `DispatchInputEvents`) uses only `SET`
 events in its three analog cases:
@@ -431,6 +453,13 @@ raw range of `[-255,+255]` and a final pitch/bank payload range of
 `[-32,+32]`; it is not assumed from the consumer. There is no post-read
 clamp, so the proof remains conditional on DirectInput honoring the
 successfully installed range property.
+
+Each analog history global is updated before `NfEvent::Process`. An equal or
+sub-threshold later sample emits no SET, and a SET ignored by an inactive
+vehicle is not replayed merely because it becomes active. The field therefore
+sample-and-holds until a later mapped raw change of at least ten. Raw
+`GetTickCount` timestamps are not copied into the generated SET and do not
+define cross-source ordering.
 
 No explicit local clamp was found on the thrust analog payload. The downstream
 flight step clamps the resulting `+0x444` value to `[0,1]` in its gated update.
@@ -463,6 +492,21 @@ payload. The numeric route is confirmed, but the symbolic names of the
 `AICONTROL` indices themselves remain unknown and are not reconstructed from
 their consumers.
 
+`DispatchAiControlEvents` tests channel 1 before channel 3. When both mapped
+values changed, the complete PITCH
+`HasChanged -> GetRelative -> _ftol -> Save -> Process` sequence finishes
+before the equivalent BANK sequence. `GetRelative` updates the cache before
+processing, so an inactive drop is not replayed until the mapped value changes
+again.
+
+The vehicle's 12 ms refresh invokes `AfAI::Refresh` near its end. AirCraft
+configures the AI interval to exact binary32 `0.1`; the accumulator adds each
+binary32 `dt`, triggers while no longer below that interval, and resets to
+zero rather than subtracting the interval. With uninterrupted `0.012f` steps,
+the ninth refresh triggers after approximately 0.108 seconds. The derived
+step computes controls and then dispatches PITCH before BANK. Those events
+cannot affect force work already completed in the current vehicle refresh.
+
 No `TURN_SET` AI producer was found in the inspected AirCraft, GroundUnit, or
 WaterUnit paths. No control-law consumer of `+0x450` was found in those
 classes outside the shared sleep gate. These bounded negative results are why
@@ -482,7 +526,8 @@ constants without another confirming source.
 
 ## Still unknown
 
-- the full scheduler target-mask and large-gap policy;
+- the full scheduler target-mask and remote-network ordering outside the
+  recovered local input-before-time path;
 - the physical meaning and any missing downstream consumer of
   `EVENT_TURN_SET`/`AfVehicle+0x450`;
 - the complete actor-vs-actor slot-29 order outside the shown static/BSP path;

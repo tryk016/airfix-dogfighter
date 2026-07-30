@@ -307,11 +307,14 @@ The portable startup should preserve:
 
 | Claim | Confidence | Remaining limit |
 |---|---|---|
-| loader-owning modules and export names | high | none in the inspected 16-module set |
-| executable loop call order | high | working names are interpretive |
-| setup probe versus setup enumeration versus runtime device split | high | private class names at unnamed AfEngine RVAs remain provisional |
-| type/mode version gates and factory arguments | high | formal source-level types are reconstructed |
-| successful graphics/mode handle lifetime | high | none for the observed paths |
+| loader-owning modules and export names | medium | none in the inspected 16-module set |
+| executable loop call order | medium | working names are interpretive |
+| setup probe versus setup enumeration versus runtime device split | medium | private class names at unnamed AfEngine RVAs remain provisional |
+| type/mode version gates and factory arguments | medium | formal source-level types are reconstructed |
+| successful graphics/mode handle lifetime | medium | none for the observed paths |
 | successful type-module shared-handle teardown | medium | virtual coordination across multiple registered types is not yet named |
 | `.icd` relationship to the patched executable | unknown | intentionally not executed or unpacked |
 | directory enumeration order across machines | unknown/non-contractual | no sort exists in the recovered code |
+
+Under the project rubric these claims remain medium-confidence because Ghidra
+and Rizin are independent static corroboration, not runtime or parity evidence.

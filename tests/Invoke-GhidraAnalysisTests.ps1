@@ -96,6 +96,16 @@ if ($env:AIRFIX_FAKE_MODE -eq 'unresolved') {
         Set-Content -LiteralPath $reportPath -NoNewline
     exit 0
 }
+if ($env:AIRFIX_FAKE_MODE -eq 'address-reference-out-of-range') {
+    @(
+        'program=fake'
+        'language=x86:LE:32:default'
+        'selectedAddresses=2'
+        'unresolvedAddresses=1'
+        'unresolved=DEADBEEF'
+    ) | Set-Content -LiteralPath $reportPath
+    exit 0
+}
 
 "program=fake`nunresolvedAddresses=0`n" |
     Set-Content -LiteralPath $reportPath -NoNewline
@@ -194,6 +204,27 @@ exit /b %ERRORLEVEL%
             -ProgramName 'AirCraft.type' `
             -ReportSuffix 'unresolved'
     }
+
+    $env:AIRFIX_FAKE_MODE = 'address-reference-out-of-range'
+    $addressReferenceParameters = $common.Clone()
+    $addressReferenceParameters.PostScript =
+        'ExportAddressReferences.java'
+    Assert-Fails -ExpectedMessage 'reported incomplete output' -Action {
+        & $wrapper @addressReferenceParameters `
+            -ProgramName 'AirCraft.type' `
+            -PostScriptArguments @('00401000', 'DEADBEEF') `
+            -ReportSuffix 'address-reference-out-of-range'
+    }
+    $addressReferenceReport = Join-Path $reports (
+        'AirCraft.type.address-reference-out-of-range.txt')
+    $addressReferenceLines = [string[]](
+        Get-Content -LiteralPath $addressReferenceReport)
+    Assert-Contains $addressReferenceLines 'selectedAddresses=2' (
+        'address-reference report preserves the requested-address count')
+    Assert-Contains $addressReferenceLines 'unresolvedAddresses=1' (
+        'address-reference report marks an out-of-range address unresolved')
+    Assert-Contains $addressReferenceLines 'unresolved=DEADBEEF' (
+        'address-reference report identifies the mistyped address')
 
     $env:AIRFIX_FAKE_MODE = 'no-report'
     Assert-Fails -ExpectedMessage 'did not create its report' -Action {
