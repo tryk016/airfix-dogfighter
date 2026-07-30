@@ -4205,3 +4205,30 @@ superseded evidence.
   and passes 124/124 CTests. Hosted Apple compilation, independent final review
   and physical iPhone persistence/lifecycle acceptance remain publication and
   device gates.
+
+## 2026-07-30 - bounded controller binding remap core
+
+- Accepted ADR-0015 and added bounded typed catalogs for seven digital gameplay
+  actions plus standardized controller buttons/triggers. Custom, missing,
+  ambiguous, combined-context, analog, menu, pause/back, and throttle layouts
+  are classified without exposing raw AFIP fields to native interfaces.
+- Extended the existing active/persisted/draft profile model with atomic moves,
+  cancel-first conflicts, explicit swaps only between unique supported actions,
+  and a full default-binding reset that preserves all four calibration records.
+  Button/trigger transports are normalized to the fixed AFIP V1 contract, and
+  every candidate is resolved as a complete profile before draft publication.
+- Unknown conflict-resolution values, protected recovery controls, and custom
+  layouts fail closed without mutation. Save remains frozen, full-record,
+  retryable after failure, exactly round-trippable through the AFIP codec, and
+  next-launch-only; the active router is never rebuilt in place.
+- Synthetic tests cover catalog bounds, classification, disjoint contexts,
+  move/swap normalization and atomicity, pause/global-back/throttle protection,
+  forged values, reset, save freeze, failure retry, and codec round-trip.
+- The portable GCC/Ninja build passes 115/115 CTests. The complete MSVC
+  19.51/Ninja Windows product links `AirfixDogfighter.exe` and passes 125/125
+  CTests including both D3D11 product smokes. Clang-format
+  warnings-as-errors, synthetic public-boundary tests, the 596-file scan, and
+  `git diff --check` pass.
+- Independent review found four issues in the first draft, verified all four
+  fixes, and returned GO with no remaining P0-P3 finding. Native Windows/iOS
+  text pickers and hosted Actions remain publication/follow-up gates.

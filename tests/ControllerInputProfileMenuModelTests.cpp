@@ -1,5 +1,6 @@
 #include "airfix/input/ControllerInputBatchBridge.hpp"
 #include "airfix/input/ControllerInputRuntimeConfiguration.hpp"
+#include "airfix/settings/ControllerInputProfileCodec.hpp"
 #include "airfix/settings/ControllerInputProfileMenuModel.hpp"
 
 #include <array>
@@ -11,11 +12,14 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <variant>
 
 namespace {
 
 using airfix::input::ControllerAxisCalibrationRecord;
 using airfix::input::ControllerAxisElement;
+using airfix::input::ControllerDigitalGameplayAction;
+using airfix::input::ControllerDigitalGameplayBindingStatus;
 using airfix::input::ControllerInputBatch;
 using airfix::input::ControllerInputBatchBridge;
 using airfix::input::ControllerInputEmission;
@@ -30,6 +34,8 @@ using airfix::input::PhysicalEventKind;
 using airfix::input::q15Min;
 using airfix::input::resolveControllerInputProfile;
 using airfix::input::transformControllerAxisForTransport;
+using airfix::settings::ControllerInputProfileBindingConflictResolution;
+using airfix::settings::ControllerInputProfileBindingRemapStatus;
 using airfix::settings::ControllerInputProfileMenuCapabilities;
 using airfix::settings::ControllerInputProfileMenuEditStatus;
 using airfix::settings::ControllerInputProfileMenuModel;
@@ -495,8 +501,254 @@ void testPreviewHelperMatchesConfiguredRuntimeBridge() {
           "configured runtime bridge diverged from the preview helper");
 }
 
+void testDigitalGameplayMoveAllowsDisjointMenuUse() {
+  auto subject = defaultModel();
+  require(
+      subject.setSensitivityPermille(ControllerAxisElement::rightStickY, 1500U)
+          .accepted(),
+      "move fixture calibration edit failed");
+  const auto before = subject.draftRecord();
+  const auto selected = subject.draftDigitalGameplayBinding(
+      ControllerDigitalGameplayAction::missionStatus);
+  require(selected.editable(), "move fixture action is not editable");
+
+  const auto result = subject.rebindDigitalGameplayAction(
+      ControllerDigitalGameplayAction::missionStatus,
+      airfix::input::controls::controller::facePrimary);
+  require(result.accepted() && result.bindingIndex == selected.bindingIndex &&
+              result.conflictIndex ==
+                  airfix::input::controllerInputProfileNoIndex,
+          "disjoint-context move failed");
+  const auto &after = subject.draftRecord();
+  const auto &binding = after.bindings[selected.bindingIndex];
+  require(binding.control == airfix::input::controls::controller::facePrimary &&
+              binding.physicalKind == PhysicalEventKind::digital &&
+              binding.scale == airfix::input::q15One &&
+              binding.meaningfulThreshold == 1 &&
+              binding.blocksNeutralGate == 1U &&
+              binding.target ==
+                  static_cast<std::uint8_t>(DigitalAction::missionStatus) &&
+              binding.contexts == gameplayContext,
+          "button move did not normalize the selected transport");
+  require(after.bindingCount == before.bindingCount &&
+              after.axes == before.axes &&
+              after.axes[axisIndex(ControllerAxisElement::rightStickY)]
+                      .sensitivityPermille == 1500U &&
+              resolveControllerInputProfile(after).complete(),
+          "button move changed calibration/count or produced an invalid draft");
+  for (std::size_t index = 0U; index < after.bindingCount; ++index) {
+    if (index != selected.bindingIndex) {
+      require(after.bindings[index] == before.bindings[index],
+              "button move changed an unrelated binding");
+    }
+  }
+}
+
+void testDigitalGameplayConflictIsCancelFirstAndSwapIsAtomic() {
+  auto subject = defaultModel();
+  const auto before = subject.draftRecord();
+  const auto camera = subject.draftDigitalGameplayBinding(
+      ControllerDigitalGameplayAction::cameraCycle);
+  const auto primary = subject.draftDigitalGameplayBinding(
+      ControllerDigitalGameplayAction::primaryFire);
+  require(camera.editable() && primary.editable(),
+          "swap fixture actions are not editable");
+
+  const auto conflict = subject.rebindDigitalGameplayAction(
+      ControllerDigitalGameplayAction::cameraCycle,
+      airfix::input::controls::controller::rightTrigger);
+  require(
+      conflict.status == ControllerInputProfileBindingRemapStatus::conflict &&
+          conflict.canSwap() && conflict.bindingIndex == camera.bindingIndex &&
+          conflict.conflictIndex == primary.bindingIndex &&
+          conflict.conflictingAction ==
+              ControllerDigitalGameplayAction::primaryFire &&
+          subject.draftRecord() == before,
+      "cancel-first conflict mutated state or hid the swap");
+
+  const auto swapped = subject.rebindDigitalGameplayAction(
+      ControllerDigitalGameplayAction::cameraCycle,
+      airfix::input::controls::controller::rightTrigger,
+      ControllerInputProfileBindingConflictResolution::swap);
+  require(swapped.accepted() && swapped.bindingIndex == camera.bindingIndex &&
+              swapped.conflictIndex == primary.bindingIndex,
+          "supported conflict did not swap");
+  const auto &after = subject.draftRecord();
+  const auto &cameraBinding = after.bindings[camera.bindingIndex];
+  const auto &primaryBinding = after.bindings[primary.bindingIndex];
+  require(cameraBinding.control ==
+                  airfix::input::controls::controller::rightTrigger &&
+              cameraBinding.physicalKind == PhysicalEventKind::analog &&
+              cameraBinding.meaningfulThreshold ==
+                  airfix::input::controllerTriggerActuationQ15 &&
+              cameraBinding.scale == airfix::input::q15One &&
+              primaryBinding.control ==
+                  airfix::input::controls::controller::faceLeft &&
+              primaryBinding.physicalKind == PhysicalEventKind::digital &&
+              primaryBinding.meaningfulThreshold == 1 &&
+              primaryBinding.scale == airfix::input::q15One,
+          "swap did not normalize trigger/button transports");
+  require(after.bindingCount == before.bindingCount &&
+              after.axes == before.axes &&
+              resolveControllerInputProfile(after).complete(),
+          "swap changed calibration/count or produced an invalid draft");
+  for (std::size_t index = 0U; index < after.bindingCount; ++index) {
+    if (index != camera.bindingIndex && index != primary.bindingIndex) {
+      require(after.bindings[index] == before.bindings[index],
+              "swap changed an unrelated binding");
+    }
+  }
+}
+
+void testProtectedAndUnsupportedRemapsFailAtomically() {
+  auto subject = defaultModel();
+  const auto before = subject.draftRecord();
+
+  const auto pauseConflict = subject.rebindDigitalGameplayAction(
+      ControllerDigitalGameplayAction::cameraCycle,
+      airfix::input::controls::controller::menu,
+      ControllerInputProfileBindingConflictResolution::swap);
+  require(pauseConflict.status ==
+                  ControllerInputProfileBindingRemapStatus::protectedConflict &&
+              pauseConflict.conflictIndex !=
+                  airfix::input::controllerInputProfileNoIndex &&
+              !pauseConflict.conflictingAction.has_value() &&
+              subject.draftRecord() == before,
+          "protected pause conflict was swapped or mutated");
+
+  const auto throttleConflict = subject.rebindDigitalGameplayAction(
+      ControllerDigitalGameplayAction::cameraCycle,
+      airfix::input::controls::controller::dpadUp);
+  require(throttleConflict.status ==
+                  ControllerInputProfileBindingRemapStatus::protectedConflict &&
+              subject.draftRecord() == before,
+          "protected throttle conflict was accepted");
+
+  const auto backConflict = subject.rebindDigitalGameplayAction(
+      ControllerDigitalGameplayAction::cameraCycle,
+      airfix::input::controls::controller::faceSecondary,
+      ControllerInputProfileBindingConflictResolution::swap);
+  require(backConflict.status ==
+                  ControllerInputProfileBindingRemapStatus::protectedConflict &&
+              subject.draftRecord() == before,
+          "protected global-back conflict was swapped or mutated");
+
+  const auto invalidAction = subject.rebindDigitalGameplayAction(
+      ControllerDigitalGameplayAction::count,
+      airfix::input::controls::controller::facePrimary);
+  require(invalidAction.status ==
+                  ControllerInputProfileBindingRemapStatus::invalidAction &&
+              subject.draftRecord() == before,
+          "forged action changed the draft");
+
+  const auto invalidResolution = subject.rebindDigitalGameplayAction(
+      ControllerDigitalGameplayAction::cameraCycle,
+      airfix::input::controls::controller::rightTrigger,
+      static_cast<ControllerInputProfileBindingConflictResolution>(255U));
+  require(invalidResolution.status ==
+                  ControllerInputProfileBindingRemapStatus::invalidResolution &&
+              subject.draftRecord() == before,
+          "forged conflict resolution changed the draft");
+
+  const auto continuous = subject.rebindDigitalGameplayAction(
+      ControllerDigitalGameplayAction::cameraCycle,
+      airfix::input::controls::controller::leftStickX);
+  require(continuous.status ==
+                  ControllerInputProfileBindingRemapStatus::invalidControl &&
+              subject.draftRecord() == before,
+          "continuous axis entered the button editor");
+
+  const auto forged = subject.rebindDigitalGameplayAction(
+      ControllerDigitalGameplayAction::cameraCycle,
+      airfix::input::ControlId{65000U});
+  require(forged.status ==
+                  ControllerInputProfileBindingRemapStatus::invalidControl &&
+              subject.draftRecord() == before,
+          "forged control changed the draft");
+}
+
+void testCustomMultiBindingActionIsReportedButNotGuessed() {
+  auto record = makeDefaultControllerInputProfileRecord();
+  const auto mission = airfix::input::controllerDigitalGameplayBinding(
+      record, ControllerDigitalGameplayAction::missionStatus);
+  require(mission.editable() &&
+              record.bindingCount <
+                  airfix::input::controllerProfileBindingCapacity,
+          "custom-layout fixture cannot append");
+  auto duplicate = record.bindings[mission.bindingIndex];
+  duplicate.control = airfix::input::controls::controller::facePrimary;
+  duplicate.physicalKind = PhysicalEventKind::digital;
+  record.bindings[record.bindingCount] = duplicate;
+  ++record.bindingCount;
+  require(resolveControllerInputProfile(record).complete(),
+          "custom multi-binding fixture is invalid");
+
+  auto subject = model(record, record);
+  const auto before = subject.draftRecord();
+  const auto result = subject.rebindDigitalGameplayAction(
+      ControllerDigitalGameplayAction::missionStatus,
+      airfix::input::controls::controller::dpadLeft);
+  require(result.status ==
+                  ControllerInputProfileBindingRemapStatus::actionUnavailable &&
+              result.bindingStatus ==
+                  ControllerDigitalGameplayBindingStatus::ambiguous &&
+              subject.draftRecord() == before,
+          "custom multi-binding action was guessed or mutated");
+}
+
+void testBindingResetAndSaveFreezeShareTheExistingDraft() {
+  auto subject = defaultModel();
+  require(
+      subject.setInverted(ControllerAxisElement::leftStickY, true).accepted(),
+      "reset fixture calibration edit failed");
+  const auto moved = subject.rebindDigitalGameplayAction(
+      ControllerDigitalGameplayAction::missionStatus,
+      airfix::input::controls::controller::facePrimary);
+  require(moved.accepted(), "reset fixture remap failed");
+  const auto calibrationBeforeReset = subject.draftRecord().axes;
+
+  require(subject.resetAllControllerBindings().accepted(),
+          "reset all controller bindings failed");
+  const auto defaults = makeDefaultControllerInputProfileRecord();
+  require(subject.draftRecord().bindings == defaults.bindings &&
+              subject.draftRecord().bindingCount == defaults.bindingCount &&
+              subject.draftRecord().axes == calibrationBeforeReset &&
+              subject.draftRecord().axes != defaults.axes,
+          "binding reset changed calibration or retained assignments");
+
+  const auto movedAgain = subject.rebindDigitalGameplayAction(
+      ControllerDigitalGameplayAction::missionStatus,
+      airfix::input::controls::controller::facePrimary);
+  require(movedAgain.accepted(), "save-freeze remap fixture failed");
+  const auto frozenDraft = subject.draftRecord();
+  const auto ticket = subject.beginSave();
+  require(ticket.has_value(), "remapped draft did not begin save");
+  const auto encoded =
+      airfix::settings::encodeControllerInputProfileDocument(ticket->candidate);
+  const auto decoded =
+      airfix::settings::decodeControllerInputProfileDocument(encoded);
+  require(std::holds_alternative<ControllerInputProfileRecord>(decoded) &&
+              std::get<ControllerInputProfileRecord>(decoded) ==
+                  ticket->candidate,
+          "remapped save ticket did not survive an exact AFIP round trip");
+  const auto frozen = subject.rebindDigitalGameplayAction(
+      ControllerDigitalGameplayAction::cameraCycle,
+      airfix::input::controls::controller::facePrimary);
+  require(frozen.status ==
+                  ControllerInputProfileBindingRemapStatus::saveInProgress &&
+              subject.draftRecord() == frozenDraft &&
+              subject.resetAllControllerBindings().status ==
+                  ControllerInputProfileMenuEditStatus::saveInProgress,
+          "in-flight save allowed binding mutation or reset");
+  require(subject.finishSaveFailure(*ticket) && subject.canSave() &&
+              subject.draftRecord() == frozenDraft,
+          "failed remap save did not retain a retryable complete draft");
+}
+
 static_assert(
     std::is_trivially_copyable_v<ControllerInputProfileMenuSaveTicket>);
+static_assert(std::is_trivially_copyable_v<
+              airfix::settings::ControllerInputProfileBindingRemapResult>);
 static_assert(std::is_trivially_copyable_v<ControllerInputProfileMenuModel>);
 static_assert(noexcept(ControllerInputProfileMenuModel::create({}, {})));
 static_assert(noexcept(transformControllerAxisForTransport(
@@ -515,6 +767,11 @@ int main() {
     testSaveFreezesAndExactCompletionControlsPromotion();
     testSerialExhaustionFailsClosedWithoutWrap();
     testPreviewHelperMatchesConfiguredRuntimeBridge();
+    testDigitalGameplayMoveAllowsDisjointMenuUse();
+    testDigitalGameplayConflictIsCancelFirstAndSwapIsAtomic();
+    testProtectedAndUnsupportedRemapsFailAtomically();
+    testCustomMultiBindingActionIsReportedButNotGuessed();
+    testBindingResetAndSaveFreezeShareTheExistingDraft();
     std::cout << "controller-input profile menu model tests passed\n";
     return 0;
   } catch (const std::exception &error) {

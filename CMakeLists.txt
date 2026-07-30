@@ -79,6 +79,7 @@ else()
 endif()
 
 add_library(airfix_input
+    src/airfix/input/ControllerInputBindingCatalog.cpp
     src/airfix/input/ControllerInputProfile.cpp
     src/airfix/input/ControllerInputRuntimeConfiguration.cpp
     src/airfix/input/ControllerInputBatchBridge.cpp
@@ -643,6 +644,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::input)
     add_test(NAME airfix_controller_input_profile_tests
         COMMAND airfix_controller_input_profile_tests)
+
+    add_executable(airfix_controller_input_binding_catalog_tests
+        tests/ControllerInputBindingCatalogTests.cpp)
+    target_link_libraries(airfix_controller_input_binding_catalog_tests
+        PRIVATE airfix::input)
+    add_test(NAME airfix_controller_input_binding_catalog_tests
+        COMMAND airfix_controller_input_binding_catalog_tests)
 
     add_executable(airfix_controller_input_profile_menu_model_tests
         tests/ControllerInputProfileMenuModelTests.cpp)

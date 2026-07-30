@@ -171,8 +171,13 @@
   exact shared raw/adjusted preview, uses validated menu bindings, and never
   mutates the active pre-start configuration. Current-only exact readback is
   the sole recovery proof for an ambiguous commit; all preview samples are
-  zeroed at reset/lifecycle boundaries. Binding remapping, glyphs, haptics, and
-  physical-device persistence acceptance remain.
+  zeroed at reset/lifecycle boundaries. ADR-0015 now adds a portable typed
+  catalog and a bounded seven-action remap transaction to the same draft:
+  moving to an unused control is atomic, conflicts cancel by default, only
+  another unique supported action can be explicitly swapped, and protected or
+  custom layouts fail closed. Reset restores default bindings without changing
+  calibration, and save remains next-launch-only. Native Windows/iOS remap
+  pickers, glyphs, haptics, and physical-device persistence acceptance remain.
 - Local Git repository initialized on branch `main`; planning baseline committed
   as `59828ed`.
 - GitHub remote `tryk016/airfix-dogfighter` connected and the planning baseline
@@ -1036,14 +1041,17 @@
    campaign/save consumer before wiring the isolated mission-outcome state.
    Preserve one already-ordered call per transition; do not batch, sort,
    deduplicate, replay, or invent a priority when both native flags are true.
-4. Extend the implemented Windows and iOS save-on-next-launch calibration
-   surfaces with binding remapping only after its conflict/recovery UX is
-   specified. Before supporting live replacement, add a host-owned pause
-   transaction that prepares a fresh pair. Then add persistent touch
-   layout/visibility profiles, controller glyphs, haptics, and finished menu
-   bindings before touch-only and controller-only acceptance on both target
-   iPhones. Never mutate position-indexed active router state in place or accept
-   a live caller's unauthenticated mission claim.
+4. Expose the implemented ADR-0015 bounded remap transaction through explicit
+   text pickers on Windows and iOS. Preserve its cancel-first conflicts,
+   protected recovery controls, unique-supported-action-only atomic swap, and
+   full default-binding reset; do not expose the raw AFIP table or claim
+   Narrator support before Windows UI Automation exists. Before supporting
+   live replacement, add a host-owned pause transaction that prepares a fresh
+   pair. Then add persistent touch layout/visibility profiles, controller
+   glyphs, haptics, and finished menu bindings before touch-only and
+   controller-only acceptance on both target iPhones. Never mutate
+   position-indexed active router state in place or accept a live caller's
+   unauthenticated mission claim.
 5. Connect the implemented weak camera-runtime endpoint to the recovered live
    AirCraft producer once it supplies distinct chase position, world anchor,
    vehicle rotation, live health, inactive state, and the confirmed scheduler
@@ -1080,6 +1088,16 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The ADR-0015 portable binding-remap core exposes seven typed gameplay actions
+  through cancel-first move, unique-supported-action-only atomic swap, and
+  default-binding reset operations while preserving calibration and the
+  immutable active router. The portable GCC/Ninja build passes 115/115 CTests;
+  the complete MSVC 19.51/Ninja Windows product links and passes 125/125 CTests,
+  including both D3D11 product smokes. Clang-format warnings-as-errors,
+  synthetic public-boundary tests, the 596-file repository scan, and
+  `git diff --check` pass. Independent review found four issues, verified their
+  fixes, and returned final GO with no remaining P0-P3 finding. Hosted Windows,
+  Linux, macOS, and Apple builds remain the publication gate.
 - The private iOS controller-calibration slice reuses the complete portable
   active/persisted/draft model and exact runtime preview transform. Repair
   classification now has portable coverage for clean defaults, current,
