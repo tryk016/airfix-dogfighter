@@ -4290,3 +4290,28 @@ superseded evidence.
   verified both fixes, and returned GO with no remaining P0-P3 finding. Hosted
   Apple compilation and physical-device acceptance remain publication or
   device gates.
+
+## 2026-07-30 - aircraft type catalogue and refresh prerequisite
+
+- `EV-20260730-007` / `EXP-20260730-077` cross-checks `typeCreate`
+  `[0x10001000,0x100017E8)` in Ghidra 12.1.2 and Rizin 0.9.1. Both identify 17
+  calls to the common constructor, the same registration order, string
+  references, and immediate tuple words.
+- Added `LegacyAircraftTypeCatalog`, preserving every ten-field tuple as exact
+  source words. Compile-time checks and independent full-table tests fix count,
+  order, names, bit views, lookup identity, and fail-closed path behavior.
+- Mission player visuals now carry an optional typed aircraft ID resolved only
+  from the authenticated canonical object path. All 14 `Ac*` AirCrafts paths
+  and three `Au*` Units paths are covered; cross-directory names fail closed.
+  Generic MODL-root visuals remain valid without one; manifest and publication
+  tests reject missing or forged associations.
+- Added `LegacyAircraftVehicleRefreshGate`, which passes the committed five
+  controls and shared rest duration through the existing sleep helper. Success
+  commits only rest duration; non-finite and overflow rejection is atomic.
+- The complete GCC/Ninja build passes 119/119 CTests. Focused Clang 22
+  warnings-as-errors, synthetic public-boundary tests, the 611-file repository
+  scan, changed-document links, the 322-row/14-column unique catalogue, and
+  `git diff --check` pass. Independent review found the omitted `Units`
+  directory for the three `Au*` records; the all-17 resolver/test fix closes
+  it, and final re-review reports GO with no remaining P0-P3 finding. Hosted
+  platform Actions remain the publication gate.

@@ -41,6 +41,8 @@ using airfix::testing::UdspInputEntry;
 
 constexpr std::string_view kPlayerObjectLogicalPath =
     "Game/Objects/Player.object";
+constexpr std::string_view kSpitfireObjectLogicalPath =
+    "Game/Objects/AirCrafts/AcSpitfire.object";
 constexpr std::string_view kPlayerCcfLogicalPath =
     "Graphics/Player.ccf";
 constexpr std::string_view kPlayerBlueprintSelector = "PrimaryRoot";
@@ -547,6 +549,7 @@ void testAuthenticatedPlayerVisualDescriptor() {
             player.textureRoot ==
                 std::optional<std::string>{
                     airfix::testing::kSyntheticTextureRoot} &&
+            !player.aircraftType.has_value() &&
             player.legacySkinSlot == 0U,
         "player descriptor lost canonical identity or derived MODL fields");
     require(
@@ -570,6 +573,29 @@ void testAuthenticatedPlayerVisualDescriptor() {
                         player.modelCcfSource.archiveFileIndex;
                 }),
         "player CCF leaked into the room CCF catalogue");
+
+    {
+        auto typedEntries = playerHappyEntries();
+        typedEntries[typedEntries.size() - 2U].logicalPath =
+            std::string(kSpitfireObjectLogicalPath);
+        const auto typedPack = makePack(typedEntries);
+        auto typedSession = openSession(typedPack);
+        auto typedRequest = request();
+        typedRequest.playerObjectLogicalPath =
+            std::string(kSpitfireObjectLogicalPath);
+        const auto typed =
+            airfix::content::buildMissionLoadManifest(
+                typedSession, typedRequest);
+        require(
+            typed.success() &&
+                typed.manifest->playerVisual().has_value() &&
+                typed.manifest->playerVisual()->aircraftType ==
+                    std::optional<
+                        airfix::simulation::LegacyAircraftTypeId>{
+                        airfix::simulation::LegacyAircraftTypeId::
+                            spitfire},
+            "canonical player object did not bind its aircraft type");
+    }
 
     auto absentSession = openSession(pack);
     const auto absent =

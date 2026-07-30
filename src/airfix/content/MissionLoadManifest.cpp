@@ -1495,11 +1495,18 @@ MissionLoadManifestResult buildMissionLoadManifest(
                 return result;
             }
 
+            const auto* aircraftType = simulation::
+                findLegacyAircraftTypeForObjectLogicalPath(
+                    objectIdentity.logicalPath);
             candidate.playerVisual_ = MissionPlayerVisualDescriptor{
                 .objectDefinitionSource = std::move(objectIdentity),
                 .modelCcfSource = std::move(ccfIdentity),
                 .blueprintSelector = std::move(*playerObject.meshName),
                 .textureRoot = std::move(playerObject.textureRoot),
+                .aircraftType = aircraftType == nullptr
+                    ? std::nullopt
+                    : std::optional<simulation::LegacyAircraftTypeId>{
+                          aircraftType->id},
                 .legacySkinSlot = 0U,
                 .objectDefinitionSourceAllocationFootprintBytes =
                     objectFootprint,
