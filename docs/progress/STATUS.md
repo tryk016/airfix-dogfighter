@@ -385,6 +385,21 @@
   Q15-to-native event timing, runtime contact/audio traces, deterministic PRNG
   ownership, full x87 numeric tolerance, mixer integration, and dynamic
   actor-to-render publication remain unknown.
+- `EV-20260730-004` now bounds the isolated `CcRigidBody` integrator itself.
+  The state is exactly 13 binary32 values at `+0x40`: position,
+  `(w,x,y,z)` quaternion, linear momentum, and world angular momentum.
+  `Derive` reconstructs `R`, linear velocity,
+  `R * bodyInverseInertia * transpose(R)`, and row-vector angular velocity;
+  it then emits the left-Hamilton quaternion derivative, accumulated force,
+  and torque minus angular-momentum damping. The report records every material
+  x87 operation and binary32 spill, including matrix `k=0,2,1` accumulation,
+  quaternion helper temporaries, and the X/Y-stored versus Z-retained damping
+  asymmetry. `EulerODE` updates all 13 lanes before `PostODE` normalization;
+  reset and post-step auxiliary refresh remain explicit later phases. Ghidra
+  12.1.2 and Rizin 0.9.1 agree on all main and helper boundaries. Exact
+  PC24/RNE, PC53/RNE, and PC64/RNE discriminators are documented, but the live
+  x87 control word and exception state remain unknown, so no pure kernel or
+  runtime integration was added.
 - Recovered the complete player spawn/type/primary-actor event chain and the
   fixed 16-entry mission start table. The selector uses requested index modulo
   count, with the primary receiving CCF room as the empty-table fallback.

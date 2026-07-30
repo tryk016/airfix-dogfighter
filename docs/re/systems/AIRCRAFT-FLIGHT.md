@@ -5,7 +5,7 @@
 `EV-20260724-003`, `EV-20260724-004`, `EV-20260724-005`,
 `EV-20260728-010`, `EV-20260728-011`, `EV-20260728-012`,
 `EV-20260728-013`, `EV-20260728-014`, `EV-20260729-007`,
-`EV-20260730-001`, `EV-20260730-003`
+`EV-20260730-001`, `EV-20260730-003`, `EV-20260730-004`
 **Reference build:** SHA-256 values in `docs/evidence/source-manifest.sha256`
 
 This note records the current clean-room boundary around
@@ -34,6 +34,11 @@ vectors, producer-specific bounds, and timing limits are recorded in
 The follow-up producer, device-priority, synchronous-dispatch, AI-cadence, and
 time-heap ordering proof is recorded in
 [EXP-20260730-067](../../experiments/EXP-20260730-067-native-pitch-bank-producer-ordering.md).
+The exact `CcRigidBody` 13-float layout, Euler/derivative/quaternion equations,
+x87 spill schedule, matrix convention, exact-bit vectors, and implementation
+NO-GO are recorded in
+[EXP-20260730-068](../../experiments/EXP-20260730-068-rigid-body-integration-kernel.md)
+and the durable [CcRigidBody boundary](CC-RIGID-BODY.md).
 The sibling `TURN_SET` field, discrete producer, and transactional
 five-control state owner are recorded in
 [EXP-20260730-061](../../experiments/EXP-20260730-061-native-turn-event-control-state.md).
