@@ -4,7 +4,7 @@
 **Evidence:** `EV-20260724-001`, `EV-20260724-002`,
 `EV-20260724-003`, `EV-20260724-004`, `EV-20260724-005`,
 `EV-20260728-010`, `EV-20260728-011`, `EV-20260728-012`,
-`EV-20260728-013`, `EV-20260728-014`
+`EV-20260728-013`, `EV-20260728-014`, `EV-20260729-007`
 **Reference build:** SHA-256 values in `docs/evidence/source-manifest.sha256`
 
 This note records the current clean-room boundary around
@@ -312,6 +312,17 @@ that range and fails closed outside it. This added validation must not be
 misreported as a native dispatcher or universal producer check. A recognized
 inactive event is accepted before payload validation, matching the native
 gate.
+
+Pitch and bank SET now have a separate, still-unwired portable typed-write
+decoder. It accepts the complete native signed `int32` domain and returns
+only the selected semantic field, exact binary32 bits under the explicitly
+named startup-compatible PC53/nearest-even policy, and the proven rest-clear
+directive. Its integer implementation models both rounding stages without
+depending on the host floating-point environment. This is deterministic port
+behavior, not a claim that the native live x87 control word has been observed.
+The decoder owns no producer, ordering, scheduler, or state mutation;
+[EXP-20260729-060](../../experiments/EXP-20260729-060-native-pitch-bank-event-reducer.md)
+records the implementation boundary.
 
 The conversion preserves the recovered wider-intermediate store vectors:
 `THRUST_APPLY(249)` is `0x3C9FFC25` and `THRUST_APPLY(255)` is

@@ -317,7 +317,10 @@
   startup-compatible conditional model, not a branch-time observation:
   process-wide live x87 precision and rounding control, cross-producer
   ordering, and the nominal-12-ms sample phase remain explicitly unproven. The
-  isolated pitch/bank reducer and live wiring are not yet implemented.
+  isolated pitch/bank typed-write reducer is implemented over the full signed
+  native payload domain. It returns exact binary32 bits under an explicitly
+  named startup-compatible PC53/nearest-even policy using host-FP-independent
+  integer rounding. Live wiring remains intentionally absent.
 - Recovered the scheduler-visible aircraft order:
   `EulerODE -> ResetForceAndTorque -> CalcAuxiliary -> slot45 force
   accumulation -> collision/slot30 -> slot44 refresh`. `EulerODE` consumes
@@ -905,12 +908,13 @@
    and the separate already-formed signed native `THRUST_SET/APPLY` typed-write
    reducer are complete. The exact signed `PITCH_SET`/`BANK_SET` branch
    structure, rest-clear behavior, and producer ranges are now statically
-   recovered; the full-domain PC53/RN vector model remains conditional on the
-   live x87 control word. Implement a separate pure structural reducer with an
-   explicitly labelled numeric policy, but keep all control reducers unwired
-   from `PlayerAircraftState` until controlled traces prove numeric mode,
-   Q15-to-event ordering, and sample-and-hold timing; do not manufacture a
-   complete native flight-control scheduler from the nominal 12 ms interval.
+   recovered; the separate pure structural reducer now implements the
+   explicitly labelled full-domain PC53/RN compatibility policy while the
+   model remains conditional on the live x87 control word. Keep all control
+   reducers unwired from `PlayerAircraftState` until controlled traces prove
+   numeric mode, Q15-to-event ordering, and sample-and-hold timing; do not
+   manufacture a complete native flight-control scheduler from the nominal
+   12 ms interval.
 2. Obtain controlled runtime traces for free flight and the ground, inverted,
    water, collision, engine-transition, and too-high branches; establish
    x87-versus-portable numeric tolerances and deterministic replacement PRNG
