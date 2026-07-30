@@ -4,7 +4,8 @@
 **Evidence:** `EV-20260724-001`, `EV-20260724-002`,
 `EV-20260724-003`, `EV-20260724-004`, `EV-20260724-005`,
 `EV-20260728-010`, `EV-20260728-011`, `EV-20260728-012`,
-`EV-20260728-013`, `EV-20260728-014`, `EV-20260729-007`
+`EV-20260728-013`, `EV-20260728-014`, `EV-20260729-007`,
+`EV-20260730-001`
 **Reference build:** SHA-256 values in `docs/evidence/source-manifest.sha256`
 
 This note records the current clean-room boundary around
@@ -388,6 +389,17 @@ This confirms signs relative to the original command labels: positive pitch is
 positive thrust apply is increase. It does not by itself define the physical
 world-axis handedness.
 
+The callback stores eight independent bool bytes, initially zero. A valid
+one-argument invocation first overwrites its own byte, then emits exactly one
+event. A true value always selects its own direction; a false value selects the
+opposite direction only if that command remains active, otherwise zero.
+Neither repeated values nor equal payloads are suppressed. The isolated
+`LegacyAircraftControlCommandReducer` implements this already-ordered local
+transition and returns an existing typed native-event input. It does not accept
+`InputFrame`: the final Q15 axis snapshot cannot preserve opposing-command
+order, an in-tick tap, or repeated callback invocations. See
+[EXP-20260730-062](../../experiments/EXP-20260730-062-native-control-command-reducer.md).
+
 The broader input-event dispatcher at `0x00411BB0`
 (`FN-DOGFIGHTER-00011BB0`, working name `DispatchInputEvents`) uses only `SET`
 events in its three analog cases:
@@ -490,14 +502,17 @@ Until those unknowns are resolved, the portable simulation may:
 
 Separate pure helpers may also preserve already confirmed local contracts for
 the vehicle sleep gate; the typed already-formed native thrust-event write;
+the eight-flag already-ordered discrete control-command transition;
 the ordered slot-45 target/apply/clamp/smoothing prefix; collision-driven
 thrust-integrity degradation; later
 recovery/clamping; and the bounded engine-only audio command stream plus the
 destroyed-dive sample state. The thrust-control transition treats invocation
 as the already-decided active slot-45 call and owns no scheduler, `dt`, Q15
-conversion, or event timing. The event decoder owns neither the 60 Hz producer
-nor 12 ms sample-and-hold policy and only returns a typed write plus a
-rest-clear directive. The primary `WpMGun` helper may also preserve its
+conversion, or event timing. The command reducer owns neither the 60 Hz
+producer nor 12 ms sample-and-hold policy and returns only a typed native-event
+input. The event decoders share that timing boundary and return only a typed
+write plus a rest-clear directive. The primary `WpMGun` helper may also
+preserve its
 recovered technology profiles, shot accumulator, trigger, barrel, ammunition,
 and one-projectile-request-per-refresh transition. These helpers remain
 unwired until a

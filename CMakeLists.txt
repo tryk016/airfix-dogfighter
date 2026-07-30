@@ -99,6 +99,7 @@ endif()
 
 add_library(airfix_simulation
     src/airfix/simulation/LegacyAircraftAudioCoordinator.cpp
+    src/airfix/simulation/LegacyAircraftControlCommandReducer.cpp
     src/airfix/simulation/LegacyAircraftControlEventStateOwner.cpp
     src/airfix/simulation/LegacyAircraftDestroyedDiveAudioState.cpp
     src/airfix/simulation/LegacyAircraftEngineAudioState.cpp
@@ -655,6 +656,17 @@ if(AIRFIX_BUILD_TESTS)
         NAME airfix_legacy_aircraft_control_event_state_owner_tests
         COMMAND
             airfix_legacy_aircraft_control_event_state_owner_tests)
+
+    add_executable(
+        airfix_legacy_aircraft_control_command_reducer_tests
+        tests/LegacyAircraftControlCommandReducerTests.cpp)
+    target_link_libraries(
+        airfix_legacy_aircraft_control_command_reducer_tests
+        PRIVATE airfix::simulation)
+    add_test(
+        NAME airfix_legacy_aircraft_control_command_reducer_tests
+        COMMAND
+            airfix_legacy_aircraft_control_command_reducer_tests)
 
     add_executable(airfix_legacy_aircraft_engine_audio_state_tests
         tests/LegacyAircraftEngineAudioStateTests.cpp)

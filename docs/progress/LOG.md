@@ -3750,3 +3750,47 @@ superseded evidence.
   build passes the three affected tests. Synthetic public-boundary tests, all
   12 Rizin normalization tests, the Ghidra/working-copy/Rizin PowerShell
   wrapper suites, the 519-file public scan, and `git diff --check` pass.
+  Hosted main runs `30510158979` and `30510158971` subsequently pass the
+  Windows portable, Windows D3D11/XAudio2, Ubuntu, macOS, clangd, iPhoneOS,
+  and iPhoneSimulator jobs.
+
+## 2026-07-30 - native discrete control-command reducer
+
+- `EV-20260730-001` / `EXP-20260730-062` independently maps all eight bool
+  command flags in the `Dogfighter.exe` user-command callback with Ghidra
+  12.1.2 and Rizin 0.9.1. The callback stores its selected flag before payload
+  selection and emits exactly one event for every valid invocation, including
+  repeated true, repeated false, equal nonzero, and zero payloads.
+- The exact mappings are `TURN_SET` and `PITCH_SET`/`BANK_SET` at magnitude
+  32 plus `THRUST_APPLY` at magnitude 255. A true invocation selects its own
+  sign; false restores the opposite sign when that flag remains active and
+  otherwise emits zero. Cross-axis flag state remains independent.
+- Added an allocation-free pure reducer over one already-ordered bool command
+  invocation and an eight-bit caller-owned snapshot. It returns the complete
+  next snapshot and one variant of the existing typed native-event inputs.
+  The downstream decoders retain the vehicle-inactive gate, angular numeric
+  policy, exact field conversion, and rest-clear decision.
+- The reducer deliberately has no `InputFrame`, Q15, device, queue, focus-loss,
+  key-repeat cadence, cross-producer ordering, scheduler, or player-state
+  dependency. Final per-tick Q15 axes cannot preserve both opposing command
+  flags, an in-tick tap, or last-invocation order, so live input wiring remains
+  a separate evidence and architecture gate.
+- Synthetic tests enumerate both values of every command over all 256 flag
+  snapshots, both ordering directions for all four pairs, repeats, zero
+  releases, cross-pair isolation, tap order, forged enum rollback, inactive
+  and invalid-policy precedence, and complete typed-event-to-decoder-to-owner
+  composition with exact bits and rest behavior.
+- Independent review found one P2 catalogue overclaim: the complete
+  multi-command dispatcher had been marked implemented for an eight-branch
+  subset. It now remains `in_progress` and identifies the subset explicitly.
+  Final re-review reports GO with no open P0-P3; its separate GCC 15.2
+  warnings-as-errors build and dedicated test pass.
+- Clean Windows GCC 15.2/Ninja and isolated WSL Ubuntu GCC 13.3/Ninja builds
+  compile the complete repository and pass 103/103 CTests. A fresh Clang
+  22.1.8 build passes the dedicated test. The public-boundary tests, all three
+  reverse-engineering wrapper suites, 12 Rizin export tests, 523-file public
+  scan, 268-row/14-column function catalogue, changed-document links,
+  changed-scope local-path scan, and `git diff --check` pass. Pull-request
+  Actions runs `30511495498` and `30511495515` pass all seven hosted Windows
+  product, Windows/Ubuntu/macOS portable, clangd, iPhoneOS, and
+  iPhoneSimulator jobs.
