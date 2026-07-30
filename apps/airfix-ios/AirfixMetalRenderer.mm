@@ -52,6 +52,7 @@ enum class RendererError : NSInteger {
     wrongThread,
     blitCreation,
     mipGeneration,
+    invalidPreparedPresentation,
     invalidPreparedRoom,
     preparedRoomAlreadyPublished,
     presentationSurfaceUnavailable,
@@ -642,6 +643,61 @@ gameplayCameraInitializeInput(
 
 @end
 
+@interface AirfixMetalPresentationRequest : NSObject {
+@public
+    airfix::render::RenderPresentationTransaction
+        _transactionSnapshot;
+    airfix::render::RenderPresentationSettings _candidate;
+    airfix::render::RenderPresentationSurfaceStamp _surface;
+    __strong NSObject* _ownerToken;
+    __strong AirfixMetalPresentationTransactionHolder*
+        _transactionHolder;
+    __strong AirfixSnapshotGpuBudgetLedgerHolder*
+        _gpuBudgetHolder;
+    __strong MTKView* _view;
+    __strong id<MTLDevice> _device;
+    __strong dispatch_queue_t _releaseQueue;
+}
+@end
+
+@implementation AirfixMetalPresentationRequest
+@end
+
+@interface AirfixPreparedMetalPresentation : NSObject {
+@public
+    std::unique_ptr<
+        airfix::render::PreparedRenderPresentationState>
+        _prepared;
+    airfix::render::RenderPresentationSettings _candidate;
+    __strong NSObject* _ownerToken;
+    __strong AirfixMetalPresentationTransactionHolder*
+        _transactionHolder;
+    __strong AirfixSnapshotGpuBudgetLedgerHolder*
+        _gpuBudgetHolder;
+    __strong MTKView* _view;
+    __strong id<MTLDevice> _device;
+    __strong dispatch_queue_t _releaseQueue;
+    BOOL _published;
+}
+@end
+
+@implementation AirfixPreparedMetalPresentation
+
+- (void)dealloc {
+    auto* prepared = _prepared.release();
+    dispatch_queue_t releaseQueue = _releaseQueue;
+    if (prepared != nullptr && releaseQueue != nil) {
+        dispatch_async(releaseQueue, ^{
+            delete prepared;
+        });
+    }
+    else {
+        delete prepared;
+    }
+}
+
+@end
+
 @interface AirfixMetalRoomSnapshot : NSObject {
 @public
     __strong AirfixMetalRoomResources* _resources;
@@ -737,7 +793,7 @@ gameplayCameraInitializeInput(
 namespace {
 
 struct MetalPresentationTargetFactoryContext final {
-    __unsafe_unretained AirfixSnapshotGpuBudgetLedgerHolder*
+    __strong AirfixSnapshotGpuBudgetLedgerHolder*
         gpuBudgetHolder;
 };
 
@@ -2242,7 +2298,8 @@ bool preflightPrivateRoom(
     return YES;
 }
 
-- (BOOL)applyRenderPresentationSettings:
+- (nullable AirfixMetalPresentationRequest*)
+    captureRenderPresentationRequest:
     (const airfix::render::RenderPresentationSettings&)candidate
     error:(NSError* _Nullable* _Nullable)error {
     if (error != nullptr) {
@@ -2254,26 +2311,242 @@ bool preflightPrivateRoom(
                 RendererError::wrongThread,
                 @"Metal presentation settings must be changed on the main thread.");
         }
-        return NO;
+        return nil;
     }
     MTKView* view = self.metalView;
+    AirfixMetalPresentationTransactionHolder* holder =
+        self.presentationTransactionHolder;
+    AirfixSnapshotGpuBudgetLedgerHolder* gpuBudgetHolder =
+        self.gpuBudgetHolder;
+    NSObject* ownerToken = self.preparationOwnerToken;
+    id<MTLDevice> device = self.commandQueue.device;
     std::optional<airfix::render::OutputPixelExtent> extent;
     if (view != nil) {
         extent = outputPixelExtent(view.drawableSize);
     }
-    if (!extent.has_value()) {
+    if (holder == nil || gpuBudgetHolder == nil ||
+        gpuBudgetHolder->_ledger == nullptr ||
+        ownerToken == nil || device == nil ||
+        view == nil || view.device != device ||
+        !extent.has_value()) {
         if (error != nullptr) {
             *error = makeError(
                 RendererError::presentationSurfaceUnavailable,
-                @"Metal presentation settings cannot be published while the drawable has no positive pixel extent.");
+                @"Metal presentation settings cannot be captured without a complete drawable surface.");
+        }
+        return nil;
+    }
+    if (airfix::render::validateRenderPresentationSettings(candidate)
+            .has_value()) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::invalidPayload,
+                @"The Metal presentation settings are invalid.");
+        }
+        return nil;
+    }
+
+    AirfixMetalPresentationRequest* request =
+        [[AirfixMetalPresentationRequest alloc] init];
+    if (request == nil) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::unexpectedFailure,
+                @"The Metal presentation request could not be captured.");
+        }
+        return nil;
+    }
+    request->_transactionSnapshot =
+        holder->_transaction.captureForPreparation();
+    request->_candidate = candidate;
+    request->_surface = presentationSurfaceStamp(
+        view, *extent, holder->_surfaceGeneration);
+    request->_ownerToken = ownerToken;
+    request->_transactionHolder = holder;
+    request->_gpuBudgetHolder = gpuBudgetHolder;
+    request->_view = view;
+    request->_device = device;
+    request->_releaseQueue = self.resourceReleaseQueue;
+    return request;
+}
+
+- (nullable AirfixPreparedMetalPresentation*)
+    prepareCapturedRenderPresentationRequest:
+        (AirfixMetalPresentationRequest*)request
+    error:(NSError* _Nullable* _Nullable)error {
+    if (error != nullptr) {
+        *error = nil;
+    }
+    if (NSThread.isMainThread) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::wrongThread,
+                @"Metal presentation resources must be prepared off the main thread.");
+        }
+        return nil;
+    }
+    if (request == nil ||
+        request->_ownerToken == nil ||
+        request->_transactionHolder == nil ||
+        request->_gpuBudgetHolder == nil ||
+        request->_gpuBudgetHolder->_ledger == nullptr ||
+        request->_view == nil ||
+        request->_device == nil ||
+        !request->_surface.complete()) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::invalidPreparedPresentation,
+                @"The captured Metal presentation request is incomplete.");
+        }
+        return nil;
+    }
+
+    try {
+        MetalPresentationTargetFactoryContext factoryContext{
+            .gpuBudgetHolder = request->_gpuBudgetHolder,
+        };
+        auto result = request->_transactionSnapshot.prepare(
+            request->_candidate,
+            request->_surface,
+            {
+                .callback = prepareMetalPresentationTarget,
+                .context = &factoryContext,
+            });
+        if (!result.complete()) {
+            if (error != nullptr) {
+                const bool invalidCandidate =
+                    result.issue.has_value() &&
+                    (result.issue->kind ==
+                         airfix::render::
+                             RenderPresentationTransactionIssueKind::
+                                 invalidSettings ||
+                     result.issue->kind ==
+                         airfix::render::
+                             RenderPresentationTransactionIssueKind::
+                                 invalidLayout);
+                *error = makeError(
+                    invalidCandidate
+                        ? RendererError::invalidPayload
+                        : RendererError::
+                              presentationTargetPreparation,
+                    invalidCandidate
+                        ? @"The Metal presentation settings are invalid."
+                        : @"The complete Metal scene target pair could not be prepared within the GPU budget.");
+            }
+            return nil;
+        }
+
+        AirfixPreparedMetalPresentation* prepared =
+            [[AirfixPreparedMetalPresentation alloc] init];
+        if (prepared == nil) {
+            if (error != nullptr) {
+                *error = makeError(
+                    RendererError::unexpectedFailure,
+                    @"The prepared Metal presentation token could not be created.");
+            }
+            return nil;
+        }
+        prepared->_prepared = std::make_unique<
+            airfix::render::PreparedRenderPresentationState>(
+                std::move(*result.prepared));
+        prepared->_candidate = request->_candidate;
+        prepared->_ownerToken = request->_ownerToken;
+        prepared->_transactionHolder =
+            request->_transactionHolder;
+        prepared->_gpuBudgetHolder = request->_gpuBudgetHolder;
+        prepared->_view = request->_view;
+        prepared->_device = request->_device;
+        prepared->_releaseQueue = request->_releaseQueue;
+        prepared->_published = NO;
+        return prepared;
+    }
+    catch (...) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::unexpectedFailure,
+                @"Metal presentation preparation failed unexpectedly.");
+        }
+        return nil;
+    }
+}
+
+- (BOOL)publishPreparedRenderPresentation:
+    (AirfixPreparedMetalPresentation*)prepared
+    error:(NSError* _Nullable* _Nullable)error {
+    if (error != nullptr) {
+        *error = nil;
+    }
+    if (!NSThread.isMainThread) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::wrongThread,
+                @"Prepared Metal presentation must be published on the main thread.");
         }
         return NO;
     }
-    return [self
-        prepareAndPublishRenderPresentationSettings:candidate
-                                            forView:view
-                                       outputExtent:*extent
-                                              error:error];
+
+    AirfixMetalPresentationTransactionHolder* holder =
+        self.presentationTransactionHolder;
+    AirfixSnapshotGpuBudgetLedgerHolder* gpuBudgetHolder =
+        self.gpuBudgetHolder;
+    MTKView* view = self.metalView;
+    id<MTLDevice> device = self.commandQueue.device;
+    if (prepared == nil || prepared->_published ||
+        prepared->_prepared == nullptr ||
+        prepared->_ownerToken == nil ||
+        prepared->_ownerToken != self.preparationOwnerToken ||
+        prepared->_transactionHolder == nil ||
+        prepared->_transactionHolder != holder ||
+        prepared->_gpuBudgetHolder == nil ||
+        prepared->_gpuBudgetHolder != gpuBudgetHolder ||
+        prepared->_view == nil || prepared->_view != view ||
+        prepared->_device == nil || prepared->_device != device ||
+        view.device != device) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::invalidPreparedPresentation,
+                @"The prepared Metal presentation belongs to a different renderer or device.");
+        }
+        return NO;
+    }
+
+    const auto extent = outputPixelExtent(view.drawableSize);
+    if (!extent.has_value()) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::stalePresentationCandidate,
+                @"The Metal presentation surface changed before publication.");
+        }
+        return NO;
+    }
+    const auto currentSurface = presentationSurfaceStamp(
+        view, *extent, holder->_surfaceGeneration);
+    if (holder->_transaction
+            .finalValidate(*prepared->_prepared, currentSurface)
+            .has_value()) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::stalePresentationCandidate,
+                @"The Metal presentation surface changed before publication.");
+        }
+        return NO;
+    }
+
+    // No callback, allocation, or dispatch is permitted between the fresh
+    // validation above and this no-fail move publication.
+    prepared->_published = YES;
+    holder->_transaction.commitValidated(
+        std::move(*prepared->_prepared));
+    prepared->_prepared.reset();
+    holder->_desiredSettings = prepared->_candidate;
+    holder->_retrySchedule.recordSuccess();
+    if (!prepared->_candidate.diagnosticsOverlayEnabled) {
+        self.diagnosticsOverlayTexture = nil;
+        self.diagnosticsOverlayWidth = 0U;
+        self.diagnosticsOverlayHeight = 0U;
+        self.diagnosticsOverlayPixelScale = 0U;
+    }
+    return YES;
 }
 
 - (airfix::render::RenderPresentationSettings)

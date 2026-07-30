@@ -69,8 +69,12 @@
   and never touches the real profile during smoke, capture, or validation
   modes. Linked files/directories, oversized/malformed records, partial fields,
   and future schemas fail closed; future bytes are preserved and downgrade
-  writes are blocked. Equivalent asynchronous iOS Application Support binding
-  and the final settings UI remain pending.
+  writes are blocked. iOS now resolves a protected private Application Support
+  settings leaf off-main, loads and saves through a serial adapter, prepares
+  immutable Metal candidates on a separate worker, and publishes only after a
+  fresh main-thread surface/revision validation. A durable candidate that
+  becomes stale is prepared again without another save, and first presentation
+  waits for startup resolution. The final settings UI remains pending.
 - The native Windows x64 product foundation is implemented. A statically
   linked SDL3 shell owns the window and lifecycle events; a separate
   D3D11/DXGI backend compiles HLSL, uploads the same public scene used by Metal,

@@ -83,8 +83,12 @@ add_executable(airfix_ios MACOSX_BUNDLE
     AirfixIOSInputCoordinator.h
     AirfixIOSInputCoordinator.mm
     AirfixIOSInputCoordinator+Private.hpp
+    AirfixIOSRenderSettingsStore.h
+    AirfixIOSRenderSettingsStore.mm
     AirfixMetalRenderer.h
     AirfixMetalRenderer.mm
+    AirfixRenderSettingsCoordinator.h
+    AirfixRenderSettingsCoordinator.mm
     AirfixShaders.metal
     AirfixTouchControlsView.h
     AirfixTouchControlsView.mm
@@ -114,6 +118,7 @@ target_link_libraries(airfix_ios PRIVATE
     airfix::settings
     airfix::simulation
     "-framework AVFAudio"
+    "-framework Foundation"
     "-framework UIKit"
     "-framework CoreGraphics"
     "-framework GameController"

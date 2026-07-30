@@ -156,10 +156,14 @@ snapshot, suppresses rendering to the mismatched drawable, and retries
 immediately, then after 1, 2, 4, ... up to 120 frames. Zero extent suspends
 rendering without deleting settings or the retained target bundle.
 
-This completed renderer transaction is session-only. Metal still may not block
-the main thread on future storage I/O; the iOS persistence slice must prepare a
-candidate token, save on its serialized settings queue, then revalidate its
-revision and surface on the main thread before the same no-fail commit.
+The iOS adapter implements that persistence sequence without blocking the main
+thread. Main captures an immutable request, a dedicated serial worker prepares
+the Metal candidate, the settings store durably saves the persistent base, and
+main revalidates the live revision and surface immediately before the same
+no-fail commit. A successful save creates a publication obligation: if the
+surface became stale, iOS prepares the already durable value again without a
+second save. Startup rendering remains gated until the recovered value or safe
+defaults have been resolved.
 
 ### User interface boundary
 
@@ -200,8 +204,9 @@ or crash loop.
 - Both products consume one validated settings vocabulary and one migration
   version.
 - Backend changes require candidate-resource preparation before publication.
-- Persistent storage and final UI remain native adapters, but their validation
-  and precedence are portable and testable without game data.
+- Persistent storage remains a native adapter and the final UI remains a
+  separate product slice, while validation, precedence, and publication
+  sequencing are portable and testable without game data.
 - Adding later quality/FOV/texture fields requires a deliberate schema
   migration rather than silently changing defaults.
 - Classic/Enhanced selection can be wired before Enhanced effects exist, but
@@ -241,7 +246,7 @@ area, orientation, memory pressure, and target-allocation fallback on iPhone SE
   complete-snapshot transaction.
 - [x] Add Windows private storage, launch-override precedence, recovery, and
   synthetic restart tests.
-- [ ] Add the equivalent iOS Application Support adapter and hosted build
+- [x] Add the equivalent iOS Application Support adapter and hosted build
   coverage.
 - [ ] Capture and compare the public synthetic Windows matrix.
 - [ ] Add the final cross-input settings UI as a separate slice.

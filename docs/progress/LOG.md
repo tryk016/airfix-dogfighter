@@ -3645,3 +3645,38 @@ superseded evidence.
   iPhoneSimulator in run `30502869598`.
   No original asset, private setting, owner path, or generated AFRS record is
   committed.
+
+## 2026-07-29 - asynchronous iOS render-settings persistence
+
+- Split Metal presentation changes into main-thread request capture, serialized
+  off-main resource preparation, and main-thread fresh validation followed
+  immediately by the existing no-fail move commit. The worker owns an immutable
+  transaction snapshot and never reads the live drawable or UIKit state.
+- Added a portable owner-thread persistence gate. Exactly one candidate may
+  prepare, save, and publish; loaded values skip saving, new values save once,
+  stale revision/surface results increment an exact attempt ticket and reprepare
+  the already durable candidate without another save, and stale callbacks
+  cannot abandon newer work.
+- Added an iOS serial store under the private Application Support settings leaf.
+  It creates missing components individually with their final protection,
+  enforces mode `0700`,
+  `NSFileProtectionCompleteUntilFirstUserAuthentication`, path-free error
+  categories, and fresh-load recovery for an ambiguous durable commit.
+  Permission repair uses an opened no-follow directory descriptor and exact
+  device/inode identity is rechecked. Darwin file synchronization requests
+  `F_FULLFSYNC` after `fsync` where the volume supports it.
+- The iOS controller keeps persistent base, session override, and effective
+  renderer values separate; coalesces later UI requests; and gates first
+  gameplay presentation until startup load/default resolution. An exact-ticket
+  preparation retry backs off from 50 ms to 2 s, while layout/activation may
+  wake it early and stale post-save publication never performs a second save.
+- Independent review found three related P2 classes across two rounds:
+  guaranteed retry wakeup/timer identity, Foundation exceptions crossing
+  `noexcept`, and path-based directory mutation. Exact timer generations,
+  throwable Objective-C++ helpers, and descriptor-relative permission repair
+  resolved them; final re-review reports no remaining P0-P2.
+- Windows GCC/Ninja and isolated WSL GCC/Ninja each pass 99/99 CTests. The
+  public-boundary scanner passes 505 files. PR #62 uses hosted runs
+  `30505632630` and `30505632588` for portable/native Windows and both unsigned
+  Apple SDK builds. All validation uses synthetic settings; no owner asset,
+  profile path, or generated settings record is committed.

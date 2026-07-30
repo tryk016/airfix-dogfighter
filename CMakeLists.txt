@@ -258,6 +258,7 @@ else()
 endif()
 
 add_library(airfix_settings
+    src/airfix/settings/RenderPresentationPersistenceGate.cpp
     src/airfix/settings/RenderPresentationSettingsCodec.cpp
     src/airfix/settings/RenderPresentationSettingsStore.cpp
 )
@@ -473,6 +474,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::settings airfix::crypto airfix::io)
     add_test(NAME airfix_render_settings_store_tests
         COMMAND airfix_render_settings_store_tests)
+
+    add_executable(airfix_render_settings_persistence_gate_tests
+        tests/RenderPresentationPersistenceGateTests.cpp)
+    target_link_libraries(airfix_render_settings_persistence_gate_tests
+        PRIVATE airfix::settings)
+    add_test(NAME airfix_render_settings_persistence_gate_tests
+        COMMAND airfix_render_settings_persistence_gate_tests)
 
     add_executable(airfix_asset_tests tests/LegacyFormatsTests.cpp)
     target_link_libraries(airfix_asset_tests PRIVATE airfix::assets)

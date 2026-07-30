@@ -204,6 +204,13 @@ public:
     [[nodiscard]] const RenderPresentationActiveState*
     activeState() const noexcept;
 
+    // Captures the exact active baseline for transfer to one serialized
+    // resource-preparation worker. The copy retains any reusable target owner;
+    // finalValidate must still run against the live owner immediately before
+    // commit so revision and surface changes are rejected.
+    [[nodiscard]] RenderPresentationTransaction
+    captureForPreparation() const noexcept;
+
     [[nodiscard]] PrepareRenderPresentationStateResult prepare(
         const RenderPresentationSettings& candidate,
         const RenderPresentationSurfaceStamp& surface,

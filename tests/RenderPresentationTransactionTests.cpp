@@ -14,6 +14,10 @@ namespace {
 
 using namespace airfix::render;
 
+static_assert(noexcept(
+    std::declval<const RenderPresentationTransaction&>()
+        .captureForPreparation()));
+
 void require(const bool condition, const std::string& message) {
     if (!condition) {
         throw std::runtime_error(message);
@@ -470,6 +474,44 @@ void testStaleCandidatesPreserveActiveState() {
         "stale validation changed the active target pair");
 }
 
+void testCapturedPreparationBaselineIsIndependent() {
+    SurfaceIdentities identities;
+    FakeTargetFactory factory;
+    RenderPresentationTransaction live;
+    const auto currentSurface = surface(identities);
+    RenderPresentationSettings baseline;
+    baseline.renderScalePercent = 50.0F;
+    commit(
+        live,
+        live.prepare(baseline, currentSurface, factory.seam()),
+        currentSurface,
+        "capture baseline");
+
+    auto captured = live.captureForPreparation();
+    auto candidate = baseline;
+    candidate.renderScalePercent = 200.0F;
+    auto prepared =
+        captured.prepare(candidate, currentSurface, factory.seam());
+    require(prepared.complete(),
+            "captured transaction did not prepare independently");
+
+    auto competitor = baseline;
+    competitor.visualProfile = VisualProfile::enhanced;
+    commit(
+        live,
+        live.prepare(competitor, currentSurface, factory.seam()),
+        currentSurface,
+        "capture competitor");
+    requireIssue(
+        live.finalValidate(*prepared.prepared, currentSurface),
+        RenderPresentationTransactionIssueKind::staleActiveRevision,
+        "captured stale revision");
+    require(
+        requireActive(live, "captured stale result").settings() ==
+            competitor,
+        "captured preparation mutated the live transaction");
+}
+
 void testDeviceChangeNeverReusesTargetBundle() {
     SurfaceIdentities identities;
     FakeTargetFactory factory;
@@ -862,6 +904,7 @@ int main() {
         testOrthogonalSettingsReuseBundle();
         testLateFailuresRollbackAndRetry();
         testStaleCandidatesPreserveActiveState();
+        testCapturedPreparationBaselineIsIndependent();
         testDeviceChangeNeverReusesTargetBundle();
         testResizeAndZeroExtent();
         testRetryBackoffHasNoHotLoop();

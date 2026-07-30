@@ -580,6 +580,23 @@ void syncFile(const std::filesystem::path& path) {
         if (::fsync(descriptor) != 0) {
             throwSystemError(DurableFileOperation::flush, path, {}, errno);
         }
+#ifdef __APPLE__
+        // fsync may stop at the drive's volatile cache on Apple platforms.
+        // F_FULLFSYNC requests the stronger physical-media barrier. Some
+        // simulator/volume combinations do not support it; those explicitly
+        // reported cases retain the successful fsync guarantee.
+        if (::fcntl(descriptor, F_FULLFSYNC) != 0) {
+            const int error = errno;
+            if (error != EINVAL
+#ifdef ENOTSUP
+                && error != ENOTSUP
+#endif
+            ) {
+                throwSystemError(
+                    DurableFileOperation::flush, path, {}, error);
+            }
+        }
+#endif
         closeChecked(descriptor, path);
     }
     catch (...) {

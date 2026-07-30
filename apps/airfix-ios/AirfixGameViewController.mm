@@ -4,6 +4,7 @@
 #import "AirfixContentCoordinator.h"
 #import "AirfixIOSInputCoordinator.h"
 #import "AirfixMetalRenderer.h"
+#import "AirfixRenderSettingsCoordinator.h"
 #import "AirfixTouchControlsView.h"
 #import "AirfixMissionWorldRoomSnapshot.h"
 
@@ -100,6 +101,8 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     dispatch_queue_t _rendererPreparationQueue;
 }
 @property(nonatomic, strong) AirfixMetalRenderer* renderer;
+@property(nonatomic, strong)
+    AirfixRenderSettingsCoordinator* renderSettingsCoordinator;
 @property(nonatomic, strong) UILabel* statusLabel;
 @property(nonatomic, strong) UILabel* inputDiagnosticsLabel;
 @property(nonatomic, strong) AirfixContentCoordinator* contentCoordinator;
@@ -134,6 +137,11 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     self.renderer = [[AirfixMetalRenderer alloc] initWithMetalView:metalView
                                                             error:&rendererError];
     metalView.delegate = self.renderer;
+    if (self.renderer != nil) {
+        self.renderSettingsCoordinator =
+            [[AirfixRenderSettingsCoordinator alloc]
+                initWithRenderer:self.renderer];
+    }
 
     UILabel* label = [[UILabel alloc] initWithFrame:CGRectZero];
     label.translatesAutoresizingMaskIntoConstraints = NO;
@@ -351,8 +359,17 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
+    [self.renderSettingsCoordinator start];
+    [self.renderSettingsCoordinator
+        notifyPresentationSurfaceAvailable];
     [self.contentCoordinator start];
     [self.inputCoordinator start];
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    [self.renderSettingsCoordinator
+        notifyPresentationSurfaceAvailable];
 }
 
 - (void)viewDidDisappear:(BOOL)animated {
@@ -408,6 +425,8 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
     }
     [self.inputCoordinator applicationDidBecomeActive];
     [self.contentCoordinator applicationDidBecomeActive];
+    [self.renderSettingsCoordinator
+        notifyPresentationSurfaceAvailable];
     // Becoming active never resumes gameplay. The player must use the pause
     // control or a controller menu button after every lifecycle transition.
     ((MTKView*)self.view).paused = YES;
@@ -810,6 +829,7 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
         self.inputPipelineReady &&
         self.simulationPipelineReady &&
         self.inputCoordinator.isOperational &&
+        self.renderSettingsCoordinator.readyForPresentation &&
         self.renderer.missionWorldRoomInstalled;
     const bool resumed = mayResume && _session.resume();
     metalView.paused = !resumed;

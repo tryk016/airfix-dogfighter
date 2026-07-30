@@ -23,6 +23,8 @@ using AirfixPlayerActorPoseRuntimeEndpoint =
 NS_ASSUME_NONNULL_BEGIN
 
 @class AirfixPreparedMetalRoom;
+@class AirfixMetalPresentationRequest;
+@class AirfixPreparedMetalPresentation;
 
 // Starts with a public synthetic smoke snapshot and can atomically replace it
 // with one complete private room prepared from authenticated AFPACK content.
@@ -35,11 +37,27 @@ NS_ASSUME_NONNULL_BEGIN
     NS_DESIGNATED_INITIALIZER;
 
 #ifdef __cplusplus
-// Main-thread renderer transaction. The complete settings snapshot and any
-// replacement scene targets are prepared before one no-fail publication.
-// Rejection preserves both the active settings and the last good target pair.
-- (BOOL)applyRenderPresentationSettings:
+// Captures the exact live revision and drawable surface on the main thread.
+// The returned immutable request strongly retains every opaque identity used
+// by the worker-side preparation.
+- (nullable AirfixMetalPresentationRequest*)
+    captureRenderPresentationRequest:
     (const airfix::render::RenderPresentationSettings&)candidate
+    error:(NSError* _Nullable* _Nullable)error;
+
+// Builds any replacement scene targets on a serialized worker queue. This
+// method rejects the main thread and never reads the live renderer transaction
+// or drawable state.
+- (nullable AirfixPreparedMetalPresentation*)
+    prepareCapturedRenderPresentationRequest:
+        (AirfixMetalPresentationRequest*)request
+    error:(NSError* _Nullable* _Nullable)error;
+
+// Main-thread final revalidation followed immediately by the no-fail move
+// publication. No callback, allocation, or dispatch occurs between those two
+// operations. Rejection preserves the active settings and target pair.
+- (BOOL)publishPreparedRenderPresentation:
+    (AirfixPreparedMetalPresentation*)prepared
     error:(NSError* _Nullable* _Nullable)error;
 
 - (airfix::render::RenderPresentationSettings)
