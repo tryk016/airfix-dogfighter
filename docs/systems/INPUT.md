@@ -1,7 +1,8 @@
 # Input, controls, and haptics system
 
-**Status:** portable core and native V1 gameplay-action transport implemented;
-profiles, remapping, haptics, menu UI, and device acceptance pending
+**Status:** portable core, controller-profile V1 foundation, and native gameplay
+transport implemented; live profile application, editor UI, haptics, glyphs,
+and device acceptance pending
 
 **Priority:** P0 for the Windows x64 and iOS vertical slices
 
@@ -66,8 +67,9 @@ Default semantic bindings cover touch, an extended controller, and the baseline
 Windows keyboard/mouse profile. The Windows x64 application now uses SDL3 for
 keyboard/mouse focus and standardized-controller discovery/hot-plug, converts
 those native values into stable USB HID/control IDs and Q15 values, and emits
-the same normalized events as iOS. Persistent profiles, configurable
-calibration, glyphs, and rumble policy remain pending.
+the same normalized events as iOS. A portable persisted controller-profile
+foundation is implemented below; applying it to a live native product, glyphs,
+and rumble policy remain pending.
 
 The native iOS layer feeds the complete current gameplay-action surface from a
 safe-area-aware UIKit overlay and Apple's Game Controller framework; none of
@@ -102,6 +104,57 @@ callbacks must be serialized onto the same input/simulation thread as `tick()`;
 adapters must also submit their complete current state when a device connects.
 After a controller loss, the replacement source is quarantined until two
 consecutive neutral ticks, even if the platform assigns it a new runtime ID.
+
+### Implemented controller-profile core V1
+
+`ControllerInputProfileRecord` is a fixed-capacity, allocation-free semantic
+record with four standardized stick axes and at most 48 controller bindings.
+Validation is atomic and rejects unsupported schemas, invalid Q15 calibration,
+unknown enum/control/target values, non-controller sources, unsafe physical
+kind combinations, overlapping mappings for one physical control and context,
+noncanonical unused tail records, table overflow, and missing recovery
+controls. A valid profile must retain gameplay pause plus menu confirm, cancel,
+horizontal navigation in both directions, and vertical navigation in both
+directions. Recovery controls count only when their maximum value after stick
+calibration and binding scale can cross the same portable menu-actuation
+threshold used by the Windows and iOS consumers.
+
+`ResolvedControllerInputProfile` is the only input accepted by the binding
+compiler. Compilation preserves every default touch, keyboard, and mouse
+binding, removes the complete default controller set, and appends the complete
+validated replacement atomically. It never publishes a partial `BindingTable`.
+
+The pure axis transform supports inner deadzone, outer saturation,
+`250-2000` permille sensitivity, inversion, and linear/squared/cubic curves.
+It uses integer-only Q15 arithmetic with round-to-nearest, ties-to-even and
+rejects the excluded `-32768` value. The canonical default transform is exact
+identity over all 65,535 valid Q15 values. The existing batch bridge still owns
+its baseline transport deadzone: the new transform is deliberately unwired
+until native application creates a new router/bridge pair at a safe boundary.
+
+The separate `controller-input.afip` document is a canonical little-endian,
+SHA-256-protected envelope bounded to 4 KiB. Only active bindings are encoded.
+Strict current-schema parsing rejects missing, duplicate, unknown, reordered,
+truncated, trailing, or semantically invalid fields. A bounded future schema
+with a valid envelope checksum is retained byte-for-byte and blocks downgrade
+writes; its opaque payload is deliberately not interpreted by an older build.
+
+The private durable store accepts only an injected absolute application-private
+settings leaf. It loads `current -> backup -> canonical default`, never promotes
+a malformed current document, rejects linked/non-regular/oversized entries,
+uses exclusive partial files and durable atomic replacement, verifies exact
+readback, and distinguishes a confirmed commit from an unknown durability
+outcome. Diagnostics expose neither host paths nor encoded profile bytes.
+Runtime device IDs, names, GUIDs, Bluetooth addresses, and serial-like values
+do not enter AFIP.
+
+This slice does not mutate an active `InputRouter`, configure the native
+adapters, or add UI. Router state is indexed by binding position, so live
+in-place replacement is forbidden. A later native transaction must save a
+pending profile, pause or cross a mission boundary, construct a fresh
+router/bridge pair, cancel the old controller source, sample the complete new
+device state, and require the existing two neutral ticks. Failure must retain
+the old active pair without replaying held controls.
 
 ### Implemented native iOS slice
 
@@ -140,10 +193,10 @@ excluded from neutral-gate blocking and is restored only after the required two
 safe ticks. Foreground activation and room publication never resume gameplay;
 the player must explicitly use pause/menu.
 
-This completes action transport, not control-system acceptance. Remapping,
-calibration UI, persistent layout/visibility profiles, prompt glyphs, haptics,
-finished touch/controller menus, and runtime validation on both target iPhones
-remain pending.
+This completes action transport, not control-system acceptance. Applying the
+portable controller profile, calibration/remapping UI, persistent touch
+layout/visibility profiles, prompt glyphs, haptics, finished touch/controller
+menus, and runtime validation on both target iPhones remain pending.
 
 ### Implemented native Windows slice
 
@@ -169,9 +222,10 @@ for pause. Menu bindings use arrows, `Enter`, `Escape`, and `Q`/`E` tabs.
 Standard gamepad bindings match the implemented controller table below.
 
 This is the tested physical transport baseline, not finished input acceptance.
-Persistent remapping/calibration, selected-device UI, glyphs, digital menu
-repeat, rumble, and physical Xbox/PlayStation/generic-controller testing remain
-pending.
+The portable remapping/calibration record and store exist but are not applied
+by the SDL adapter. Selected-device UI, glyphs, digital menu repeat, rumble,
+safe profile activation, and physical Xbox/PlayStation/generic-controller
+testing remain pending.
 
 ## Input contexts
 
@@ -434,8 +488,9 @@ destruction all synthesize releases.
 
 The transport mapping is implemented, but remains provisional until reference
 scenarios establish action timing and on-device usability tests approve its
-conflicts. User remapping, action glyphs, and conflict detection are specified
-but not yet implemented.
+conflicts. Profile-level conflict and recovery validation is implemented;
+user-facing remapping UI, action glyphs, and live profile application remain
+pending.
 
 ### Connection and loss
 
@@ -511,10 +566,14 @@ InputProfile
   optionalMotionPreferences
 ```
 
-Profiles use logical actions and standardized controller elements. Runtime device
-IDs, Bluetooth addresses, and hardware serial-like identifiers are not stored.
-Invalid or future fields are ignored safely; required missing fields receive
-defaults.
+Controller remapping/calibration uses the separate AFIP V1 record described
+above. Touch layout, visibility, handedness, haptics, and optional motion remain
+future independently versioned records rather than being forced into AFIP.
+Profiles use logical actions and standardized controller elements. Runtime
+device IDs, Bluetooth addresses, and hardware serial-like identifiers are not
+stored. Invalid current-schema AFIP documents fall back safely; bounded,
+envelope-integrity-valid future schemas are preserved and block downgrade
+writes.
 
 ## Lifecycle and error handling
 

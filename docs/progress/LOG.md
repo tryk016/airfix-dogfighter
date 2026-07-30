@@ -4054,3 +4054,39 @@ superseded evidence.
   `git diff --check` pass. Review's sole P2 confidence overclaim was fixed by
   applying the project-wide static-only confidence cap; final re-review
   reports GO with no remaining P0-P3 finding. Hosted publication gates remain.
+
+## 2026-07-30 - Controller Profile Core V1
+
+- Added a fixed-capacity controller-only semantic profile with four calibrated
+  stick axes and at most 48 bindings. Resolution is atomic and rejects invalid
+  schemas, Q15 ranges, enums, controls, physical/target combinations, contexts,
+  conflicts, hidden tail state, capacity overflow, unreachable or sub-threshold
+  menu navigation, and missing/unreachable pause/menu recovery controls.
+- The binding compiler preserves every default touch, keyboard, and mouse
+  binding while replacing the complete controller set only after validation.
+  No active `InputRouter`, platform adapter, input frame, physics state, or
+  native UI is changed.
+- Axis calibration is integer-only with round-to-nearest, ties-to-even and
+  supports deadzone, outer saturation, 250-2000 permille sensitivity,
+  inversion, and linear/squared/cubic curves. The default is exact identity for
+  all 65,535 valid symmetric-Q15 values on each of four axes; `-32768` fails
+  closed.
+- Added canonical AFIP V1 persistence: a 4-KiB-bounded little-endian envelope,
+  SHA-256 integrity, exact active-binding encoding, strict current-schema
+  fields, envelope-integrity-checked opaque future schemas preserved
+  byte-for-byte, and a private durable `current -> backup -> default` store.
+- The store rejects linked, non-regular, oversized, malformed, and unsafe
+  partial entries; malformed current state is never promoted. Atomic durable
+  publication, exact readback, unchanged detection, and commit-unknown
+  recovery are covered without exposing paths or document bytes.
+- Fresh Windows GCC 15.2/Ninja and MSVC 19.51/Ninja builds each compile all
+  357 steps and pass all 111 CTests. Standalone Clang 22 warnings-as-errors
+  builds pass for the profile, codec, and store, and the pure profile tests
+  independently pass under WSL/GCC. Live application remains a separate
+  safe-boundary transaction because active router state is indexed by binding
+  position.
+- Independent review found and verified fixes for unreachable recovery
+  thresholds/directions after calibration and scale, inconsistent backup
+  persistence diagnostics, and stale documentation. Windows and iOS now share
+  the same portable UI-navigation actuation/release constants. Final re-review
+  reports GO with no remaining P0-P3 finding.

@@ -140,7 +140,12 @@
   and ticket atomically. Live aircraft scheduling and physical-device audible/
   route acceptance remain pending.
 - Cross-platform input/control/haptics system specified; semantic input
-  architecture recorded in ADR-0002.
+  architecture recorded in ADR-0002. Controller Profile Core V1 now adds a
+  bounded immutable profile, strict controller-only remapping and recovery
+  validation, deterministic integer Q15 calibration, complete replacement
+  binding compilation, a canonical SHA-256-protected AFIP document, and a
+  private durable current/backup/default store. It is intentionally not wired
+  into active routers or native settings UI yet.
 - Local Git repository initialized on branch `main`; planning baseline committed
   as `59828ed`.
 - GitHub remote `tryk016/airfix-dogfighter` connected and the planning baseline
@@ -1004,9 +1009,13 @@
    campaign/save consumer before wiring the isolated mission-outcome state.
    Preserve one already-ordered call per transition; do not batch, sort,
    deduplicate, replay, or invent a priority when both native flags are true.
-4. Add persistent layout/visibility profiles, calibration and remapping,
-   controller glyphs, haptics, and finished menu bindings; then run touch-only
-   and controller-only acceptance on both target iPhones.
+4. Apply the implemented controller-profile/AFIP foundation only at a
+   pause-or-mission boundary by constructing a fresh router/bridge pair and
+   re-entering the neutral gate; never mutate position-indexed active router
+   state in place. Then add calibration/remapping UI, persistent touch
+   layout/visibility profiles, controller glyphs, haptics, and finished menu
+   bindings before touch-only and controller-only acceptance on both target
+   iPhones.
 5. Connect the implemented weak camera-runtime endpoint to the recovered live
    AirCraft producer once it supplies distinct chase position, world anchor,
    vehicle rotation, live health, inactive state, and the confirmed scheduler
@@ -1043,6 +1052,14 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- Controller Profile Core V1 passes fresh 357-step Windows GCC 15.2/Ninja and
+  MSVC 19.51/Ninja builds plus all 111 CTests under each compiler. Its default
+  transform is exhaustively identical over all 65,535 valid Q15 values on all
+  four axes; standalone Clang 22 warnings-as-errors builds pass for the profile,
+  AFIP codec, and durable store. Independent final re-review reports GO with no
+  remaining P0-P3 finding after unreachable recovery thresholds/directions and
+  backup persistence diagnostics were corrected. The profile/store remain
+  unwired from native adapters and active runtime state.
 - The isolated mission-outcome state passes fresh complete Windows GCC
   15.2/Ninja and MSVC 19.51/Ninja builds plus 108/108 CTests in each. Clang
   22.1.8 passes a warnings-as-errors syntax check. Ghidra and Rizin agree on
