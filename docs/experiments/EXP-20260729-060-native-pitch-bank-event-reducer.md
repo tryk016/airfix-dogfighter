@@ -129,4 +129,6 @@ No nominal 12 ms sample-and-hold behavior is inferred here.
   native inactive gate before active-policy validation and adding the exact
   regression resolved it. Final re-review reports GO with no P0-P2 findings.
 
-Hosted run identifiers are appended to the progress log after branch CI.
+All seven hosted checks pass: portable, native Windows product, macOS, and
+clangd jobs in run `30507391649`, plus unsigned iPhoneOS and iPhoneSimulator
+jobs in run `30507391659`.

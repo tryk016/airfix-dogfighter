@@ -3714,4 +3714,6 @@ superseded evidence.
 - Clean Windows GCC 15.2/Ninja and isolated WSL Ubuntu GCC 13.3/Ninja builds
   each pass 100/100 CTests. A fresh Clang 22.1.8 build passes the dedicated
   reducer test, the public-boundary scanner passes 509 files, and
-  `git diff --check` passes. Hosted run identifiers follow after branch CI.
+  `git diff --check` passes. All seven hosted checks pass: portable, native
+  Windows product, macOS, and clangd jobs in run `30507391649`, plus unsigned
+  iPhoneOS and iPhoneSimulator jobs in run `30507391659`.
