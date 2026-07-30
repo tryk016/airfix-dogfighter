@@ -2,13 +2,15 @@
 
 #include <cerrno>
 #include <filesystem>
+#include <fcntl.h>
 #include <optional>
 #include <sys/stat.h>
+#include <unistd.h>
 
 namespace {
 
 [[nodiscard]] std::optional<std::filesystem::path>
-fileSystemPath(NSURL* url) noexcept {
+fileSystemPath(NSURL* url) {
     if (url == nil || !url.fileURL) {
         return std::nullopt;
     }
@@ -27,21 +29,10 @@ fileSystemPath(NSURL* url) noexcept {
     }
 }
 
-[[nodiscard]] bool securePrivateDirectory(
-    const std::filesystem::path& path) noexcept {
-    struct stat information {};
-    if (::lstat(path.c_str(), &information) != 0 ||
-        !S_ISDIR(information.st_mode) ||
-        S_ISLNK(information.st_mode)) {
-        return false;
-    }
-    return ::chmod(path.c_str(), S_IRWXU) == 0;
-}
-
 [[nodiscard]] bool ensurePrivateDirectory(
     NSFileManager* manager,
     NSURL* url,
-    NSDictionary* attributes) noexcept {
+    NSDictionary* attributes) {
     const auto path = fileSystemPath(url);
     if (manager == nil || !path.has_value()) {
         return false;
@@ -56,27 +47,49 @@ fileSystemPath(NSURL* url) noexcept {
         if (![manager
                 createDirectoryAtURL:url
          withIntermediateDirectories:NO
-                          attributes:nil
+                          attributes:attributes
                                error:&createError] ||
             createError != nil) {
             return false;
         }
     }
+    else if (!S_ISDIR(information.st_mode) ||
+             S_ISLNK(information.st_mode)) {
+        return false;
+    }
 
-    // Reject an existing link before any chmod, protection, or backup
-    // mutation can follow it. Recheck after Foundation applies attributes so
-    // a changed component also fails closed.
-    if (!securePrivateDirectory(*path)) {
+    const int descriptor = ::open(
+        path->c_str(),
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (descriptor < 0) {
         return false;
     }
-    NSError* attributeError = nil;
-    if (![manager setAttributes:attributes
-                   ofItemAtPath:url.path
-                          error:&attributeError] ||
-        attributeError != nil) {
-        return false;
+
+    bool valid = false;
+    struct stat openedInformation {};
+    struct stat finalInformation {};
+    if (::fstat(descriptor, &openedInformation) == 0 &&
+        S_ISDIR(openedInformation.st_mode) &&
+        ::fchmod(descriptor, S_IRWXU) == 0) {
+        NSError* attributeError = nil;
+        NSDictionary* currentAttributes =
+            [manager attributesOfItemAtPath:url.path
+                                      error:&attributeError];
+        id protection =
+            currentAttributes[NSFileProtectionKey];
+        if (attributeError == nil &&
+            [protection isEqual:
+                NSFileProtectionCompleteUntilFirstUserAuthentication] &&
+            ::lstat(path->c_str(), &finalInformation) == 0 &&
+            S_ISDIR(finalInformation.st_mode) &&
+            !S_ISLNK(finalInformation.st_mode) &&
+            finalInformation.st_dev == openedInformation.st_dev &&
+            finalInformation.st_ino == openedInformation.st_ino) {
+            valid = true;
+        }
     }
-    return securePrivateDirectory(*path);
+    const bool closed = ::close(descriptor) == 0;
+    return valid && closed;
 }
 
 [[nodiscard]] std::optional<std::filesystem::path>
@@ -115,15 +128,6 @@ prepareSettingsDirectory() noexcept {
                 return std::nullopt;
             }
 
-            // Settings contain no owner assets and are intentionally local to
-            // this private reconstruction. Do not copy them into device backup.
-            NSError* exclusionError = nil;
-            if (![settings setResourceValue:@YES
-                                     forKey:NSURLIsExcludedFromBackupKey
-                                      error:&exclusionError] ||
-                exclusionError != nil) {
-                return std::nullopt;
-            }
             return settingsPath;
         }
         @catch (NSException* exception) {

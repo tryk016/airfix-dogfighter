@@ -43,6 +43,7 @@ constexpr std::uint64_t kMaximumPreparationRetryMilliseconds = 2'000U;
     std::optional<
         airfix::settings::RenderPresentationPersistenceTicket>
         _scheduledRetryTicket;
+    std::uint64_t _preparationRetryGeneration;
     std::uint32_t _preparationFailureCount;
     BOOL _started;
     BOOL _loadCompleted;
@@ -160,6 +161,7 @@ constexpr std::uint64_t kMaximumPreparationRetryMilliseconds = 2'000U;
     }
     if (_scheduledRetryTicket.has_value() &&
         *_scheduledRetryTicket == *_activeTicket) {
+        ++_preparationRetryGeneration;
         _scheduledRetryTicket.reset();
     }
     [self launchPreparation:*_activeTicket];
@@ -200,6 +202,7 @@ constexpr std::uint64_t kMaximumPreparationRetryMilliseconds = 2'000U;
         return;
     }
     _activeTicket = ticket;
+    ++_preparationRetryGeneration;
     _scheduledRetryTicket.reset();
     _preparationFailureCount = 0U;
     [self launchPreparation:*ticket];
@@ -359,6 +362,7 @@ constexpr std::uint64_t kMaximumPreparationRetryMilliseconds = 2'000U;
         ++_preparationFailureCount;
     }
     _scheduledRetryTicket = ticket;
+    const auto generation = ++_preparationRetryGeneration;
     const auto delay = preparationRetryMilliseconds(
         _preparationFailureCount);
     __weak AirfixRenderSettingsCoordinator* weakSelf = self;
@@ -370,6 +374,7 @@ constexpr std::uint64_t kMaximumPreparationRetryMilliseconds = 2'000U;
         ^{
             AirfixRenderSettingsCoordinator* strongSelf = weakSelf;
             if (strongSelf == nil ||
+                strongSelf->_preparationRetryGeneration != generation ||
                 !strongSelf->_scheduledRetryTicket.has_value() ||
                 *strongSelf->_scheduledRetryTicket != ticket) {
                 return;
