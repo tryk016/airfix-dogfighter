@@ -55,6 +55,9 @@ target_include_directories(airfix_windows_command_line PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 target_compile_features(airfix_windows_command_line PUBLIC cxx_std_20)
+target_link_libraries(airfix_windows_command_line PUBLIC
+    airfix::render
+)
 if(MSVC)
     target_compile_options(airfix_windows_command_line PRIVATE
         /W4 /permissive-)
@@ -65,6 +68,28 @@ else()
         -Wpedantic
     )
 endif()
+
+add_library(airfix_windows_settings_root STATIC
+    AirfixWindowsSettingsRoot.cpp
+    AirfixWindowsSettingsRoot.hpp
+)
+target_include_directories(airfix_windows_settings_root PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+target_compile_features(airfix_windows_settings_root PUBLIC cxx_std_20)
+if(MSVC)
+    target_compile_options(airfix_windows_settings_root PRIVATE
+        /W4 /permissive-)
+else()
+    target_compile_options(airfix_windows_settings_root PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+endif()
+target_link_libraries(airfix_windows_settings_root PRIVATE
+    SDL3::SDL3-static
+)
 
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/AirfixSmoke.hlsl")
@@ -141,10 +166,12 @@ target_link_libraries(airfix_windows PRIVATE
     airfix_windows_command_line
     airfix_windows_input
     airfix_windows_renderer
+    airfix_windows_settings_root
     airfix::audio
     airfix::content
     airfix::render
     airfix::runtime
+    airfix::settings
     airfix::simulation
     ole32
 )
@@ -183,6 +210,25 @@ if(AIRFIX_BUILD_TESTS)
         airfix_windows_command_line)
     add_test(NAME airfix_windows_command_line_tests
         COMMAND airfix_windows_command_line_tests)
+
+    add_executable(airfix_windows_settings_root_tests
+        AirfixWindowsSettingsRootTests.cpp)
+    target_compile_features(airfix_windows_settings_root_tests
+        PRIVATE cxx_std_20)
+    if(MSVC)
+        target_compile_options(airfix_windows_settings_root_tests
+            PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(airfix_windows_settings_root_tests PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+    endif()
+    target_link_libraries(airfix_windows_settings_root_tests PRIVATE
+        airfix_windows_settings_root)
+    add_test(NAME airfix_windows_settings_root_tests
+        COMMAND airfix_windows_settings_root_tests)
 
     add_executable(airfix_windows_input_mapping_tests
         AirfixSdlInputMappingTests.cpp)

@@ -7,6 +7,7 @@
 #include <string>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 namespace airfix::io {
 
@@ -15,6 +16,7 @@ enum class DurableFileErrorKind {
     alreadyExists,
     notFound,
     wrongType,
+    sizeLimitExceeded,
     ioFailure,
 };
 
@@ -22,6 +24,7 @@ enum class DurableFileOperation {
     validate,
     inspect,
     open,
+    read,
     write,
     flush,
     close,
@@ -65,6 +68,14 @@ private:
     std::filesystem::path primaryPath_;
     std::filesystem::path secondaryPath_;
 };
+
+// Reads a single-link regular file through one pinned operating-system handle.
+// Symbolic links/reparse points and files with any additional hard links are
+// rejected. The size is checked before allocation and revalidated after the
+// exact read; growth, truncation, or identity changes fail closed.
+[[nodiscard]] std::vector<std::uint8_t> readBoundedRegularFile(
+    const std::filesystem::path& path,
+    std::size_t maxBytes);
 
 // Creates path without replacing an existing directory entry. The file and its
 // parent directory are synchronized before the function returns. A failure

@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <vector>
 
 namespace airfix::io {
 namespace {
@@ -21,6 +22,7 @@ namespace {
     case DurableFileOperation::validate: return "validate";
     case DurableFileOperation::inspect: return "inspect";
     case DurableFileOperation::open: return "open";
+    case DurableFileOperation::read: return "read";
     case DurableFileOperation::write: return "write";
     case DurableFileOperation::flush: return "flush";
     case DurableFileOperation::close: return "close";
@@ -37,6 +39,9 @@ namespace {
     case ENOENT: return DurableFileErrorKind::notFound;
     case EISDIR:
     case ENOTDIR:
+#ifdef ELOOP
+    case ELOOP:
+#endif
         return DurableFileErrorKind::wrongType;
     default: return DurableFileErrorKind::ioFailure;
     }
@@ -404,6 +409,151 @@ void renameFileNoReplaceDurableImpl(
 }
 
 } // namespace
+
+std::vector<std::uint8_t> readBoundedRegularFile(
+    const std::filesystem::path& path,
+    const std::size_t maxBytes) {
+    requirePath(path);
+    if (maxBytes == 0U) {
+        throwTypedError(
+            DurableFileErrorKind::invalidArgument,
+            DurableFileOperation::validate,
+            path,
+            {},
+            std::errc::invalid_argument,
+            "maximum byte count must be positive");
+    }
+
+    int descriptor = ::open(
+        path.c_str(), O_RDONLY | closeOnExecFlag() | noFollowFlag());
+    if (descriptor < 0) {
+        throwSystemError(DurableFileOperation::open, path, {}, errno);
+    }
+
+    try {
+        struct stat initial {};
+        int inspectResult = -1;
+        do {
+            inspectResult = ::fstat(descriptor, &initial);
+        } while (inspectResult != 0 && errno == EINTR);
+        if (inspectResult != 0) {
+            throwSystemError(DurableFileOperation::inspect, path, {}, errno);
+        }
+        if (!S_ISREG(initial.st_mode)) {
+            throwTypedError(
+                DurableFileErrorKind::wrongType,
+                DurableFileOperation::inspect,
+                path,
+                {},
+                std::errc::invalid_argument,
+                "path is not a regular file");
+        }
+        if (initial.st_nlink != 1) {
+            throwTypedError(
+                DurableFileErrorKind::wrongType,
+                DurableFileOperation::inspect,
+                path,
+                {},
+                std::errc::too_many_links,
+                "regular file must have exactly one hard link");
+        }
+        if (initial.st_size < 0) {
+            throwTypedError(
+                DurableFileErrorKind::ioFailure,
+                DurableFileOperation::inspect,
+                path,
+                {},
+                std::errc::io_error,
+                "regular file reports a negative size");
+        }
+        const auto initialSize = static_cast<std::uintmax_t>(initial.st_size);
+        if (initialSize > static_cast<std::uintmax_t>(maxBytes)) {
+            throwTypedError(
+                DurableFileErrorKind::sizeLimitExceeded,
+                DurableFileOperation::inspect,
+                path,
+                {},
+                std::errc::file_too_large,
+                "file exceeds the configured byte limit");
+        }
+
+        std::vector<std::uint8_t> result(
+            static_cast<std::size_t>(initialSize));
+        std::size_t offset = 0U;
+        while (offset < result.size()) {
+            const auto remaining = result.size() - offset;
+            const auto chunk = std::min(
+                remaining,
+                static_cast<std::size_t>(
+                    std::numeric_limits<ssize_t>::max()));
+            const auto bytesRead = ::read(
+                descriptor, result.data() + offset, chunk);
+            if (bytesRead < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+                throwSystemError(DurableFileOperation::read, path, {}, errno);
+            }
+            if (bytesRead == 0) {
+                throwTypedError(
+                    DurableFileErrorKind::ioFailure,
+                    DurableFileOperation::read,
+                    path,
+                    {},
+                    std::errc::io_error,
+                    "file was truncated while being read");
+            }
+            offset += static_cast<std::size_t>(bytesRead);
+        }
+
+        std::uint8_t extraByte = 0U;
+        ssize_t extraBytesRead = -1;
+        do {
+            extraBytesRead = ::read(descriptor, &extraByte, 1U);
+        } while (extraBytesRead < 0 && errno == EINTR);
+        if (extraBytesRead < 0) {
+            throwSystemError(DurableFileOperation::read, path, {}, errno);
+        }
+        if (extraBytesRead != 0) {
+            throwTypedError(
+                DurableFileErrorKind::ioFailure,
+                DurableFileOperation::read,
+                path,
+                {},
+                std::errc::io_error,
+                "file grew while being read");
+        }
+
+        struct stat finalStatus {};
+        inspectResult = -1;
+        do {
+            inspectResult = ::fstat(descriptor, &finalStatus);
+        } while (inspectResult != 0 && errno == EINTR);
+        if (inspectResult != 0) {
+            throwSystemError(DurableFileOperation::inspect, path, {}, errno);
+        }
+        if (!S_ISREG(finalStatus.st_mode) ||
+            initial.st_dev != finalStatus.st_dev ||
+            initial.st_ino != finalStatus.st_ino ||
+            initial.st_size != finalStatus.st_size ||
+            initial.st_nlink != finalStatus.st_nlink) {
+            throwTypedError(
+                DurableFileErrorKind::ioFailure,
+                DurableFileOperation::inspect,
+                path,
+                {},
+                std::errc::io_error,
+                "file identity, size, or link count changed while being read");
+        }
+
+        closeChecked(descriptor, path);
+        return result;
+    }
+    catch (...) {
+        closeIgnoringErrors(descriptor);
+        throw;
+    }
+}
 
 void syncFile(const std::filesystem::path& path) {
     requirePath(path);

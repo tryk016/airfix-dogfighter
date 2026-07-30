@@ -257,6 +257,29 @@ else()
     target_compile_options(airfix_io PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 
+add_library(airfix_settings
+    src/airfix/settings/RenderPresentationSettingsCodec.cpp
+    src/airfix/settings/RenderPresentationSettingsStore.cpp
+)
+add_library(airfix::settings ALIAS airfix_settings)
+
+target_include_directories(airfix_settings
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+)
+target_compile_features(airfix_settings PUBLIC cxx_std_20)
+target_link_libraries(airfix_settings
+    PUBLIC airfix::render
+    PRIVATE airfix::crypto airfix::io
+)
+
+if(MSVC)
+    target_compile_options(airfix_settings PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(airfix_settings PRIVATE
+        -Wall -Wextra -Wpedantic)
+endif()
+
 add_library(airfix_afpack
     src/airfix/package/AfPack.cpp
     src/airfix/package/AfPackActiveRecord.cpp
@@ -436,6 +459,20 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_durable_file_tests tests/DurableFileTests.cpp)
     target_link_libraries(airfix_durable_file_tests PRIVATE airfix::io)
     add_test(NAME airfix_durable_file_tests COMMAND airfix_durable_file_tests)
+
+    add_executable(airfix_render_settings_codec_tests
+        tests/RenderPresentationSettingsCodecTests.cpp)
+    target_link_libraries(airfix_render_settings_codec_tests
+        PRIVATE airfix::settings airfix::crypto)
+    add_test(NAME airfix_render_settings_codec_tests
+        COMMAND airfix_render_settings_codec_tests)
+
+    add_executable(airfix_render_settings_store_tests
+        tests/RenderPresentationSettingsStoreTests.cpp)
+    target_link_libraries(airfix_render_settings_store_tests
+        PRIVATE airfix::settings airfix::crypto airfix::io)
+    add_test(NAME airfix_render_settings_store_tests
+        COMMAND airfix_render_settings_store_tests)
 
     add_executable(airfix_asset_tests tests/LegacyFormatsTests.cpp)
     target_link_libraries(airfix_asset_tests PRIVATE airfix::assets)

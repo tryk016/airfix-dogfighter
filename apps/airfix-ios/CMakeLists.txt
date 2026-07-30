@@ -111,6 +111,7 @@ target_link_libraries(airfix_ios PRIVATE
     airfix::input
     airfix::render
     airfix::runtime
+    airfix::settings
     airfix::simulation
     "-framework AVFAudio"
     "-framework UIKit"
