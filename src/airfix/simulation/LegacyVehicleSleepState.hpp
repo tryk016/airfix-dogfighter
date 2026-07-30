@@ -17,9 +17,10 @@ inline constexpr float
 
 // Reconstructs the sleep/rest portion of AfVehicle::ProcessEvent refresh
 // events 0x76..0x78. wakeControlValues are the five native float controls
-// checked at +0x444, +0x440, +0x450, +0x44C, and +0x448. The caller must apply
-// control events, which wake the native vehicle by clearing its rest duration,
-// before advancing the corresponding refresh.
+// checked at +0x444 target thrust, +0x440 thrust apply, +0x450 turn,
+// +0x44C bank, and +0x448 pitch. The caller must apply control events, which
+// wake the native vehicle by clearing its rest duration, before advancing the
+// corresponding refresh.
 struct LegacyVehicleSleepStepInput final {
     std::array<float, 5U> wakeControlValues{};
     float linearVelocitySquared{};

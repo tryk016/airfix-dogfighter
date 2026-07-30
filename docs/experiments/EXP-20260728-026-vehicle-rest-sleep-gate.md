@@ -170,6 +170,13 @@ does not own the recovered rigid-body state or the native 12 ms scheduler.
 Control-event wake remains a separate caller transition and is not guessed
 from values supplied to an already sleeping refresh.
 
+Follow-up static analysis identifies the third wake control `+0x450` as the
+positive-zero-initialized destination of `EVENT_TURN_SET (0x5D)`. The separate
+transactional control-event owner now supplies all five controls in this
+exact order while remaining unwired from scheduling and live player state;
+see
+[EXP-20260730-061](EXP-20260730-061-native-turn-event-control-state.md).
+
 ## Validation
 
 Fresh Release and code-intelligence Ninja/GCC 15.2 builds each compile all 226

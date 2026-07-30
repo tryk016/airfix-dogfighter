@@ -1,5 +1,7 @@
 #pragma once
 
+#include "airfix/simulation/LegacyAircraftAngularSetNumericPolicy.hpp"
+
 #include <bit>
 #include <cstdint>
 #include <optional>
@@ -7,9 +9,9 @@
 namespace airfix::simulation {
 
 inline constexpr std::uint32_t legacyAircraftPitchBankSetScaleBits =
-    0x3D3020C5U;
+    legacyAircraftAngularSetScaleBits;
 inline constexpr float legacyAircraftPitchBankSetScale =
-    std::bit_cast<float>(legacyAircraftPitchBankSetScaleBits);
+    legacyAircraftAngularSetScale;
 
 enum class LegacyAircraftNativePitchBankEvent : std::uint8_t {
     pitchSet = 0x5F,
@@ -21,12 +23,8 @@ enum class LegacyAircraftPitchBankWriteField : std::uint8_t {
     bank,
 };
 
-// This is a compatibility policy supported by the original process startup
-// state. It is not a claim that the live x87 control word has been observed
-// while a native event is processed.
-enum class LegacyAircraftPitchBankNumericPolicy : std::uint8_t {
-    startupPc53RoundToNearestEven,
-};
+using LegacyAircraftPitchBankNumericPolicy =
+    LegacyAircraftAngularSetNumericPolicy;
 
 struct LegacyAircraftNativePitchBankEventInput final {
     LegacyAircraftNativePitchBankEvent event{
@@ -91,8 +89,8 @@ struct LegacyAircraftPitchBankEventDecodeResult final {
 // Decodes one already-ordered native AirCraft PITCH_SET or BANK_SET event.
 // The payload is the complete signed int32 stored at event offset +0x11.
 // An active event produces exactly one caller-owned field write. A nonzero
-// payload also asks the future state owner to clear the shared 64-bit rest
-// duration atomically with that write.
+// payload also asks the separate control-event state owner to clear the shared
+// 64-bit rest duration transactionally with that write.
 //
 // The supported numeric policy models the startup-compatible x87 PC=53,
 // RC=nearest-even path exactly and returns the final binary32 bits. It does

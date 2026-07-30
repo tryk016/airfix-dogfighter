@@ -30,6 +30,9 @@ contract are recorded in
 The exact `PITCH_SET`/`BANK_SET` branch boundaries, signed payload, x87
 vectors, producer-specific bounds, and timing limits are recorded in
 [EXP-20260729-056](../../experiments/EXP-20260729-056-native-pitch-bank-event-research.md).
+The sibling `TURN_SET` field, discrete producer, and transactional
+five-control state owner are recorded in
+[EXP-20260730-061](../../experiments/EXP-20260730-061-native-turn-event-control-state.md).
 
 The player spawn, primary-actor, mission start-room, and selected-skin
 hierarchy contract is maintained in `PLAYER-SPAWN.md`. That static identity
@@ -131,6 +134,12 @@ consumes:
 | `+0x444` | `EVENT_THRUST_SET`: `payload * (1/255)` | clamped to `[0,1]`, smoothed through `+0x560`, and used by force calculations |
 | `+0x448` | `EVENT_PITCH_SET`: `payload * 0.043` | read by multiple torque paths |
 | `+0x44C` | `EVENT_BANK_SET`: `payload * 0.043` | read by multiple torque and force paths |
+
+`AfVehicle+0x450` is a fifth binary32 control initialized to positive zero and
+written by `EVENT_TURN_SET` with the same exact scale as pitch and bank. It is
+checked by the vehicle sleep gate, but no AirCraft force-law consumer has been
+found. It therefore remains the event-backed `turn` control rather than being
+renamed to yaw or assigned a physical axis.
 
 The `+0x444` update is inside a branch gated by current `NfActor` health at
 `+0x98`. The exported `NfActor::GetHealth` returns this exact float.
@@ -277,6 +286,8 @@ establishes the relevant event names:
 
 | Event | Symbolic name | Effect in the AirCraft inheritance chain |
 |---:|---|---|
+| `0x5D` | `EVENT_TURN_SET` | writes `AfVehicle+0x450` |
+| `0x5E` | `EVENT_TURN_APPLY` | no control-field write |
 | `0x5F` | `EVENT_PITCH_SET` | writes `AfVehicle+0x448` |
 | `0x60` | `EVENT_PITCH_APPLY` | no control-field write |
 | `0x61` | `EVENT_THROTTLE_SET` | no control-field write |
@@ -296,7 +307,7 @@ The naming trap is material: aircraft thrust is controlled by
 `AirCraft::ProcessEvent` at `0x10008530` handles only two unrelated event
 values locally and delegates these control events to
 `AfVehicle::ProcessEvent` at `0x1001B6C0`. The packed payload is a signed
-32-bit integer at event offset `+0x11`. The pitch, bank, and thrust cases are
+32-bit integer at event offset `+0x11`. The turn, pitch, bank, and thrust cases are
 skipped while the inactive latch at vehicle offset `+0x460` is nonzero.
 `AfVehicle::Activate` clears this byte; `Deactivate` and death paths set it. A
 successful nonzero control write also clears the signed 64-bit rest duration
@@ -324,13 +335,23 @@ The decoder owns no producer, ordering, scheduler, or state mutation;
 [EXP-20260729-060](../../experiments/EXP-20260729-060-native-pitch-bank-event-reducer.md)
 records the implementation boundary.
 
+`TURN_SET` now has the equivalent separate reducer. It shares the exact
+host-FP-independent PC53/nearest-even arithmetic with pitch and bank but
+returns only the `turn` write for `+0x450`. A simulation-thread-confined
+transactional owner accepts all three angular writes and the two thrust
+writes, committing the selected field and explicit shared-rest clear
+together. It exposes the sleep controls in exact native order without owning
+producer ordering, timing, sleep-result persistence, or rigid-body state.
+[EXP-20260730-061](../../experiments/EXP-20260730-061-native-turn-event-control-state.md)
+records that boundary.
+
 The conversion preserves the recovered wider-intermediate store vectors:
 `THRUST_APPLY(249)` is `0x3C9FFC25` and `THRUST_APPLY(255)` is
 `0x3CA3D70B`. The decoder owns no state, scheduler, Q15 conversion, or slot-45
 call and remains unwired. See
 [EXP-20260729-054](../../experiments/EXP-20260729-054-native-thrust-event-reducer.md).
 
-The apparent `APPLY` alternatives for pitch/bank and both `THROTTLE` events
+The apparent `APPLY` alternatives for turn/pitch/bank and both `THROTTLE` events
 fall through the complete `AirCraft -> AfVehicle -> NfActor ->
 NfTypeInstance` dispatch chain without modifying the control fields. This is
 a confirmed no-op for this inheritance path, not a claim that no other actor
@@ -353,6 +374,8 @@ joins named commands to the vehicle events:
 
 | Command | Press/held payload | Release behavior |
 |---|---:|---|
+| `turnleft` | `EVENT_TURN_SET`, `-32` | `+32` if right remains held, otherwise `0` |
+| `turnright` | `EVENT_TURN_SET`, `+32` | `-32` if left remains held, otherwise `0` |
 | `thrustinc` | `EVENT_THRUST_APPLY`, `+255` | `-255` if decrease remains held, otherwise `0` |
 | `thrustdec` | `EVENT_THRUST_APPLY`, `-255` | `+255` if increase remains held, otherwise `0` |
 | `bankleft` | `EVENT_BANK_SET`, `-32` | `+32` if right remains held, otherwise `0` |
@@ -361,8 +384,9 @@ joins named commands to the vehicle events:
 | `pitchdown` | `EVENT_PITCH_SET`, `-32` | `+32` if up remains held, otherwise `0` |
 
 This confirms signs relative to the original command labels: positive pitch is
-`pitchup`, positive bank is `bankright`, and positive thrust apply is
-increase. It does not by itself define the physical world-axis handedness.
+`pitchup`, positive bank is `bankright`, positive turn is `turnright`, and
+positive thrust apply is increase. It does not by itself define the physical
+world-axis handedness.
 
 The broader input-event dispatcher at `0x00411BB0`
 (`FN-DOGFIGHTER-00011BB0`, working name `DispatchInputEvents`) uses only `SET`
@@ -388,6 +412,7 @@ successfully installed range property.
 
 No explicit local clamp was found on the thrust analog payload. The downstream
 flight step clamps the resulting `+0x444` value to `[0,1]` in its gated update.
+No `TURN_SET` case was found in this analog dispatcher.
 Ghidra and Rizin independently agree on this function's exact range and all
 three analog-history globals; see
 [EXP-20260727-001](../../experiments/EXP-20260727-001-static-tool-crosscheck.md).
@@ -416,6 +441,11 @@ payload. The numeric route is confirmed, but the symbolic names of the
 `AICONTROL` indices themselves remain unknown and are not reconstructed from
 their consumers.
 
+No `TURN_SET` AI producer was found in the inspected AirCraft, GroundUnit, or
+WaterUnit paths. No control-law consumer of `+0x450` was found in those
+classes outside the shared sleep gate. These bounded negative results are why
+the portable reducer remains unwired from physics.
+
 ## Inferred, not yet contractual
 
 - The working labels `AircraftFlightForceStep`,
@@ -431,6 +461,8 @@ constants without another confirming source.
 ## Still unknown
 
 - the full scheduler target-mask and large-gap policy;
+- the physical meaning and any missing downstream consumer of
+  `EVENT_TURN_SET`/`AfVehicle+0x450`;
 - the complete actor-vs-actor slot-29 order outside the shown static/BSP path;
 - the semantic meaning of the `AICONTROL` index enum names;
 - the gameplay meanings of several constructor fields even though every tuple

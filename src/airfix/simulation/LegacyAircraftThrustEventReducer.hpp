@@ -86,9 +86,9 @@ struct LegacyAircraftThrustEventDecodeResult final {
 // A recognized event is gated by the native vehicle-inactive latch before
 // its payload is inspected. Inactive input is therefore an accepted no-op,
 // including when its payload lies outside the recovered producer range.
-// Non-zero decoded writes request that the future state owner clear the
-// 64-bit rest duration; this function owns neither that duration nor the
-// thrust state.
+// Non-zero decoded writes request that the separate control-event state owner
+// clear the 64-bit rest duration transactionally; this function owns neither
+// that duration nor the thrust state.
 //
 // This allocation-free boundary intentionally owns no Q15 conversion,
 // input device, scheduler, event queue, 12-ms timing, slot-45 force step,

@@ -46,8 +46,10 @@ inspect that payload.
 - `payloadOutsideEvidenceRange`, with no write.
 
 The write owns only the selected field value and a `clearRestDuration`
-directive. It does not own the thrust state or the rest counter. The future
-runtime owner must commit the typed write and optional rest clear together.
+directive. It does not own the thrust state or the rest counter. The separate
+simulation-thread-confined control-event state owner now commits the typed
+write and optional rest clear together, but remains unwired from live event
+producers and scheduling.
 
 An active zero payload is still a decoded write, because it can release a
 persistent apply value. It does not clear rest duration. Repeating the same
@@ -124,5 +126,6 @@ rendered movement, or playable behavior.
 ## Related
 
 - [Isolated slot-45 thrust control](EXP-20260729-053-isolated-slot45-thrust-control.md)
+- [TURN_SET and control-event state owner](EXP-20260730-061-native-turn-event-control-state.md)
 - [AirCraft controls and scheduler](../re/systems/AIRCRAFT-FLIGHT.md)
 - [AirCraft flight law](../re/systems/AIRCRAFT-FLIGHT-LAW.md)

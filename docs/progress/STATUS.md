@@ -305,7 +305,10 @@
 - Recovered the complete player/AI control-event join. Player commands and
   analog input emit signed `PITCH_SET`, `BANK_SET`, and
   `THRUST_SET/APPLY` payloads into four `AfVehicle` fields read directly by
-  the flight-force step. The similarly named `THROTTLE_SET/APPLY` events are
+  the flight-force step. Discrete keyboard commands also emit
+  `TURN_SET (-32/0/+32)` into a fifth sleep-gate control whose AirCraft
+  force-law consumer remains unknown. The similarly named
+  `THROTTLE_SET/APPLY` events are
   confirmed no-ops for the AirCraft inheritance path. A static Ghidra/Rizin
   cross-check now also fixes the exact `PITCH_SET`/`BANK_SET` branches:
   signed `int32` payloads are multiplied in x87 by the binary32 constant at
@@ -317,10 +320,14 @@
   startup-compatible conditional model, not a branch-time observation:
   process-wide live x87 precision and rounding control, cross-producer
   ordering, and the nominal-12-ms sample phase remain explicitly unproven. The
-  isolated pitch/bank typed-write reducer is implemented over the full signed
-  native payload domain. It returns exact binary32 bits under an explicitly
-  named startup-compatible PC53/nearest-even policy using host-FP-independent
-  integer rounding. Live wiring remains intentionally absent.
+  isolated turn/pitch/bank typed-write reducers are implemented over the full
+  signed native payload domain. They return exact binary32 bits under an
+  explicitly named startup-compatible PC53/nearest-even policy using shared
+  host-FP-independent integer rounding. A simulation-thread-confined owner
+  commits those writes and the thrust writes with their shared rest clear as
+  one transaction and exposes the five controls in native sleep-gate order.
+  Live producer, scheduler, force-law, and player-state wiring remains
+  intentionally absent.
 - Recovered the scheduler-visible aircraft order:
   `EulerODE -> ResetForceAndTorque -> CalcAuxiliary -> slot45 force
   accumulation -> collision/slot30 -> slot44 refresh`. `EulerODE` consumes
@@ -906,12 +913,16 @@
    The backend-neutral runtime planner and one-lease-per-frame Metal/D3D11
    consumers plus the isolated native-field target/apply/clamp/smoothing step
    and the separate already-formed signed native `THRUST_SET/APPLY` typed-write
-   reducer are complete. The exact signed `PITCH_SET`/`BANK_SET` branch
-   structure, rest-clear behavior, and producer ranges are now statically
-   recovered; the separate pure structural reducer now implements the
+   reducer are complete. The exact signed
+   `TURN_SET`/`PITCH_SET`/`BANK_SET` branch structure, rest-clear behavior,
+   and producer ranges where producer paths exist are now statically
+   recovered; the separate pure structural reducers now implement the
    explicitly labelled full-domain PC53/RN compatibility policy while the
-   model remains conditional on the live x87 control word. Keep all control
-   reducers unwired from `PlayerAircraftState` until controlled traces prove
+   model remains conditional on the live x87 control word. A
+   simulation-thread-confined owner commits typed control writes and their
+   shared rest clear transactionally, but owns no producer ordering or clock.
+   Keep all control reducers and that owner unwired from
+   `PlayerAircraftState` until controlled traces prove
    numeric mode, Q15-to-event ordering, and sample-and-hold timing; do not
    manufacture a complete native flight-control scheduler from the nominal
    12 ms interval.

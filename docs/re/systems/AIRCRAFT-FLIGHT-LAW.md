@@ -111,6 +111,7 @@ Let `A` be the AirCraft instance and `T` its type at `A+0x524`.
 ```text
 B       = f32[A+0x3FC]
 health  = f32[A+0x98]
+turn    = f32[A+0x450]
 pitch   = f32[A+0x448]
 bank    = f32[A+0x44C]
 p       = vec3[A+0x278]
@@ -199,10 +200,10 @@ restMs >= 2000
 
 The native comparison is implemented as a signed high-DWORD check followed by
 an unsigned low-DWORD comparison. `+0x458` and `+0x45C` are not separate
-fields: they are the low and high DWORDs of one signed millisecond
-accumulator. `AfVehicle::AfVehicle` initializes it to 1999 ms. Active refreshes
-accumulate the signed scheduler delta only while all five wake controls are
-exactly zero and either:
+fields: they are the low and high DWORDs of one signed millisecond accumulator.
+`AfVehicle::AfVehicle` initializes it to 1999 ms. Active refreshes accumulate
+the signed scheduler delta only while target thrust, thrust apply, turn, bank,
+and pitch are all exactly zero and either:
 
 ```text
 IsOnGround() && velocitySquared < 0.03f
@@ -596,6 +597,14 @@ payloads. It emits one typed write and the nonzero rest-clear directive but
 owns no input conversion, event clock, queue, rest counter, slot-45 invocation,
 or state commit. The two helpers may be composed by tests; their real temporal
 join still requires controlled traces.
+
+The sibling turn/pitch/bank reducers now share one exact integer PC53/RNE
+conversion. A separate simulation-thread-confined owner transactionally
+commits their typed writes and the thrust writes with the shared rest clear,
+then exposes the five controls to the sleep helper in native order. The
+`TURN_SET` field is event- and sleep-backed, but no consumer has been found in
+this AirCraft force law; it is not treated as yaw. The owner remains unwired
+from producers, the 12 ms scheduler, slot 45, and live player state.
 
 Until the runtime evidence exists, `PlayerAircraftState` remains a frozen-pose
 transport. It must not encode these equations as claimed gameplay behavior
