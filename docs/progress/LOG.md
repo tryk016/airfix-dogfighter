@@ -3891,7 +3891,6 @@ superseded evidence.
 - A clean Windows MSVC/Ninja product build passes all 115 CTests. The isolated
   `Airfix-Dev` WSL clone builds all 302 Linux targets and passes 106/106 CTests.
   Clang-format, `git diff --check`, and the 546-file public-boundary scan pass.
-
 ## 2026-07-30 - bootstrap and module-loader cross-check
 
 - `EV-20260730-002`: a complete 16-module PE scan confirmed that only
@@ -3909,3 +3908,48 @@ superseded evidence.
 - Promoted bootstrap/resource loading from `not-investigated` to `observed`;
   portable implementation remains a deterministic C++20 registry rather than
   a recreation of Windows wildcard order or DLL loading.
+
+## 2026-07-30 - native pitch/bank producer ordering and 12 ms phase
+
+- `EV-20260730-003` / `EXP-20260730-067` follows every local keyboard,
+  DirectInput joystick, and AirCraft AI path that creates or immediately
+  dispatches `PITCH_SET (0x5F)` and `BANK_SET (0x65)`.
+- Ghidra 12.1.2 and Rizin 0.9.1 agree on 19 function boundaries and the
+  relevant instructions. Rizin automatic discovery found twelve; seven
+  entries missed by automatic discovery were created only at independently
+  established vtable or switch addresses and then agreed with Ghidra.
+- Device construction in keyboard, mouse, joystick order plus head insertion
+  proves traversal in joystick, mouse, keyboard order. Every manager request
+  restarts at joystick. One successful joystick snapshot supplies bank before
+  pitch and processes each raw event before requesting the next.
+- Keyboard obtains one buffered record per request and executes mapped binding
+  text synchronously. It has no fixed cross-axis order beyond record and
+  binding order. Every command callback updates its held byte and emits one
+  SET, including repeats.
+- Analog history updates before immediate event processing and suppresses
+  mapped raw changes below ten. AI relative-value caches also update before
+  processing and suppress exact mapped binary32 repeats. An inactive drop is
+  not replayed by either cache after activation.
+- The AI step calculates controls then fully saves/processes changed PITCH
+  before BANK. Its exact-binary32 `0.1` interval accumulator resets instead of
+  retaining overshoot; uninterrupted 12 ms vehicle deltas therefore trigger
+  nominally on the ninth refresh at approximately 108 ms.
+- Local input drains before QPC-derived `SetTime`. `SetTime` polls remote
+  input, then the periodic heap can invoke zero, one, or multiple 12 ms
+  AirCraft refreshes; `SetRealTime` and render follow. The recovered time-event
+  branch skips its heap refresh at a forward difference of 699 ms or more.
+- No reducer, runtime integration, input frame, fixed-point axis, renderer,
+  scheduler, executable, game resource, or tool database changed. The report
+  recommends NO-GO for full live-input integration and conditional GO only for
+  a later one-event-at-a-time adapter that preserves immediate native order
+  without batching, sorting, deduplication, interpolation, or replay.
+- The new Ghidra reference exporter compiled and ran headlessly. It now
+  validates that every requested address belongs to program memory, records
+  deterministic unresolved markers, and fails closed; real valid and invalid
+  headless probes plus a wrapper regression pass. Forty-three selected Ghidra
+  reports contain no unresolved-address marker, and all 19 normalized Rizin
+  boundaries match the public ledger. The three RE wrapper
+  suites, 12 Rizin tests, synthetic public-boundary tests and 549-file scan,
+  287-row/14-column unique function catalog, changed-document links,
+  changed-scope local-path scan, reserved-ID scan, and `git diff --check`
+  pass.

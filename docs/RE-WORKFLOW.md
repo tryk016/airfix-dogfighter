@@ -90,6 +90,7 @@ The targeted read-only exporters are:
 | Script | Purpose |
 |---|---|
 | `ExportAddressFunctions.java` | decompile functions containing exact addresses |
+| `ExportAddressReferences.java` | emit deterministic incoming references and caller instruction sites for exact in-memory addresses; invalid or unmapped requests fail closed with an unresolved marker |
 | `ExportFunctionInstructions.java` | emit deterministic address/bytes/instruction listings |
 | `ExportMemoryValues.java` | interpret four bytes at exact addresses as integer and `float32` values |
 | `ExportCallersOfNamedFunctions.java` | join selected named callees to their callers |
