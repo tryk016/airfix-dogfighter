@@ -4021,3 +4021,36 @@ superseded evidence.
   exporter tests, changed-document links, local-path scanning, the 553-file
   public-boundary scan, and `git diff --check` pass. Hosted platforms remain
   the publication gate.
+
+## 2026-07-30 - isolated mission outcome state
+
+- `EV-20260730-005` / `EXP-20260730-070` recovers the exact two-byte
+  `NfMission` outcome boundary. Full-object offsets `+0x498` and `+0x499`
+  independently store failed and accomplished; `NfMission::Call` sees the same
+  fields at `+0x448/+0x449` through its `AfFunctionCall` subobject.
+- `SetupAfServerFunctions` registers AFS `MissionFail` as `0x47` and
+  `MissionSuccess` as `0x48`. Neither case reads a payload. The selected byte
+  is set on every call, while only a transition from neither flag set requests
+  the exact ordered console sequence `pause` then `menu`.
+- Repeats do not re-present. Conflicts do not overwrite: fail followed by
+  success and success followed by fail both end with both flags true.
+  Direct `NfMission::Fail` sets only failed and requests no presentation;
+  the outcome projection of `Reset` clears both bytes.
+- Ghidra 12.1.2 is primary. Rizin 0.9.1 independently matches all sixteen
+  selected `AfEngine.dll` boundaries. The selected `Singleplayer.mode`
+  candidate at RVA `0x12D0` is excluded as an unrelated cheat callback.
+- The new allocation-free `LegacyMissionOutcomeState` applies one
+  already-ordered call at a time, returns a `requestPauseThenMenu` directive,
+  supports direct fail and reset, and fails closed on unsupported identifiers.
+  It owns no trigger evaluation, AFS process, batching, ordering, console,
+  campaign/save state, multiplayer, renderer, audio, or platform menu.
+- Synthetic tests cover all four native flag combinations crossed with both
+  calls, both conflict orders, repeats, direct fail, reset, and unsupported
+  identifiers. Fresh complete GCC 15.2/Ninja and MSVC 19.51/Ninja builds each
+  pass 108/108 CTests. Clang 22.1.8 passes a warnings-as-errors syntax check.
+  All three RE wrapper suites, 12 Rizin exporter tests, public-boundary tests
+  and the 561-file scan, the 313-row/14-column unique catalogue, changed
+  document links, changed-addition local-path and reserved-ID scans, and
+  `git diff --check` pass. Review's sole P2 confidence overclaim was fixed by
+  applying the project-wide static-only confidence cap; final re-review
+  reports GO with no remaining P0-P3 finding. Hosted publication gates remain.

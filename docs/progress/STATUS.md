@@ -924,6 +924,16 @@
   owned static arena without allocation. Failed republishes retain both the
   previous geometry and actor state. Other live actors, a real changing
   producer, controlled traces, and dynamic sphere collision remain separate.
+- `EV-20260730-005` closes the isolated single-player mission-outcome state.
+  AFS `MissionFail` (`0x47`) and `MissionSuccess` (`0x48`) set independent
+  one-byte failed/accomplished fields. Only the first terminal call requests
+  `pause` followed by `menu`; repeats and conflicts still set their selected
+  byte and can leave both true without another request. Direct
+  `NfMission::Fail` sets only failed, while the portable reset projection
+  clears both flags. The new allocation-free C++20 transition covers all four
+  starting states, both call orders, repeats, conflicts, reset, direct fail,
+  and unsupported identifiers. It intentionally owns no trigger evaluation,
+  AFS process, scheduler, campaign/save state, multiplayer, or platform menu.
 
 ## Confirmed
 
@@ -990,10 +1000,14 @@
    water, collision, engine-transition, and too-high branches; establish
    x87-versus-portable numeric tolerances and deterministic replacement PRNG
    sequencing before composing the statically recovered 12 ms flight law.
-3. Add persistent layout/visibility profiles, calibration and remapping,
+3. Recover the trigger-to-AFS-process scheduling and downstream
+   campaign/save consumer before wiring the isolated mission-outcome state.
+   Preserve one already-ordered call per transition; do not batch, sort,
+   deduplicate, replay, or invent a priority when both native flags are true.
+4. Add persistent layout/visibility profiles, calibration and remapping,
    controller glyphs, haptics, and finished menu bindings; then run touch-only
    and controller-only acceptance on both target iPhones.
-4. Connect the implemented weak camera-runtime endpoint to the recovered live
+5. Connect the implemented weak camera-runtime endpoint to the recovered live
    AirCraft producer once it supplies distinct chase position, world anchor,
    vehicle rotation, live health, inactive state, and the confirmed scheduler
    delta in seconds without resampling the separate 60 Hz input pump. Replace the
@@ -1001,11 +1015,11 @@
    scalar clip and reciprocal depth while validating the new Hor+ port policy
    separately from recovered 4:3 evidence; dynamic-object and transparent
    collision-portal paths remain separate.
-5. Validate the implemented runtime portal-to-room-state proposal against
+6. Validate the implemented runtime portal-to-room-state proposal against
    controlled multi-room executable traces when the isolated runtime is ready.
-6. Keep BSP render culling disabled until its separate runtime semantics are
+7. Keep BSP render culling disabled until its separate runtime semantics are
    proven against executable evidence.
-7. Feed the runtime-owned player collider and concrete resolver from the
+8. Feed the runtime-owned player collider and concrete resolver from the
    recovered changing actor producer. Extend the same generation-matched
    publication/resolution to other live actors, then connect the implemented
    creator BSP guard callbacks and already reduced terminal damage/surface
@@ -1013,7 +1027,7 @@
    the fixed-capacity activation runtime, advance its active slots through the
    collision transaction, and add tracer/effect adapters before wiring
    primary-fire intent into runtime.
-8. In parallel with gameplay reconstruction, extend the implemented ADR-0013
+9. In parallel with gameplay reconstruction, extend the implemented ADR-0013
    resolution/Hor+/UI/input/offscreen-target foundation with finished settings
    for render scale, Original 4:3 and safe FOV plus HUD/effect integration.
    Validate the implemented diagnostic overlay on both physical iPhones before
@@ -1029,6 +1043,16 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The isolated mission-outcome state passes fresh complete Windows GCC
+  15.2/Ninja and MSVC 19.51/Ninja builds plus 108/108 CTests in each. Clang
+  22.1.8 passes a warnings-as-errors syntax check. Ghidra and Rizin agree on
+  all sixteen selected `AfEngine.dll` boundaries; all three RE wrapper suites,
+  12 Rizin exporter tests, public-boundary tests and the 561-file scan, the
+  313-row/14-column unique catalogue, changed-document links,
+  changed-addition local-path and reserved-ID scans, clang-format, and
+  `git diff --check` pass. Review's sole P2 confidence overclaim was corrected
+  by capping the static evidence at medium/`2`; final re-review reports GO with
+  no remaining P0-P3 finding. Hosted platforms remain the publication gate.
 - The one-event pitch/bank step passes fresh complete Windows GCC 15.2/Ninja
   and MSVC 19.51/Ninja builds plus 107/107 CTests in each. Independent review
   reports GO with no P0-P3 findings after its own clean GCC build and Clang 22

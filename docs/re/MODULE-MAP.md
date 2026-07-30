@@ -41,7 +41,7 @@ actual runtime graphics-adapter load. `Dogfighter.exe` does not import
 | `GTDIRECT3D` | `gtDirect3D.dll` | Direct3D renderer adapter | 3 | What abstract renderer interface does it implement? |
 | `GT3DFX` | `gt3DFX.dll` | Glide renderer adapter | 3 | Which entry points match the Direct3D adapter? |
 | `MODE_DOGFIGHT` | `Game/Modes/Dogfight.mode` | dogfight flow/rules | 2 | What mode factory/export registers it? |
-| `MODE_SINGLEPLAYER` | `Game/Modes/Singleplayer.mode` | campaign/mission flow | 2 | Where are mission transitions and objectives dispatched? |
+| `MODE_SINGLEPLAYER` | `Game/Modes/Singleplayer.mode` | campaign/mission flow | 2 | How do campaign and save code consume the recovered mission-outcome flags? |
 | `TYPE_AFFX` | `Game/Types/AfFX.type` | effects actor registrations | 2 | Which effects alter simulation versus rendering only? |
 | `TYPE_AIRCRAFT` | `Game/Types/AirCraft.type` | aircraft registration, force/torque, collision, and AI | 3 | What are the physical units, runtime tolerances/traces, combined room-contributor drawing, and dynamic actor-to-instance publication rules? |
 | `TYPE_GROUNDUNIT` | `Game/Types/GroundUnit.type` | ground actor registrations | 2 | Which base actor interface is shared? |
@@ -164,6 +164,14 @@ graphics enumeration is distinct from the retained runtime device. See
 [`EXP-20260730-066`](../experiments/EXP-20260730-066-bootstrap-module-loading.md)
 and
 [`STARTUP-PLUGINS.md`](systems/STARTUP-PLUGINS.md).
+
+`EV-20260730-005` closes the isolated mission-outcome state. The AFS
+`MissionFail` and `MissionSuccess` calls set independent bytes, and only the
+first terminal call requests `pause` followed by `menu`; later conflicting
+calls can leave both bytes set. The mode's candidate RVA `0x12D0` is a cheat
+callback, not an outcome override. Trigger/process ordering, campaign
+consumption, persistence, and multiplayer remain open. See
+[`MISSION-OUTCOME.md`](systems/MISSION-OUTCOME.md).
 
 ## Report inventory
 
