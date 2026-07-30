@@ -5,8 +5,8 @@
 `EV-20260724-003`, `EV-20260724-004`, `EV-20260724-005`,
 `EV-20260728-010`, `EV-20260728-011`, `EV-20260728-012`,
 `EV-20260728-013`, `EV-20260728-014`, `EV-20260729-007`,
-`EV-20260730-001`, `EV-20260730-003`, `EV-20260730-004`
-and `EV-20260730-007`
+`EV-20260730-001`, `EV-20260730-003`, `EV-20260730-004`,
+`EV-20260730-007`, and `EV-20260730-008`
 **Reference build:** SHA-256 values in `docs/evidence/source-manifest.sha256`
 
 This note records the current clean-room boundary around
@@ -43,6 +43,9 @@ and the durable [CcRigidBody boundary](CC-RIGID-BODY.md).
 The sibling `TURN_SET` field, discrete producer, and transactional
 five-control state owner are recorded in
 [EXP-20260730-061](../../experiments/EXP-20260730-061-native-turn-event-control-state.md).
+The complete supplied-module search for later x87 environment writers and its
+hardware-breakpoint-only dynamic follow-up are recorded in
+[EXP-20260730-078](../../experiments/EXP-20260730-078-x87-runtime-policy-static-audit.md).
 
 The player spawn, primary-actor, mission start-room, and selected-skin
 hierarchy contract is maintained in `PLAYER-SPAWN.md`. That static identity
@@ -363,6 +366,15 @@ behavior, not a claim that the native live x87 control word has been observed.
 The decoder owns no producer, ordering, scheduler, or state mutation;
 [EXP-20260729-060](../../experiments/EXP-20260729-060-native-pitch-bank-event-reducer.md)
 records the implementation boundary.
+
+The follow-up process audit closes the obvious supplied-module mutation gap:
+the executable requests PC53 before its game shell, its local initializer
+ranges are empty, only it imports `_controlfp`, and 4,277 Rizin-recognized
+functions across all 15 supplied runtime modules contain no decoded
+floating-point-environment writer. This strengthens the startup-compatible
+label but does not observe RC, exception state, external system/driver code, or
+the live consumer thread. The numeric label and integration NO-GO therefore
+remain unchanged.
 
 `TURN_SET` now has the equivalent separate reducer. It shares the exact
 host-FP-independent PC53/nearest-even arithmetic with pitch and bank but

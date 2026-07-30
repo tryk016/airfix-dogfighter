@@ -10,7 +10,7 @@ startup phase order, and graphics/mode handle lifetime; 2/3 for formal factory
 parameter types and shared type-module teardown coordination
 
 **Evidence IDs:** `EV-20260721-011`, `EV-20260721-013`, `EV-20260721-014`,
-`EV-20260730-002`
+`EV-20260730-002`, `EV-20260730-008`
 
 **Scenario IDs:** `SCN-BOOT-001`, `SCN-STARTUP-001`, `SCN-PACKAGE-001`,
 `SCN-PLUGIN-001`
@@ -55,6 +55,16 @@ The wrapper vtable at VA `0x004393FC` identifies the used slots:
 The exact loop is message pump/continue, input/time, then active-frame event.
 The event is constructed with `0xFF000000` and `4`; its semantic enum name
 remains unclaimed.
+
+Before this WinMain-style shell, the executable CRT entry calls
+`_controlfp(0x00010000, 0x00030000)`, selecting the MSVCRT 53-bit x87
+precision mode without selecting rounding control. Its two executable-local
+initializer ranges are empty. A function-aware Rizin audit finds no decoded
+environment writer or additional environment-mutator import across the 15
+supplied runtime modules; only the executable imports `_controlfp`.
+[EXP-20260730-078](../../experiments/EXP-20260730-078-x87-runtime-policy-static-audit.md)
+records the complete static boundary and why a consumer-site CW/SW capture is
+still required.
 
 ## Package-chain initialization
 

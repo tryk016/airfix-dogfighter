@@ -118,6 +118,22 @@ Use the exact locked Ghidra/JDK versions. Preserve the raw local report and
 publish only concise observations, contracts, constants, and evidence IDs.
 See [../RE-WORKFLOW.md](../RE-WORKFLOW.md) for all available exporters.
 
+For a complete decoded-instruction audit of floating-point environment
+mutations in one already imported program:
+
+```powershell
+./tools/Invoke-GhidraAnalysis.ps1 `
+  -ProgramName 'Dogfighter.exe' `
+  -PostScript 'ExportFloatingPointEnvironmentWrites.java' `
+  -ReportSuffix 'fp-environment-writes'
+```
+
+The exporter recognizes x87 environment load/restore/init/save operations,
+`FXRSTOR`, `LDMXCSR`, `XRSTOR`, and direct calls whose resolved names belong to
+the `_controlfp`/`_control87`/`_clearfp`/`_fpreset`/`fenv` mutation families,
+including exception-state setters. It scans Ghidra-decoded instructions, not
+arbitrary byte offsets.
+
 ## Repeatable Rizin commands
 
 Set these shell variables to a verified portable installation and one verified

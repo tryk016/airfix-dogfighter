@@ -4315,3 +4315,37 @@ superseded evidence.
   directory for the three `Au*` records; the all-17 resolver/test fix closes
   it, and final re-review reports GO with no remaining P0-P3 finding. Hosted
   platform Actions remain the publication gate.
+
+## 2026-07-30 - supplied-module x87 policy audit
+
+- `EV-20260730-008` / `EXP-20260730-078` identifies the executable CRT entry
+  `[0x00435BBA,0x00435D0C)` and its startup helper
+  `[0x00435D5C,0x00435D6E)`. The call is exactly
+  `_controlfp(_PC_53, _MCW_PC)`, before both empty executable initializer
+  ranges and the WinMain-style game shell; it changes precision control but
+  does not select a rounding mode.
+- Rizin 0.9.1 plus `rzpipe` 0.6.2 performed a function-aware pass over all 15
+  ordinary supplied runtime images. Their 4,277 independently discovered
+  functions contain no decoded x87/SSE environment-write instruction, and
+  import enumeration finds a known environment mutator only as the executable
+  `_controlfp`. The two discoverable protected-ICD functions add no completeness
+  claim and remain outside the recovered startup path.
+- The raw `FLDCW` byte hit at executable VA `0x0041BD00` is rejected as
+  misaligned: the real instruction begins at `0x0041BCFF` and is
+  `mov ebx, ecx`. A deterministic Ghidra exporter now expresses the same
+  canonical query, but its fresh normal-profile headless pass remains a
+  publication gate because the current managed sandbox cannot load Ghidra's
+  per-user OSGi bundle.
+- Static evidence closes the obvious game-owned later-writer question but does
+  not observe RC, external-library effects, thread inheritance, exception
+  masks/status, or the consumer-site CW/SW. Turn/pitch/bank therefore retain
+  the explicit startup-compatible PC53/nearest-even label, live producer wiring
+  remains conditional, and a bit-parity `CcRigidBody` implementation stays
+  NO-GO pending a small ordinary-user hardware-breakpoint capture.
+- Both RE wrapper suites, all 12 Rizin exporter tests, synthetic
+  public-boundary tests, the 613-file public scan, changed-document links,
+  changed-scope local-path scanning, the 324-row/14-column unique catalogue
+  with only its two known historical missing references, and
+  `git diff --check` pass. A fresh normal-profile Ghidra exporter run remains
+  a follow-up independent-validation gate; the published whole-module result
+  is explicitly and narrowly attributed to Rizin.
