@@ -1,6 +1,6 @@
 # ADR-0002: Semantic actions with touch and controller adapters
 
-**Status:** Accepted; portable core implemented
+**Status:** Accepted; portable router and controller-profile core implemented
 
 **Date:** 2026-07-21
 
@@ -113,5 +113,9 @@ context and remapping, and cannot express an absolute touch throttle cleanly.
 3. [ ] Prototype custom multi-touch stick, throttle, and two-button firing.
 4. [x] Implement Apple Game Controller hot-plug on iOS; add an SDL3 desktop
    adapter only when desktop parity work needs it.
-5. [ ] Validate whether an Apple bridge is required for haptics/glyph metadata.
-6. [ ] Run phone/tablet/controller usability and lifecycle tests.
+5. [x] Implement a bounded controller profile, deterministic integer
+   calibration, strict remapping validation, and private durable persistence.
+6. [ ] Apply profiles only at a paused/mission boundary by replacing the
+   router/bridge pair and re-entering the neutral gate.
+7. [ ] Validate whether an Apple bridge is required for haptics/glyph metadata.
+8. [ ] Run phone/tablet/controller usability and lifecycle tests.

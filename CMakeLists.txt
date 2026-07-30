@@ -79,6 +79,7 @@ else()
 endif()
 
 add_library(airfix_input
+    src/airfix/input/ControllerInputProfile.cpp
     src/airfix/input/ControllerInputBatchBridge.cpp
     src/airfix/input/DesktopInputBridge.cpp
     src/airfix/input/InputRouter.cpp
@@ -266,6 +267,8 @@ else()
 endif()
 
 add_library(airfix_settings
+    src/airfix/settings/ControllerInputProfileCodec.cpp
+    src/airfix/settings/ControllerInputProfileStore.cpp
     src/airfix/settings/RenderPresentationPersistenceGate.cpp
     src/airfix/settings/RenderPresentationRequestQueue.cpp
     src/airfix/settings/RenderPresentationSettingsMenuModel.cpp
@@ -280,7 +283,7 @@ target_include_directories(airfix_settings
 )
 target_compile_features(airfix_settings PUBLIC cxx_std_20)
 target_link_libraries(airfix_settings
-    PUBLIC airfix::render
+    PUBLIC airfix::input airfix::render
     PRIVATE airfix::crypto airfix::io
 )
 
@@ -485,6 +488,20 @@ if(AIRFIX_BUILD_TESTS)
     add_test(NAME airfix_render_settings_store_tests
         COMMAND airfix_render_settings_store_tests)
 
+    add_executable(airfix_controller_input_profile_codec_tests
+        tests/ControllerInputProfileCodecTests.cpp)
+    target_link_libraries(airfix_controller_input_profile_codec_tests
+        PRIVATE airfix::settings airfix::crypto)
+    add_test(NAME airfix_controller_input_profile_codec_tests
+        COMMAND airfix_controller_input_profile_codec_tests)
+
+    add_executable(airfix_controller_input_profile_store_tests
+        tests/ControllerInputProfileStoreTests.cpp)
+    target_link_libraries(airfix_controller_input_profile_store_tests
+        PRIVATE airfix::settings airfix::crypto airfix::io)
+    add_test(NAME airfix_controller_input_profile_store_tests
+        COMMAND airfix_controller_input_profile_store_tests)
+
     add_executable(airfix_render_settings_persistence_gate_tests
         tests/RenderPresentationPersistenceGateTests.cpp)
     target_link_libraries(airfix_render_settings_persistence_gate_tests
@@ -601,6 +618,13 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_input_tests tests/InputRouterTests.cpp)
     target_link_libraries(airfix_input_tests PRIVATE airfix::input)
     add_test(NAME airfix_input_tests COMMAND airfix_input_tests)
+
+    add_executable(airfix_controller_input_profile_tests
+        tests/ControllerInputProfileTests.cpp)
+    target_link_libraries(airfix_controller_input_profile_tests
+        PRIVATE airfix::input)
+    add_test(NAME airfix_controller_input_profile_tests
+        COMMAND airfix_controller_input_profile_tests)
 
     add_executable(airfix_controller_input_batch_bridge_tests
         tests/ControllerInputBatchBridgeTests.cpp)

@@ -10,8 +10,10 @@
 
 namespace airfix::windows {
 
-inline constexpr std::int32_t airfixWindowsUiNavigationActuation = 16384;
-inline constexpr std::int32_t airfixWindowsUiNavigationRelease = 8192;
+inline constexpr std::int32_t airfixWindowsUiNavigationActuation =
+    input::uiNavigationActuationQ15;
+inline constexpr std::int32_t airfixWindowsUiNavigationRelease =
+    input::uiNavigationReleaseQ15;
 
 enum class AirfixWindowsRenderSettingsScreen : std::uint8_t {
   pause,

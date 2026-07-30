@@ -3,6 +3,7 @@
 #import "AirfixIOSInputCoordinator.h"
 #import "AirfixRenderSettingsCoordinator.h"
 
+#include "airfix/input/InputFrame.hpp"
 #include "airfix/settings/RenderPresentationSettingsMenuModel.hpp"
 
 #include <algorithm>
@@ -11,8 +12,9 @@
 
 namespace {
 
-constexpr int16_t kNavigationActuation = 16384;
-constexpr int16_t kNavigationRelease = 8192;
+constexpr int16_t kNavigationActuation =
+    airfix::input::uiNavigationActuationQ15;
+constexpr int16_t kNavigationRelease = airfix::input::uiNavigationReleaseQ15;
 constexpr float kControllerScaleStep = 5.0F;
 
 enum class SettingsRow : NSUInteger {
