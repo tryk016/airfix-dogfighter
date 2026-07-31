@@ -230,6 +230,8 @@ itemLabel(const AirfixWindowsRenderSettingsItem item) noexcept {
     return L"Render scale";
   case AirfixWindowsRenderSettingsItem::presentation:
     return L"Presentation";
+  case AirfixWindowsRenderSettingsItem::verticalFovAdjustment:
+    return L"Vertical FOV increase";
   case AirfixWindowsRenderSettingsItem::visualProfile:
     return L"Visual profile";
   case AirfixWindowsRenderSettingsItem::rendererStatistics:
@@ -287,6 +289,7 @@ isValueItem(const AirfixWindowsRenderSettingsItem item) noexcept {
   switch (item) {
   case AirfixWindowsRenderSettingsItem::renderScale:
   case AirfixWindowsRenderSettingsItem::presentation:
+  case AirfixWindowsRenderSettingsItem::verticalFovAdjustment:
   case AirfixWindowsRenderSettingsItem::visualProfile:
   case AirfixWindowsRenderSettingsItem::rendererStatistics:
   case AirfixWindowsRenderSettingsItem::innerDeadzone:
@@ -388,6 +391,13 @@ itemValue(const AirfixWindowsRenderSettingsItem item,
                    render::ScenePresentationMode::originalFourByThree
                ? L"Original 4:3"
                : L"Hor+";
+  case AirfixWindowsRenderSettingsItem::verticalFovAdjustment:
+    static_cast<void>(
+        swprintf_s(
+            scratch.data(), scratch.size(), L"+%.0f deg",
+            static_cast<double>(
+                draft.verticalFovAdjustmentDegrees)));
+    return scratch.data();
   case AirfixWindowsRenderSettingsItem::visualProfile:
     return draft.visualProfile == render::VisualProfile::enhanced
                ? L"Enhanced preview"

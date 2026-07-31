@@ -60,6 +60,7 @@ parseAirfixWindowsCommandLine(std::span<const std::string_view> arguments);
   return "usage: AirfixDogfighter.exe "
          "[--render-scale <50-200>] "
          "[--original-4x3 | --widescreen-hor-plus] "
+         "[--vertical-fov-adjustment <0-25>] "
          "[--visual-profile <classic|enhanced>] "
          "[--render-diagnostics | --no-render-diagnostics] "
          "[--smoke-test | "

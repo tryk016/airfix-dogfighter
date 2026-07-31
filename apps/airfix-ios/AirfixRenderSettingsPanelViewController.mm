@@ -16,15 +16,17 @@ constexpr int16_t kNavigationActuation =
     airfix::input::uiNavigationActuationQ15;
 constexpr int16_t kNavigationRelease = airfix::input::uiNavigationReleaseQ15;
 constexpr float kControllerScaleStep = 5.0F;
+constexpr float kControllerFovStep = 1.0F;
 
 enum class SettingsRow : NSUInteger {
   renderScale = 0U,
   presentation = 1U,
-  visualProfile = 2U,
-  diagnostics = 3U,
-  apply = 4U,
-  cancel = 5U,
-  count = 6U,
+  verticalFovAdjustment = 2U,
+  visualProfile = 3U,
+  diagnostics = 4U,
+  apply = 5U,
+  cancel = 6U,
+  count = 7U,
 };
 
 inline constexpr NSUInteger kSettingsRowCount =
@@ -88,6 +90,8 @@ inline constexpr NSUInteger kSettingsRowCount =
 @property(nonatomic, strong) UISlider *renderScaleSlider;
 @property(nonatomic, strong) UILabel *renderScaleValueLabel;
 @property(nonatomic, strong) UISegmentedControl *presentationControl;
+@property(nonatomic, strong) UISlider *verticalFovSlider;
+@property(nonatomic, strong) UILabel *verticalFovValueLabel;
 @property(nonatomic, strong) UISegmentedControl *visualProfileControl;
 @property(nonatomic, strong) UISwitch *diagnosticsSwitch;
 @property(nonatomic, strong) UIButton *applyButton;
@@ -96,6 +100,7 @@ inline constexpr NSUInteger kSettingsRowCount =
 
 - (void)renderScaleChanged:(UISlider *)sender;
 - (void)presentationChanged:(UISegmentedControl *)sender;
+- (void)verticalFovChanged:(UISlider *)sender;
 - (void)visualProfileChanged:(UISegmentedControl *)sender;
 - (void)diagnosticsChanged:(UISwitch *)sender;
 - (void)applySettings;
@@ -204,6 +209,55 @@ inline constexpr NSUInteger kSettingsRowCount =
   UIStackView *presentationRow =
       makeSettingRow(NSLocalizedString(@"Presentation", nil), presentation);
 
+  UISlider *verticalFovSlider =
+      [[UISlider alloc] initWithFrame:CGRectZero];
+  verticalFovSlider.translatesAutoresizingMaskIntoConstraints = NO;
+  verticalFovSlider.minimumValue =
+      airfix::render::native_render_policy::
+          minimumVerticalFovAdjustmentDegrees;
+  verticalFovSlider.maximumValue =
+      airfix::render::native_render_policy::
+          maximumVerticalFovAdjustmentDegrees;
+  verticalFovSlider.continuous = YES;
+  verticalFovSlider.accessibilityLabel =
+      NSLocalizedString(@"Vertical field of view increase", nil);
+  verticalFovSlider.accessibilityHint = NSLocalizedString(
+      @"Widens the camera vertically without changing gameplay or "
+      @"widescreen aspect correction.",
+      nil);
+  verticalFovSlider.accessibilityIdentifier =
+      @"airfix.settings.vertical-fov-adjustment";
+  [verticalFovSlider addTarget:self
+                        action:@selector(verticalFovChanged:)
+              forControlEvents:UIControlEventValueChanged];
+  self.verticalFovSlider = verticalFovSlider;
+
+  UILabel *verticalFovValue =
+      makeTextLabel(@"+0 deg", UIFontTextStyleBody,
+                    UIColor.secondaryLabelColor);
+  verticalFovValue.textAlignment = NSTextAlignmentRight;
+  verticalFovValue.font =
+      [UIFont monospacedDigitSystemFontOfSize:bodyFont.pointSize
+                                       weight:UIFontWeightSemibold];
+  verticalFovValue.adjustsFontForContentSizeCategory = YES;
+  [verticalFovValue
+      setContentHuggingPriority:UILayoutPriorityRequired
+                        forAxis:UILayoutConstraintAxisHorizontal];
+  self.verticalFovValueLabel = verticalFovValue;
+
+  UIStackView *verticalFovControl =
+      [[UIStackView alloc] initWithArrangedSubviews:@[
+        verticalFovSlider,
+        verticalFovValue,
+      ]];
+  verticalFovControl.translatesAutoresizingMaskIntoConstraints = NO;
+  verticalFovControl.axis = UILayoutConstraintAxisHorizontal;
+  verticalFovControl.alignment = UIStackViewAlignmentCenter;
+  verticalFovControl.spacing = 10.0;
+  UIStackView *verticalFovRow = makeSettingRow(
+      NSLocalizedString(@"Vertical FOV increase", nil),
+      verticalFovControl);
+
   UISegmentedControl *profile = [[UISegmentedControl alloc] initWithItems:@[
     NSLocalizedString(@"Classic", nil),
     NSLocalizedString(@"Enhanced (preview)", nil),
@@ -278,6 +332,8 @@ inline constexpr NSUInteger kSettingsRowCount =
 
   _focusRows[rowIndex(SettingsRow::renderScale)] = scaleRow;
   _focusRows[rowIndex(SettingsRow::presentation)] = presentationRow;
+  _focusRows[rowIndex(SettingsRow::verticalFovAdjustment)] =
+      verticalFovRow;
   _focusRows[rowIndex(SettingsRow::visualProfile)] = profileRow;
   _focusRows[rowIndex(SettingsRow::diagnostics)] = diagnosticsRow;
   _focusRows[rowIndex(SettingsRow::apply)] = apply;
@@ -297,6 +353,7 @@ inline constexpr NSUInteger kSettingsRowCount =
     explanation,
     scaleRow,
     presentationRow,
+    verticalFovRow,
     profileRow,
     diagnosticsRow,
     previewNote,
@@ -335,6 +392,8 @@ inline constexpr NSUInteger kSettingsRowCount =
                                  constant:-32.0],
     maximumWidth,
     [slider.widthAnchor constraintGreaterThanOrEqualToConstant:150.0],
+    [verticalFovSlider.widthAnchor
+        constraintGreaterThanOrEqualToConstant:150.0],
     [apply.heightAnchor constraintGreaterThanOrEqualToConstant:48.0],
     [cancel.heightAnchor constraintGreaterThanOrEqualToConstant:48.0],
   ]];
@@ -375,6 +434,20 @@ inline constexpr NSUInteger kSettingsRowCount =
           ? airfix::render::ScenePresentationMode::originalFourByThree
           : airfix::render::ScenePresentationMode::widescreenHorPlus;
   (void)_model->setScenePresentation(value);
+  [self refreshControls];
+}
+
+- (void)verticalFovChanged:(UISlider *)sender {
+  if (!_model.has_value()) {
+    return;
+  }
+  const float value = std::round(sender.value);
+  const auto result =
+      _model->setVerticalFovAdjustmentDegrees(value);
+  if (!result.accepted()) {
+    sender.value =
+        _model->draftSettings().verticalFovAdjustmentDegrees;
+  }
   [self refreshControls];
 }
 
@@ -509,6 +582,7 @@ inline constexpr NSUInteger kSettingsRowCount =
   if (!_model.has_value()) {
     self.renderScaleSlider.enabled = NO;
     self.presentationControl.enabled = NO;
+    self.verticalFovSlider.enabled = NO;
     self.visualProfileControl.enabled = NO;
     self.diagnosticsSwitch.enabled = NO;
     self.applyButton.enabled = NO;
@@ -527,6 +601,13 @@ inline constexpr NSUInteger kSettingsRowCount =
               airfix::render::ScenePresentationMode::originalFourByThree
           ? 1
           : 0;
+  self.verticalFovSlider.value =
+      draft.verticalFovAdjustmentDegrees;
+  self.verticalFovValueLabel.text = [NSString
+      stringWithFormat:@"+%.0f deg",
+                       draft.verticalFovAdjustmentDegrees];
+  self.verticalFovSlider.accessibilityValue =
+      self.verticalFovValueLabel.text;
   self.visualProfileControl.selectedSegmentIndex =
       draft.visualProfile == airfix::render::VisualProfile::enhanced ? 1 : 0;
   self.diagnosticsSwitch.on = draft.diagnosticsOverlayEnabled;
@@ -536,6 +617,7 @@ inline constexpr NSUInteger kSettingsRowCount =
       airfix::settings::RenderPresentationSettingsMenuPhase::applying;
   self.renderScaleSlider.enabled = !applying;
   self.presentationControl.enabled = !applying;
+  self.verticalFovSlider.enabled = !applying;
   self.visualProfileControl.enabled = !applying;
   self.diagnosticsSwitch.enabled = !applying;
   self.applyButton.enabled = _model->canApply();
@@ -600,6 +682,17 @@ inline constexpr NSUInteger kSettingsRowCount =
             ? airfix::render::ScenePresentationMode::widescreenHorPlus
             : airfix::render::ScenePresentationMode::originalFourByThree);
     break;
+  case SettingsRow::verticalFovAdjustment: {
+    const float next = std::clamp(
+        draft.verticalFovAdjustmentDegrees +
+            static_cast<float>(direction) * kControllerFovStep,
+        airfix::render::native_render_policy::
+            minimumVerticalFovAdjustmentDegrees,
+        airfix::render::native_render_policy::
+            maximumVerticalFovAdjustmentDegrees);
+    (void)_model->setVerticalFovAdjustmentDegrees(next);
+    break;
+  }
   case SettingsRow::visualProfile:
     (void)_model->setVisualProfile(
         direction < 0 ? airfix::render::VisualProfile::classic
@@ -625,6 +718,9 @@ inline constexpr NSUInteger kSettingsRowCount =
     [self adjustSelectedValue:self.presentationControl.selectedSegmentIndex == 0
                                   ? 1
                                   : -1];
+    break;
+  case SettingsRow::verticalFovAdjustment:
+    [self adjustSelectedValue:1];
     break;
   case SettingsRow::visualProfile:
     [self

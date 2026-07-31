@@ -12,6 +12,7 @@ namespace airfix::windows {
 namespace {
 
 constexpr float renderScaleStep = 5.0F;
+constexpr float verticalFovAdjustmentStep = 1.0F;
 constexpr std::uint16_t controllerDeadzoneStep = 512U;
 constexpr std::uint16_t controllerSensitivityStep = 50U;
 constexpr float minimumDpiScale = 0.75F;
@@ -29,9 +30,14 @@ constexpr std::array<Item, 3U> pauseItemsWithControllerProfile{
     Item::controllerCalibration,
     Item::resume,
 };
-constexpr std::array<Item, 6U> displaySettingsItems{
-    Item::renderScale,        Item::presentation, Item::visualProfile,
-    Item::rendererStatistics, Item::apply,        Item::cancel,
+constexpr std::array<Item, 7U> displaySettingsItems{
+    Item::renderScale,
+    Item::presentation,
+    Item::verticalFovAdjustment,
+    Item::visualProfile,
+    Item::rendererStatistics,
+    Item::apply,
+    Item::cancel,
 };
 constexpr std::array<Item, 8U> controllerProfileItems{
     Item::leftStickX,
@@ -110,6 +116,7 @@ isValueItem(const AirfixWindowsRenderSettingsItem item) noexcept {
   switch (item) {
   case Item::renderScale:
   case Item::presentation:
+  case Item::verticalFovAdjustment:
   case Item::visualProfile:
   case Item::rendererStatistics:
   case Item::innerDeadzone:
@@ -531,6 +538,7 @@ AirfixWindowsRenderSettingsPanel::snapshot() const noexcept {
       break;
     case Item::renderScale:
     case Item::presentation:
+    case Item::verticalFovAdjustment:
     case Item::visualProfile:
     case Item::rendererStatistics:
       enabled = !result.applying;
@@ -837,6 +845,16 @@ void AirfixWindowsRenderSettingsPanel::adjustSelectedValue(
           direction < 0 ? render::ScenePresentationMode::widescreenHorPlus
                         : render::ScenePresentationMode::originalFourByThree);
       break;
+    case Item::verticalFovAdjustment:
+      result = model_.setVerticalFovAdjustmentDegrees(std::clamp(
+          draft.verticalFovAdjustmentDegrees +
+              static_cast<float>(direction) *
+                  verticalFovAdjustmentStep,
+          render::native_render_policy::
+              minimumVerticalFovAdjustmentDegrees,
+          render::native_render_policy::
+              maximumVerticalFovAdjustmentDegrees));
+      break;
     case Item::visualProfile:
       result = model_.setVisualProfile(direction < 0
                                            ? render::VisualProfile::classic
@@ -967,6 +985,7 @@ AirfixWindowsRenderSettingsPanel::activateSelectedItem() noexcept {
     switch (selectedSettingsItem_) {
     case Item::renderScale:
     case Item::presentation:
+    case Item::verticalFovAdjustment:
     case Item::visualProfile:
       adjustSelectedValue(1);
       return {};

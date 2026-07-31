@@ -116,9 +116,11 @@ pixels, 3D render-target pixels, viewport/safe area, and render scale explicit.
 At 100% scale the 3D target exactly matches the output extent.
 
 Standard widescreen presentation is Hor+ with reference vertical FOV; Original
-4:3 remains an aspect-fitted comparison mode. UI, text, hit regions, and
-pointer/touch mapping use the presentation viewport and safe area independently
-of 3D render scale. `Classic` is the faithful high-resolution visual policy,
+4:3 remains an aspect-fitted comparison mode. A durable `0..25` degree safe
+vertical-FOV increase expands the centered logical camera canvas while leaving
+the recovered camera snapshot and physical targets unchanged. UI, text, hit
+regions, and pointer/touch mapping use the presentation viewport and safe area
+independently of 3D render scale. `Classic` is the faithful high-resolution visual policy,
 while `Enhanced` adds modern lights, shadows, materials, HDR, atmosphere,
 particles, and post-processing. `Low` through `Ultra` quality tiers and
 individual effect controls are orthogonal to those profiles. Optional
@@ -126,8 +128,8 @@ upscaling is available only as an explicit render-scale technique, never as a
 substitute for native rendering at 100%. See ADR-0013.
 
 The first implementation slice is shared `NativeRenderLayout`. It provides
-strongly typed domains, exact 100% target identity, Hor+ and Original 4:3
-policies, safe-area-aware UI fitting, and reversible UI/camera input
+strongly typed domains, exact 100% target identity, Hor+, Original 4:3, and
+safe-FOV policies, safe-area-aware UI fitting, and reversible UI/camera input
 transforms. D3D11 and Metal render directly to the native output at 100%. At
 non-100% scale, each backend allocates a private color/depth scene target at the
 portable extent and performs a linear full-output presentation pass. The output

@@ -98,6 +98,7 @@ NativeRenderLayoutBuildResult buildNativeRenderLayout(
             NativeRenderLayoutBuildIssueKind::outputExtentNotPositive);
     }
     if (!std::isfinite(config.renderScalePercent) ||
+        !std::isfinite(config.verticalFovAdjustmentDegrees) ||
         !finite(config.referenceCameraCanvas) ||
         !std::isfinite(config.referenceHorizontalFovDegrees) ||
         !finite(config.uiDesignExtent) ||
@@ -125,6 +126,16 @@ NativeRenderLayoutBuildResult buildNativeRenderLayout(
             maximumReferenceFovDegrees) {
         return failure(
             NativeRenderLayoutBuildIssueKind::referenceFovOutOfRange);
+    }
+    if (config.verticalFovAdjustmentDegrees <
+            native_render_policy::
+                minimumVerticalFovAdjustmentDegrees ||
+        config.verticalFovAdjustmentDegrees >
+            native_render_policy::
+                maximumVerticalFovAdjustmentDegrees) {
+        return failure(
+            NativeRenderLayoutBuildIssueKind::
+                verticalFovAdjustmentOutOfRange);
     }
     if (config.outputSafeArea.left < 0.0F ||
         config.outputSafeArea.top < 0.0F ||
@@ -184,26 +195,43 @@ NativeRenderLayoutBuildResult buildNativeRenderLayout(
             referenceAspect);
     }
 
+    const double referenceHorizontalHalfRadians =
+        static_cast<double>(config.referenceHorizontalFovDegrees) *
+        radiansPerDegree * 0.5;
+    const double referenceAspectWide =
+        static_cast<double>(referenceAspect);
+    const double baseVerticalHalfRadians = std::atan(
+        std::tan(referenceHorizontalHalfRadians) /
+        referenceAspectWide);
+    constexpr double adjustmentCalibrationHorizontalHalfRadians =
+        45.0 * radiansPerDegree;
+    const double adjustmentCalibrationVerticalHalfRadians = std::atan(
+        std::tan(adjustmentCalibrationHorizontalHalfRadians) /
+        referenceAspectWide);
+    const double adjustedCalibrationVerticalHalfRadians =
+        adjustmentCalibrationVerticalHalfRadians +
+        static_cast<double>(config.verticalFovAdjustmentDegrees) *
+            radiansPerDegree * 0.5;
+    const double fovTangentScale =
+        std::tan(adjustedCalibrationVerticalHalfRadians) /
+        std::tan(adjustmentCalibrationVerticalHalfRadians);
+    const double verticalHalfRadians = std::atan(
+        std::tan(baseVerticalHalfRadians) * fovTangentScale);
+
     const float sceneAspect =
         sceneViewport.width / sceneViewport.height;
+    const float cameraLogicalHeight = static_cast<float>(
+        static_cast<double>(config.referenceCameraCanvas.height) *
+        fovTangentScale);
     const CameraLogicalExtent cameraLogicalExtent{
-        .width =
-            config.referenceCameraCanvas.height * sceneAspect,
-        .height = config.referenceCameraCanvas.height,
+        .width = cameraLogicalHeight * sceneAspect,
+        .height = cameraLogicalHeight,
     };
     const CameraLogicalPoint cameraLogicalCentre{
         .x = cameraLogicalExtent.width * 0.5F,
         .y = cameraLogicalExtent.height * 0.5F,
     };
 
-    const double referenceHorizontalHalfRadians =
-        static_cast<double>(config.referenceHorizontalFovDegrees) *
-        radiansPerDegree * 0.5;
-    const double referenceAspectWide =
-        static_cast<double>(referenceAspect);
-    const double verticalHalfRadians = std::atan(
-        std::tan(referenceHorizontalHalfRadians) /
-        referenceAspectWide);
     const double horizontalHalfRadians = std::atan(
         std::tan(verticalHalfRadians) *
         static_cast<double>(sceneAspect));
@@ -242,6 +270,8 @@ NativeRenderLayoutBuildResult buildNativeRenderLayout(
         !finite(cameraLogicalExtent) ||
         !std::isfinite(cameraLogicalCentre.x) ||
         !std::isfinite(cameraLogicalCentre.y) ||
+        !std::isfinite(fovTangentScale) ||
+        !(fovTangentScale >= 1.0) ||
         !std::isfinite(verticalFovDegrees) ||
         !std::isfinite(horizontalFovDegrees) ||
         !(verticalFovDegrees > 0.0F) ||
@@ -258,6 +288,7 @@ NativeRenderLayoutBuildResult buildNativeRenderLayout(
             renderTargetExtent,
             config.renderScalePercent,
             config.scenePresentation,
+            config.verticalFovAdjustmentDegrees,
             sceneViewport,
             config.referenceCameraCanvas,
             cameraLogicalExtent,

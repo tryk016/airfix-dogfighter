@@ -155,6 +155,8 @@ renderAndRequireLayout(
       .outputExtent = diagnostics->outputExtent,
       .renderScalePercent = expected.renderScalePercent,
       .scenePresentation = expected.scenePresentation,
+      .verticalFovAdjustmentDegrees =
+          expected.verticalFovAdjustmentDegrees,
   });
   require(
       layout.complete() &&
@@ -468,6 +470,7 @@ void testTransactionalSettingsRuntime() {
   candidate.scenePresentation =
       airfix::render::ScenePresentationMode::originalFourByThree;
   candidate.diagnosticsOverlayEnabled = true;
+  candidate.verticalFovAdjustmentDegrees = 20.0F;
   requireApplied(
       renderer.applyRenderPresentationSettings(candidate),
       "layout, diagnostics, and visual-profile transition");
@@ -499,7 +502,10 @@ void testTransactionalSettingsRuntime() {
           AirfixD3D11RendererTestAccess::
               hasDiagnosticsOverlayResources(renderer) &&
           renderer.renderPresentationSettings().visualProfile ==
-              airfix::render::VisualProfile::enhanced,
+              airfix::render::VisualProfile::enhanced &&
+          renderer.renderPresentationSettings()
+                  .verticalFovAdjustmentDegrees ==
+              20.0F,
       "Original 4:3, diagnostics overlay, or visual profile was not observed");
 
   candidate = settings;

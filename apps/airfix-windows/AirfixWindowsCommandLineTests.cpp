@@ -48,6 +48,8 @@ void testEmptyAndSmokeModes() {
               !defaultOptions.renderOverrides.scenePresentation &&
               !defaultOptions.renderOverrides.visualProfile &&
               !defaultOptions.renderOverrides.diagnosticsOverlayEnabled &&
+              !defaultOptions.renderOverrides
+                   .verticalFovAdjustmentDegrees &&
               !defaultOptions.captureDiagnosticFrameOutput &&
               !defaultOptions.captureSettingsPanelOutput &&
               !defaultOptions.captureControllerCalibrationPanelOutput &&
@@ -61,7 +63,9 @@ void testEmptyAndSmokeModes() {
               !smokeOptions.renderOverrides.renderScalePercent &&
               !smokeOptions.renderOverrides.scenePresentation &&
               !smokeOptions.renderOverrides.visualProfile &&
-              !smokeOptions.renderOverrides.diagnosticsOverlayEnabled,
+              !smokeOptions.renderOverrides.diagnosticsOverlayEnabled &&
+              !smokeOptions.renderOverrides
+                   .verticalFovAdjustmentDegrees,
           "smoke mode without render flags must remain sparse");
 }
 
@@ -69,7 +73,7 @@ void testPresentationOptions() {
   const std::array smoke{
       "--smoke-test"sv,   "--render-scale"sv,       "50"sv,
       "--original-4x3"sv, "--render-diagnostics"sv, "--visual-profile"sv,
-      "enhanced"sv,
+      "enhanced"sv,       "--vertical-fov-adjustment"sv, "25"sv,
   };
   const auto smokeOptions = parse(smoke);
   require(smokeOptions.smokeTest &&
@@ -79,12 +83,15 @@ void testPresentationOptions() {
               smokeOptions.renderOverrides.visualProfile ==
                   VisualProfile::enhanced &&
               smokeOptions.renderOverrides.diagnosticsOverlayEnabled == true &&
+              smokeOptions.renderOverrides.verticalFovAdjustmentDegrees ==
+                  25.0F &&
               !smokeOptions.contentRoot,
           "data-less smoke presentation settings were not retained");
 
   const std::array interactive{
       "--render-scale"sv,   "200"sv,     "--widescreen-hor-plus"sv,
       "--visual-profile"sv, "classic"sv, "--no-render-diagnostics"sv,
+      "--vertical-fov-adjustment"sv, "0"sv,
   };
   const auto interactiveOptions = parse(interactive);
   require(!interactiveOptions.smokeTest &&
@@ -95,6 +102,9 @@ void testPresentationOptions() {
                   VisualProfile::classic &&
               interactiveOptions.renderOverrides.diagnosticsOverlayEnabled ==
                   false &&
+              interactiveOptions.renderOverrides
+                      .verticalFovAdjustmentDegrees ==
+                  0.0F &&
               !interactiveOptions.contentRoot,
           "interactive sparse presentation overrides were not retained");
 }
@@ -156,6 +166,24 @@ void testValidationAndRejections() {
   requireRejected(std::array{"--smoke-test"sv, "--render-scale"sv, "50"sv,
                              "--render-scale"sv, "100"sv},
                   "duplicate render scale must fail closed");
+  requireRejected(
+      std::array{"--vertical-fov-adjustment"sv, "26"sv},
+      "vertical-FOV adjustment above 25 degrees must fail closed");
+  requireRejected(
+      std::array{"--vertical-fov-adjustment"sv, "-1"sv},
+      "signed vertical-FOV adjustment must fail closed");
+  requireRejected(
+      std::array{"--vertical-fov-adjustment"sv, "12.5"sv},
+      "fractional command-line vertical-FOV adjustment must fail closed");
+  requireRejected(
+      std::array{
+          "--vertical-fov-adjustment"sv, "5"sv,
+          "--vertical-fov-adjustment"sv, "10"sv,
+      },
+      "duplicate vertical-FOV adjustment must fail closed");
+  requireRejected(
+      std::array{"--vertical-fov-adjustment"sv},
+      "missing vertical-FOV adjustment must fail closed");
   requireRejected(
       std::array{"--smoke-test"sv, "--original-4x3"sv, "--original-4x3"sv},
       "duplicate Original 4:3 mode must fail closed");

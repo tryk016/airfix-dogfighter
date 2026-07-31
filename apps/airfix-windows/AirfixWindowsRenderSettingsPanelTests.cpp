@@ -317,6 +317,21 @@ void editsUseStepsShouldersAndBounds() {
   move(panel, 1);
   static_cast<void>(
       panel.consumeInputFrame(pressedFrame(DigitalAction::uiConfirm)));
+  require(
+      panel.snapshot().draftSettings.verticalFovAdjustmentDegrees ==
+          1.0F,
+      "confirm did not increment the vertical-FOV adjustment");
+  for (std::uint8_t index = 0U; index < 30U; ++index) {
+    static_cast<void>(
+        panel.consumeInputFrame(pressedFrame(DigitalAction::uiTabNext)));
+  }
+  require(
+      panel.snapshot().draftSettings.verticalFovAdjustmentDegrees ==
+          25.0F,
+      "vertical-FOV adjustment moved above its safe maximum");
+  move(panel, 1);
+  static_cast<void>(
+      panel.consumeInputFrame(pressedFrame(DigitalAction::uiConfirm)));
   require(panel.snapshot().draftSettings.visualProfile ==
               airfix::render::VisualProfile::enhanced,
           "confirm did not toggle the visual profile preview");
@@ -334,7 +349,7 @@ void applyCancelAndResumeAreDistinctIntents() {
   openSettings(panel);
   static_cast<void>(
       panel.consumeInputFrame(pressedFrame(DigitalAction::uiTabNext)));
-  for (std::uint8_t index = 0U; index < 4U; ++index) {
+  for (std::uint8_t index = 0U; index < 5U; ++index) {
     move(panel, 1);
   }
 
@@ -373,7 +388,7 @@ void applyCancelAndResumeAreDistinctIntents() {
   openSettings(cancelledPanel);
   static_cast<void>(
       cancelledPanel.consumeInputFrame(pressedFrame(DigitalAction::uiTabNext)));
-  for (std::uint8_t index = 0U; index < 5U; ++index) {
+  for (std::uint8_t index = 0U; index < 6U; ++index) {
     move(cancelledPanel, 1);
   }
   const auto close =
@@ -986,7 +1001,10 @@ void snapshotExposesOnlyBoundedOperationalMetadata() {
       static_cast<std::uint8_t>(
           AirfixWindowsRenderSettingsSessionOverride::visualProfile) |
       static_cast<std::uint8_t>(
-          AirfixWindowsRenderSettingsSessionOverride::rendererStatistics));
+          AirfixWindowsRenderSettingsSessionOverride::rendererStatistics) |
+      static_cast<std::uint8_t>(
+          AirfixWindowsRenderSettingsSessionOverride::
+              verticalFovAdjustment));
   require(snapshot.sessionOverrideMask == expectedMask,
           "snapshot did not sanitize its session-override mask");
   require(!snapshot.persistenceAvailable && !snapshot.dirty &&

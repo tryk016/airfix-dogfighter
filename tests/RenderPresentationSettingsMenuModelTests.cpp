@@ -38,12 +38,14 @@ settings(const float scale = 100.0F,
          const ScenePresentationMode presentation =
              ScenePresentationMode::widescreenHorPlus,
          const VisualProfile profile = VisualProfile::classic,
-         const bool diagnostics = false) {
+         const bool diagnostics = false,
+         const float verticalFovAdjustment = 0.0F) {
   return {
       .renderScalePercent = scale,
       .scenePresentation = presentation,
       .visualProfile = profile,
       .diagnosticsOverlayEnabled = diagnostics,
+      .verticalFovAdjustmentDegrees = verticalFovAdjustment,
   };
 }
 
@@ -72,26 +74,29 @@ void testCreationAcceptsAllBoundaryCombinations() {
       VisualProfile::enhanced,
   };
   constexpr bool diagnosticStates[]{false, true};
+  constexpr float fovAdjustments[]{0.0F, 25.0F};
 
   for (const float scale : scales) {
     for (const auto presentation : presentations) {
       for (const auto profile : profiles) {
         for (const bool diagnostics : diagnosticStates) {
-          const auto applied =
-              settings(scale, presentation, profile, diagnostics);
-          const auto created =
-              RenderPresentationSettingsMenuModel::create(applied);
-          require(created.has_value(),
-                  "valid boundary combination was rejected");
-          require(created->appliedSettings() == applied &&
-                      created->draftSettings() == applied,
-                  "created snapshots differ from applied");
-          require(!created->dirty() &&
-                      created->delta() == RenderPresentationSettingsDelta{} &&
-                      !created->canApply() && created->canCancel() &&
-                      created->phase() ==
-                          RenderPresentationSettingsMenuPhase::idle,
-                  "created model is not clean and idle");
+          for (const float fov : fovAdjustments) {
+            const auto applied =
+                settings(scale, presentation, profile, diagnostics, fov);
+            const auto created =
+                RenderPresentationSettingsMenuModel::create(applied);
+            require(created.has_value(),
+                    "valid boundary combination was rejected");
+            require(created->appliedSettings() == applied &&
+                        created->draftSettings() == applied,
+                    "created snapshots differ from applied");
+            require(!created->dirty() &&
+                        created->delta() == RenderPresentationSettingsDelta{} &&
+                        !created->canApply() && created->canCancel() &&
+                        created->phase() ==
+                            RenderPresentationSettingsMenuPhase::idle,
+                    "created model is not clean and idle");
+          }
         }
       }
     }
@@ -121,6 +126,17 @@ void testCreationRejectsEveryInvalidAppliedClass() {
   invalid.visualProfile = static_cast<VisualProfile>(0xFFU);
   require(!RenderPresentationSettingsMenuModel::create(invalid).has_value(),
           "forged profile created a model");
+
+  for (const float fov : {
+           std::numeric_limits<float>::quiet_NaN(),
+           -0.01F,
+           25.01F,
+       }) {
+    invalid = settings();
+    invalid.verticalFovAdjustmentDegrees = fov;
+    require(!RenderPresentationSettingsMenuModel::create(invalid).has_value(),
+            "invalid vertical-FOV adjustment created a model");
+  }
 }
 
 void testTypedEditsAreAtomicAndProduceExactDelta() {
@@ -147,9 +163,11 @@ void testTypedEditsAreAtomicAndProduceExactDelta() {
           "enhanced preview selector was unavailable");
   require(menu.setDiagnosticsOverlayEnabled(true).accepted(),
           "valid diagnostics edit failed");
+  require(menu.setVerticalFovAdjustmentDegrees(12.0F).accepted(),
+          "valid vertical-FOV edit failed");
   require(menu.draftSettings() ==
               settings(150.0F, ScenePresentationMode::originalFourByThree,
-                       VisualProfile::enhanced, true),
+                       VisualProfile::enhanced, true, 12.0F),
           "combined typed edits produced wrong draft");
   require(menu.delta() ==
               RenderPresentationSettingsDelta{
@@ -198,6 +216,20 @@ void testTypedEditsAreAtomicAndProduceExactDelta() {
   require(menu.draftSettings() == beforeInvalid &&
               menu.delta() == beforeInvalidDelta,
           "forged profile partially mutated the model");
+
+  const auto invalidFov = menu.setVerticalFovAdjustmentDegrees(
+      std::numeric_limits<float>::quiet_NaN());
+  require(
+      invalidFov.status ==
+              RenderPresentationSettingsMenuEditStatus::invalidSettings &&
+          invalidFov.issue.has_value() &&
+          invalidFov.issue->kind ==
+              RenderPresentationSettingsIssueKind::
+                  nonFiniteVerticalFovAdjustment,
+      "invalid vertical-FOV edit reported the wrong issue");
+  require(menu.draftSettings() == beforeInvalid &&
+              menu.delta() == beforeInvalidDelta,
+          "invalid vertical-FOV edit partially mutated the model");
 }
 
 void testEverySingleFieldDeltaIsExact() {
@@ -212,6 +244,16 @@ void testEverySingleFieldDeltaIsExact() {
                     .layoutChanged = true,
                 },
             "presentation-only edit produced wrong delta");
+  }
+  {
+    auto menu = model();
+    require(menu.setVerticalFovAdjustmentDegrees(10.0F).accepted(),
+            "vertical-FOV-only edit failed");
+    require(menu.delta() ==
+                RenderPresentationSettingsDelta{
+                    .layoutChanged = true,
+                },
+            "vertical-FOV-only edit produced wrong delta");
   }
   {
     auto menu = model();
@@ -232,6 +274,58 @@ void testEverySingleFieldDeltaIsExact() {
                     .diagnosticsChanged = true,
                 },
             "diagnostics-only edit produced wrong delta");
+  }
+}
+
+void testFovEditBoundariesAndInvalidClassesAreAtomic() {
+  auto menu = model();
+  require(menu.setVerticalFovAdjustmentDegrees(25.0F).accepted() &&
+              menu.draftSettings().verticalFovAdjustmentDegrees == 25.0F,
+          "maximum vertical-FOV adjustment was rejected");
+  require(menu.setVerticalFovAdjustmentDegrees(0.0F).accepted() &&
+              menu.draftSettings().verticalFovAdjustmentDegrees == 0.0F,
+          "minimum vertical-FOV adjustment was rejected");
+
+  struct InvalidFov final {
+    float value;
+    RenderPresentationSettingsIssueKind issue;
+  };
+  const InvalidFov invalidValues[]{
+      {
+          std::numeric_limits<float>::quiet_NaN(),
+          RenderPresentationSettingsIssueKind::
+              nonFiniteVerticalFovAdjustment,
+      },
+      {
+          std::numeric_limits<float>::infinity(),
+          RenderPresentationSettingsIssueKind::
+              nonFiniteVerticalFovAdjustment,
+      },
+      {
+          std::nextafter(0.0F, -1.0F),
+          RenderPresentationSettingsIssueKind::
+              verticalFovAdjustmentOutOfRange,
+      },
+      {
+          std::nextafter(25.0F, std::numeric_limits<float>::infinity()),
+          RenderPresentationSettingsIssueKind::
+              verticalFovAdjustmentOutOfRange,
+      },
+  };
+  for (const auto &invalid : invalidValues) {
+    const auto before = menu.draftSettings();
+    const auto beforeDelta = menu.delta();
+    const auto result =
+        menu.setVerticalFovAdjustmentDegrees(invalid.value);
+    require(
+        result.status ==
+                RenderPresentationSettingsMenuEditStatus::invalidSettings &&
+            result.issue.has_value() &&
+            result.issue->kind == invalid.issue,
+        "invalid vertical-FOV class reported the wrong result");
+    require(menu.draftSettings() == before &&
+                menu.delta() == beforeDelta,
+            "invalid vertical-FOV class partially mutated the model");
   }
 }
 
@@ -455,6 +549,7 @@ int main() {
     testTypedEditsAreAtomicAndProduceExactDelta();
     testEverySingleFieldDeltaIsExact();
     testScaleEditBoundariesAndInvalidClassesAreAtomic();
+    testFovEditBoundariesAndInvalidClassesAreAtomic();
     testEditingBackToAppliedClearsDirtyState();
     testPersistenceCapabilityControlsOnlyNewApply();
     testApplyFreezesEditsAndCancel();

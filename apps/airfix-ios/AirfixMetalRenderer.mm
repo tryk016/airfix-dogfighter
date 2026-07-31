@@ -3604,6 +3604,9 @@ bool preflightPrivateRoom(
                 presentationSettings.renderScalePercent,
             .scenePresentation =
                 presentationSettings.scenePresentation,
+            .verticalFovAdjustmentDegrees =
+                presentationSettings
+                    .verticalFovAdjustmentDegrees,
         };
     if (gameplayCameraActive) {
         layoutConfig.referenceCameraCanvas = {

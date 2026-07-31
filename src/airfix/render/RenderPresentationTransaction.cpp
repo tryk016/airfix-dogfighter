@@ -59,6 +59,8 @@ namespace {
             prepared.settings().renderScalePercent,
         .scenePresentation =
             prepared.settings().scenePresentation,
+        .verticalFovAdjustmentDegrees =
+            prepared.settings().verticalFovAdjustmentDegrees,
     });
     if (!layout.complete() ||
         layout.layout->renderTargetExtent() !=
@@ -262,6 +264,8 @@ RenderPresentationTransaction::prepare(
         .outputExtent = surface.outputExtent,
         .renderScalePercent = candidate.renderScalePercent,
         .scenePresentation = candidate.scenePresentation,
+        .verticalFovAdjustmentDegrees =
+            candidate.verticalFovAdjustmentDegrees,
     });
     if (!layout.complete()) {
         return {

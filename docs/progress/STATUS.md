@@ -1,6 +1,6 @@
 # Project status
 
-**Updated:** 2026-07-30
+**Updated:** 2026-07-31
 **Stage:** Phase 1 — static analysis and archive recovery in progress
 
 ## Now
@@ -26,12 +26,16 @@
   HDR/effect work, platform budgets, diagnostics, aspect-ratio tests, and
   matched screenshots are specified. The first implementation slice now
   provides strongly typed domains, exact 100% target identity, Hor+, Original
-  4:3 comparison math, safe-area/UI fitting, and input transforms. Both native
+  4:3 comparison math, safe-area/UI fitting, input transforms, and the
+  ADR-0016 safe vertical-FOV increase. Both native
   backends consume the same 100% direct path and now allocate private
   color/depth scene targets plus a linear native-output presentation pass at
   non-100% scales. Windows exposes validated 50-200% and Original 4:3 through
-  both command-line switches and its product settings surface; Metal exposes
-  the equivalent backend setting boundary through the iOS panel. Windows
+  both command-line switches and its product settings surface; the iOS panel
+  exposes the same persisted values. Safe FOV is an explicit `0..25` degree
+  increase that expands the centered logical camera canvas without changing
+  the recovered camera snapshot, physical render targets, UI, or simulation.
+  Windows
   direct D3D11 readbacks verify 1080p, 1440p, 4K, and 32:9. A controlled
   960x540 comparison uses 480x270 at 50% and 1920x1080 at 200%; owner-content
   images remain private. The shared renderer now also publishes smoothed FPS,
@@ -45,10 +49,11 @@
   only physical-device visual/timing acceptance remains for this slice.
 - ADR-0014 defines one cross-platform render-presentation settings transaction.
   Its portable C++20 foundation is implemented: render scale, Hor+/Original
-  4:3, diagnostics, and the Classic/Enhanced selector form one validated
+  4:3, safe FOV, diagnostics, and the Classic/Enhanced selector form one validated
   snapshot; sparse overrides reject atomically; a deterministic delta
   identifies target/layout/overlay/profile work; and a versioned semantic
-  record fails closed on future schemas or malformed values. A second portable
+  schema-2 record migrates schema 1 to the exact zero-FOV default and fails
+  closed on future schemas or malformed values. A second portable
   layer now prepares immutable active/candidate states against exact
   view/device/extent/generation stamps, validates stale candidates, owns an
   optional copyable target lease, and supplies bounded 0, 1, 2, 4, ...,
@@ -76,7 +81,7 @@
   immutable Metal candidates on a separate worker, and publishes only after a
   fresh main-thread surface/revision validation. A durable candidate that
   becomes stale is prepared again without another save, and first presentation
-  waits for startup resolution. iOS now exposes the four persisted fields
+  waits for startup resolution. iOS now exposes the five persisted fields
   through a safe-area UIKit panel backed by a portable applied/draft/ticket
   model. Apply reports success only after durable save and Metal publication;
   touch and controller navigation use an explicit paused menu-input
@@ -1126,8 +1131,9 @@
    collision transaction, and add tracer/effect adapters before wiring
    primary-fire intent into runtime.
 9. In parallel with gameplay reconstruction, extend the implemented ADR-0013
-   resolution/Hor+/UI/input/offscreen-target foundation with finished settings
-   for render scale, Original 4:3 and safe FOV plus HUD/effect integration.
+   resolution/Hor+/UI/input/offscreen-target foundation with independent UI
+   scale plus HUD/reticle/weapon/effect projection integration. Render scale,
+   Original 4:3, and safe FOV settings are implemented.
    Validate the implemented diagnostic overlay on both physical iPhones before
    lighting, materials, shadows, or post-processing.
 

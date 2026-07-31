@@ -13,6 +13,7 @@ constexpr std::size_t maximumPrivatePathBytes = 4096U;
 constexpr std::uint32_t maximumCaptureDimension = 16384U;
 constexpr std::uint32_t minimumRenderScalePercent = 50U;
 constexpr std::uint32_t maximumRenderScalePercent = 200U;
+constexpr std::uint32_t maximumVerticalFovAdjustmentDegrees = 25U;
 
 [[noreturn]] void invalidCommandLine() {
   throw std::runtime_error(std::string(airfixWindowsUsage()));
@@ -53,6 +54,19 @@ parseRenderScalePercent(const std::string_view value) {
   if (result.ec != std::errc{} || result.ptr != last ||
       parsed < minimumRenderScalePercent ||
       parsed > maximumRenderScalePercent) {
+    invalidCommandLine();
+  }
+  return parsed;
+}
+
+[[nodiscard]] std::uint32_t
+parseVerticalFovAdjustmentDegrees(const std::string_view value) {
+  std::uint32_t parsed = 0U;
+  const auto *const first = value.data();
+  const auto *const last = first + value.size();
+  const auto result = std::from_chars(first, last, parsed, 10);
+  if (result.ec != std::errc{} || result.ptr != last ||
+      parsed > maximumVerticalFovAdjustmentDegrees) {
     invalidCommandLine();
   }
   return parsed;
@@ -130,6 +144,14 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
           option == "--original-4x3"
               ? airfix::render::ScenePresentationMode::originalFourByThree
               : airfix::render::ScenePresentationMode::widescreenHorPlus;
+    } else if (option == "--vertical-fov-adjustment") {
+      if (options.renderOverrides.verticalFovAdjustmentDegrees
+              .has_value()) {
+        invalidCommandLine();
+      }
+      options.renderOverrides.verticalFovAdjustmentDegrees =
+          static_cast<float>(parseVerticalFovAdjustmentDegrees(
+              requireValue(arguments, index)));
     } else if (option == "--visual-profile") {
       if (visualProfileSeen) {
         invalidCommandLine();

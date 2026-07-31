@@ -113,6 +113,9 @@ namespace native_render_policy {
 inline constexpr float minimumRenderScalePercent = 50.0F;
 inline constexpr float maximumRenderScalePercent = 200.0F;
 inline constexpr float defaultRenderScalePercent = 100.0F;
+inline constexpr float minimumVerticalFovAdjustmentDegrees = 0.0F;
+inline constexpr float maximumVerticalFovAdjustmentDegrees = 25.0F;
+inline constexpr float defaultVerticalFovAdjustmentDegrees = 0.0F;
 
 } // namespace native_render_policy
 
@@ -122,6 +125,8 @@ struct NativeRenderLayoutConfig final {
         native_render_policy::defaultRenderScalePercent};
     ScenePresentationMode scenePresentation{
         ScenePresentationMode::widescreenHorPlus};
+    float verticalFovAdjustmentDegrees{
+        native_render_policy::defaultVerticalFovAdjustmentDegrees};
     CameraLogicalExtent referenceCameraCanvas{
         recovered_legacy_canvas::width,
         recovered_legacy_canvas::height,
@@ -140,6 +145,7 @@ enum class NativeRenderLayoutBuildIssueKind : std::uint8_t {
     renderScaleOutOfRange,
     logicalExtentNotPositive,
     referenceFovOutOfRange,
+    verticalFovAdjustmentOutOfRange,
     invalidSafeArea,
     renderTargetExtentOverflow,
     nonFiniteDerivedLayout,
@@ -162,7 +168,9 @@ struct NativeRenderLayoutBuildResult;
 //
 // A 100% render scale is an exact identity: the render target has the same
 // dimensions as the output. The 640x480 reference remains camera/UI metadata
-// only and never becomes an implicit 3D raster resolution.
+// only and never becomes an implicit 3D raster resolution. The optional safe
+// vertical-FOV increase expands the logical camera canvas around the unchanged
+// reference centre; it never changes output, render-target, or UI extents.
 [[nodiscard]] NativeRenderLayoutBuildResult buildNativeRenderLayout(
     const NativeRenderLayoutConfig& config) noexcept;
 
@@ -184,6 +192,11 @@ public:
     [[nodiscard]] constexpr ScenePresentationMode
     scenePresentation() const noexcept {
         return scenePresentation_;
+    }
+
+    [[nodiscard]] constexpr float
+    verticalFovAdjustmentDegrees() const noexcept {
+        return verticalFovAdjustmentDegrees_;
     }
 
     [[nodiscard]] constexpr RenderTargetPixelRect
@@ -265,6 +278,7 @@ private:
         const RenderTargetPixelExtent renderTargetExtent,
         const float renderScalePercent,
         const ScenePresentationMode scenePresentation,
+        const float verticalFovAdjustmentDegrees,
         const RenderTargetPixelRect sceneViewportInRenderTarget,
         const CameraLogicalExtent referenceCameraLogicalExtent,
         const CameraLogicalExtent cameraLogicalExtent,
@@ -279,6 +293,8 @@ private:
           renderTargetExtent_(renderTargetExtent),
           renderScalePercent_(renderScalePercent),
           scenePresentation_(scenePresentation),
+          verticalFovAdjustmentDegrees_(
+              verticalFovAdjustmentDegrees),
           sceneViewportInRenderTarget_(sceneViewportInRenderTarget),
           referenceCameraLogicalExtent_(referenceCameraLogicalExtent),
           cameraLogicalExtent_(cameraLogicalExtent),
@@ -294,6 +310,7 @@ private:
     const RenderTargetPixelExtent renderTargetExtent_;
     const float renderScalePercent_;
     const ScenePresentationMode scenePresentation_;
+    const float verticalFovAdjustmentDegrees_;
     const RenderTargetPixelRect sceneViewportInRenderTarget_;
     const CameraLogicalExtent referenceCameraLogicalExtent_;
     const CameraLogicalExtent cameraLogicalExtent_;

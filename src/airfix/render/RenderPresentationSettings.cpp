@@ -105,6 +105,21 @@ validateRenderPresentationSettings(
         return issue(
             RenderPresentationSettingsIssueKind::unsupportedVisualProfile);
     }
+    if (!std::isfinite(settings.verticalFovAdjustmentDegrees)) {
+        return issue(
+            RenderPresentationSettingsIssueKind::
+                nonFiniteVerticalFovAdjustment);
+    }
+    if (settings.verticalFovAdjustmentDegrees <
+            native_render_policy::
+                minimumVerticalFovAdjustmentDegrees ||
+        settings.verticalFovAdjustmentDegrees >
+            native_render_policy::
+                maximumVerticalFovAdjustmentDegrees) {
+        return issue(
+            RenderPresentationSettingsIssueKind::
+                verticalFovAdjustmentOutOfRange);
+    }
     return std::nullopt;
 }
 
@@ -134,6 +149,10 @@ resolveRenderPresentationSettings(
     if (overrides.diagnosticsOverlayEnabled.has_value()) {
         candidate.diagnosticsOverlayEnabled =
             *overrides.diagnosticsOverlayEnabled;
+    }
+    if (overrides.verticalFovAdjustmentDegrees.has_value()) {
+        candidate.verticalFovAdjustmentDegrees =
+            *overrides.verticalFovAdjustmentDegrees;
     }
 
     const auto validation =
@@ -180,7 +199,9 @@ diffRenderPresentationSettings(
                 .layoutChanged =
                     scaleChanged ||
                     previous.scenePresentation !=
-                        candidate.scenePresentation,
+                        candidate.scenePresentation ||
+                    previous.verticalFovAdjustmentDegrees !=
+                        candidate.verticalFovAdjustmentDegrees,
                 .diagnosticsChanged =
                     previous.diagnosticsOverlayEnabled !=
                         candidate.diagnosticsOverlayEnabled,
@@ -217,6 +238,8 @@ makeRenderPresentationSettingsRecord(
                 .diagnosticsOverlayEnabled =
                     static_cast<std::uint8_t>(
                         settings.diagnosticsOverlayEnabled ? 1U : 0U),
+                .verticalFovAdjustmentDegrees =
+                    settings.verticalFovAdjustmentDegrees,
             },
         .issue = std::nullopt,
     };
@@ -274,6 +297,8 @@ renderPresentationSettingsFromRecord(
         .visualProfile = *visualProfile,
         .diagnosticsOverlayEnabled =
             record.diagnosticsOverlayEnabled != 0U,
+        .verticalFovAdjustmentDegrees =
+            record.verticalFovAdjustmentDegrees,
     };
     const auto validation =
         validateRenderPresentationSettings(settings);

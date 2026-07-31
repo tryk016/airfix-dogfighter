@@ -34,8 +34,9 @@ separate public settings-panel capture exercises the real D3D11 composition
 path with a synthetic scene and never opens the private content or preference
 roots. The interactive product has a DPI-aware pause and Display settings
 surface rasterized with DirectWrite/Direct2D and composed after the 3D scene.
-It exposes render scale, Hor+/Original 4:3, Classic/Enhanced, and renderer
-statistics through keyboard, mouse, and standard-controller input. Apply is a
+It exposes render scale, Hor+/Original 4:3, a safe vertical-FOV increase,
+Classic/Enhanced, and renderer statistics through keyboard, mouse, and
+standard-controller input. Apply is a
 durable prepare-save-publish transaction; Resume is a distinct action and is
 disabled until a resumable mission exists. Sparse command-line overrides
 remain session-only and never contaminate the persisted base.
@@ -101,6 +102,9 @@ ADR-0013 is mandatory for the Windows product:
   active display and D3D11 limits allow them;
 - standard widescreen is Hor+ with the reference vertical FOV, while Original
   4:3 is an optional aspect-fitted comparison mode;
+- vertical FOV can be increased explicitly from 0 through 25 degrees without
+  changing the authored camera state, physical render target, UI scale, or
+  deterministic simulation;
 - render scale supports at least 50-200% independently of sharp UI/text and
   input-coordinate mapping;
 - `Classic` preserves the original visual intent at high resolution and
@@ -110,8 +114,8 @@ ADR-0013 is mandatory for the Windows product:
 
 The authenticated mission renderer uses the shared full-target Hor+ policy and
 exact native target at 100% scale. The recovered 640x480 projection remains
-reference-camera evidence only. Original 4:3 and the 50-200% render-scale range
-are exposed through the Windows Display settings surface. D3D11 owns complete
+reference-camera evidence only. Original 4:3, the 50-200% render-scale range,
+and safe FOV are exposed through the Windows Display settings surface. D3D11 owns complete
 offscreen color/depth targets and the linear presentation pass for non-100%
 scales; publication retains the previous complete snapshot if preparation,
 durable persistence, or final validation fails. D3D11 remains responsible for

@@ -923,6 +923,8 @@ int run(const int argumentCount, char *arguments[]) {
           .outputExtent = transitionDiagnostics->outputExtent,
           .renderScalePercent = scale,
           .scenePresentation = transitionSettings.scenePresentation,
+          .verticalFovAdjustmentDegrees =
+              transitionSettings.verticalFovAdjustmentDegrees,
       });
       if (!expectedLayout.complete() ||
           transitionDiagnostics->renderScalePercent != scale ||
