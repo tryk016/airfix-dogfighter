@@ -100,6 +100,10 @@ resolved.
 - atomic runtime materializer: `render/TextureRuntimeData` parses, plans, and
   decodes a supplied GTI byte span, then publishes the plan and owned upload
   levels together only after their shapes and byte totals agree;
+- authenticated crosshair consumer: `content/LegacyWeaponCrosshairTextureSet`
+  preflights the recovered MG/RO/BO archive entries, exact format/dimensions and
+  aggregate budgets before decoding, then publishes all three only against one
+  unchanged verified content transaction;
 - bounded corpus tool: `udsp-list --inventory`;
 - private diagnostic preview tool: `gti-preview` (PPM output under ignored paths);
 - synthetic format and materialization cases: `tests/LegacyFormatsTests.cpp`
@@ -153,3 +157,11 @@ so even corruption in a later mip cannot leak a partial chain. The eventual
 Metal layer must still create/cache resources and generate lower mips when the
 plan requests `generateFromBase`; color-space, alpha, row-orientation, and
 blending policy remain separate evidence-gated decisions.
+
+The weapon-crosshair consumer adds a stricter role-specific contract on top:
+all three unique HUD entries must select format 8 at exactly `32x32`. Its
+plan-only pass rejects aggregate RGBA overruns before pixel materialization;
+the subsequent owned decode must reproduce the same plan byte-for-byte. Dense
+IDs are local to the HUD set rather than aliases into a mission's scene texture
+namespace. See
+[EXP-20260731-089](../experiments/EXP-20260731-089-authenticated-crosshair-texture-set.md).
