@@ -138,6 +138,12 @@ The next runtime join must:
 - realize the optional tracer and ricochet visuals; and
 - compare the complete path against controlled executable traces.
 
+Follow-up
+[EXP-20260731-094](EXP-20260731-094-active-machine-gun-projectile-slot-advance.md)
+implements the second item for already-active slots through the current
+published collision generation. Live muzzle production, terminal dispatch,
+effects, and controlled traces remain open.
+
 ## Confidence
 
 Confidence is **3/3** for the native state-before-allocation ordering, delayed

@@ -4762,3 +4762,29 @@ superseded evidence.
   Ghidra/Rizin wrappers, 12/12 Rizin-export tests, the 661-file public boundary,
   formatting, catalogue checks, and changed-range clangd diagnostics pass.
   Hosted platform builds remain the publication gate for this branch.
+
+## 2026-07-31 - active machine-gun projectile slot advance
+
+- `EXP-20260731-094` composes the existing `NfProjectile` flight/lifetime,
+  published room/material/portal collision, primary-player actor resolution,
+  terminal machine-gun reducer, and creator-BSP guard for every already-active
+  generation-tagged runtime slot.
+- The bounded step validates batch shape, delta, and catalogue/runtime identity
+  before mutation. It visits stable supplied indices, skips inactive profiles,
+  commits lifetime without collision, keeps rejected slots unchanged, and
+  continues later independent slots. A failed creator-BSP restore aborts the
+  remainder and exposes no terminal command.
+- Successful records carry the pre-step generation identity, terminal outcome,
+  query/portal counts, and optional damage or surface/ricochet request. The
+  function dispatches no actor event/effect and owns no scheduler, producer,
+  tracer, audio, or render state. Fixed-pool index order remains explicit port
+  policy rather than a claim about the native time heap.
+- Synthetic coverage includes no-hit flight, strict lifetime, primary-player
+  damage/deactivation, rejected-slot isolation, fatal restore failure,
+  validation atomicity, zero-generation rejection, and 4,096 complete steps
+  without heap allocation. Portable and code-intelligence builds each pass
+  127/127 CTests; native MSVC builds the SDL3/D3D11 product and passes 137/137.
+  The 263-entry compilation database contains no Apple-only source. Synthetic
+  public-boundary tests, the 662-file repository scan, all 12 Rizin exporter
+  tests, the 363-row/14-column unique function catalogue, and `git diff
+  --check` pass. Hosted platform builds remain the publication gate.

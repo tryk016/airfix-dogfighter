@@ -1012,11 +1012,19 @@
   or already-disabled creators preserve the native no-enable path; rejected
   disable prevents tracing and rejected enable suppresses terminal
   commit/command data.
-  Active-slot collision advancement and live event/effect dispatch, live
-  muzzle transforms, non-player actor and dynamic-portal
-  publication/resolution, concrete creator BSP callbacks, tracer/effect
-  realization, secondary weapon families, dynamic camera-sphere contacts,
-  runtime traces, and integration remain pending.
+  A bounded allocation-free step now advances every already-active
+  generation-tagged slot in stable supplied-index order through ballistic
+  flight/lifetime and that complete published collision transaction. Inactive
+  slots do not inspect their profiles; lifetime expiry skips collision; one
+  rejected slot stays unchanged without blocking later slots; failed creator
+  BSP restoration aborts the remainder. Successful state commits expose only
+  bounded damage or surface/ricochet requests for a later live dispatcher.
+  The fixed pool and slot order are deterministic port policy rather than a
+  native scheduler claim. Live event/effect dispatch, authored muzzle
+  transforms, non-player actor and dynamic-portal publication/resolution,
+  concrete creator BSP callbacks, scheduling, tracer/effect realization,
+  secondary weapon families, dynamic camera-sphere contacts, runtime traces,
+  and product integration remain pending.
   The authenticated player CCF now also produces bounded immutable per-mesh
   colliders and ordered actor-local instances inside the atomic mission load.
   A two-pass `noexcept` frame adapter publishes a supplied live player

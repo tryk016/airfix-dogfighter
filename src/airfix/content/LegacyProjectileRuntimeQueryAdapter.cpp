@@ -1,6 +1,7 @@
 #include "airfix/content/LegacyProjectileRuntimeQueryAdapter.hpp"
 
 #include <bit>
+#include <cmath>
 #include <optional>
 #include <utility>
 
@@ -530,6 +531,145 @@ resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
             &actorContext,
             creatorBspGuard,
             options);
+}
+
+LegacyPublishedMachineGunProjectileSlotsAdvanceResult
+advancePublishedLegacyMachineGunProjectileSlots(
+    const assets::MissionWorldRoomCatalog& catalog,
+    const render::LegacyGameplayCameraMissionRuntime& runtime,
+    const std::span<simulation::LegacyMachineGunProjectileSlot> slots,
+    const std::span<LegacyPublishedMachineGunProjectileSlotAdvanceResult>
+        results,
+    const float deltaSeconds, const bool projectileIsServer,
+    const LegacyProjectileLiveActorQuery actorQuery,
+    void* const actorQueryContext,
+    const LegacyProjectileCreatorBspGuard& creatorBspGuard,
+    const LegacyPublishedProjectileCollisionOptions& options) noexcept {
+    LegacyPublishedMachineGunProjectileSlotsAdvanceResult result;
+    if (results.size() != slots.size()) {
+        result.status = LegacyPublishedMachineGunProjectileSlotsAdvanceStatus::
+            outputSizeMismatch;
+        return result;
+    }
+    if (!std::isfinite(deltaSeconds) || deltaSeconds < 0.0F ||
+        !catalog.complete() ||
+        catalog.rooms.size() != runtime.worldRoomCount()) {
+        return result;
+    }
+
+    for (auto& slotResult : results) {
+        slotResult = {};
+    }
+
+    for (std::size_t slotIndex = 0U; slotIndex < slots.size(); ++slotIndex) {
+        auto& slot = slots[slotIndex];
+        auto& slotResult = results[slotIndex];
+        ++result.visitedSlotCount;
+        if (!slot.state.active) {
+            slotResult.status =
+                LegacyPublishedMachineGunProjectileSlotAdvanceStatus::inactive;
+            continue;
+        }
+
+        ++result.activeSlotCount;
+        if (slot.generation == 0U) {
+            slotResult.status =
+                LegacyPublishedMachineGunProjectileSlotAdvanceStatus::
+                    invalidSlot;
+            ++result.rejectedSlotCount;
+            continue;
+        }
+        slotResult.projectile = simulation::LegacyMachineGunProjectileHandle{
+            .slotIndex = slotIndex,
+            .generation = slot.generation,
+        };
+
+        const auto flight =
+            simulation::legacyMachineGunProjectileAdvanceUnobstructed(
+                slot.state, slot.ammoProfile, deltaSeconds);
+        if (!flight.has_value()) {
+            slotResult.status =
+                LegacyPublishedMachineGunProjectileSlotAdvanceStatus::
+                    invalidSlot;
+            ++result.rejectedSlotCount;
+            continue;
+        }
+        if (flight->deactivatedByLifetime) {
+            slot.state = flight->state;
+            slotResult.status =
+                LegacyPublishedMachineGunProjectileSlotAdvanceStatus::
+                    deactivatedByLifetime;
+            ++result.stateCommitCount;
+            continue;
+        }
+
+        const simulation::LegacyProjectileCollisionQueryInput query{
+            .segmentStart = flight->segmentStart,
+            .segmentEnd = flight->segmentEnd,
+            .roomId = flight->state.roomId,
+        };
+        const auto collision =
+            resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
+                catalog, runtime, flight->state, slot.ammoProfile, query,
+                projectileIsServer, actorQuery, actorQueryContext,
+                creatorBspGuard, options);
+        slotResult.creatorBspGuard = collision.creatorBspGuard;
+        slotResult.queryCount = collision.collision.queryCount;
+        slotResult.portalTransitionCount =
+            collision.collision.portalTransitionCount;
+
+        if (collision.creatorBspGuard ==
+            LegacyProjectileCreatorBspGuardStatus::enableRejected) {
+            slotResult.status =
+                LegacyPublishedMachineGunProjectileSlotAdvanceStatus::
+                    creatorRestoreFailed;
+            ++result.rejectedSlotCount;
+            result.status =
+                LegacyPublishedMachineGunProjectileSlotsAdvanceStatus::
+                    creatorRestoreFailed;
+            return result;
+        }
+        if (!collision.committed()) {
+            slotResult.status =
+                LegacyPublishedMachineGunProjectileSlotAdvanceStatus::
+                    collisionRejected;
+            ++result.rejectedSlotCount;
+            continue;
+        }
+
+        slot.state = collision.commit->state;
+        slotResult.status =
+            LegacyPublishedMachineGunProjectileSlotAdvanceStatus::advanced;
+        slotResult.outcome = collision.commit->outcome;
+        slotResult.damage = collision.commit->damage;
+        slotResult.surface = collision.commit->surface;
+        ++result.stateCommitCount;
+    }
+
+    result.status =
+        result.rejectedSlotCount == 0U
+            ? LegacyPublishedMachineGunProjectileSlotsAdvanceStatus::completed
+            : LegacyPublishedMachineGunProjectileSlotsAdvanceStatus::
+                  completedWithRejectedSlots;
+    return result;
+}
+
+LegacyPublishedMachineGunProjectileSlotsAdvanceResult
+advancePublishedLegacyMachineGunProjectileSlots(
+    const assets::MissionWorldRoomCatalog& catalog,
+    const render::LegacyGameplayCameraMissionRuntime& runtime,
+    const std::span<simulation::LegacyMachineGunProjectileSlot> slots,
+    const std::span<LegacyPublishedMachineGunProjectileSlotAdvanceResult>
+        results,
+    const float deltaSeconds, const bool projectileIsServer,
+    const LegacyProjectileCreatorBspGuard& creatorBspGuard,
+    const LegacyPublishedProjectileCollisionOptions& options) noexcept {
+    PublishedPlayerActorQueryContext actorContext{
+        .runtime = &runtime,
+    };
+    return advancePublishedLegacyMachineGunProjectileSlots(
+        catalog, runtime, slots, results, deltaSeconds, projectileIsServer,
+        queryPublishedPlayerActor, &actorContext, creatorBspGuard, options);
 }
 
 } // namespace airfix::content
