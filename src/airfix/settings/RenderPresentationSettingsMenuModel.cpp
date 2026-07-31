@@ -85,6 +85,14 @@ RenderPresentationSettingsMenuModel::setVerticalFovAdjustmentDegrees(
   return edit(overrides);
 }
 
+RenderPresentationSettingsMenuEditResult
+RenderPresentationSettingsMenuModel::setUiScalePercent(
+    const float value) noexcept {
+  render::RenderPresentationSettingsOverride overrides;
+  overrides.uiScalePercent = value;
+  return edit(overrides);
+}
+
 bool RenderPresentationSettingsMenuModel::cancelDraft() noexcept {
   if (!canCancel()) {
     return false;

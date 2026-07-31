@@ -71,6 +71,15 @@ controllerAxisPanel(const AirfixWindowsUiPixelExtent output) {
           "valid controller raster panel fixture was rejected");
   auto result = *created;
   const auto activate = [&](const AirfixWindowsRenderSettingsItem item) {
+    for (std::size_t index = 0U; index < 32U; ++index) {
+      static_cast<void>(
+          result.consumePointer({.wheelY = 1, .primaryPressed = false}));
+    }
+    for (std::size_t index = 0U;
+         index < 32U && result.snapshot().selectedItem != item; ++index) {
+      static_cast<void>(
+          result.consumePointer({.wheelY = -1, .primaryPressed = false}));
+    }
     const auto snapshot = result.snapshot();
     const auto found = std::find_if(
         snapshot.items.begin(), snapshot.items.begin() + snapshot.itemCount,
@@ -107,6 +116,15 @@ findItem(const AirfixWindowsRenderSettingsViewSnapshot &snapshot,
 
 void activate(AirfixWindowsRenderSettingsPanel &panel,
               const AirfixWindowsRenderSettingsItem item) {
+  for (std::size_t index = 0U; index < 32U; ++index) {
+    static_cast<void>(
+        panel.consumePointer({.wheelY = 1, .primaryPressed = false}));
+  }
+  for (std::size_t index = 0U;
+       index < 32U && panel.snapshot().selectedItem != item; ++index) {
+    static_cast<void>(
+        panel.consumePointer({.wheelY = -1, .primaryPressed = false}));
+  }
   const auto snapshot = panel.snapshot();
   const auto &found = findItem(snapshot, item);
   const auto intent = panel.consumePointer({

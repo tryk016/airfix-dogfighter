@@ -369,14 +369,17 @@ Implementation checkpoint (2026-07-30): stages 1-2 have their portable
 foundation. Strongly typed resolution domains, exact 100% target identity,
 Hor+, Original 4:3 layout math, safe-area/UI fitting, input transforms, and the
 required aspect-ratio tests are implemented. The shared `0..25` degree
-vertical-FOV increase is now a durable schema-2 setting on Windows and iOS; it
-expands only the logical projection and composes with recovered camera FOV.
+vertical-FOV increase is now a durable setting on Windows and iOS; it expands
+only the logical projection and composes with recovered camera FOV. A separate
+75-150% native UI-content scale now persists in AFRS schema 3, migrates schema
+1/2 to exact 100%, and changes neither the root safe-area transform nor scene
+targets/projection.
 D3D11 and Metal render directly
 to the native output at 100% and use backend-private offscreen color/depth
 targets plus linear presentation at non-100% scales. Windows direct backbuffer
 captures verify 1080p, 1440p, 4K, and 32:9, and a controlled 50%/200% trial
 verifies that output and 3D raster extents vary independently. Remaining stage
-1-2 work is complete HUD/effect integration, independent UI scale, and iOS
+1-2 work is complete HUD/effect adoption of the shared UI metrics and iOS
 runtime/device acceptance. Both platform shells now expose the shared settings
 transaction through explicit pause boundaries: iOS uses a safe-area
 touch/controller panel, while Windows uses a DPI-aware DirectWrite/Direct2D
@@ -555,7 +558,7 @@ contract, evidence, implementation, tests, parity result, and documentation agre
 11. Implement native UIKit touch capture and Apple Game Controller adapters,
     followed by the configurable visual overlay and on-device usability tests.
 12. Continue the implemented ADR-0013 foundation without blocking active
-    player/gameplay reconstruction: add backend 50-200% offscreen target/
-    presentation paths, finish independent UI settings and HUD/effect
-    projection, then add
-    renderer telemetry before lighting or post-effects.
+    player/gameplay reconstruction: extend the completed native-resolution,
+    50-200% scene-scale, telemetry, and independent UI-scale foundation into
+    HUD/effect projection, then advance sampling/color before lighting or
+    post-effects.

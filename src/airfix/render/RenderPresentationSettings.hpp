@@ -23,6 +23,7 @@ struct RenderPresentationSettings final {
     bool diagnosticsOverlayEnabled{};
     float verticalFovAdjustmentDegrees{
         native_render_policy::defaultVerticalFovAdjustmentDegrees};
+    float uiScalePercent{native_render_policy::defaultUiScalePercent};
 
     [[nodiscard]] friend constexpr bool operator==(
         const RenderPresentationSettings&,
@@ -38,6 +39,7 @@ struct RenderPresentationSettingsOverride final {
     std::optional<VisualProfile> visualProfile;
     std::optional<bool> diagnosticsOverlayEnabled;
     std::optional<float> verticalFovAdjustmentDegrees;
+    std::optional<float> uiScalePercent;
 };
 
 enum class RenderPresentationSettingsIssueKind : std::uint8_t {
@@ -49,6 +51,8 @@ enum class RenderPresentationSettingsIssueKind : std::uint8_t {
     invalidStoredDiagnosticsValue,
     nonFiniteVerticalFovAdjustment,
     verticalFovAdjustmentOutOfRange,
+    nonFiniteUiScale,
+    uiScaleOutOfRange,
 };
 
 struct RenderPresentationSettingsIssue final {
@@ -80,10 +84,11 @@ struct RenderPresentationSettingsDelta final {
     bool layoutChanged{};
     bool diagnosticsChanged{};
     bool visualProfileChanged{};
+    bool uiLayoutChanged{};
 
     [[nodiscard]] constexpr bool anyChanged() const noexcept {
         return scaleTargetsChanged || layoutChanged ||
-            diagnosticsChanged || visualProfileChanged;
+            diagnosticsChanged || visualProfileChanged || uiLayoutChanged;
     }
 
     [[nodiscard]] friend constexpr bool operator==(
@@ -111,16 +116,16 @@ resolveRenderPresentationSettings(
 
 // Compares two already-resolved snapshots. Scale-target recreation depends
 // only on render scale. Layout changes depend on render scale, presentation,
-// or safe FOV; diagnostics and visual-profile policy remain orthogonal. Both
-// snapshots are validated before comparison, and invalid input produces no
-// delta.
+// or safe FOV. UI-content layout, diagnostics, and visual-profile policy remain
+// distinct orthogonal domains. Both snapshots are validated before comparison,
+// and invalid input produces no delta.
 [[nodiscard]] RenderPresentationSettingsDeltaResult
 diffRenderPresentationSettings(
     const RenderPresentationSettings& previous,
     const RenderPresentationSettings& candidate) noexcept;
 
 inline constexpr std::uint32_t
-    renderPresentationSettingsRecordSchemaVersion = 2U;
+    renderPresentationSettingsRecordSchemaVersion = 3U;
 
 // Storage-neutral semantic record. Platform adapters map these named fields
 // into their chosen store; the in-memory object representation is not a file
@@ -135,6 +140,7 @@ struct RenderPresentationSettingsRecord final {
     std::uint8_t diagnosticsOverlayEnabled{};
     float verticalFovAdjustmentDegrees{
         native_render_policy::defaultVerticalFovAdjustmentDegrees};
+    float uiScalePercent{native_render_policy::defaultUiScalePercent};
 
     [[nodiscard]] friend constexpr bool operator==(
         const RenderPresentationSettingsRecord&,

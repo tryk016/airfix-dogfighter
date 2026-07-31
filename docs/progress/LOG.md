@@ -4401,3 +4401,31 @@ superseded evidence.
   for the changed Windows surfaces and `git diff --check` pass. Hosted Windows,
   iPhoneOS, and iPhoneSimulator compilation plus physical-device visual
   acceptance remain the publication and device gates.
+
+## 2026-07-31 - independent native UI scale
+
+- `EXP-20260731-082` and ADR-0017 add one durable 75-150% UI-content scale with
+  exact 100% default and 5% product-menu steps. It is classified separately
+  from scene layout and target replacement and cannot change camera, 3D render
+  extent, mission state, or simulation.
+- Windows composes the user value with per-monitor DPI and still rasterizes
+  directly at the output extent through D2D/DWrite. Enlarged vertical layouts
+  use a bounded selection-centred row window instead of shrinking the chosen
+  size back to fit. iOS recomputes native Dynamic Type fonts and spacing inside
+  Auto Layout, its safe area, and the existing scroll view; controller focus
+  automatically reveals its selected row.
+- Renderer diagnostics are the first shared renderer-owned UI consumer. Their
+  output-pixel raster scale now composes with UI scale independently of scene
+  render scale. Complete HUD/reticle adoption remains a later, explicit slice.
+- AFRS advances to canonical 87-byte schema 3 with exact binary32 field 6.
+  Schema 1 defaults safe FOV and UI scale, schema 2 defaults only UI scale, and
+  schema 4+ stays opaque and downgrade-blocking.
+- The complete portable GCC suite passes 120/120 tests. A fresh Windows x64
+  MSVC 19.51/Ninja product build completes 669 steps and its full suite passes
+  130/130 tests, including both native D3D11/XAudio2 product smokes. Isolated
+  WSL2 Clang 18 compiles the changed portable modules and passes all five
+  affected tests; strict warnings-as-errors retains only the documented
+  pre-existing diagnostic-format warning. Synthetic public-boundary tests, the
+  621-file scan, changed-line formatting, local-path review, and
+  `git diff --check` pass. Hosted Windows/iPhoneOS/iPhoneSimulator builds remain
+  publication gates.

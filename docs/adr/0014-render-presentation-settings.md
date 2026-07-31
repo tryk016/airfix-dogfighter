@@ -37,6 +37,7 @@ RenderPresentationSettings
   diagnostics overlay: disabled | enabled, default disabled
   visual profile: Classic | Enhanced, default Classic
   vertical FOV increase: 0..25 degrees, default 0
+  UI content scale: 75..150 percent, default 100
 ```
 
 All fields are orthogonal. Validation accepts a complete candidate or rejects
@@ -59,9 +60,11 @@ The portable layer also owns:
   validation.
 
 ADR-0016 extends the record to schema 2 with the safe vertical-FOV field.
-Schema 1 migrates to an exact zero-degree increase; later schemas remain
-opaque. The record contains no content root, logical asset path, checksum, GPU or
-device identifier, save-game state, or gameplay value.
+ADR-0017 extends it to schema 3 with independent UI scale. Schema 1 migrates to
+exact zero-degree FOV and 100% UI scale; schema 2 migrates to exact 100% UI
+scale; later schemas remain opaque. The record contains no content root,
+logical asset path, checksum, GPU or device identifier, save-game state, or
+gameplay value.
 
 This semantic record is not a file codec. The later persistence slice owns a
 bounded canonical byte format, duplicate/missing/trailing-data detection, and
@@ -171,15 +174,16 @@ defaults have been resolved.
 
 ### User interface boundary
 
-Persistence and runtime binding do not by themselves constitute the final
-settings screen. A later UI slice will expose these values to mouse, keyboard,
-touch, and controller navigation. It must use the same transaction and must
-show a safe user-facing failure without revealing paths or record contents.
+Windows and iOS now expose these values through native-resolution settings
+surfaces with mouse, keyboard, touch, and controller navigation as applicable.
+Both use the same transaction and show safe failures without revealing paths
+or record contents.
 
-UI scale, Low-Ultra quality tiers, per-effect controls, and the private HD
-texture selector remain separate settings extensions because their runtime
-resource and migration policies are not yet complete. Safe FOV is now the
-schema-2 extension specified by ADR-0016.
+Low-Ultra quality tiers, per-effect controls, and the private HD texture
+selector remain separate settings extensions because their runtime resource
+and migration policies are not yet complete. Safe FOV is the schema-2
+extension specified by ADR-0016; independent native UI scale is the schema-3
+extension specified by ADR-0017.
 
 ## Options considered
 

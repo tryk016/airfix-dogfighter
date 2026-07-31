@@ -59,6 +59,7 @@ void requireCodecError(const std::function<void()>& action,
         .visualProfile = airfix::render::VisualProfile::enhanced,
         .diagnosticsOverlayEnabled = true,
         .verticalFovAdjustmentDegrees = 12.0F,
+        .uiScalePercent = 125.0F,
     });
     require(built.complete(), "test semantic record is invalid");
     return *built.record;
@@ -78,12 +79,12 @@ void requireCodecError(const std::function<void()>& action,
 void testCanonicalRoundTrip() {
     const auto record = testRecord();
     const auto bytes = airfix::settings::encodeRenderSettingsDocument(record);
-    require(bytes.size() == 79U, "AFRS canonical size changed");
-    require(hex(bytes) == "4146525301000000020000004F000000"
-                          "6AF2116B198E554871BB72267161BB852"
-                          "676ACB4C22683170E9C26AB86B6661D"
+    require(bytes.size() == 87U, "AFRS canonical size changed");
+    require(hex(bytes) == "41465253010000000300000057000000"
+                          "8BE6EB50BDA815F258010B68A4D4EABF"
+                          "BFBCEFBCE8165633F9839DA5D0F695E9"
                           "010004000080094302000100010300010001"
-                          "04000100010500040000004041",
+                          "04000100010500040000004041060004000000FA42",
             "AFRS golden byte vector changed");
     require(std::string(bytes.begin(), bytes.begin() + 4) == "AFRS",
             "AFRS canonical magic changed");
@@ -150,7 +151,7 @@ void testStrictFields() {
                       airfix::settings::RenderSettingsCodecErrorKind::duplicateField);
 
     auto unknown = canonical;
-    putU16(unknown, 66U, 6U);
+    putU16(unknown, 66U, 7U);
     repairEnvelope(unknown);
     requireCodecError([&] { (void)airfix::settings::decodeRenderSettingsDocument(unknown); },
                       airfix::settings::RenderSettingsCodecErrorKind::unknownField);
@@ -212,6 +213,18 @@ void testSemanticAndFutureSchemas() {
         airfix::settings::RenderSettingsCodecErrorKind::
             invalidSemanticRecord);
 
+    auto invalidUiScale = canonical;
+    putU32(
+        invalidUiScale, 83U,
+        std::bit_cast<std::uint32_t>(std::numeric_limits<float>::infinity()));
+    repairEnvelope(invalidUiScale);
+    requireCodecError(
+        [&] {
+            (void)airfix::settings::decodeRenderSettingsDocument(
+                invalidUiScale);
+        },
+        airfix::settings::RenderSettingsCodecErrorKind::invalidSemanticRecord);
+
     auto legacy = canonical;
     legacy.resize(71U);
     putU32(legacy, 8U, 1U);
@@ -238,18 +251,37 @@ void testSemanticAndFutureSchemas() {
                 testRecord().visualProfile &&
             migratedRecord.diagnosticsOverlayEnabled ==
                 testRecord().diagnosticsOverlayEnabled &&
-            migratedRecord.verticalFovAdjustmentDegrees == 0.0F,
-        "legacy AFRS migration changed fields or did not default FOV");
+            migratedRecord.verticalFovAdjustmentDegrees == 0.0F &&
+            migratedRecord.uiScalePercent == 100.0F,
+        "schema-1 AFRS migration changed fields or defaults");
+
+    auto safeFovSchema = canonical;
+    safeFovSchema.resize(79U);
+    putU32(safeFovSchema, 8U, 2U);
+    repairEnvelope(safeFovSchema);
+    const auto migratedSafeFov =
+        airfix::settings::decodeRenderSettingsDocument(safeFovSchema);
+    require(
+        std::holds_alternative<
+            airfix::render::RenderPresentationSettingsRecord>(migratedSafeFov),
+        "schema-2 AFRS was not migrated");
+    const auto &migratedSafeFovRecord =
+        std::get<airfix::render::RenderPresentationSettingsRecord>(
+            migratedSafeFov);
+    require(migratedSafeFovRecord.verticalFovAdjustmentDegrees ==
+                    testRecord().verticalFovAdjustmentDegrees &&
+                migratedSafeFovRecord.uiScalePercent == 100.0F,
+            "schema-2 AFRS migration changed FOV or UI-scale default");
 
     auto future = canonical;
-    putU32(future, 8U, 3U);
+    putU32(future, 8U, 4U);
     future.push_back(0xA5U);
     repairEnvelope(future);
     const auto decoded = airfix::settings::decodeRenderSettingsDocument(future);
     require(std::holds_alternative<airfix::settings::OpaqueFutureRenderSettingsRecord>(decoded),
             "future AFRS schema was interpreted by a downgrade");
     const auto& opaque = std::get<airfix::settings::OpaqueFutureRenderSettingsRecord>(decoded);
-    require(opaque.schemaVersion == 3U && opaque.exactBytes == future,
+    require(opaque.schemaVersion == 4U && opaque.exactBytes == future,
             "future AFRS bytes were not preserved exactly");
 }
 

@@ -16,17 +16,19 @@ constexpr int16_t kNavigationActuation =
     airfix::input::uiNavigationActuationQ15;
 constexpr int16_t kNavigationRelease = airfix::input::uiNavigationReleaseQ15;
 constexpr float kControllerScaleStep = 5.0F;
+constexpr float kControllerUiScaleStep = 5.0F;
 constexpr float kControllerFovStep = 1.0F;
 
 enum class SettingsRow : NSUInteger {
   renderScale = 0U,
-  presentation = 1U,
-  verticalFovAdjustment = 2U,
-  visualProfile = 3U,
-  diagnostics = 4U,
-  apply = 5U,
-  cancel = 6U,
-  count = 7U,
+  interfaceScale = 1U,
+  presentation = 2U,
+  verticalFovAdjustment = 3U,
+  visualProfile = 4U,
+  diagnostics = 5U,
+  apply = 6U,
+  cancel = 7U,
+  count = 8U,
 };
 
 inline constexpr NSUInteger kSettingsRowCount =
@@ -89,6 +91,8 @@ inline constexpr NSUInteger kSettingsRowCount =
 
 @property(nonatomic, strong) UISlider *renderScaleSlider;
 @property(nonatomic, strong) UILabel *renderScaleValueLabel;
+@property(nonatomic, strong) UISlider *interfaceScaleSlider;
+@property(nonatomic, strong) UILabel *interfaceScaleValueLabel;
 @property(nonatomic, strong) UISegmentedControl *presentationControl;
 @property(nonatomic, strong) UISlider *verticalFovSlider;
 @property(nonatomic, strong) UILabel *verticalFovValueLabel;
@@ -97,8 +101,18 @@ inline constexpr NSUInteger kSettingsRowCount =
 @property(nonatomic, strong) UIButton *applyButton;
 @property(nonatomic, strong) UIButton *cancelButton;
 @property(nonatomic, strong) UILabel *statusLabel;
+@property(nonatomic, strong) NSArray<UILabel *> *titleScaleLabels;
+@property(nonatomic, strong) NSArray<UILabel *> *bodyScaleLabels;
+@property(nonatomic, strong) NSArray<UILabel *> *monospacedScaleLabels;
+@property(nonatomic, strong) NSArray<UILabel *> *footnoteScaleLabels;
+@property(nonatomic, strong) NSArray<UIStackView *> *settingRows;
+@property(nonatomic, strong) NSArray<UIStackView *> *compactStacks;
+@property(nonatomic, strong) UIStackView *actionsStack;
+@property(nonatomic, strong) UIStackView *formStack;
+@property(nonatomic, strong) UIScrollView *scrollView;
 
 - (void)renderScaleChanged:(UISlider *)sender;
+- (void)interfaceScaleChanged:(UISlider *)sender;
 - (void)presentationChanged:(UISegmentedControl *)sender;
 - (void)verticalFovChanged:(UISlider *)sender;
 - (void)visualProfileChanged:(UISegmentedControl *)sender;
@@ -106,6 +120,7 @@ inline constexpr NSUInteger kSettingsRowCount =
 - (void)applySettings;
 - (void)cancelOrClose;
 - (void)refreshControls;
+- (void)applyInterfaceScale:(float)percent;
 - (void)setSelectedRow:(SettingsRow)row announce:(BOOL)announce;
 - (void)moveSelection:(NSInteger)direction;
 - (void)adjustSelectedValue:(NSInteger)direction;
@@ -188,6 +203,48 @@ inline constexpr NSUInteger kSettingsRowCount =
   scaleControl.spacing = 10.0;
   UIStackView *scaleRow =
       makeSettingRow(NSLocalizedString(@"Render scale", nil), scaleControl);
+
+  UISlider *interfaceScaleSlider = [[UISlider alloc] initWithFrame:CGRectZero];
+  interfaceScaleSlider.translatesAutoresizingMaskIntoConstraints = NO;
+  interfaceScaleSlider.minimumValue =
+      airfix::render::native_render_policy::minimumUiScalePercent;
+  interfaceScaleSlider.maximumValue =
+      airfix::render::native_render_policy::maximumUiScalePercent;
+  interfaceScaleSlider.continuous = YES;
+  interfaceScaleSlider.accessibilityLabel =
+      NSLocalizedString(@"Interface scale", nil);
+  interfaceScaleSlider.accessibilityHint = NSLocalizedString(
+      @"Adjusts text and controls independently from scene resolution.", nil);
+  interfaceScaleSlider.accessibilityIdentifier =
+      @"airfix.settings.interface-scale";
+  [interfaceScaleSlider addTarget:self
+                           action:@selector(interfaceScaleChanged:)
+                 forControlEvents:UIControlEventValueChanged];
+  self.interfaceScaleSlider = interfaceScaleSlider;
+
+  UILabel *interfaceScaleValue =
+      makeTextLabel(@"100%", UIFontTextStyleBody, UIColor.secondaryLabelColor);
+  interfaceScaleValue.textAlignment = NSTextAlignmentRight;
+  interfaceScaleValue.font =
+      [UIFont monospacedDigitSystemFontOfSize:bodyFont.pointSize
+                                       weight:UIFontWeightSemibold];
+  interfaceScaleValue.adjustsFontForContentSizeCategory = YES;
+  [interfaceScaleValue
+      setContentHuggingPriority:UILayoutPriorityRequired
+                        forAxis:UILayoutConstraintAxisHorizontal];
+  self.interfaceScaleValueLabel = interfaceScaleValue;
+
+  UIStackView *interfaceScaleControl =
+      [[UIStackView alloc] initWithArrangedSubviews:@[
+        interfaceScaleSlider,
+        interfaceScaleValue,
+      ]];
+  interfaceScaleControl.translatesAutoresizingMaskIntoConstraints = NO;
+  interfaceScaleControl.axis = UILayoutConstraintAxisHorizontal;
+  interfaceScaleControl.alignment = UIStackViewAlignmentCenter;
+  interfaceScaleControl.spacing = 10.0;
+  UIStackView *interfaceScaleRow = makeSettingRow(
+      NSLocalizedString(@"Interface scale", nil), interfaceScaleControl);
 
   UISegmentedControl *presentation =
       [[UISegmentedControl alloc] initWithItems:@[
@@ -331,6 +388,7 @@ inline constexpr NSUInteger kSettingsRowCount =
   self.statusLabel = status;
 
   _focusRows[rowIndex(SettingsRow::renderScale)] = scaleRow;
+  _focusRows[rowIndex(SettingsRow::interfaceScale)] = interfaceScaleRow;
   _focusRows[rowIndex(SettingsRow::presentation)] = presentationRow;
   _focusRows[rowIndex(SettingsRow::verticalFovAdjustment)] =
       verticalFovRow;
@@ -347,11 +405,13 @@ inline constexpr NSUInteger kSettingsRowCount =
   actions.axis = UILayoutConstraintAxisHorizontal;
   actions.distribution = UIStackViewDistributionFillEqually;
   actions.spacing = 16.0;
+  self.actionsStack = actions;
 
   UIStackView *form = [[UIStackView alloc] initWithArrangedSubviews:@[
     title,
     explanation,
     scaleRow,
+    interfaceScaleRow,
     presentationRow,
     verticalFovRow,
     profileRow,
@@ -364,10 +424,45 @@ inline constexpr NSUInteger kSettingsRowCount =
   form.axis = UILayoutConstraintAxisVertical;
   form.spacing = 14.0;
   form.alignment = UIStackViewAlignmentFill;
+  self.formStack = form;
+
+  self.titleScaleLabels = @[ title ];
+  self.monospacedScaleLabels = @[
+    scaleValue,
+    interfaceScaleValue,
+    verticalFovValue,
+  ];
+  self.footnoteScaleLabels = @[
+    explanation,
+    previewNote,
+    status,
+  ];
+  self.settingRows = @[
+    scaleRow,
+    interfaceScaleRow,
+    presentationRow,
+    verticalFovRow,
+    profileRow,
+    diagnosticsRow,
+  ];
+  NSMutableArray<UILabel *> *bodyLabels = [NSMutableArray array];
+  for (UIStackView *row in self.settingRows) {
+    UIView *candidate = row.arrangedSubviews.firstObject;
+    if ([candidate isKindOfClass:UILabel.class]) {
+      [bodyLabels addObject:(UILabel *)candidate];
+    }
+  }
+  self.bodyScaleLabels = bodyLabels;
+  self.compactStacks = @[
+    scaleControl,
+    interfaceScaleControl,
+    verticalFovControl,
+  ];
 
   UIScrollView *scroll = [[UIScrollView alloc] initWithFrame:CGRectZero];
   scroll.translatesAutoresizingMaskIntoConstraints = NO;
   scroll.alwaysBounceVertical = NO;
+  self.scrollView = scroll;
   [root addSubview:scroll];
   [scroll addSubview:form];
 
@@ -392,6 +487,8 @@ inline constexpr NSUInteger kSettingsRowCount =
                                  constant:-32.0],
     maximumWidth,
     [slider.widthAnchor constraintGreaterThanOrEqualToConstant:150.0],
+    [interfaceScaleSlider.widthAnchor
+        constraintGreaterThanOrEqualToConstant:150.0],
     [verticalFovSlider.widthAnchor
         constraintGreaterThanOrEqualToConstant:150.0],
     [apply.heightAnchor constraintGreaterThanOrEqualToConstant:48.0],
@@ -421,6 +518,19 @@ inline constexpr NSUInteger kSettingsRowCount =
   const auto result = _model->setRenderScalePercent(value);
   if (!result.accepted()) {
     sender.value = _model->draftSettings().renderScalePercent;
+  }
+  [self refreshControls];
+}
+
+- (void)interfaceScaleChanged:(UISlider *)sender {
+  if (!_model.has_value()) {
+    return;
+  }
+  const float value = std::round(sender.value / kControllerUiScaleStep) *
+                      kControllerUiScaleStep;
+  const auto result = _model->setUiScalePercent(value);
+  if (!result.accepted()) {
+    sender.value = _model->draftSettings().uiScalePercent;
   }
   [self refreshControls];
 }
@@ -578,9 +688,87 @@ inline constexpr NSUInteger kSettingsRowCount =
   [delegate renderSettingsPanelViewControllerDidFinish:self];
 }
 
+- (void)applyInterfaceScale:(const float)percent {
+  const CGFloat factor = static_cast<CGFloat>(
+      std::clamp(percent,
+                 airfix::render::native_render_policy::minimumUiScalePercent,
+                 airfix::render::native_render_policy::maximumUiScalePercent) /
+      100.0F);
+  const BOOL stackedRows =
+      factor > 1.0 ||
+      UIContentSizeCategoryIsAccessibilityCategory(
+          self.traitCollection.preferredContentSizeCategory);
+  const auto applyStyle = ^(NSArray<UILabel *> *labels, UIFontTextStyle style) {
+    UIFont *preferred = [UIFont preferredFontForTextStyle:style
+                            compatibleWithTraitCollection:self.traitCollection];
+    UIFont *font = [preferred fontWithSize:preferred.pointSize * factor];
+    for (UILabel *label in labels) {
+      label.font = font;
+    }
+  };
+  applyStyle(self.titleScaleLabels, UIFontTextStyleTitle1);
+  applyStyle(self.bodyScaleLabels, UIFontTextStyleBody);
+  applyStyle(self.footnoteScaleLabels, UIFontTextStyleFootnote);
+
+  UIFont *preferredBody =
+      [UIFont preferredFontForTextStyle:UIFontTextStyleBody
+          compatibleWithTraitCollection:self.traitCollection];
+  UIFont *monospaced =
+      [UIFont monospacedDigitSystemFontOfSize:preferredBody.pointSize * factor
+                                       weight:UIFontWeightSemibold];
+  for (UILabel *label in self.monospacedScaleLabels) {
+    label.font = monospaced;
+  }
+  UIFont *preferredHeadline =
+      [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline
+          compatibleWithTraitCollection:self.traitCollection];
+  UIFont *headline =
+      [preferredHeadline fontWithSize:preferredHeadline.pointSize * factor];
+  self.applyButton.titleLabel.font = headline;
+  self.cancelButton.titleLabel.font = headline;
+
+  NSDictionary<NSAttributedStringKey, id> *segmentAttributes = @{
+    NSFontAttributeName :
+        [preferredBody fontWithSize:preferredBody.pointSize * factor],
+  };
+  [self.presentationControl setTitleTextAttributes:segmentAttributes
+                                          forState:UIControlStateNormal];
+  [self.visualProfileControl setTitleTextAttributes:segmentAttributes
+                                           forState:UIControlStateNormal];
+  NSString *widescreenTitle =
+      stackedRows ? NSLocalizedString(@"Hor+", nil)
+                  : NSLocalizedString(@"Widescreen Hor+", nil);
+  NSString *originalTitle =
+      stackedRows ? NSLocalizedString(@"4:3", nil)
+                  : NSLocalizedString(@"Original 4:3", nil);
+  [self.presentationControl setTitle:widescreenTitle forSegmentAtIndex:0U];
+  [self.presentationControl setTitle:originalTitle forSegmentAtIndex:1U];
+
+  for (UIStackView *row in self.settingRows) {
+    row.axis = stackedRows ? UILayoutConstraintAxisVertical
+                           : UILayoutConstraintAxisHorizontal;
+    row.alignment =
+        stackedRows ? UIStackViewAlignmentFill : UIStackViewAlignmentCenter;
+    row.spacing = 16.0 * factor;
+    row.layoutMargins =
+        UIEdgeInsetsMake(std::max<CGFloat>(7.5, 10.0 * factor), 12.0 * factor,
+                         std::max<CGFloat>(7.5, 10.0 * factor), 12.0 * factor);
+    row.layer.cornerRadius = 10.0 * factor;
+  }
+  for (UIStackView *stack in self.compactStacks) {
+    stack.spacing = 10.0 * factor;
+  }
+  self.actionsStack.axis = stackedRows ? UILayoutConstraintAxisVertical
+                                       : UILayoutConstraintAxisHorizontal;
+  self.actionsStack.spacing = 16.0 * factor;
+  self.formStack.spacing = 14.0 * factor;
+  [self.view setNeedsLayout];
+}
+
 - (void)refreshControls {
   if (!_model.has_value()) {
     self.renderScaleSlider.enabled = NO;
+    self.interfaceScaleSlider.enabled = NO;
     self.presentationControl.enabled = NO;
     self.verticalFovSlider.enabled = NO;
     self.visualProfileControl.enabled = NO;
@@ -596,6 +784,11 @@ inline constexpr NSUInteger kSettingsRowCount =
   self.renderScaleValueLabel.text =
       [NSString stringWithFormat:@"%.0f%%", draft.renderScalePercent];
   self.renderScaleSlider.accessibilityValue = self.renderScaleValueLabel.text;
+  self.interfaceScaleSlider.value = draft.uiScalePercent;
+  self.interfaceScaleValueLabel.text =
+      [NSString stringWithFormat:@"%.0f%%", draft.uiScalePercent];
+  self.interfaceScaleSlider.accessibilityValue =
+      self.interfaceScaleValueLabel.text;
   self.presentationControl.selectedSegmentIndex =
       draft.scenePresentation ==
               airfix::render::ScenePresentationMode::originalFourByThree
@@ -616,6 +809,7 @@ inline constexpr NSUInteger kSettingsRowCount =
       _model->phase() ==
       airfix::settings::RenderPresentationSettingsMenuPhase::applying;
   self.renderScaleSlider.enabled = !applying;
+  self.interfaceScaleSlider.enabled = !applying;
   self.presentationControl.enabled = !applying;
   self.verticalFovSlider.enabled = !applying;
   self.visualProfileControl.enabled = !applying;
@@ -627,6 +821,17 @@ inline constexpr NSUInteger kSettingsRowCount =
   if (!_model->persistenceAvailable() && self.statusLabel.text.length == 0U) {
     self.statusLabel.text = NSLocalizedString(
         @"Display settings cannot be saved on this installation.", nil);
+  }
+  [self applyInterfaceScale:draft.uiScalePercent];
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+  [super traitCollectionDidChange:previousTraitCollection];
+  if (_model.has_value() &&
+      ![self.traitCollection.preferredContentSizeCategory
+          isEqualToString:previousTraitCollection
+                              .preferredContentSizeCategory]) {
+    [self applyInterfaceScale:_model->draftSettings().uiScalePercent];
   }
 }
 
@@ -646,6 +851,12 @@ inline constexpr NSUInteger kSettingsRowCount =
     view.layer.borderWidth = active ? 2.5 : 1.0;
   }
   if (announce) {
+    [self.view layoutIfNeeded];
+    CGRect visibleRect =
+        [_focusRows[selected] convertRect:_focusRows[selected].bounds
+                                   toView:self.scrollView];
+    visibleRect = CGRectInset(visibleRect, 0.0, -12.0);
+    [self.scrollView scrollRectToVisible:visibleRect animated:YES];
     UIAccessibilityPostNotification(UIAccessibilityLayoutChangedNotification,
                                     _focusRows[selected]);
   }
@@ -674,6 +885,15 @@ inline constexpr NSUInteger kSettingsRowCount =
                        static_cast<float>(direction) * kControllerScaleStep,
                    50.0F, 200.0F);
     (void)_model->setRenderScalePercent(next);
+    break;
+  }
+  case SettingsRow::interfaceScale: {
+    const float next =
+        std::clamp(draft.uiScalePercent +
+                       static_cast<float>(direction) * kControllerUiScaleStep,
+                   airfix::render::native_render_policy::minimumUiScalePercent,
+                   airfix::render::native_render_policy::maximumUiScalePercent);
+    (void)_model->setUiScalePercent(next);
     break;
   }
   case SettingsRow::presentation:
@@ -712,6 +932,7 @@ inline constexpr NSUInteger kSettingsRowCount =
 - (void)activateSelectedRow {
   switch (_selectedRow) {
   case SettingsRow::renderScale:
+  case SettingsRow::interfaceScale:
     [self adjustSelectedValue:1];
     break;
   case SettingsRow::presentation:

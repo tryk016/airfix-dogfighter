@@ -47,6 +47,7 @@ void testDefaultsAndBoundaries() {
                     .visualProfile = VisualProfile::classic,
                     .diagnosticsOverlayEnabled = false,
                     .verticalFovAdjustmentDegrees = 0.0F,
+                    .uiScalePercent = 100.0F,
                 } &&
             !validateRenderPresentationSettings(defaults).has_value(),
         "default render presentation settings changed");
@@ -69,6 +70,13 @@ void testDefaultsAndBoundaries() {
                 result.settings.verticalFovAdjustmentDegrees ==
                     boundary,
             "valid vertical-FOV boundary was rejected");
+    }
+    for (const float boundary : std::array{75.0F, 150.0F}) {
+        const auto result = resolveRenderPresentationSettings(
+            defaults, {.uiScalePercent = boundary});
+        require(
+            result.accepted() && result.settings.uiScalePercent == boundary,
+            "valid UI-scale boundary was rejected");
     }
 }
 
@@ -157,6 +165,27 @@ void testInvalidSettingsAndAtomicResolve() {
         requireIssue(
             result.issue, test.issue,
             "invalid vertical-FOV adjustment reported the wrong issue");
+    }
+    for (const auto &test : std::array{
+             ScaleCase{
+                 std::numeric_limits<float>::quiet_NaN(),
+                 RenderPresentationSettingsIssueKind::nonFiniteUiScale,
+             },
+             ScaleCase{
+                 74.99F,
+                 RenderPresentationSettingsIssueKind::uiScaleOutOfRange,
+             },
+             ScaleCase{
+                 150.01F,
+                 RenderPresentationSettingsIssueKind::uiScaleOutOfRange,
+             },
+         }) {
+        const auto result = resolveRenderPresentationSettings(
+            base, {.uiScalePercent = test.value});
+        require(!result.accepted() && result.settings == base,
+                "invalid UI scale changed settings");
+        requireIssue(result.issue, test.issue,
+                     "invalid UI scale reported the wrong issue");
     }
 
     const auto forgedPresentation =
@@ -411,6 +440,16 @@ void testSettingsDelta() {
                 },
         "visual-profile delta changed the wrong domains");
 
+    candidate = base;
+    candidate.uiScalePercent = 125.0F;
+    result = diffRenderPresentationSettings(base, candidate);
+    require(result.complete() && result.delta.has_value() &&
+                *result.delta ==
+                    RenderPresentationSettingsDelta{
+                        .uiLayoutChanged = true,
+                    },
+            "UI-scale delta changed the wrong domains");
+
     candidate = {
         .renderScalePercent = 50.0F,
         .scenePresentation =
@@ -418,6 +457,7 @@ void testSettingsDelta() {
         .visualProfile = VisualProfile::enhanced,
         .diagnosticsOverlayEnabled = true,
         .verticalFovAdjustmentDegrees = 25.0F,
+        .uiScalePercent = 150.0F,
     };
     const auto combined =
         diffRenderPresentationSettings(base, candidate);
@@ -429,6 +469,7 @@ void testSettingsDelta() {
                     .layoutChanged = true,
                     .diagnosticsChanged = true,
                     .visualProfileChanged = true,
+                    .uiLayoutChanged = true,
                 } &&
             combined.delta->anyChanged(),
         "combined settings delta omitted a changed domain");
@@ -470,6 +511,15 @@ void testInvalidSettingsProduceNoDelta() {
         RenderPresentationSettingsIssueKind::
             nonFiniteVerticalFovAdjustment,
         "invalid vertical-FOV delta reported the wrong issue");
+
+    invalid = valid;
+    invalid.uiScalePercent = std::numeric_limits<float>::quiet_NaN();
+    result = diffRenderPresentationSettings(valid, invalid);
+    require(!result.complete() && !result.delta.has_value(),
+            "invalid UI scale produced a delta");
+    requireIssue(result.issue,
+                 RenderPresentationSettingsIssueKind::nonFiniteUiScale,
+                 "invalid UI-scale delta reported the wrong issue");
 
     invalid = valid;
     invalid.scenePresentation =
@@ -519,6 +569,7 @@ void testDiagnosticsAndProfileAreLayoutOrthogonal() {
     auto changed = base;
     changed.visualProfile = VisualProfile::enhanced;
     changed.diagnosticsOverlayEnabled = true;
+    changed.uiScalePercent = 150.0F;
 
     const auto baseConfig = layoutConfig(base);
     const auto changedConfig = layoutConfig(changed);
@@ -530,7 +581,7 @@ void testDiagnosticsAndProfileAreLayoutOrthogonal() {
             baseConfig.verticalFovAdjustmentDegrees ==
                 changedConfig.verticalFovAdjustmentDegrees &&
             baseConfig.outputExtent == changedConfig.outputExtent,
-        "diagnostics or visual profile leaked into layout config");
+        "UI, diagnostics, or visual profile leaked into scene layout config");
 
     const auto baseLayout = buildNativeRenderLayout(baseConfig);
     const auto changedLayout =
@@ -558,7 +609,7 @@ void testDiagnosticsAndProfileAreLayoutOrthogonal() {
                 changedLayout.layout->horizontalFovDegrees() &&
             baseLayout.layout->uiViewportInOutput() ==
                 changedLayout.layout->uiViewportInOutput(),
-        "diagnostics or visual profile changed layout policy");
+            "UI, diagnostics, or visual profile changed scene layout policy");
 }
 
 void testFovSettingChangesOnlyProjectionLayout() {
@@ -611,6 +662,7 @@ void testStorageNeutralRoundTrip() {
         .visualProfile = VisualProfile::enhanced,
         .diagnosticsOverlayEnabled = true,
         .verticalFovAdjustmentDegrees = 12.0F,
+        .uiScalePercent = 125.0F,
     };
     const auto recordResult =
         makeRenderPresentationSettingsRecord(settings);
@@ -624,7 +676,8 @@ void testStorageNeutralRoundTrip() {
             recordResult.record->visualProfile == 1U &&
             recordResult.record->diagnosticsOverlayEnabled == 1U &&
             recordResult.record->verticalFovAdjustmentDegrees ==
-                12.0F,
+                12.0F &&
+            recordResult.record->uiScalePercent == 125.0F,
         "settings did not produce the versioned semantic record");
 
     const auto restored =
@@ -756,6 +809,29 @@ void testInvalidStorageRecordsFailClosed() {
         requireIssue(
             restored.issue, test.issue,
             "invalid stored vertical-FOV adjustment reported the wrong issue");
+    }
+
+    for (const auto &test : std::array{
+             StoredScaleCase{
+                 std::numeric_limits<float>::quiet_NaN(),
+                 RenderPresentationSettingsIssueKind::nonFiniteUiScale,
+             },
+             StoredScaleCase{
+                 74.0F,
+                 RenderPresentationSettingsIssueKind::uiScaleOutOfRange,
+             },
+             StoredScaleCase{
+                 151.0F,
+                 RenderPresentationSettingsIssueKind::uiScaleOutOfRange,
+             },
+         }) {
+        record = baseline;
+        record.uiScalePercent = test.value;
+        restored = renderPresentationSettingsFromRecord(record);
+        require(!restored.complete() && !restored.settings.has_value(),
+                "invalid stored UI scale produced settings");
+        requireIssue(restored.issue, test.issue,
+                     "invalid stored UI scale reported the wrong issue");
     }
 }
 

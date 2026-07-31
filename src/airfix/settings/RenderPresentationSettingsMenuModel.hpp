@@ -126,6 +126,9 @@ public:
   [[nodiscard]] RenderPresentationSettingsMenuEditResult
   setVerticalFovAdjustmentDegrees(float value) noexcept;
 
+  [[nodiscard]] RenderPresentationSettingsMenuEditResult
+  setUiScalePercent(float value) noexcept;
+
   // Reverts the draft exactly to applied while idle. An in-flight Apply is
   // immutable and cannot be cancelled by this presentation model.
   [[nodiscard]] bool cancelDraft() noexcept;

@@ -2567,7 +2567,8 @@ bool preflightPrivateRoom(
     try {
         const auto image =
             airfix::render::rasterizeRenderFrameDiagnostics(
-                *state->_accumulator.latest());
+                *state->_accumulator.latest(),
+                [self renderPresentationSettings].uiScalePercent);
         if (!image.complete() ||
             !fitsNSUInteger(image.width) ||
             !fitsNSUInteger(image.height) ||

@@ -120,6 +120,15 @@ validateRenderPresentationSettings(
             RenderPresentationSettingsIssueKind::
                 verticalFovAdjustmentOutOfRange);
     }
+    if (!std::isfinite(settings.uiScalePercent)) {
+        return issue(RenderPresentationSettingsIssueKind::nonFiniteUiScale);
+    }
+    if (settings.uiScalePercent <
+            native_render_policy::minimumUiScalePercent ||
+        settings.uiScalePercent >
+            native_render_policy::maximumUiScalePercent) {
+        return issue(RenderPresentationSettingsIssueKind::uiScaleOutOfRange);
+    }
     return std::nullopt;
 }
 
@@ -153,6 +162,9 @@ resolveRenderPresentationSettings(
     if (overrides.verticalFovAdjustmentDegrees.has_value()) {
         candidate.verticalFovAdjustmentDegrees =
             *overrides.verticalFovAdjustmentDegrees;
+    }
+    if (overrides.uiScalePercent.has_value()) {
+        candidate.uiScalePercent = *overrides.uiScalePercent;
     }
 
     const auto validation =
@@ -207,6 +219,8 @@ diffRenderPresentationSettings(
                         candidate.diagnosticsOverlayEnabled,
                 .visualProfileChanged =
                     previous.visualProfile != candidate.visualProfile,
+                .uiLayoutChanged =
+                    previous.uiScalePercent != candidate.uiScalePercent,
             },
         .issue = std::nullopt,
     };
@@ -240,6 +254,7 @@ makeRenderPresentationSettingsRecord(
                         settings.diagnosticsOverlayEnabled ? 1U : 0U),
                 .verticalFovAdjustmentDegrees =
                     settings.verticalFovAdjustmentDegrees,
+                .uiScalePercent = settings.uiScalePercent,
             },
         .issue = std::nullopt,
     };
@@ -299,6 +314,7 @@ renderPresentationSettingsFromRecord(
             record.diagnosticsOverlayEnabled != 0U,
         .verticalFovAdjustmentDegrees =
             record.verticalFovAdjustmentDegrees,
+        .uiScalePercent = record.uiScalePercent,
     };
     const auto validation =
         validateRenderPresentationSettings(settings);

@@ -86,6 +86,7 @@ struct RenderDiagnosticsImage final {
 // after scene scaling, in output pixels, so its sharpness and hit-free layout
 // never inherit the 3D render scale.
 [[nodiscard]] RenderDiagnosticsImage rasterizeRenderFrameDiagnostics(
-    const RenderFrameDiagnostics& diagnostics);
+    const RenderFrameDiagnostics& diagnostics,
+    float uiScalePercent = native_render_policy::defaultUiScalePercent);
 
 } // namespace airfix::render

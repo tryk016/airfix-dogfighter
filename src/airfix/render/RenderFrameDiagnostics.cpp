@@ -270,7 +270,13 @@ std::string formatRenderFrameDiagnostics(
 }
 
 RenderDiagnosticsImage rasterizeRenderFrameDiagnostics(
-    const RenderFrameDiagnostics& diagnostics) {
+    const RenderFrameDiagnostics& diagnostics,
+    const float uiScalePercent) {
+    if (!std::isfinite(uiScalePercent) ||
+        uiScalePercent < native_render_policy::minimumUiScalePercent ||
+        uiScalePercent > native_render_policy::maximumUiScalePercent) {
+        return {};
+    }
     const std::string text =
         formatRenderFrameDiagnostics(diagnostics);
     std::size_t maximumCharacters = 0U;
@@ -288,8 +294,11 @@ RenderDiagnosticsImage rasterizeRenderFrameDiagnostics(
         return {};
     }
 
-    const std::uint32_t scale =
-        diagnosticsPixelScale(diagnostics.outputExtent);
+    const auto baseScale = diagnosticsPixelScale(diagnostics.outputExtent);
+    const auto scaled = static_cast<double>(baseScale) *
+                        static_cast<double>(uiScalePercent) / 100.0;
+    const std::uint32_t scale = std::clamp(
+        static_cast<std::uint32_t>(std::floor(scaled + 0.5)), 1U, 6U);
     const auto contentWidth =
         maximumCharacters * glyphAdvance - 1U;
     const auto contentHeight =

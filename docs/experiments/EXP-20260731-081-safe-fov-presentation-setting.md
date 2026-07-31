@@ -4,6 +4,10 @@
 - Status: implemented; hosted platform validation pending
 - Scope: portable layout, durable settings, Windows D3D11, and iOS Metal
 
+> Historical note (2026-07-31): ADR-0017 later made schema 3 current. This
+> report records the schema-2 safe-FOV checkpoint and its then-current
+> future-schema behaviour.
+
 ## Question
 
 Can both products offer an optional wider vertical field of view without

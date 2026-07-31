@@ -31,6 +31,7 @@ enum class AirfixWindowsRenderSettingsItem : std::uint8_t {
   controllerCalibration,
   resume,
   renderScale,
+  interfaceScale,
   presentation,
   verticalFovAdjustment,
   visualProfile,

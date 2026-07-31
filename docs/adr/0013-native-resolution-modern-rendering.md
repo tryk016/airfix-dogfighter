@@ -41,8 +41,8 @@ The first non-visual-quality stage is implemented:
   pass at non-100% scales;
 - the Windows and iOS product panels expose validated 50-200% render scale,
   Hor+/Original 4:3, Classic/Enhanced intent, diagnostics, and the shared safe
-  FOV control; Windows also supplies sparse session-only command-line
-  overrides;
+  FOV control; both now also persist an independent 75-150% native UI-content
+  scale, while Windows supplies sparse session-only command-line overrides;
 - a shared frame-diagnostics contract now publishes output/scene extents,
   render scale, FPS, CPU/GPU frame time, draw calls, triangles, lights, and an
   explicitly estimated or backend-reported GPU-memory figure; D3D11 and Metal
@@ -56,16 +56,18 @@ The first non-visual-quality stage is implemented:
   480x270 target at 50% and a 1920x1080 target at 200%.
 
 This is a foundation milestone, not completion of this ADR. The portable core
-and both native backends now execute the 50-200% render-scale, safe-FOV, and
-diagnostic-overlay policies. Independent UI scale, quality/effect settings,
-modern lighting, and physical-device iOS acceptance remain pending. See
+and both native backends now execute the 50-200% render-scale, safe-FOV,
+independent UI-scale, and diagnostic-overlay policies. Complete HUD adoption,
+quality/effect settings, modern lighting, and physical-device iOS acceptance
+remain pending. See
 [EXP-20260729-049](../experiments/EXP-20260729-049-native-render-layout-horplus.md)
 and
 [EXP-20260729-050](../experiments/EXP-20260729-050-backend-render-scale-targets.md)
 and
 [EXP-20260729-051](../experiments/EXP-20260729-051-render-frame-diagnostics-overlay.md).
 Safe-FOV policy and settings migration are specified by
-[ADR-0016](0016-safe-fov-settings.md).
+[ADR-0016](0016-safe-fov-settings.md). Independent native UI scale is specified
+by [ADR-0017](0017-independent-ui-scale.md).
 
 ### Resolution domains
 
@@ -306,7 +308,8 @@ path while sharing the higher-level rendering contract.
 - [x] Add backend offscreen render-scale targets and presentation passes.
 - [x] Expose Original 4:3, render scale, and safe FOV through both product
   settings surfaces.
-- [ ] Expose independent UI-scale settings.
+- [x] Expose independent UI-scale settings and apply them to native settings
+  surfaces and renderer diagnostics.
 - [x] Add the shared diagnostic contract and output-resolution overlays to
   D3D11 and Metal.
 - [ ] Complete physical-device backbuffer/render-target and diagnostic

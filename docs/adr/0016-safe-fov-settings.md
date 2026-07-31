@@ -4,6 +4,11 @@
 - Date: 2026-07-31
 - Deciders: project owner and implementation lead
 
+ADR-0017 subsequently advances the current AFRS record to schema 3 for
+independent UI scale. The schema-2 rules below remain the authoritative
+migration definition for field 5; schema 2 is now accepted as an older record
+and migrated with UI scale at exact 100%.
+
 ## Context
 
 ADR-0013 requires widescreen Hor+ to preserve the reference vertical field of
