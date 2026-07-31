@@ -101,6 +101,7 @@ else()
 endif()
 
 add_library(airfix_simulation
+    src/airfix/simulation/LegacyAfsMissionOutcomeCall.cpp
     src/airfix/simulation/LegacyAircraftAudioCoordinator.cpp
     src/airfix/simulation/LegacyAircraftControlCommandReducer.cpp
     src/airfix/simulation/LegacyAircraftControlCommandStep.cpp
@@ -843,6 +844,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::simulation)
     add_test(NAME airfix_legacy_mission_outcome_state_tests
         COMMAND airfix_legacy_mission_outcome_state_tests)
+
+    add_executable(airfix_legacy_afs_mission_outcome_call_tests
+        tests/LegacyAfsMissionOutcomeCallTests.cpp)
+    target_link_libraries(airfix_legacy_afs_mission_outcome_call_tests
+        PRIVATE airfix::simulation)
+    add_test(NAME airfix_legacy_afs_mission_outcome_call_tests
+        COMMAND airfix_legacy_afs_mission_outcome_call_tests)
 
     add_executable(airfix_legacy_mission_outcome_consumer_tests
         tests/LegacyMissionOutcomeConsumerTests.cpp)
