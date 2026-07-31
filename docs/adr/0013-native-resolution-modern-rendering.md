@@ -324,8 +324,13 @@ path while sharing the higher-level rendering contract.
   classification, linear/sRGB handling, MSAA, and final-image anti-aliasing.
 - [ ] Complete physical-device backbuffer/render-target and diagnostic
   acceptance on iPhone SE 3 and iPhone 17 Pro Max.
-- [ ] Connect the shared projection bridge to actual reticle, weapon, HUD, and
-  screen-space effect consumers without inventing their visibility policy.
+- [x] Connect the shared projection bridge to the recovered final weapon-
+  crosshair size/centering plan while preserving viewport/depth labels and
+  leaving selected-weapon assets, live aim/collision, visibility policy, and
+  backend sprite submission explicit.
+- [ ] Connect authenticated selected-weapon sight assets and changing live
+  aim/collision state to D3D11/Metal sprite submission, then add the remaining
+  HUD and screen-space effect consumers without inventing their policy.
 - [ ] Implement the ordered image-quality stages above, maintaining separate
   `Classic` and `Enhanced` screenshot baselines.
 - [x] Keep all original and converted assets and owner-derived captures outside

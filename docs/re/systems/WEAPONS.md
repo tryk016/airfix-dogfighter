@@ -363,6 +363,33 @@ Creator BSP bracketing is recorded in
 The fixed-capacity activation boundary is recorded in
 [EXP-20260729-047](../../experiments/EXP-20260729-047-portable-projectile-runtime-pool.md).
 
+## Crosshair projection boundary
+
+`EV-20260731-004` recovers the shared `AfWeapon::RenderCrosshair` final stage
+and the three data-driven 32x32 GTI roles named `MGsight`, `ROsight`, and
+`BOsight`. The native method requires an active weapon, owner, crosshair
+texture, camera, screen, and no active overlay window. It traces the current
+owner-relative aim line when targeting is not already retained, projects the
+resulting world point, and calculates logical texture size as:
+
+```text
+scale = 2.0 - collisionFraction * localAimOffsetZ
+```
+
+Construction and activation set a first-visible latch. The next successful
+projection copies the new target dimensions into the current dimensions; the
+screen draw then subtracts half the current width/height from the projected
+centre. The base path keeps later target and current dimensions distinct, so
+the reconstruction does not invent an interpolation step.
+
+`LegacyWeaponCrosshairProjection` implements that state/rectangle boundary on
+top of `NativeGameplayScreenProjection`. Logical size follows the independent
+UI scale and user UI-scale setting; render scale remains irrelevant. Viewport
+and recovered-depth labels stay explicit rather than being converted into an
+unproved hide rule. Authenticated GTI loading, selected-weapon binding, live
+aim/collision production, and native sprite submission remain pending. See
+[EXP-20260731-088](../../experiments/EXP-20260731-088-legacy-weapon-crosshair-projection.md).
+
 ## Actor damage and surface reaction
 
 The actor-hit override at RVA `0x0000B2C0` emits damage event `0x7D` only when
@@ -462,6 +489,9 @@ effect.
   creator BSP guard and terminal command data to private live actor/effect
   adapters.
 - Recreate the optional `mguntracer` and `FxRicochet` visual/effect adapters.
+- Load the selected weapon's authenticated sight GTI and feed changing
+  owner/aim/collision state through the implemented crosshair rectangle plan
+  into shared D3D11/Metal sprite submission.
 - Trace sample/effect commands associated with a shot.
 - Recover secondary weapon selection and each secondary projectile family.
 - Confirm ammunition-zero semantics and scheduler/x87 tolerance with controlled

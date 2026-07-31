@@ -61,8 +61,13 @@
   FOV, and the actual scene viewport in native output pixels. It is invariant
   to render scale, rejects camera/layout mismatch, and preserves off-screen
   coordinates and recovered depth visibility as separate labels for later
-  HUD policy. Reticle, weapon, HUD, and screen-effect consumers are not yet
-  connected.
+  HUD policy. Its first concrete consumer now implements the recovered
+  weapon-crosshair distance scale, activation size latch, and centered output
+  rectangle. Crosshair size follows output-fit UI scale plus the independent
+  75-150% user setting and remains invariant to 3D render scale. Off-screen
+  and depth labels stay explicit. Authenticated selected-weapon sight loading,
+  changing aim/collision production, native sprite submission, the remaining
+  HUD, and screen effects are not yet connected.
 - The recovered CCF material contract now survives end to end from typed
   `0x2140/0x2150/0x2151` metadata and exact native defaults through world,
   aggregate mission, and player texture binding into each backend-neutral draw
