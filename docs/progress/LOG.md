@@ -4788,3 +4788,30 @@ superseded evidence.
   public-boundary tests, the 662-file repository scan, all 12 Rizin exporter
   tests, the 363-row/14-column unique function catalogue, and `git diff
   --check` pass. Hosted platform builds remain the publication gate.
+
+## 2026-07-31 - Windows owner-private AFPACK product import
+
+- The Windows product now exposes an exclusive `--import-afpack` operation
+  over the existing portable streaming installer. SDL resolves the undisclosed
+  per-user `content/` sibling, the adapter generates a canonical lowercase
+  UUID, and a named mutex rejects a competing product importer in the same
+  login session.
+- `--installed-content` and `--validate-installed-content` consume the private
+  root without repeating it on the command line. The existing explicit-root
+  interfaces remain available for controlled development roots. Ordinary
+  installer failures are reduced to fixed path-free categories; the ambiguous
+  post-commit case instead asks for restart and installed-content validation.
+- Synthetic tests cover canonical/distinct UUIDs, exact adapter handoff,
+  successful result mapping, rejection redaction, ambiguous-commit guidance,
+  missing-operation failure, installed/explicit-root exclusivity, and import
+  option combinations. Controlled product invocations confirm both contention
+  rejection and absence of a private path marker from stderr.
+- A fresh MSVC 19.51 HostX64/Ninja product build passes all 138 CTests,
+  including the installer/recovery suites, D3D11 renderer, and two product
+  smokes. The portable code-intelligence build passes 127/127 CTests; its 263
+  compilation-database entries contain no Apple-only source. Public-boundary
+  synthetic tests, the 665-file repository scan, all 12 Rizin exporter tests,
+  formatting, and `git diff --check` pass. The local Visual Studio 18.8
+  generator continues to select a crashing HostX86 compiler probe despite an
+  x64 preference, while direct HostX64 compilation succeeds; hosted Actions
+  remain the authoritative preset gate.

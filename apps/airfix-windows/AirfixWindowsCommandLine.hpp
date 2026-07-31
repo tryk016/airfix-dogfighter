@@ -34,8 +34,10 @@ struct AirfixWindowsMissionOptions final {
 struct AirfixWindowsCommandLineOptions final {
   bool smokeTest{};
   bool validateContentOnly{};
+  bool useInstalledContent{};
   airfix::render::RenderPresentationSettingsOverride renderOverrides;
   std::optional<std::filesystem::path> contentRoot;
+  std::optional<std::filesystem::path> importAfPackSource;
   std::optional<AirfixWindowsMissionOptions> mission;
   std::optional<std::filesystem::path> captureFrameOutput;
   std::optional<std::filesystem::path> captureOverviewFrameOutput;
@@ -60,6 +62,8 @@ parseAirfixWindowsCommandLine(std::span<const std::string_view> arguments);
 
 [[nodiscard]] constexpr std::string_view airfixWindowsUsage() noexcept {
   return "usage: AirfixDogfighter.exe "
+         "--import-afpack <private-package.afpack>\n"
+         "   or: AirfixDogfighter.exe "
          "[--render-scale <50-200>] "
          "[--original-4x3 | --widescreen-hor-plus] "
          "[--vertical-fov-adjustment <0-25>] "
@@ -78,7 +82,17 @@ parseAirfixWindowsCommandLine(std::span<const std::string_view> arguments);
          "--capture-overview-frame <private-output.bmp> | "
          "--capture-crosshair-validation-frame <private-output.bmp>] "
          "[--capture-size <width>x<height>]] | "
+         "--installed-content [--setup <logical-path> "
+         "--level <logical-path> [--player-object <logical-path>] "
+         "[--start-index <uint32>] "
+         "[--capture-frame <private-output.bmp> | "
+         "--capture-overview-frame <private-output.bmp> | "
+         "--capture-crosshair-validation-frame <private-output.bmp>] "
+         "[--capture-size <width>x<height>]] | "
          "--validate-content-root <path> [--setup <logical-path> "
+         "--level <logical-path> [--player-object <logical-path>] "
+         "[--start-index <uint32>]] | "
+         "--validate-installed-content [--setup <logical-path> "
          "--level <logical-path> [--player-object <logical-path>] "
          "[--start-index <uint32>]]]";
 }

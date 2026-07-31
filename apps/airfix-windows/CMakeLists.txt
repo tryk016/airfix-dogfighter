@@ -91,6 +91,35 @@ target_link_libraries(airfix_windows_settings_root PRIVATE
     SDL3::SDL3-static
 )
 
+add_library(airfix_windows_content_import STATIC
+    AirfixWindowsContentImport.cpp
+    AirfixWindowsContentImport.hpp
+)
+target_include_directories(airfix_windows_content_import PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+target_compile_features(airfix_windows_content_import PUBLIC cxx_std_20)
+target_compile_definitions(airfix_windows_content_import PRIVATE
+    NOMINMAX
+    WIN32_LEAN_AND_MEAN
+)
+if(MSVC)
+    target_compile_options(airfix_windows_content_import PRIVATE
+        /W4 /permissive-)
+else()
+    target_compile_options(airfix_windows_content_import PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+endif()
+target_link_libraries(airfix_windows_content_import
+    PUBLIC
+        airfix::afpack
+    PRIVATE
+        ole32
+)
+
 add_library(airfix_windows_settings_panel STATIC
     AirfixWindowsRenderSettingsPanel.cpp
     AirfixWindowsRenderSettingsPanel.hpp
@@ -273,6 +302,7 @@ else()
 endif()
 target_link_libraries(airfix_windows PRIVATE
     airfix_windows_command_line
+    airfix_windows_content_import
     airfix_windows_controller_profile_coordinator
     airfix_windows_input
     airfix_windows_renderer
@@ -341,6 +371,25 @@ if(AIRFIX_BUILD_TESTS)
         airfix_windows_settings_root)
     add_test(NAME airfix_windows_settings_root_tests
         COMMAND airfix_windows_settings_root_tests)
+
+    add_executable(airfix_windows_content_import_tests
+        AirfixWindowsContentImportTests.cpp)
+    target_compile_features(airfix_windows_content_import_tests
+        PRIVATE cxx_std_20)
+    if(MSVC)
+        target_compile_options(airfix_windows_content_import_tests
+            PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(airfix_windows_content_import_tests PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+    endif()
+    target_link_libraries(airfix_windows_content_import_tests PRIVATE
+        airfix_windows_content_import)
+    add_test(NAME airfix_windows_content_import_tests
+        COMMAND airfix_windows_content_import_tests)
 
     add_executable(airfix_windows_input_mapping_tests
         AirfixSdlInputMappingTests.cpp)

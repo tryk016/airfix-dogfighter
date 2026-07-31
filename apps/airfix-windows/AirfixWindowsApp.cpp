@@ -1,6 +1,7 @@
 #include "AirfixD3D11Renderer.hpp"
 #include "AirfixSdlInputAdapter.hpp"
 #include "AirfixWindowsCommandLine.hpp"
+#include "AirfixWindowsContentImport.hpp"
 #include "AirfixWindowsControllerProfileCoordinator.hpp"
 #include "AirfixWindowsRenderSettingsCoordinator.hpp"
 #include "AirfixWindowsRenderSettingsPanel.hpp"
@@ -421,6 +422,16 @@ struct LoadedPrivateContent final {
       weaponCrosshairTextures;
 };
 
+[[nodiscard]] std::filesystem::path resolveInstalledContentRoot() {
+  try {
+    return airfix::windows::resolveAirfixWindowsContentDirectory();
+  } catch (...) {
+    // SDL/platform diagnostics can disclose the host path. Keep the product
+    // error stable and private.
+    throw std::runtime_error("private Windows content storage is unavailable");
+  }
+}
+
 [[nodiscard]] LoadedPrivateContent loadPrivateContent(
     const std::filesystem::path &contentRoot,
     const std::optional<airfix::windows::AirfixWindowsMissionOptions> &mission,
@@ -476,8 +487,7 @@ struct LoadedPrivateContent final {
 
     auto loadedCrosshairs =
         airfix::content::loadLegacyWeaponCrosshairTextures(session);
-    if (!loadedCrosshairs.success() ||
-        !loadedCrosshairs.textures.has_value() ||
+    if (!loadedCrosshairs.success() || !loadedCrosshairs.textures.has_value() ||
         !loadedCrosshairs.textures->belongsTo(session) ||
         loadedCrosshairs.textures->revision != revision ||
         session.revision() != revision) {
@@ -529,13 +539,34 @@ int run(const int argumentCount, char *arguments[]) {
                           "com.tryk016.airfixdogfighter")) {
     throw std::runtime_error(SDL_GetError());
   }
-  if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
-    throw std::runtime_error(SDL_GetError());
-  }
 
   struct SdlQuitGuard {
     ~SdlQuitGuard() { SDL_Quit(); }
-  } quitGuard;
+  };
+  if (options.importAfPackSource.has_value()) {
+    if (!SDL_Init(0U)) {
+      throw std::runtime_error(SDL_GetError());
+    }
+    const SdlQuitGuard importQuitGuard;
+    const auto result = airfix::windows::importAirfixWindowsContent(
+        *options.importAfPackSource, resolveInstalledContentRoot());
+    std::cout << "Private AFPACK import complete: generation="
+              << result.generation << " bytes=" << result.size
+              << " reused=" << (result.reusedExisting ? "yes" : "no")
+              << " active-changed=" << (result.activeChanged ? "yes" : "no")
+              << '\n';
+    return 0;
+  }
+
+  if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
+    throw std::runtime_error(SDL_GetError());
+  }
+  const SdlQuitGuard quitGuard;
+
+  auto activeContentRoot = options.contentRoot;
+  if (options.useInstalledContent) {
+    activeContentRoot = resolveInstalledContentRoot();
+  }
 
   const bool sessionOnlyInvocation =
       options.smokeTest || options.validateContentOnly ||
@@ -871,9 +902,9 @@ int run(const int argumentCount, char *arguments[]) {
   airfix::runtime::PlayerActorPoseRuntimeEndpoint playerActorPoseRuntime;
   std::weak_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>
       gameplayCameraMissionRuntime;
-  if (options.contentRoot.has_value()) {
+  if (activeContentRoot.has_value()) {
     privateContent.emplace(
-        loadPrivateContent(*options.contentRoot, options.mission, audio));
+        loadPrivateContent(*activeContentRoot, options.mission, audio));
   }
   if (privateContent.has_value() && privateContent->missionRoom.has_value()) {
     if (!privateContent->weaponCrosshairTextures.has_value()) {
@@ -1022,7 +1053,8 @@ int run(const int argumentCount, char *arguments[]) {
                airfix::runtime::LifecycleState::foregroundPaused &&
            windowFocused && simulationPipelineReady &&
            playerAircraftPresentation.healthy() &&
-           renderer.missionWorldRoomInstalled() && playerSpawnPose.has_value() &&
+           renderer.missionWorldRoomInstalled() &&
+           playerSpawnPose.has_value() &&
            !gameplayCameraMissionRuntime.expired();
   };
   const auto refreshRenderSettingsPanel = [&]() {

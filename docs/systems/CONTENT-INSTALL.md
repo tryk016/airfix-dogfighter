@@ -1,8 +1,9 @@
 # Private content installation and recovery
 
-**State:** portable installer, startup inspection, rollback transaction, native
-iOS document-picker/progress/recovery UI, and authenticated runtime lease
-adoption implemented
+**State:** portable installer, startup inspection, rollback transaction,
+owner-private Windows product import/consumption CLI, native iOS
+document-picker/progress/recovery UI, and authenticated runtime lease adoption
+implemented
 
 **Scope:** private sideload build, AFPACK v1, one serialized importer, no saves
 inside the content transaction
@@ -59,6 +60,17 @@ two known child directories. It rejects an empty root, wrong-type components,
 and non-canonical transaction IDs. Startup cleanup scans only the three trusted
 direct directories and deletes regular non-link files matching the exact
 lowercase canonical-UUID temporary patterns; it never scans `packs/`.
+
+The Windows adapter resolves the same `content/` sibling through SDL's
+per-user preference root. `--import-afpack` is a one-shot product operation: a
+session-local named mutex rejects concurrent importers, a fresh canonical UUID
+is generated internally, and all installer diagnostics are mapped to fixed
+path-free product categories. `--installed-content` and
+`--validate-installed-content` consume that root without exposing it on the
+command line. The lower-level explicit-root tool and product switches remain
+available for controlled development roots. A native file picker, progress UI,
+and Windows rollback-choice UI remain follow-up presentation work; they must
+reuse this transaction rather than open package contents independently.
 
 ## Transaction states
 
