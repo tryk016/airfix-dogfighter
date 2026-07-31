@@ -374,7 +374,7 @@ This phase is split into ordered, independently shippable stages:
    separate shadow/MSAA/effects/render-scale controls; dynamic render scale
    where useful; device profiling and memory budgets.
 
-Implementation checkpoint (2026-07-30): stages 1-2 have their portable
+Implementation checkpoint (2026-07-31): stages 1-2 have their portable
 foundation. Strongly typed resolution domains, exact 100% target identity,
 Hor+, Original 4:3 layout math, safe-area/UI fitting, input transforms, and the
 required aspect-ratio tests are implemented. The shared `0..25` degree
@@ -383,13 +383,20 @@ only the logical projection and composes with recovered camera FOV. A separate
 75-150% native UI-content scale now persists in AFRS schema 3, migrates schema
 1/2 to exact 100%, and changes neither the root safe-area transform nor scene
 targets/projection.
+The recovered world-to-reference-screen projection now composes with that
+layout through one allocation-free native-output bridge. It validates the
+camera canvas and reference FOV, maps through the real output-pixel scene
+viewport independently of render scale, and preserves off-screen and
+out-of-depth states for later HUD policy. Actual reticle, weapon, HUD, and
+screen-effect consumers remain open; no art or gameplay rule is inferred by
+the bridge.
 D3D11 and Metal render directly
 to the native output at 100% and use backend-private offscreen color/depth
 targets plus linear presentation at non-100% scales. Windows direct backbuffer
 captures verify 1080p, 1440p, 4K, and 32:9, and a controlled 50%/200% trial
 verifies that output and 3D raster extents vary independently. Remaining stage
-1-2 work is complete HUD/effect adoption of the shared UI metrics and iOS
-runtime/device acceptance. Both platform shells now expose the shared settings
+1-2 work is actual HUD/effect adoption of the shared projection and UI metrics
+plus iOS runtime/device acceptance. Both platform shells now expose the shared settings
 transaction through explicit pause boundaries: iOS uses a safe-area
 touch/controller panel, while Windows uses a DPI-aware DirectWrite/Direct2D
 raster composed by D3D11 and controlled by keyboard, mouse, or gamepad. The

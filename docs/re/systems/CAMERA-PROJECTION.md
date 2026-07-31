@@ -461,6 +461,20 @@ bootstrap. Objective-C++ repacks the camera basis, translation, cached
 inverse-square, projection scalars, and logical canvas into a fixed Metal ABI.
 The shader repeats the recovered operations instead of precomposing them.
 
+`src/airfix/render/NativeGameplayScreenProjection.cpp` is the separate modern
+screen-consumer bridge. It first obtains the recovered reference-canvas point,
+then uses `NativeRenderLayout` to translate it into the centred Hor+ or
+safe-FOV camera canvas and through the actual output-pixel scene viewport.
+Render scale affects the intermediate 3D target but not the resulting output
+coordinate. Original 4:3 maps through its pillarboxed output viewport. The
+bridge validates the reference canvas and horizontal FOV, returns off-screen
+coordinates without clamping, and labels viewport inclusion independently of
+the recovered near/far interval. This is port policy for future HUD/reticle/
+weapon/effect consumers, not evidence that the original executable supported
+widescreen or used the same off-screen visibility rule. The implementation and
+required-aspect tests are recorded in
+[EXP-20260731-087](../../experiments/EXP-20260731-087-native-gameplay-screen-projection.md).
+
 `src/airfix/render/LegacyGameplayCameraStepCoordinator.cpp` composes the
 recovered producer stages without hiding missing inputs. It accepts the raw
 AirCraft scheduler delta, live health, and inactive state, applies cumulative
@@ -590,3 +604,4 @@ evidence is recovered.
 - [Gameplay-camera mission runtime](../../experiments/EXP-20260728-024-camera-mission-runtime.md)
 - [AirCraft camera input contract](../../experiments/EXP-20260728-025-camera-aircraft-input-contract.md)
 - [Native render layout and Hor+ integration](../../experiments/EXP-20260729-049-native-render-layout-horplus.md)
+- [Native gameplay screen projection](../../experiments/EXP-20260731-087-native-gameplay-screen-projection.md)
