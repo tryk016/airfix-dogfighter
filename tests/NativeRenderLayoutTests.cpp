@@ -157,6 +157,72 @@ void testRenderScaleIsIndependentOfOutputAndUi() {
         "render scale changed output, UI, or camera logical coordinates");
 }
 
+void testCameraOutputMappingIsUnclippedAndReversible() {
+    constexpr std::array scales{50.0F, 100.0F, 125.0F, 200.0F};
+    for (const float scale : scales) {
+        const auto built = buildNativeRenderLayout({
+            .outputExtent = {1920U, 1080U},
+            .renderScalePercent = scale,
+        });
+        const auto& layout = requireLayout(
+            built,
+            "camera output layout was rejected");
+        const auto output = layout.outputPointFromCamera(
+            layout.cameraLogicalCentre());
+        require(
+            output.has_value() && output->insideSceneViewport &&
+                close(output->point.x, 960.0F) &&
+                close(output->point.y, 540.0F),
+            "render scale moved the camera centre in output pixels");
+        const auto roundTrip =
+            layout.cameraPointFromOutput(output->point);
+        require(
+            roundTrip.has_value() &&
+                close(
+                    roundTrip->x,
+                    layout.cameraLogicalCentre().x) &&
+                close(
+                    roundTrip->y,
+                    layout.cameraLogicalCentre().y),
+            "camera/output mapping was not reversible");
+    }
+
+    const auto originalBuilt = buildNativeRenderLayout({
+        .outputExtent = {1920U, 1080U},
+        .renderScalePercent = 125.0F,
+        .scenePresentation =
+            ScenePresentationMode::originalFourByThree,
+    });
+    const auto& original = requireLayout(
+        originalBuilt,
+        "Original 4:3 camera output layout was rejected");
+    require(
+        original.sceneViewportInOutput() ==
+                OutputPixelRect{240.0F, 0.0F, 1440.0F, 1080.0F} &&
+            original.referenceHorizontalFovDegrees() == 90.0F,
+        "Original 4:3 output viewport or reference FOV changed");
+    const auto topLeft = original.outputPointFromCamera({0.0F, 0.0F});
+    const auto bottomRight = original.outputPointFromCamera({640.0F, 480.0F});
+    const auto offscreen = original.outputPointFromCamera({-1.0F, 240.0F});
+    require(
+        topLeft == std::optional<CameraOutputPoint>{
+                       CameraOutputPoint{{240.0F, 0.0F}, true}} &&
+            bottomRight == std::optional<CameraOutputPoint>{
+                               CameraOutputPoint{{1680.0F, 1080.0F}, true}} &&
+            offscreen.has_value() &&
+            !offscreen->insideSceneViewport &&
+            offscreen->point.x < 240.0F,
+        "camera output projection clamped or ignored the 4:3 bars");
+    require(
+        !original
+             .outputPointFromCamera({
+                 std::numeric_limits<float>::quiet_NaN(),
+                 0.0F,
+             })
+             .has_value(),
+        "non-finite camera point was accepted");
+}
+
 void testRequiredAspectRatiosUseHorPlus() {
     struct Case final {
         OutputPixelExtent output;
@@ -473,6 +539,7 @@ int main() {
     try {
         testFourKAtOneHundredPercentIsNative();
         testRenderScaleIsIndependentOfOutputAndUi();
+        testCameraOutputMappingIsUnclippedAndReversible();
         testRequiredAspectRatiosUseHorPlus();
         testOriginalFourByThreeRemainsAComparisonMode();
         testSafeFovAdjustmentIsAspectIndependent();

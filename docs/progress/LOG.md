@@ -4558,3 +4558,20 @@ superseded evidence.
   19.51/Ninja product build succeeds and passes 133/133 tests. Hosted Apple
   compilation and the complete public-boundary gate remain publication
   requirements; physical-device Metal inspection remains separate.
+
+## 2026-07-31 - native gameplay screen projection
+
+- Added an allocation-free bridge from the recovered gameplay camera's world
+  projection through the modern Hor+/Original 4:3/safe-FOV layout to physical
+  output pixels. The layout now publishes its scene viewport in both render-
+  target and output domains.
+- The bridge rejects camera/layout canvas or reference-FOV mismatch, preserves
+  nested legacy failures, and returns unclamped off-screen coordinates with
+  viewport inclusion and recovered near/far visibility as independent labels.
+  No HUD art, visibility rule, simulation state, or live camera producer is
+  inferred.
+- Tests cover all required aspect ratios at 50%, 100%, 125%, and 200% render
+  scale, Original 4:3 bars, safe FOV, round trips, depth states, malformed
+  inputs, overflow, and allocation freedom. The complete portable suite passes
+  124/124 CTests; the native MSVC Windows product builds and passes 134/134,
+  including both D3D11 product smokes.

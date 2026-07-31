@@ -56,6 +56,13 @@
   shadows, post-processing, and iOS runtime/device acceptance remain pending.
   Hosted iPhoneOS and iPhoneSimulator builds compile the complete Metal path;
   only physical-device visual/timing acceptance remains for this slice.
+  A shared allocation-free gameplay-screen projection now composes the
+  recovered world-to-reference-camera result with Hor+, Original 4:3, safe
+  FOV, and the actual scene viewport in native output pixels. It is invariant
+  to render scale, rejects camera/layout mismatch, and preserves off-screen
+  coordinates and recovered depth visibility as separate labels for later
+  HUD policy. Reticle, weapon, HUD, and screen-effect consumers are not yet
+  connected.
 - The recovered CCF material contract now survives end to end from typed
   `0x2140/0x2150/0x2151` metadata and exact native defaults through world,
   aggregate mission, and player texture binding into each backend-neutral draw
@@ -1170,7 +1177,10 @@
 9. In parallel with gameplay reconstruction, extend the implemented ADR-0013
    resolution/Hor+/UI/input/offscreen-target foundation with independent UI
    scale plus HUD/reticle/weapon/effect projection integration. Render scale,
-   Original 4:3, and safe FOV settings are implemented.
+   Original 4:3, safe FOV settings, and the backend-neutral
+   world/reference-camera-to-native-output bridge are implemented. Connect
+   actual HUD, reticle, weapon, and screen-effect consumers next without
+   inventing their visibility or gameplay rules.
    Validate the implemented diagnostic overlay on both physical iPhones before
    lighting, materials, shadows, or post-processing.
 

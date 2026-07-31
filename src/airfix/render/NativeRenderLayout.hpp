@@ -74,6 +74,15 @@ struct CameraLogicalPoint final {
         const CameraLogicalPoint&) noexcept = default;
 };
 
+struct CameraOutputPoint final {
+    OutputPixelPoint point{};
+    bool insideSceneViewport{};
+
+    [[nodiscard]] friend constexpr bool operator==(
+        const CameraOutputPoint&,
+        const CameraOutputPoint&) noexcept = default;
+};
+
 struct UiLogicalExtent final {
     float width{};
     float height{};
@@ -207,6 +216,11 @@ public:
         return sceneViewportInRenderTarget_;
     }
 
+    [[nodiscard]] constexpr OutputPixelRect
+    sceneViewportInOutput() const noexcept {
+        return sceneViewportInOutput_;
+    }
+
     [[nodiscard]] constexpr CameraLogicalExtent
     cameraLogicalExtent() const noexcept {
         return cameraLogicalExtent_;
@@ -215,6 +229,11 @@ public:
     [[nodiscard]] constexpr CameraLogicalExtent
     referenceCameraLogicalExtent() const noexcept {
         return referenceCameraLogicalExtent_;
+    }
+
+    [[nodiscard]] constexpr float
+    referenceHorizontalFovDegrees() const noexcept {
+        return referenceHorizontalFovDegrees_;
     }
 
     [[nodiscard]] constexpr CameraLogicalPoint
@@ -247,6 +266,13 @@ public:
     [[nodiscard]] std::optional<CameraLogicalPoint>
     cameraPointFromOutput(
         OutputPixelPoint point) const noexcept;
+
+    // Maps a finite camera-logical point through the actual scene viewport in
+    // output pixels. Off-screen points remain available for directional HUD
+    // indicators and are labelled instead of being silently clamped.
+    [[nodiscard]] std::optional<CameraOutputPoint>
+    outputPointFromCamera(
+        CameraLogicalPoint point) const noexcept;
 
     [[nodiscard]] constexpr OutputPixelRect
     uiSafeRectInOutput() const noexcept {
@@ -283,7 +309,9 @@ private:
         const ScenePresentationMode scenePresentation,
         const float verticalFovAdjustmentDegrees,
         const RenderTargetPixelRect sceneViewportInRenderTarget,
+        const OutputPixelRect sceneViewportInOutput,
         const CameraLogicalExtent referenceCameraLogicalExtent,
+        const float referenceHorizontalFovDegrees,
         const CameraLogicalExtent cameraLogicalExtent,
         const CameraLogicalPoint cameraLogicalCentre,
         const float verticalFovDegrees,
@@ -299,7 +327,10 @@ private:
           verticalFovAdjustmentDegrees_(
               verticalFovAdjustmentDegrees),
           sceneViewportInRenderTarget_(sceneViewportInRenderTarget),
+          sceneViewportInOutput_(sceneViewportInOutput),
           referenceCameraLogicalExtent_(referenceCameraLogicalExtent),
+          referenceHorizontalFovDegrees_(
+              referenceHorizontalFovDegrees),
           cameraLogicalExtent_(cameraLogicalExtent),
           cameraLogicalCentre_(cameraLogicalCentre),
           verticalFovDegrees_(verticalFovDegrees),
@@ -315,7 +346,9 @@ private:
     const ScenePresentationMode scenePresentation_;
     const float verticalFovAdjustmentDegrees_;
     const RenderTargetPixelRect sceneViewportInRenderTarget_;
+    const OutputPixelRect sceneViewportInOutput_;
     const CameraLogicalExtent referenceCameraLogicalExtent_;
+    const float referenceHorizontalFovDegrees_;
     const CameraLogicalExtent cameraLogicalExtent_;
     const CameraLogicalPoint cameraLogicalCentre_;
     const float verticalFovDegrees_;

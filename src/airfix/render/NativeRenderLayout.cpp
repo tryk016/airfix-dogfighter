@@ -194,6 +194,18 @@ NativeRenderLayoutBuildResult buildNativeRenderLayout(
             renderHeightFloat,
             referenceAspect);
     }
+    const float outputFromRenderX =
+        static_cast<float>(config.outputExtent.width) /
+        renderWidthFloat;
+    const float outputFromRenderY =
+        static_cast<float>(config.outputExtent.height) /
+        renderHeightFloat;
+    const OutputPixelRect sceneViewportInOutput{
+        .x = sceneViewport.x * outputFromRenderX,
+        .y = sceneViewport.y * outputFromRenderY,
+        .width = sceneViewport.width * outputFromRenderX,
+        .height = sceneViewport.height * outputFromRenderY,
+    };
 
     const double referenceHorizontalHalfRadians =
         static_cast<double>(config.referenceHorizontalFovDegrees) *
@@ -267,6 +279,7 @@ NativeRenderLayoutBuildResult buildNativeRenderLayout(
     };
 
     if (!(sceneAspect > 0.0F) || !finite(sceneViewport) ||
+        !finite(sceneViewportInOutput) ||
         !finite(cameraLogicalExtent) ||
         !std::isfinite(cameraLogicalCentre.x) ||
         !std::isfinite(cameraLogicalCentre.y) ||
@@ -290,7 +303,9 @@ NativeRenderLayoutBuildResult buildNativeRenderLayout(
             config.scenePresentation,
             config.verticalFovAdjustmentDegrees,
             sceneViewport,
+            sceneViewportInOutput,
             config.referenceCameraCanvas,
+            config.referenceHorizontalFovDegrees,
             cameraLogicalExtent,
             cameraLogicalCentre,
             verticalFovDegrees,
@@ -301,6 +316,34 @@ NativeRenderLayoutBuildResult buildNativeRenderLayout(
             uiScale,
         },
         .issue = std::nullopt,
+    };
+}
+
+std::optional<CameraOutputPoint>
+NativeRenderLayout::outputPointFromCamera(
+    const CameraLogicalPoint point) const noexcept {
+    if (!std::isfinite(point.x) || !std::isfinite(point.y)) {
+        return std::nullopt;
+    }
+
+    const OutputPixelPoint output{
+        .x = sceneViewportInOutput_.x +
+            point.x / cameraLogicalExtent_.width *
+                sceneViewportInOutput_.width,
+        .y = sceneViewportInOutput_.y +
+            point.y / cameraLogicalExtent_.height *
+                sceneViewportInOutput_.height,
+    };
+    if (!std::isfinite(output.x) || !std::isfinite(output.y)) {
+        return std::nullopt;
+    }
+
+    return CameraOutputPoint{
+        .point = output,
+        .insideSceneViewport =
+            point.x >= 0.0F && point.y >= 0.0F &&
+            point.x <= cameraLogicalExtent_.width &&
+            point.y <= cameraLogicalExtent_.height,
     };
 }
 

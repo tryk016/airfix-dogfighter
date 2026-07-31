@@ -306,6 +306,10 @@ path while sharing the higher-level rendering contract.
 - [x] Add portable Hor+, FOV, viewport, UI-scale, safe-area, and
   input-coordinate tests for the required aspect ratios.
 - [x] Add backend offscreen render-scale targets and presentation passes.
+- [x] Add an allocation-free world/reference-camera-to-output-pixel bridge
+  that composes Hor+, Original 4:3, safe FOV, and the physical scene viewport
+  while preserving off-screen points and recovered depth visibility as
+  separate labels.
 - [x] Expose Original 4:3, render scale, and safe FOV through both product
   settings surfaces.
 - [x] Expose independent UI-scale settings and apply them to native settings
@@ -320,6 +324,8 @@ path while sharing the higher-level rendering contract.
   classification, linear/sRGB handling, MSAA, and final-image anti-aliasing.
 - [ ] Complete physical-device backbuffer/render-target and diagnostic
   acceptance on iPhone SE 3 and iPhone 17 Pro Max.
+- [ ] Connect the shared projection bridge to actual reticle, weapon, HUD, and
+  screen-space effect consumers without inventing their visibility policy.
 - [ ] Implement the ordered image-quality stages above, maintaining separate
   `Classic` and `Enhanced` screenshot baselines.
 - [x] Keep all original and converted assets and owner-derived captures outside
