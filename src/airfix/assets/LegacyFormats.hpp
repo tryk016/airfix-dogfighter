@@ -147,6 +147,30 @@ struct CcfRoomSectionMetadata {
     std::uint64_t offset{};
 };
 
+struct CcfMaterialProperties2140 {
+    // The native loader copies these values to CcMaterial +0x44..+0x58 and
+    // +0x40 respectively. Their higher-level colour semantics remain raw.
+    CcfVector3 firstVector{};
+    CcfVector3 secondVector{};
+    float scalar{};
+
+    [[nodiscard]] friend constexpr bool operator==(
+        const CcfMaterialProperties2140&,
+        const CcfMaterialProperties2140&) = default;
+};
+
+struct CcfMaterialProperties2150 {
+    // Exact native fields: CcMaterial +0x3c, GtMaterial +0x00, and
+    // GtMaterial +0x04. Numeric lighting-mode meanings remain unnamed.
+    std::uint8_t lightingMode{};
+    bool gouraudShading{};
+    std::uint32_t blendMode{};
+
+    [[nodiscard]] friend constexpr bool operator==(
+        const CcfMaterialProperties2150&,
+        const CcfMaterialProperties2150&) = default;
+};
+
 struct CcfMaterialMetadata {
     std::string name;
     std::string prefix;
@@ -154,9 +178,15 @@ struct CcfMaterialMetadata {
     std::optional<std::string> primaryTexture;
     std::optional<std::string> secondaryTexture;
     std::optional<std::string> environmentTexture;
+    std::optional<CcfMaterialProperties2140> properties2140;
+    std::optional<CcfMaterialProperties2150> properties2150;
+    // Native GtMaterial +0x01. The render-path meaning is not yet proven.
+    std::optional<bool> flag2151;
     // First u32 carried by child 0x2152. Native collision paths read this
     // value at CcMaterial + 0x5c; individual numeric meanings remain raw.
     std::optional<std::uint32_t> collisionMode2152;
+    // Remaining two f32 values from 0x2152, copied to CcMaterial +0x60/+0x64.
+    std::optional<std::array<float, 2>> scalarProperties2152;
     std::uint64_t offset{};
 };
 

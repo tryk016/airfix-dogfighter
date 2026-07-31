@@ -187,6 +187,8 @@ buildMissionWorldRoomTextureBindings(
 
     std::vector<std::vector<std::uint32_t>>
         materialReferences(loadSources.size());
+    std::vector<std::vector<DrawMaterialState>>
+        materialStates(loadSources.size());
     std::vector<std::vector<assets::TextureDependency>>
         dependencies(loadSources.size());
     for (const auto& material : drawPlan.materials) {
@@ -199,10 +201,13 @@ buildMissionWorldRoomTextureBindings(
                 material.sourceIndex);
             return result;
         }
-        materialReferences[material.sourceIndex].push_back(
+        const auto& sourceMaterial =
             loadSources[material.sourceIndex]
-                .ccf->materials[material.physicalMaterialIndex]
-                .reference);
+                .ccf->materials[material.physicalMaterialIndex];
+        materialReferences[material.sourceIndex].push_back(
+            sourceMaterial.reference);
+        materialStates[material.sourceIndex].push_back(
+            makeDrawMaterialState(sourceMaterial));
     }
     for (const auto& texture : drawPlan.textures) {
         if (texture.sourceIndex >= dependencies.size()) {
@@ -331,6 +336,7 @@ buildMissionWorldRoomTextureBindings(
          ++sourceIndex) {
         localBindings[sourceIndex] = buildTextureBindingPlan(
             materialReferences[sourceIndex],
+            materialStates[sourceIndex],
             dependencies[sourceIndex],
             resolutions[sourceIndex],
             bindingLimits);

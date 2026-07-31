@@ -152,8 +152,31 @@ void require(const bool condition, const std::string& message) {
     material.primaryTexture = primary;
     material.secondaryTexture = secondary;
     material.environmentTexture = environment;
+    material.properties2140 = CcfMaterialProperties2140{
+        .firstVector = {1.25F, 2.5F, 3.75F},
+        .secondVector = {4.5F, 5.25F, 6.75F},
+        .scalar = 0.625F,
+    };
+    material.properties2150 = CcfMaterialProperties2150{
+        .lightingMode = 2U,
+        .gouraudShading = true,
+        .blendMode = 3U,
+    };
+    material.flag2151 = true;
     ccf.materials.push_back(std::move(material));
     return ccf;
+}
+
+[[nodiscard]] DrawMaterialState actorMaterialState() {
+    return {
+        .lightingMode = 2U,
+        .gouraudShading = true,
+        .blendMode = 3U,
+        .flag2151 = true,
+        .scalar2140 = 0.625F,
+        .firstVector2140 = {1.25F, 2.5F, 3.75F},
+        .secondVector2140 = {4.5F, 5.25F, 6.75F},
+    };
 }
 
 [[nodiscard]] std::size_t fileIndex(
@@ -208,8 +231,9 @@ void testEmptyAndUntexturedActor() {
             result.imports == base &&
             !result.materialBindings[0].primary.has_value() &&
             !result.materialBindings[0].secondary.has_value() &&
-            !result.materialBindings[0].environment.has_value(),
-        "untextured actor did not retain its material");
+            !result.materialBindings[0].environment.has_value() &&
+            result.materialBindings[0].state == actorMaterialState(),
+        "untextured actor did not retain its material and recovered state");
 }
 
 void testActorOnlyAndFirstUseAppendOrder() {
@@ -235,8 +259,9 @@ void testActorOnlyAndFirstUseAppendOrder() {
     require(
         result.materialBindings[0].primary == TextureAssetId{0U} &&
             result.materialBindings[0].secondary == TextureAssetId{1U} &&
-            result.materialBindings[0].environment == TextureAssetId{0U},
-        "actor-only material IDs were not remapped");
+            result.materialBindings[0].environment == TextureAssetId{0U} &&
+            result.materialBindings[0].state == actorMaterialState(),
+        "actor-only material IDs or recovered state were not retained");
 
     const std::vector<TextureImportRequest> base{{
         .assetId = TextureAssetId{0U},

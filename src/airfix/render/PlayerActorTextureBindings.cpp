@@ -204,6 +204,8 @@ PlayerActorTextureBindings buildPlayerActorTextureBindings(
 
     std::vector<std::uint32_t> materialReferences;
     materialReferences.reserve(resolution.materialIndices.size());
+    std::vector<DrawMaterialState> materialStates;
+    materialStates.reserve(resolution.materialIndices.size());
     for (const auto materialIndex : resolution.materialIndices) {
         if (materialIndex >= ccf.materials.size()) {
             addIssue(
@@ -212,8 +214,9 @@ PlayerActorTextureBindings buildPlayerActorTextureBindings(
                     invalidSceneResolution);
             return result;
         }
-        materialReferences.push_back(
-            ccf.materials[materialIndex].reference);
+        const auto& material = ccf.materials[materialIndex];
+        materialReferences.push_back(material.reference);
+        materialStates.push_back(makeDrawMaterialState(material));
     }
 
     auto textureEntryLimits = limits.textureEntries;
@@ -254,6 +257,7 @@ PlayerActorTextureBindings buildPlayerActorTextureBindings(
         limits.maximumGlobalImports);
     auto local = buildTextureBindingPlan(
         materialReferences,
+        materialStates,
         resolution.textures,
         textureResolution,
         bindingLimits);

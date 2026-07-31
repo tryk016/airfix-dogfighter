@@ -7,7 +7,7 @@ two-phase authenticated aggregate-mission Metal publication and selected-start
 pose commit implemented; physical-device visual acceptance pending
 
 **Evidence:** `EV-20260721-030` through `EV-20260721-034`,
-`EV-20260727-002`
+`EV-20260727-002`, `EV-20260731-003`
 
 The representative static cross-check in
 [EXP-20260727-001](../../experiments/EXP-20260727-001-static-tool-crosscheck.md)
@@ -45,6 +45,15 @@ in role, material reference/index, or source text fails closed. Successful
 entries receive dense `TextureAssetId` values in first-use order, deduplicated
 by archive entry across all materials and primary, secondary, and environment
 roles. ID zero is valid; absence remains `std::optional`.
+
+CCF-aware callers also supply one renderer-neutral state per material in the
+same physical order as the reference span. A cardinality mismatch fails
+atomically. `makeDrawMaterialState` copies the recovered raw lighting mode,
+Gouraud flag, blend mode, unresolved `0x2151` flag, two vectors, and scalar.
+An absent compatible property uses the exact `CcMaterial::ResetMembers`
+default. Generic non-CCF callers retain those same defaults. Collision-only
+`0x2152` data remains in asset/spatial metadata and does not enter a render
+command.
 
 `describeGtiUpload` performs no I/O and makes no sRGB, premultiplication, or
 V-origin decision. It selects formats in recovered preference order
@@ -98,8 +107,11 @@ research. Indices remain 32-bit and bounds cover emitted local positions.
 
 The builder rejects non-finite values, invalid indices, missing/duplicate
 material bindings, integer overflow, and configured vertex/index/material/range
-or aggregate-byte limits. The payload keeps primary, secondary, and environment
-texture roles even though the first diagnostic samples only primary.
+or aggregate-byte limits. Draw submission additionally rejects a non-finite
+material scalar or vector with exact mesh/material context before exposing any
+command. The payload keeps primary, secondary, and environment texture roles
+plus the complete recovered renderer-relevant material state even though the
+first diagnostic samples only primary.
 
 ## Fail-closed draw submission
 
@@ -116,12 +128,29 @@ ranges.
 Only complete success publishes a `DrawSubmissionPlan`. Mesh-upload metadata
 retains model mesh order, while indexed commands retain instance order and then
 range order. Each command preserves primary, secondary, and environment
-bindings independently; `TextureAssetId{0}` is a valid binding whenever at
-least one texture asset is available, while absence remains `std::optional`.
+bindings independently and copies the material state without reinterpretation;
+`TextureAssetId{0}` is a valid binding whenever at least one texture asset is
+available, while absence remains `std::optional`.
 An empty model and a well-formed empty mesh produce successful empty work.
 Every typed issue suppresses the whole plan and carries the narrowest available
 mesh, instance, vertex, index, range, material, texture-role, and texture-ID
 context. No partial upload list or draw-command prefix is exposed.
+
+The original backend's recovered blend factors are mode zero disabled; mode
+one `INVDESTCOLOR/ONE`; mode two `ZERO/SRCCOLOR`; and mode three
+`SRCALPHA/INVSRCALPHA`. Nonzero blend materials enter one per-room list shared
+with sprites and custom objects. Its unsigned 32-bit key derives from
+unclipped camera-space centroid Z and current far distance. A stable four-pass
+radix sort produces ascending keys and therefore ordinary back-to-front
+rendering; producer prepend makes equal-key order the reverse of discovery.
+The list renders after opaque geometry under greater-equal depth testing with
+depth writes disabled and cannot be regrouped by material.
+
+The portable D3D11 and Metal backends deliberately do not consume this state
+yet. The current command is range-level while native ordering is triangle-level
+and cross-kind. Exact `_ftol` boundary behavior also remains conditioned on the
+live x87 policy. Enabling factors alone would be an incomplete visual
+implementation.
 
 ## CPU diagnostic
 

@@ -22,6 +22,7 @@ enum class DrawSubmissionIssueKind : std::uint8_t {
     nonFiniteBounds,
     invalidBounds,
     nonFiniteTransform,
+    nonFiniteMaterialState,
     indexOutOfRange,
     invalidRange,
     rangeCoverageMismatch,
@@ -75,6 +76,7 @@ struct DrawSubmissionCommand {
     std::optional<TextureAssetId> primary;
     std::optional<TextureAssetId> secondary;
     std::optional<TextureAssetId> environment;
+    DrawMaterialState materialState{};
 
     [[nodiscard]] friend constexpr bool operator==(
         const DrawSubmissionCommand&,

@@ -99,8 +99,15 @@ void appendBytes(Bytes& destination, const Bytes& source) {
 }
 
 struct MaterialCcfOptions {
+    bool includeVisualProperties{true};
     bool includeScalars{true};
     std::uint32_t collisionMode2152{8U};
+    float scalar2152A{0.5F};
+    float scalar2152B{-0.25F};
+    std::uint8_t lightingMode{2U};
+    bool gouraudShading{true};
+    std::uint32_t blendMode{3U};
+    bool flag2151{true};
     bool duplicatePrimaryTexture{};
     bool validNameTerminator{true};
     bool zeroLengthPrefix{};
@@ -131,18 +138,32 @@ struct MaterialCcfOptions {
         appendBytes(materialPayload, ccfChunk(0x2153U, Bytes(16U, 0U)));
     }
 
-    Bytes vectorsPayload;
-    appendBytes(vectorsPayload, ccfChunk(0xF030U, Bytes(12U, 0U)));
-    appendBytes(vectorsPayload, ccfChunk(0xF030U, Bytes(12U, 0U)));
-    appendU32(vectorsPayload, 0U);
-    appendBytes(materialPayload, ccfChunk(0x2140U, vectorsPayload));
-    appendBytes(materialPayload, ccfChunk(0x2150U, Bytes(6U, 0U)));
-    appendBytes(materialPayload, ccfChunk(0x2151U, Bytes(1U, 0U)));
+    if (options.includeVisualProperties) {
+        Bytes vectorsPayload;
+        appendBytes(
+            vectorsPayload, ccfVector3(0xF030U, 1.25F, 2.5F, -3.75F));
+        appendBytes(
+            vectorsPayload, ccfVector3(0xF030U, 4.5F, -5.25F, 6.75F));
+        appendFloat(vectorsPayload, 0.625F);
+        appendBytes(materialPayload, ccfChunk(0x2140U, vectorsPayload));
+
+        Bytes flags;
+        flags.push_back(options.lightingMode);
+        flags.push_back(options.gouraudShading ? 1U : 0U);
+        appendU32(flags, options.blendMode);
+        appendBytes(materialPayload, ccfChunk(0x2150U, flags));
+        appendBytes(
+            materialPayload,
+            ccfChunk(
+                0x2151U,
+                Bytes{static_cast<std::uint8_t>(
+                    options.flag2151 ? 1U : 0U)}));
+    }
     if (options.includeScalars) {
         Bytes scalars;
         appendU32(scalars, options.collisionMode2152);
-        appendFloat(scalars, 0.0F);
-        appendFloat(scalars, 0.0F);
+        appendFloat(scalars, options.scalar2152A);
+        appendFloat(scalars, options.scalar2152B);
         appendBytes(materialPayload, ccfChunk(0x2152U, scalars));
     }
 
@@ -644,8 +665,29 @@ void testCcf() {
     require(material.primaryTexture == "Wall.gti", "CCF primary texture mismatch");
     require(!material.secondaryTexture.has_value(), "unexpected CCF secondary texture");
     require(!material.environmentTexture.has_value(), "unexpected CCF environment texture");
+    require(
+        material.properties2140 ==
+            airfix::assets::CcfMaterialProperties2140{
+                .firstVector = {1.25F, 2.5F, -3.75F},
+                .secondVector = {4.5F, -5.25F, 6.75F},
+                .scalar = 0.625F,
+            },
+        "CCF 0x2140 material properties mismatch");
+    require(
+        material.properties2150 ==
+            airfix::assets::CcfMaterialProperties2150{
+                .lightingMode = 2U,
+                .gouraudShading = true,
+                .blendMode = 3U,
+            },
+        "CCF 0x2150 material properties mismatch");
+    require(material.flag2151 == true, "CCF 0x2151 flag mismatch");
     require(material.collisionMode2152 == 8U,
         "CCF 0x2152 collision mode mismatch");
+    require(
+        material.scalarProperties2152 ==
+            std::array<float, 2>{0.5F, -0.25F},
+        "CCF 0x2152 scalar properties mismatch");
     require(materialMetadata.topLevelChunks[0].directChildren[0].directChildren.size() == 5U,
         "CCF material property count mismatch");
 
@@ -656,6 +698,17 @@ void testCcf() {
         "CCF loader-compatible missing property was rejected");
     require(!missingPropertyMetadata.materials[0].collisionMode2152.has_value(),
         "absent CCF 0x2152 unexpectedly produced a collision mode");
+    require(!missingPropertyMetadata.materials[0].scalarProperties2152.has_value(),
+        "absent CCF 0x2152 unexpectedly produced scalar properties");
+    const auto missingVisualProperties =
+        makeMaterialCcf({.includeVisualProperties = false});
+    const auto missingVisualMetadata =
+        airfix::assets::parseCcf(missingVisualProperties);
+    require(
+        !missingVisualMetadata.materials[0].properties2140.has_value() &&
+            !missingVisualMetadata.materials[0].properties2150.has_value() &&
+            !missingVisualMetadata.materials[0].flag2151.has_value(),
+        "absent CCF visual material properties were synthesized by the parser");
     const auto duplicateTexture = makeMaterialCcf({.duplicatePrimaryTexture = true});
     requireParseError([&] { (void)airfix::assets::parseCcf(duplicateTexture); });
     const auto unterminatedName = makeMaterialCcf({.validNameTerminator = false});

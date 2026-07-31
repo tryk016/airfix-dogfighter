@@ -112,6 +112,75 @@ void testEmptyTexturesAndMaterialsAreRetained() {
         "empty input did not produce an empty successful plan");
 }
 
+void testRecoveredMaterialStateAndDefaults() {
+    const CcfMaterialMetadata recoveredMetadata{
+        .properties2140 = CcfMaterialProperties2140{
+            .firstVector = {1.25F, 2.5F, 3.75F},
+            .secondVector = {-4.5F, 5.25F, -6.75F},
+            .scalar = 0.625F,
+        },
+        .properties2150 = CcfMaterialProperties2150{
+            .lightingMode = 2U,
+            .gouraudShading = true,
+            .blendMode = 3U,
+        },
+        .flag2151 = true,
+    };
+    const DrawMaterialState expected{
+        .lightingMode = 2U,
+        .gouraudShading = true,
+        .blendMode = 3U,
+        .flag2151 = true,
+        .scalar2140 = 0.625F,
+        .firstVector2140 = {1.25F, 2.5F, 3.75F},
+        .secondVector2140 = {-4.5F, 5.25F, -6.75F},
+    };
+    require(
+        makeDrawMaterialState(recoveredMetadata) == expected,
+        "recovered CCF material fields did not map to the draw contract");
+    require(
+        makeDrawMaterialState(CcfMaterialMetadata{}) == DrawMaterialState{},
+        "absent CCF material chunks did not retain native reset defaults");
+
+    const std::vector<std::uint32_t> references{8U};
+    const std::vector<DrawMaterialState> states{expected};
+    const TextureEntryResolution resolution;
+    auto result = buildTextureBindingPlan(
+        references,
+        states,
+        std::span<const TextureDependency>{},
+        resolution);
+    require(
+        result.issues.empty() && result.materials.size() == 1U &&
+            result.materials[0].state == expected,
+        "texture binding discarded the recovered material state");
+
+    const std::vector<DrawMaterialState> mismatched{expected, expected};
+    result = buildTextureBindingPlan(
+        references,
+        mismatched,
+        std::span<const TextureDependency>{},
+        resolution);
+    require(
+        hasBindingIssue(
+            result,
+            TextureBindingIssueKind::materialStateMismatch) &&
+            result.materials.empty() && result.imports.empty(),
+        "material-state cardinality mismatch was not fail-closed");
+
+    result = buildTextureBindingPlan(
+        references,
+        std::span<const DrawMaterialState>{},
+        std::span<const TextureDependency>{},
+        resolution);
+    require(
+        hasBindingIssue(
+            result,
+            TextureBindingIssueKind::materialStateMismatch) &&
+            result.materials.empty() && result.imports.empty(),
+        "explicit empty material-state span silently selected defaults");
+}
+
 void testBindingFailuresAreTypedAndAtomic() {
     {
         const std::vector<std::uint32_t> references{1U, 1U};
@@ -588,6 +657,7 @@ int main() {
     try {
         testDenseIdsAndCrossRoleDeduplication();
         testEmptyTexturesAndMaterialsAreRetained();
+        testRecoveredMaterialStateAndDefaults();
         testBindingFailuresAreTypedAndAtomic();
         testUpstreamResolutionContractIsFailClosed();
         testBindingLimitsAreAtomic();

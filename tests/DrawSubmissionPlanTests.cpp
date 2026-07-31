@@ -48,12 +48,27 @@ void require(const bool condition, const std::string& message) {
             .primary = TextureAssetId{primary},
             .secondary = TextureAssetId{0U},
             .environment = std::nullopt,
+            .state = DrawMaterialState{
+                .lightingMode = 1U,
+                .gouraudShading = true,
+                .blendMode = 0U,
+                .flag2151 = false,
+                .scalar2140 = 0.75F,
+                .firstVector2140 = {1.0F, 0.5F, 0.25F},
+                .secondVector2140 = {0.25F, 0.5F, 1.0F},
+            },
         },
         DrawMaterial{
             .sourceReference = 20U,
             .primary = std::nullopt,
             .secondary = TextureAssetId{2U},
             .environment = TextureAssetId{3U},
+            .state = DrawMaterialState{
+                .lightingMode = 2U,
+                .gouraudShading = false,
+                .blendMode = 3U,
+                .flag2151 = true,
+            },
         },
     };
     result.ranges = {
@@ -82,8 +97,8 @@ void require(const bool condition, const std::string& message) {
 }
 
 void testDeterministicSharedMeshCommands() {
-    const auto result = buildDrawSubmissionPlan(
-        representativeModel(), 5U);
+    const auto model = representativeModel();
+    const auto result = buildDrawSubmissionPlan(model, 5U);
     require(result.issues.empty() && result.plan.has_value(),
         "valid model was rejected");
     require(
@@ -124,8 +139,12 @@ void testDeterministicSharedMeshCommands() {
             commands[1].texcoordMode == TexcoordMode::none &&
             !commands[1].primary.has_value() &&
             commands[1].secondary == TextureAssetId{2U} &&
-            commands[1].environment == TextureAssetId{3U},
-        "command lost range or complete optional texture bindings");
+            commands[1].environment == TextureAssetId{3U} &&
+            commands[0].materialState ==
+                model.meshes[1].materials[0].state &&
+            commands[1].materialState ==
+                model.meshes[1].materials[1].state,
+        "command lost range, texture bindings, or recovered material state");
 }
 
 void testEmptyInputsAndEmptyMesh() {
@@ -290,6 +309,19 @@ void testNonFinitePayloads() {
                 DrawSubmissionIssueKind::nonFiniteTransform) &&
                 !result.plan.has_value(),
             "non-finite transform was not rejected");
+    }
+    {
+        auto model = representativeModel();
+        model.meshes[1].materials[0].state.secondVector2140.z = nan;
+        const auto result = buildDrawSubmissionPlan(model, 5U);
+        require(
+            hasIssue(
+                result,
+                DrawSubmissionIssueKind::nonFiniteMaterialState) &&
+                !result.plan.has_value() &&
+                result.issues[0].meshSlot == 1U &&
+                result.issues[0].materialSlot == 0U,
+            "non-finite material state was not rejected with context");
     }
 }
 

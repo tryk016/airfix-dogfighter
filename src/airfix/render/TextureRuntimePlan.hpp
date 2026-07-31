@@ -24,6 +24,7 @@ struct TextureImportRequest {
 enum class TextureBindingIssueKind : std::uint8_t {
     upstreamResolutionIssue,
     dependencyMismatch,
+    materialStateMismatch,
     duplicateMaterialReference,
     unresolvedTexture,
     nonUniqueTexture,
@@ -63,6 +64,18 @@ struct TextureBindingPlan {
     std::span<const assets::TextureDependency> expectedDependencies,
     const assets::TextureEntryResolution& textureResolution,
     const TextureBindingPlanLimits& limits = {});
+
+[[nodiscard]] TextureBindingPlan buildTextureBindingPlan(
+    std::span<const std::uint32_t> materialReferences,
+    std::span<const DrawMaterialState> materialStates,
+    std::span<const assets::TextureDependency> expectedDependencies,
+    const assets::TextureEntryResolution& textureResolution,
+    const TextureBindingPlanLimits& limits = {});
+
+// Converts only recovered CCF fields and applies exact native reset defaults
+// when an optional property chunk is absent.
+[[nodiscard]] DrawMaterialState makeDrawMaterialState(
+    const assets::CcfMaterialMetadata& material) noexcept;
 
 enum class GtiMipPolicy : std::uint8_t {
     authoredChain,
