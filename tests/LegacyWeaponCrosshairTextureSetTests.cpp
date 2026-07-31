@@ -1,3 +1,4 @@
+#include "airfix/content/LegacyWeaponCrosshairBinding.hpp"
 #include "airfix/content/LegacyWeaponCrosshairTextureSet.hpp"
 #include "support/SyntheticContent.hpp"
 
@@ -19,12 +20,15 @@
 namespace {
 
 using airfix::content::ContentRevision;
+using airfix::content::LegacyWeaponCrosshairBindingStatus;
 using airfix::content::LegacyWeaponCrosshairTextureLoadIssueKind;
 using airfix::content::LegacyWeaponCrosshairTextureLoadLimits;
 using airfix::content::LegacyWeaponCrosshairTextureLoadPhase;
 using airfix::content::LegacyWeaponCrosshairTextureLoadResult;
 using airfix::content::LegacyWeaponCrosshairTextureRole;
 using airfix::content::VerifiedContentSession;
+using airfix::simulation::LegacyWeaponSightRole;
+using airfix::simulation::LegacyWeaponTypeId;
 using airfix::testing::Bytes;
 using airfix::testing::SyntheticAfPack;
 using airfix::testing::UdspInputEntry;
@@ -40,6 +44,37 @@ constexpr std::array<LegacyWeaponCrosshairTextureRole, 3U> roles{{
     LegacyWeaponCrosshairTextureRole::rocket,
     LegacyWeaponCrosshairTextureRole::bomb,
 }};
+
+struct ExpectedWeaponSight final {
+  LegacyWeaponTypeId type;
+  std::string_view registeredName;
+  std::optional<LegacyWeaponSightRole> role;
+};
+
+constexpr std::array<ExpectedWeaponSight,
+                     airfix::simulation::legacyWeaponTypeCount>
+    expectedWeaponSights{{
+        {LegacyWeaponTypeId::machineGun, "WpMGun",
+         LegacyWeaponSightRole::machineGun},
+        {LegacyWeaponTypeId::rocket, "WpRocket", LegacyWeaponSightRole::rocket},
+        {LegacyWeaponTypeId::bomb, "WpBomb", LegacyWeaponSightRole::bomb},
+        {LegacyWeaponTypeId::cannon, "WpCannon", LegacyWeaponSightRole::rocket},
+        {LegacyWeaponTypeId::teslaCoil, "WpTeslacoil",
+         LegacyWeaponSightRole::rocket},
+        {LegacyWeaponTypeId::particleBeam, "WpParticleBeam",
+         LegacyWeaponSightRole::rocket},
+        {LegacyWeaponTypeId::missile, "WpMissile",
+         LegacyWeaponSightRole::rocket},
+        {LegacyWeaponTypeId::paraMine, "WpParaMine", std::nullopt},
+        {LegacyWeaponTypeId::atomicBomb, "WpABomb",
+         LegacyWeaponSightRole::bomb},
+    }};
+
+static_assert(noexcept(airfix::content::bindLegacyWeaponCrosshairTexture(
+    std::declval<
+        const airfix::content::LoadedLegacyWeaponCrosshairTextureSet &>(),
+    std::declval<const VerifiedContentSession &>(),
+    LegacyWeaponTypeId::machineGun)));
 
 void require(const bool condition, const std::string_view message) {
   if (!condition) {
@@ -205,6 +240,90 @@ void testLoadsAuthenticatedExactTextureSet() {
               forged.texture(LegacyWeaponCrosshairTextureRole::rocket) ==
                   nullptr,
           "forged texture-set metadata remained selectable");
+}
+
+void testRecoveredWeaponTypeCatalog() {
+  const auto catalog = airfix::simulation::legacyWeaponTypeCatalog();
+  require(catalog.size() == expectedWeaponSights.size(),
+          "weapon type catalog count changed");
+  for (std::size_t index = 0U; index < catalog.size(); ++index) {
+    const auto &actual = catalog[index];
+    const auto &expected = expectedWeaponSights[index];
+    require(actual.id == expected.type &&
+                actual.registeredName == expected.registeredName &&
+                actual.sightRole == expected.role &&
+                airfix::simulation::findLegacyWeaponType(expected.type) ==
+                    &actual &&
+                airfix::simulation::findLegacyWeaponType(
+                    expected.registeredName) == &actual,
+            "recovered weapon type or sight mapping changed");
+  }
+  require(airfix::simulation::findLegacyWeaponType(
+              static_cast<LegacyWeaponTypeId>(0xFFU)) == nullptr &&
+              airfix::simulation::findLegacyWeaponType("wpmgun") == nullptr &&
+              airfix::simulation::findLegacyWeaponType("") == nullptr,
+          "invalid or normalized weapon identifier resolved");
+}
+
+void testAuthenticatedWeaponTypeBindings() {
+  PackFixture fixture(representativeEntries());
+  auto session = fixture.open();
+  const auto loadedResult =
+      airfix::content::loadLegacyWeaponCrosshairTextures(session);
+  require(loadedResult.success(), "binding fixture did not load");
+  const auto &loaded = *loadedResult.textures;
+
+  for (const auto &expected : expectedWeaponSights) {
+    const auto result = airfix::content::bindLegacyWeaponCrosshairTexture(
+        loaded, session, expected.type);
+    if (!expected.role.has_value()) {
+      require(result.status == LegacyWeaponCrosshairBindingStatus::noSight &&
+                  !result.binding.has_value(),
+              "sightless weapon published a crosshair binding");
+      continue;
+    }
+
+    const auto *texture = loaded.texture(*expected.role);
+    require(texture != nullptr && result.success() &&
+                result.binding->weaponType == expected.type &&
+                result.binding->role == *expected.role &&
+                result.binding->textureId == texture->textureId &&
+                result.binding->revision == loaded.revision &&
+                result.binding->transactionIdentity ==
+                    loaded.transactionIdentity &&
+                result.binding->belongsTo(session),
+            "weapon type did not bind its authenticated sight");
+  }
+
+  const auto invalid = airfix::content::bindLegacyWeaponCrosshairTexture(
+      loaded, session, static_cast<LegacyWeaponTypeId>(0xFFU));
+  require(invalid.status ==
+                  LegacyWeaponCrosshairBindingStatus::invalidWeaponType &&
+              !invalid.binding.has_value(),
+          "invalid weapon type did not fail closed");
+
+  auto equalRevisionDifferentHandle = fixture.open();
+  const auto mismatched = airfix::content::bindLegacyWeaponCrosshairTexture(
+      loaded, equalRevisionDifferentHandle, LegacyWeaponTypeId::machineGun);
+  require(mismatched.status ==
+                  LegacyWeaponCrosshairBindingStatus::sessionIdentityMismatch &&
+              !mismatched.binding.has_value(),
+          "equal revision with another stream handle was accepted");
+
+  auto forged = loaded;
+  forged.textures[0].logicalPath = logicalPaths[1];
+  const auto rejected = airfix::content::bindLegacyWeaponCrosshairTexture(
+      forged, session, LegacyWeaponTypeId::machineGun);
+  require(rejected.status ==
+                  LegacyWeaponCrosshairBindingStatus::invalidTextureSet &&
+              !rejected.binding.has_value(),
+          "forged texture set published a weapon binding");
+
+  const auto noSight = airfix::content::bindLegacyWeaponCrosshairTexture(
+      forged, equalRevisionDifferentHandle, LegacyWeaponTypeId::paraMine);
+  require(noSight.status == LegacyWeaponCrosshairBindingStatus::noSight &&
+              !noSight.binding.has_value(),
+          "sightless weapon outcome depended on private texture provenance");
 }
 
 void testLookupFailuresAreAtomicAndAttributed() {
@@ -409,6 +528,8 @@ void testCancellationCallbackAndIdentityGuards() {
 int main() {
   try {
     testLoadsAuthenticatedExactTextureSet();
+    testRecoveredWeaponTypeCatalog();
+    testAuthenticatedWeaponTypeBindings();
     testLookupFailuresAreAtomicAndAttributed();
     testGtiContractFailuresAreTypedAndAtomic();
     testBudgetsFailBeforePublication();

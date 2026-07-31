@@ -393,10 +393,26 @@ unproved hide rule. See
 through one unchanged `VerifiedContentSession`, preflights source and RGBA
 budgets before decoding, requires selected format 8 at `32x32`, and publishes
 the complete owned set atomically. Its dense IDs live only inside the dedicated
-HUD set and are not scene texture IDs. Actual aircraft weapon/type selection,
-live aim/collision production, GPU upload and native sprite submission remain
-pending. See
+HUD set and are not scene texture IDs. See
 [EXP-20260731-089](../../experiments/EXP-20260731-089-authenticated-crosshair-texture-set.md).
+
+`EV-20260731-005` joins the nine exact `Projectiles.type` registration names to
+their concrete type-loader behavior. `WpMGun` uses the machine-gun sight;
+rocket, cannon, Tesla coil, particle beam, and missile use the rocket sight;
+bomb and atomic bomb use the bomb sight. `WpParaMine::Load` performs no sight
+lookup and produces the explicit no-sight result. The AirCraft function at RVA
+`0x00007600` stops/deactivates the old `+0x494` secondary, stores a distinct
+non-null replacement, and activates it; primary `+0x490` remains independent.
+
+`LegacyWeaponTypeCatalog` preserves that case-sensitive mapping, while
+`bindLegacyWeaponCrosshairTexture` returns one allocation-free binding carrying
+the weapon type, sight role, HUD-local texture ID, content revision, and exact
+authenticated-stream identity. It is called separately for primary and
+selected-secondary slots. A forged set, invalid type, or another stream handle
+publishes nothing. Actual live slot ownership, aim/collision production,
+primary/secondary composition policy, GPU upload, and native sprite submission
+remain pending. See
+[EXP-20260731-090](../../experiments/EXP-20260731-090-weapon-type-crosshair-binding.md).
 
 ## Actor damage and surface reaction
 
@@ -497,9 +513,11 @@ effect.
   creator BSP guard and terminal command data to private live actor/effect
   adapters.
 - Recreate the optional `mguntracer` and `FxRicochet` visual/effect adapters.
-- Map the aircraft's recovered selected weapon/type to the implemented
-  authenticated sight set, then feed changing owner/aim/collision state through
-  the crosshair rectangle plan into shared D3D11/Metal sprite submission.
+- Feed the recovered primary and selected-secondary live weapon identities into
+  the implemented authenticated per-type sight binder, establish their static
+  composition/visibility order, then feed changing owner/aim/collision state
+  through the crosshair rectangle plan into shared D3D11/Metal sprite
+  submission.
 - Trace sample/effect commands associated with a shot.
 - Recover secondary weapon selection and each secondary projectile family.
 - Confirm ammunition-zero semantics and scheduler/x87 tolerance with controlled

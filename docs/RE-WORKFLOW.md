@@ -94,6 +94,7 @@ The targeted read-only exporters are:
 | `ExportFunctionInstructions.java` | emit deterministic address/bytes/instruction listings |
 | `ExportMemoryValues.java` | interpret four bytes at exact addresses as integer and `float32` values |
 | `ExportCallersOfNamedFunctions.java` | join selected named callees to their callers |
+| `ExportIndirectCallsByDisplacement.java` | locate indirect calls containing one or more exact recovered vtable displacements and decompile their owning functions |
 | `ExportFloatingPointEnvironmentWrites.java` | enumerate decoded x87/SSE environment writes and direct calls to known CRT/fenv mutators across one program |
 
 Reports and Ghidra projects remain local and ignored. Only concise conclusions,
