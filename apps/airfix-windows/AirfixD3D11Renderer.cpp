@@ -10,6 +10,7 @@
 #include "airfix/render/PlayerActorPoseRuntimePreparation.hpp"
 #include "airfix/render/PublicRenderSmokeScene.hpp"
 #include "airfix/render/RenderFrameDiagnostics.hpp"
+#include "airfix/render/SceneOverviewCamera.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -737,7 +738,9 @@ public:
 
   [[nodiscard]] bool
   renderFrame(const bool validateGpuOutput,
-              const std::filesystem::path *captureOutput = nullptr) {
+              const std::filesystem::path *captureOutput = nullptr,
+              const airfix::render::LegacyGameplayCameraClipPacket
+                  *cameraOverride = nullptr) {
     const auto frameStarted = std::chrono::steady_clock::now();
     double frameIntervalMilliseconds = 1000.0 / 60.0;
     if (previousFrameStart_.has_value()) {
@@ -778,7 +781,7 @@ public:
     const bool gameplay = mission_ != nullptr;
     std::optional<airfix::render::LegacyGameplayCameraPacketLease>
         gameplayCameraLease;
-    if (gameplay) {
+    if (gameplay && cameraOverride == nullptr) {
       if (mission_->cameraMissionRuntime == nullptr) {
         return false;
       }
@@ -793,9 +796,11 @@ public:
       }
     }
     const auto *const gameplayCamera =
-        gameplayCameraLease.has_value()
-        ? gameplayCameraLease->packet()
-        : nullptr;
+        cameraOverride != nullptr
+        ? cameraOverride
+        : (gameplayCameraLease.has_value()
+               ? gameplayCameraLease->packet()
+               : nullptr);
     const auto layout = buildLayout(
         settings_, static_cast<std::uint32_t>(width_),
         static_cast<std::uint32_t>(height_), gameplayCamera);
@@ -885,6 +890,18 @@ public:
       const auto &mesh = meshes[meshSlot];
       if (!mesh.vertices || !mesh.indices) {
         throw std::runtime_error("draw command references an empty GPU mesh");
+      }
+      if (cameraOverride != nullptr) {
+        const auto instanceIndex =
+            static_cast<std::size_t>(command.instanceIndex);
+        // The capture-only cutaway hides exterior-facing room-shell polygons.
+        // Placed objects and the player keep the normal two-sided state.
+        const bool roomShell =
+            instanceIndex < mission_->room.instanceProvenance.size() &&
+            mission_->room.instanceProvenance[instanceIndex]
+                .physicalRoomIndex.has_value();
+        context_->RSSetState(
+            roomShell ? overviewRasterizer_.Get() : rasterizer_.Get());
       }
       constexpr UINT stride = sizeof(GpuVertex);
       constexpr UINT offset = 0U;
@@ -1017,6 +1034,44 @@ public:
     if (!renderFrame(true, &outputPath)) {
       throw std::runtime_error(
           "private frame capture produced no visible D3D11 output");
+    }
+  }
+
+  void captureMissionOverviewFrameToBmp(
+      const std::filesystem::path &outputPath) {
+    if (!missionWorldRoomInstalled()) {
+      throw std::runtime_error(
+          "private overview capture requires an installed mission");
+    }
+    if (width_ <= 0 || height_ <= 0) {
+      throw std::runtime_error(
+          "private overview capture requires a drawable surface");
+    }
+    auto captureSettings = settings_;
+    captureSettings.scenePresentation =
+        airfix::render::ScenePresentationMode::widescreenHorPlus;
+    captureSettings.verticalFovAdjustmentDegrees = 0.0F;
+    captureSettings.diagnosticsOverlayEnabled = true;
+    if (!applyRenderPresentationSettings(captureSettings, {}).accepted()) {
+      throw std::runtime_error(
+          "private overview capture settings could not be applied");
+    }
+    overlaySuppressed_ = false;
+    const auto overview = airfix::render::buildSceneOverviewCamera(
+        mission_->room.model,
+        {
+            .logicalCanvasWidth = static_cast<std::uint32_t>(width_),
+            .logicalCanvasHeight = static_cast<std::uint32_t>(height_),
+        });
+    if (!overview.complete()) {
+      throw std::runtime_error(
+          "private mission did not produce a valid overview camera");
+    }
+    if (!renderFrame(
+            true, &outputPath,
+            &overview.snapshot->clipPacket)) {
+      throw std::runtime_error(
+          "private overview capture produced no visible D3D11 output");
     }
   }
 
@@ -1764,6 +1819,13 @@ private:
     requireSuccess(device_->CreateRasterizerState(&rasterizerDescription,
                                                   rasterizer_.GetAddressOf()),
                    "ID3D11Device::CreateRasterizerState");
+    // Never selected by ordinary gameplay frames. The provenance-gated
+    // overview pass uses it only for physical room-shell contributors.
+    rasterizerDescription.CullMode = D3D11_CULL_FRONT;
+    requireSuccess(
+        device_->CreateRasterizerState(&rasterizerDescription,
+                                       overviewRasterizer_.GetAddressOf()),
+        "ID3D11Device::CreateRasterizerState(overview)");
 
     D3D11_DEPTH_STENCIL_DESC smokeDepthDescription{};
     smokeDepthDescription.DepthEnable = TRUE;
@@ -2327,6 +2389,7 @@ private:
   ComPtr<ID3D11SamplerState> sampler_;
   ComPtr<ID3D11SamplerState> presentationSampler_;
   ComPtr<ID3D11RasterizerState> rasterizer_;
+  ComPtr<ID3D11RasterizerState> overviewRasterizer_;
   ComPtr<ID3D11DepthStencilState> smokeDepthState_;
   ComPtr<ID3D11DepthStencilState> gameplayDepthState_;
   ComPtr<ID3D11DepthStencilState> presentationDepthState_;
@@ -2456,6 +2519,11 @@ AirfixD3D11Renderer::gameplayCameraMissionRuntimeEndpoint() const noexcept {
 void AirfixD3D11Renderer::captureFrameToBmp(
     const std::filesystem::path &outputPath) {
   implementation_->captureFrameToBmp(outputPath);
+}
+
+void AirfixD3D11Renderer::captureMissionOverviewFrameToBmp(
+    const std::filesystem::path &outputPath) {
+  implementation_->captureMissionOverviewFrameToBmp(outputPath);
 }
 
 void AirfixD3D11Renderer::capturePublicDiagnosticFrameToBmp(

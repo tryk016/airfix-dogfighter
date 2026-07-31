@@ -315,6 +315,15 @@ AirfixDogfighter.exe --content-root <private-content-root> `
   [--player-object <player-object-logical-path>] `
   [--start-index <uint32>] `
   --capture-frame <private-output.bmp>
+
+AirfixDogfighter.exe --content-root <private-content-root> `
+  --setup <setup-logical-path> `
+  --level <level-logical-path> `
+  [--player-object <player-object-logical-path>] `
+  [--start-index <uint32>] `
+  --capture-overview-frame <private-output.bmp> `
+  --capture-size 1920x1080 `
+  --render-scale 100
 ```
 
 All placeholders must point outside the repository. The validation mode opens a
@@ -327,10 +336,15 @@ room and registered clips available for the reconstructed runtime. AFPACK v1
 contains no launch catalogue, so setup and Level paths are deliberately
 explicit and are never inferred. Do not place real values in source files,
 presets, scripts, shell history shared with others, or issue reports.
-The one-shot capture mode keeps the SDL window hidden, refuses to overwrite an
-existing file, and writes a top-down BGRA8 BMP after the same visible-output
-check. Captures contain derived proprietary imagery and must stay private and
-outside Git.
+Both one-shot capture modes keep the SDL window hidden, refuse to overwrite an
+existing file, and write a top-down BGRA8 BMP after the same visible-output
+check. `--capture-frame` retains the current gameplay camera.
+`--capture-overview-frame` instead derives an owning one-frame camera from the
+complete placed-model bounds, enables the diagnostic overlay, and applies a
+room-shell-only cutaway so exterior faces do not hide the interior. It never
+publishes that camera to simulation and does not change normal gameplay
+culling. Captures contain derived proprietary imagery and must stay private
+and outside Git.
 Loose WAV files and the original installation directory are not accepted by
 the application.
 

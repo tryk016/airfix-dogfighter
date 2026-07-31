@@ -62,6 +62,15 @@
   D3D11 and Metal consumption remains deliberately off until triangle-level
   runtime producers and the policy-conditioned x87 `_ftol` boundary are
   implemented; current output is unchanged.
+- Windows now has a private `--capture-overview-frame` validation path for a
+  complete installed mission. A backend-neutral camera fits all transformed
+  non-empty model bounds at the requested aspect ratio; D3D11 then applies a
+  diagnostic cutaway only to physical room-shell contributors while retaining
+  ordinary two-sided rendering for placed objects and the player aircraft.
+  The camera is an owning one-frame value and never enters the gameplay camera
+  exchange. A local 1920x1080, 100%-scale Classic capture verifies the full
+  room, textured placed scene, player aircraft, and diagnostics overlay; the
+  derived image remains private and outside Git.
 - ADR-0014 defines one cross-platform render-presentation settings transaction.
   Its portable C++20 foundation is implemented: render scale, Hor+/Original
   4:3, safe FOV, UI scale, diagnostics, and the Classic/Enhanced selector form

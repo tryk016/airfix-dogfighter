@@ -110,6 +110,11 @@ public:
   // Callers must keep the derived screenshot outside public source control.
   void captureFrameToBmp(const std::filesystem::path &outputPath);
 
+  // Captures the complete installed mission from a fitted, one-frame
+  // developer camera. The gameplay camera runtime is never changed.
+  void captureMissionOverviewFrameToBmp(
+      const std::filesystem::path &outputPath);
+
   // Captures the public synthetic scene and developer overlay. This contains
   // no owner content and exists for repeatable renderer diagnostics.
   void capturePublicDiagnosticFrameToBmp(

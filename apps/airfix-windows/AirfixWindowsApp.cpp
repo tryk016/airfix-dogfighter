@@ -522,6 +522,7 @@ int run(const int argumentCount, char *arguments[]) {
   const bool sessionOnlyInvocation =
       options.smokeTest || options.validateContentOnly ||
       options.captureFrameOutput.has_value() ||
+      options.captureOverviewFrameOutput.has_value() ||
       options.captureDiagnosticFrameOutput.has_value() ||
       options.captureSettingsPanelOutput.has_value() ||
       options.captureControllerCalibrationPanelOutput.has_value() ||
@@ -876,6 +877,12 @@ int run(const int argumentCount, char *arguments[]) {
   if (options.captureFrameOutput.has_value()) {
     renderer.captureFrameToBmp(*options.captureFrameOutput);
     std::cout << "Authenticated private D3D11 mission frame captured\n";
+    return 0;
+  }
+  if (options.captureOverviewFrameOutput.has_value()) {
+    renderer.captureMissionOverviewFrameToBmp(
+        *options.captureOverviewFrameOutput);
+    std::cout << "Authenticated private D3D11 full-room overview captured\n";
     return 0;
   }
   if (options.captureDiagnosticFrameOutput.has_value()) {

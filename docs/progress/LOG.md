@@ -4511,3 +4511,26 @@ superseded evidence.
   PR #90 hosted runs `30622519149` and `30622518942` pass all seven Windows
   product, Windows/Ubuntu/macOS portable, clangd, iPhoneOS, and
   iPhoneSimulator jobs.
+
+## 2026-07-31 - full-room diagnostic capture
+
+- Added a backend-neutral diagnostic camera that computes a finite world AABB
+  from every transformed non-empty mesh instance and fits all eight corners
+  inside a configurable viewport margin. Projection and depth ranges are
+  derived from the requested output aspect; malformed models and policies fail
+  closed.
+- Windows exposes the owner-private `--capture-overview-frame` mode. It uses an
+  owning one-frame camera packet without acquiring or publishing gameplay
+  camera state, forces widescreen presentation plus the diagnostics overlay,
+  and applies front-face culling only to physical room-shell contributors for
+  a cutaway view. Placed objects and the player aircraft keep the normal
+  two-sided rasterizer.
+- A local Classic capture was generated and visually inspected at exact
+  1920x1080 with a 1920x1080 render target at 100% scale. It submitted all 190
+  scene draw calls and 1,782 scene triangles and showed the textured room,
+  placed contents, player aircraft, and diagnostic panel. The source content
+  and derived BMP remain ignored and outside Git.
+- A fresh GCC 15.2/Ninja build completes 389 steps and passes 122/122 portable
+  CTests. The native MSVC 19.51/Ninja Windows product passes 132/132 CTests,
+  including both D3D11 product smokes. Public-boundary tests, the 630-file
+  repository scan, 12 Rizin normalization tests, and `git diff --check` pass.

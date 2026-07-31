@@ -51,6 +51,7 @@ void testEmptyAndSmokeModes() {
               !defaultOptions.renderOverrides
                    .verticalFovAdjustmentDegrees &&
               !defaultOptions.captureDiagnosticFrameOutput &&
+              !defaultOptions.captureOverviewFrameOutput &&
               !defaultOptions.captureSettingsPanelOutput &&
               !defaultOptions.captureControllerCalibrationPanelOutput &&
               !defaultOptions.captureControllerBindingsPanelOutput,
@@ -238,6 +239,9 @@ void testValidationAndRejections() {
                              "--capture-frame"sv, "frame.bmp"sv},
                   "capture without a complete mission must fail closed");
   requireRejected(std::array{"--content-root"sv, "private-pack"sv,
+                             "--capture-overview-frame"sv, "frame.bmp"sv},
+                  "overview capture without a mission must fail closed");
+  requireRejected(std::array{"--content-root"sv, "private-pack"sv,
                              "--capture-size"sv, "3840x2160"sv},
                   "capture size without frame capture must fail closed");
   requireRejected(std::array{"--content-root"sv, "private-pack"sv,
@@ -300,6 +304,18 @@ void testValidationAndRejections() {
   requireRejected(std::array{"--capture-diagnostic-frame"sv, "public.bmp"sv,
                              "--no-render-diagnostics"sv},
                   "diagnostic capture and disabled diagnostics must conflict");
+  requireRejected(
+      std::array{"--content-root"sv, "private-pack"sv, "--setup"sv,
+                 "mission.afs"sv, "--level"sv, "mission.level"sv,
+                 "--capture-overview-frame"sv, "overview.bmp"sv,
+                 "--no-render-diagnostics"sv},
+      "overview capture and disabled diagnostics must conflict");
+  requireRejected(
+      std::array{"--content-root"sv, "private-pack"sv, "--setup"sv,
+                 "mission.afs"sv, "--level"sv, "mission.level"sv,
+                 "--capture-frame"sv, "frame.bmp"sv,
+                 "--capture-overview-frame"sv, "overview.bmp"sv},
+      "private capture modes must remain mutually exclusive");
   requireRejected(std::array{"--content-root"sv, "private-pack"sv, "--setup"sv,
                              "mission.afs"sv, "--level"sv, "mission.level"sv,
                              "--capture-frame"sv, "frame.bmp"sv,
@@ -336,6 +352,32 @@ void testPrivateCaptureRequest() {
                   ScenePresentationMode::originalFourByThree &&
               !options.validateContentOnly,
           "private capture request was not retained");
+}
+
+void testPrivateOverviewCaptureRequest() {
+  const std::array arguments{
+      "--content-root"sv,
+      "private-pack"sv,
+      "--setup"sv,
+      "mission.afs"sv,
+      "--level"sv,
+      "mission.level"sv,
+      "--player-object"sv,
+      "player.object"sv,
+      "--capture-overview-frame"sv,
+      "overview.BMP"sv,
+      "--capture-size"sv,
+      "1920x1080"sv,
+  };
+  const auto options = parse(arguments);
+  require(options.mission.has_value() &&
+              options.captureOverviewFrameOutput ==
+                  std::filesystem::path("overview.BMP") &&
+              options.captureSize ==
+                  airfix::windows::AirfixWindowsCaptureSize{1920U, 1080U} &&
+              options.renderOverrides.diagnosticsOverlayEnabled == true &&
+              !options.captureFrameOutput && !options.validateContentOnly,
+          "private overview capture request was not retained");
 }
 
 void testPublicDiagnosticCaptureRequest() {
@@ -431,6 +473,7 @@ int main() {
     testAuthenticatedMissionRequest();
     testValidationAndRejections();
     testPrivateCaptureRequest();
+    testPrivateOverviewCaptureRequest();
     testPublicDiagnosticCaptureRequest();
     testPublicSettingsPanelCaptureRequest();
     testPublicControllerCalibrationPanelCaptureRequest();
