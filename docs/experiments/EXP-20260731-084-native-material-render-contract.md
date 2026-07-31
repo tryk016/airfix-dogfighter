@@ -192,8 +192,9 @@ Synthetic public-boundary tests, the 626-file repository scan, the
 340-row/14-column unique function catalogue, and `git diff --check` pass. Two
 independent reviews report no code finding; their sole P2 identified stale
 validation provenance in this expanded report, which is corrected by this
-paragraph. Hosted platform builds remain the publication gate for the queue
-addition.
+paragraph. PR #90 hosted runs `30622519149` and `30622518942` pass all seven
+required Windows product, Windows/Ubuntu/macOS portable, clangd, iPhoneOS, and
+iPhoneSimulator jobs.
 
 ## Decision
 

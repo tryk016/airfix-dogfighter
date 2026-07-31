@@ -4508,4 +4508,6 @@ superseded evidence.
   public-boundary tests, 626-file scan, 340-row/14-column unique function
   catalogue, and `git diff --check` pass. Two independent reviews report no
   code finding; their sole P2 stale-validation-provenance finding is corrected.
-  Hosted builds remain the publication gate.
+  PR #90 hosted runs `30622519149` and `30622518942` pass all seven Windows
+  product, Windows/Ubuntu/macOS portable, clangd, iPhoneOS, and
+  iPhoneSimulator jobs.

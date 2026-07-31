@@ -1177,8 +1177,9 @@ These questions do not block static analysis or the archive work.
   121/121 CTests. Synthetic public-boundary tests, the 626-file repository
   scan, the 340-row/14-column unique function catalogue, and
   `git diff --check` pass. Two independent reviews report no code finding;
-  their sole P2 stale validation-provenance finding is corrected. Hosted
-  platform builds remain the publication gate.
+  their sole P2 stale validation-provenance finding is corrected. PR #90
+  hosted runs `30622519149` and `30622518942` pass all seven Windows product,
+  Windows/Ubuntu/macOS portable, clangd, iPhoneOS, and iPhoneSimulator jobs.
 - The recovered CCF material render contract passes fresh Windows GCC
   15.2/Ninja and independent WSL2 GCC builds with all 120 portable CTests. An
   isolated MSVC 19.51/Ninja build completes all 669 steps, links the Windows
