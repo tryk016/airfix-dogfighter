@@ -541,6 +541,7 @@ int run(const int argumentCount, char *arguments[]) {
       options.smokeTest || options.validateContentOnly ||
       options.captureFrameOutput.has_value() ||
       options.captureOverviewFrameOutput.has_value() ||
+      options.captureCrosshairValidationFrameOutput.has_value() ||
       options.captureDiagnosticFrameOutput.has_value() ||
       options.captureSettingsPanelOutput.has_value() ||
       options.captureControllerCalibrationPanelOutput.has_value() ||
@@ -908,6 +909,13 @@ int run(const int argumentCount, char *arguments[]) {
     renderer.captureMissionOverviewFrameToBmp(
         *options.captureOverviewFrameOutput);
     std::cout << "Authenticated private D3D11 full-room overview captured\n";
+    return 0;
+  }
+  if (options.captureCrosshairValidationFrameOutput.has_value()) {
+    renderer.captureMissionCrosshairValidationFrameToBmp(
+        *options.captureCrosshairValidationFrameOutput);
+    std::cout << "Authenticated private D3D11 crosshair validation frame "
+                 "captured\n";
     return 0;
   }
   if (options.captureDiagnosticFrameOutput.has_value()) {

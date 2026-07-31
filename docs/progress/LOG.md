@@ -4671,3 +4671,30 @@ superseded evidence.
 - No crosshair draw is issued. Live weapon ownership, aim/collision state,
   primary/secondary composition, blend/depth policy, and sprite submission
   remain explicit later gates.
+
+## 2026-07-31 - authenticated crosshair sprite submission
+
+- `EV-20260731-006` / `EXP-20260731-092` resolves the `GtScreen` vtable call
+  used by `AfWeapon::RenderCrosshair`. Ghidra and Rizin agree on the simple
+  `[0x10044E20,0x10044E5A)` and full `[0x10044EA0,0x100451D0)` `BlitStretch`
+  functions: full-image UVs, ARGB `0x7FFFFFFF`, texture/vertex alpha
+  modulation, source-alpha/inverse-source-alpha blending, and always-write
+  depth.
+- A new value-only packet composes one projected rectangle with one exact
+  authenticated per-type binding. It preserves both visibility labels and
+  requires an explicit caller draw/suppress decision. Forged HUD-local IDs,
+  invalid rectangles, stale revisions, and another authenticated stream handle
+  fail closed before a native texture lookup.
+- D3D11 now owns the recovered sprite pipeline and a private validation-only
+  capture option; Metal prepares the equivalent blended Depth32 pipeline,
+  sampler, depth state, and provenance-gated encoder. Normal frames still do
+  not invent a live weapon or aim producer.
+- A real first D3D11 capture exposed and then fixed a missing pixel-shader
+  constant-buffer binding that had made tinted overlays transparent. The
+  corrected owner-content 1920x1080 frame visibly contains the half-alpha
+  machine-gun sight and diagnostics. The private BMP remains ignored and
+  outside Git.
+- The native MSVC/Ninja product builds and its full local suite passes
+  `136/136`; the portable preset passes `126/126`. Public-boundary, Ghidra,
+  Rizin, and compilation-database checks are green. Hosted Apple compilation
+  remains the publication gate.

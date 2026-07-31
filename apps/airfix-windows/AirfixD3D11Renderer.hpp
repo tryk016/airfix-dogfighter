@@ -125,6 +125,12 @@ public:
   void captureMissionOverviewFrameToBmp(
       const std::filesystem::path &outputPath);
 
+  // Private visual-validation harness. It draws the authenticated machine-gun
+  // sight at output centre through the native sprite path, but does not claim
+  // to represent live weapon selection or aim state.
+  void captureMissionCrosshairValidationFrameToBmp(
+      const std::filesystem::path &outputPath);
+
   // Captures the public synthetic scene and developer overlay. This contains
   // no owner content and exists for repeatable renderer diagnostics.
   void capturePublicDiagnosticFrameToBmp(

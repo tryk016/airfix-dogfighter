@@ -337,6 +337,7 @@ add_library(airfix_content
     src/airfix/content/LegacyProjectileRuntimeQueryAdapter.cpp
     src/airfix/content/LegacyWeaponCrosshairTextureSet.cpp
     src/airfix/content/LegacyWeaponCrosshairBinding.cpp
+    src/airfix/content/LegacyWeaponCrosshairSpriteSubmission.cpp
     src/airfix/content/MissionLoadManifest.cpp
     src/airfix/content/MissionWorldRoomPublication.cpp
     src/airfix/content/MissionWorldRoomLoader.cpp

@@ -2,6 +2,7 @@
 
 #include "AirfixEmbeddedShader.hpp"
 
+#include "airfix/content/LegacyWeaponCrosshairSpriteSubmission.hpp"
 #include "airfix/content/MissionWorldRoomPublication.hpp"
 #include "airfix/render/DrawSubmissionPlan.hpp"
 #include "airfix/render/LegacyDepthState.hpp"
@@ -171,10 +172,22 @@ static_assert(alignof(GameplayUniforms) == 16U);
 struct alignas(16) OverlayUniforms {
   std::array<float, 4U> outputAndPanelSize{};
   std::array<float, 4U> panelOrigin{};
+  std::array<float, 4U> tint{};
 };
 
-static_assert(sizeof(OverlayUniforms) == 32U);
+static_assert(sizeof(OverlayUniforms) == 48U);
 static_assert(alignof(OverlayUniforms) == 16U);
+
+[[nodiscard]] constexpr std::array<float, 4U>
+normalizedArgb(const std::uint32_t argb) noexcept {
+  constexpr float inverseByte = 1.0F / 255.0F;
+  return {
+      static_cast<float>((argb >> 16U) & 0xFFU) * inverseByte,
+      static_cast<float>((argb >> 8U) & 0xFFU) * inverseByte,
+      static_cast<float>(argb & 0xFFU) * inverseByte,
+      static_cast<float>((argb >> 24U) & 0xFFU) * inverseByte,
+  };
+}
 
 struct CapturedBackBuffer final {
   UINT width{};
@@ -804,7 +817,9 @@ public:
   renderFrame(const bool validateGpuOutput,
               const std::filesystem::path *captureOutput = nullptr,
               const airfix::render::LegacyGameplayCameraClipPacket
-                  *cameraOverride = nullptr) {
+                  *cameraOverride = nullptr,
+              const airfix::content::LegacyWeaponCrosshairSpriteSubmission
+                  *crosshairSubmission = nullptr) {
     const auto frameStarted = std::chrono::steady_clock::now();
     double frameIntervalMilliseconds = 1000.0 / 60.0;
     if (previousFrameStart_.has_value()) {
@@ -1041,12 +1056,16 @@ public:
       presentScaledScene();
     }
 
+    const bool crosshairDrawn =
+        crosshairSubmission != nullptr &&
+        drawLegacyWeaponCrosshair(*crosshairSubmission);
+
     const std::uint64_t sceneDrawCallCount =
         static_cast<std::uint64_t>(submission.commands.size());
     const std::uint64_t auxiliaryDrawCallCount =
-        usesScaledSceneTarget ? 1U : 0U;
+        (usesScaledSceneTarget ? 1U : 0U) + (crosshairDrawn ? 1U : 0U);
     const std::uint64_t auxiliaryTriangleCount =
-        usesScaledSceneTarget ? 1U : 0U;
+        (usesScaledSceneTarget ? 1U : 0U) + (crosshairDrawn ? 2U : 0U);
     const auto cpuSampled = std::chrono::steady_clock::now();
     const double cpuFrameMilliseconds =
         std::chrono::duration<double, std::milli>(
@@ -1154,6 +1173,59 @@ public:
             &overview.snapshot->clipPacket)) {
       throw std::runtime_error(
           "private overview capture produced no visible D3D11 output");
+    }
+  }
+
+  void captureMissionCrosshairValidationFrameToBmp(
+      const std::filesystem::path &outputPath) {
+    if (!missionWorldRoomInstalled() || !mission_->crosshairs.has_value() ||
+        width_ <= 0 || height_ <= 0) {
+      throw std::runtime_error(
+          "private crosshair validation requires an installed authenticated "
+          "mission and sight set");
+    }
+    const auto layout = buildLayout(
+        settings_, static_cast<std::uint32_t>(width_),
+        static_cast<std::uint32_t>(height_));
+    if (!layout.complete()) {
+      throw std::runtime_error(
+          "private crosshair validation requires a drawable native layout");
+    }
+    const auto &textures = *mission_->crosshairs;
+    const auto &texture = textures.textures.front();
+    const float outputSize =
+        static_cast<float>(
+            airfix::content::legacyWeaponCrosshairTextureWidth) *
+        layout.layout->uiScale() * settings_.uiScalePercent / 100.0F;
+    const airfix::render::LegacyWeaponCrosshairSpritePlan plan{
+        .projectedTarget = {},
+        .outputRect =
+            {
+                (static_cast<float>(width_) - outputSize) * 0.5F,
+                (static_cast<float>(height_) - outputSize) * 0.5F,
+                outputSize,
+                outputSize,
+            },
+        .logicalDistanceScale = 1.0F,
+        .insideSceneViewport = true,
+        .withinRecoveredDepthRange = true,
+    };
+    const airfix::content::LegacyWeaponCrosshairBinding binding{
+        .weaponType =
+            airfix::simulation::LegacyWeaponTypeId::machineGun,
+        .role = texture.role,
+        .textureId = texture.textureId,
+        .revision = textures.revision,
+        .transactionIdentity = textures.transactionIdentity,
+    };
+    const auto submission =
+        airfix::content::buildLegacyWeaponCrosshairSpriteSubmission(
+            plan, binding,
+            airfix::content::LegacyWeaponCrosshairVisibilityDecision::draw);
+    if (!submission.ready() ||
+        !renderFrame(true, &outputPath, nullptr, &*submission.submission)) {
+      throw std::runtime_error(
+          "private crosshair validation produced no visible D3D11 output");
     }
   }
 
@@ -1585,6 +1657,7 @@ private:
                 static_cast<float>(overlayExtent_.height),
             },
         .panelOrigin = {margin, margin, 0.0F, 0.0F},
+        .tint = {1.0F, 1.0F, 1.0F, 1.0F},
     };
     context_->UpdateSubresource(
         overlayUniforms_.Get(), 0U, nullptr, &uniforms, 0U, 0U);
@@ -1603,6 +1676,7 @@ private:
     context_->VSSetShader(overlayVertexShader_.Get(), nullptr, 0U);
     ID3D11Buffer *uniformBuffer = overlayUniforms_.Get();
     context_->VSSetConstantBuffers(2U, 1U, &uniformBuffer);
+    context_->PSSetConstantBuffers(2U, 1U, &uniformBuffer);
     context_->PSSetShader(overlayPixelShader_.Get(), nullptr, 0U);
     ID3D11SamplerState *sampler = uiSampler_.Get();
     context_->PSSetSamplers(0U, 1U, &sampler);
@@ -1632,6 +1706,7 @@ private:
                 static_cast<float>(productUiExtent_.height),
             },
         .panelOrigin = {0.0F, 0.0F, 0.0F, 0.0F},
+        .tint = {1.0F, 1.0F, 1.0F, 1.0F},
     };
     context_->UpdateSubresource(overlayUniforms_.Get(), 0U, nullptr, &uniforms,
                                 0U, 0U);
@@ -1649,6 +1724,7 @@ private:
     context_->VSSetShader(overlayVertexShader_.Get(), nullptr, 0U);
     ID3D11Buffer *uniformBuffer = overlayUniforms_.Get();
     context_->VSSetConstantBuffers(2U, 1U, &uniformBuffer);
+    context_->PSSetConstantBuffers(2U, 1U, &uniformBuffer);
     context_->PSSetShader(overlayPixelShader_.Get(), nullptr, 0U);
     ID3D11SamplerState *sampler = uiSampler_.Get();
     context_->PSSetSamplers(0U, 1U, &sampler);
@@ -1659,6 +1735,77 @@ private:
     ID3D11ShaderResourceView *nullView = nullptr;
     context_->PSSetShaderResources(0U, 1U, &nullView);
     context_->OMSetBlendState(nullptr, blendFactor.data(), 0xFFFFFFFFU);
+  }
+
+  [[nodiscard]] bool drawLegacyWeaponCrosshair(
+      const airfix::content::LegacyWeaponCrosshairSpriteSubmission
+          &submission) {
+    if (!mission_ || !mission_->crosshairs.has_value() || !renderTarget_ ||
+        submission.blendMode !=
+            airfix::content::LegacyWeaponCrosshairBlendMode::
+                sourceAlphaOneMinusSourceAlpha ||
+        submission.depthMode !=
+            airfix::content::LegacyWeaponCrosshairDepthMode::alwaysWrite ||
+        submission.tintArgb !=
+            airfix::content::legacyWeaponCrosshairTintArgb ||
+        submission.uv != airfix::content::LegacyWeaponCrosshairUvRect{} ||
+        !submission.belongsTo(*mission_->crosshairs)) {
+      return false;
+    }
+    const auto textureIndex =
+        static_cast<std::size_t>(submission.textureId.value);
+    if (textureIndex >= mission_->crosshairTextures.size() ||
+        !mission_->crosshairTextures[textureIndex]) {
+      return false;
+    }
+
+    const auto &rectangle = submission.outputRect;
+    if (!std::isfinite(rectangle.x) || !std::isfinite(rectangle.y) ||
+        !std::isfinite(rectangle.width) ||
+        !std::isfinite(rectangle.height) || rectangle.width <= 0.0F ||
+        rectangle.height <= 0.0F) {
+      return false;
+    }
+    const OverlayUniforms uniforms{
+        .outputAndPanelSize =
+            {
+                static_cast<float>(width_),
+                static_cast<float>(height_),
+                rectangle.width,
+                rectangle.height,
+            },
+        .panelOrigin = {rectangle.x, rectangle.y, 0.0F, 0.0F},
+        .tint = normalizedArgb(submission.tintArgb),
+    };
+    context_->UpdateSubresource(overlayUniforms_.Get(), 0U, nullptr, &uniforms,
+                                0U, 0U);
+
+    ID3D11RenderTargetView *outputTarget = renderTarget_.Get();
+    context_->OMSetRenderTargets(1U, &outputTarget, depthView_.Get());
+    context_->RSSetViewports(1U, &viewport_);
+    context_->RSSetState(rasterizer_.Get());
+    context_->OMSetDepthStencilState(crosshairDepthState_.Get(), 0U);
+    constexpr std::array<float, 4U> blendFactor{};
+    context_->OMSetBlendState(overlayBlendState_.Get(), blendFactor.data(),
+                              0xFFFFFFFFU);
+    context_->IASetInputLayout(nullptr);
+    context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context_->VSSetShader(overlayVertexShader_.Get(), nullptr, 0U);
+    ID3D11Buffer *uniformBuffer = overlayUniforms_.Get();
+    context_->VSSetConstantBuffers(2U, 1U, &uniformBuffer);
+    context_->PSSetConstantBuffers(2U, 1U, &uniformBuffer);
+    context_->PSSetShader(overlayPixelShader_.Get(), nullptr, 0U);
+    ID3D11SamplerState *sampler = crosshairSampler_.Get();
+    context_->PSSetSamplers(0U, 1U, &sampler);
+    ID3D11ShaderResourceView *view =
+        mission_->crosshairTextures[textureIndex].Get();
+    context_->PSSetShaderResources(0U, 1U, &view);
+    context_->Draw(6U, 0U);
+
+    ID3D11ShaderResourceView *nullView = nullptr;
+    context_->PSSetShaderResources(0U, 1U, &nullView);
+    context_->OMSetBlendState(nullptr, blendFactor.data(), 0xFFFFFFFFU);
+    return true;
   }
 
   void releaseSwapTargets() {
@@ -1921,6 +2068,11 @@ private:
     requireSuccess(device_->CreateSamplerState(&samplerDescription,
                                                uiSampler_.GetAddressOf()),
                    "ID3D11Device::CreateSamplerState(UI)");
+    samplerDescription.Filter = D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT;
+    requireSuccess(
+        device_->CreateSamplerState(&samplerDescription,
+                                    crosshairSampler_.GetAddressOf()),
+        "ID3D11Device::CreateSamplerState(weapon crosshair)");
     samplerDescription.Filter =
         D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT;
     requireSuccess(device_->CreateSamplerState(
@@ -1964,6 +2116,15 @@ private:
                        &presentationDepthDescription,
                        presentationDepthState_.GetAddressOf()),
                    "ID3D11Device::CreateDepthStencilState(presentation)");
+
+    D3D11_DEPTH_STENCIL_DESC crosshairDepthDescription{};
+    crosshairDepthDescription.DepthEnable = TRUE;
+    crosshairDepthDescription.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+    crosshairDepthDescription.DepthFunc = D3D11_COMPARISON_ALWAYS;
+    requireSuccess(
+        device_->CreateDepthStencilState(&crosshairDepthDescription,
+                                         crosshairDepthState_.GetAddressOf()),
+        "ID3D11Device::CreateDepthStencilState(weapon crosshair)");
 
     D3D11_BLEND_DESC overlayBlendDescription{};
     auto &overlayTarget =
@@ -2527,12 +2688,14 @@ private:
   ComPtr<ID3D11SamplerState> classicSceneSampler_;
   ComPtr<ID3D11SamplerState> enhancedSceneSampler_;
   ComPtr<ID3D11SamplerState> uiSampler_;
+  ComPtr<ID3D11SamplerState> crosshairSampler_;
   ComPtr<ID3D11SamplerState> presentationSampler_;
   ComPtr<ID3D11RasterizerState> rasterizer_;
   ComPtr<ID3D11RasterizerState> overviewRasterizer_;
   ComPtr<ID3D11DepthStencilState> smokeDepthState_;
   ComPtr<ID3D11DepthStencilState> gameplayDepthState_;
   ComPtr<ID3D11DepthStencilState> presentationDepthState_;
+  ComPtr<ID3D11DepthStencilState> crosshairDepthState_;
   ComPtr<ID3D11BlendState> overlayBlendState_;
   ComPtr<ID3D11BlendState> productUiBlendState_;
   ComPtr<ID3D11ShaderResourceView> texture_;
@@ -2680,6 +2843,11 @@ void AirfixD3D11Renderer::captureFrameToBmp(
 void AirfixD3D11Renderer::captureMissionOverviewFrameToBmp(
     const std::filesystem::path &outputPath) {
   implementation_->captureMissionOverviewFrameToBmp(outputPath);
+}
+
+void AirfixD3D11Renderer::captureMissionCrosshairValidationFrameToBmp(
+    const std::filesystem::path &outputPath) {
+  implementation_->captureMissionCrosshairValidationFrameToBmp(outputPath);
 }
 
 void AirfixD3D11Renderer::capturePublicDiagnosticFrameToBmp(
