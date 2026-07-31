@@ -410,9 +410,13 @@ the weapon type, sight role, HUD-local texture ID, content revision, and exact
 authenticated-stream identity. It is called separately for primary and
 selected-secondary slots. A forged set, invalid type, or another stream handle
 publishes nothing. Actual live slot ownership, aim/collision production,
-primary/secondary composition policy, GPU upload, and native sprite submission
-remain pending. See
-[EXP-20260731-090](../../experiments/EXP-20260731-090-weapon-type-crosshair-binding.md).
+primary/secondary composition policy, and native sprite submission remain
+pending. The complete authenticated set is now staged atomically as separate
+D3D11 and Metal resources with bounded memory accounting, but is deliberately
+not drawn. See
+[EXP-20260731-090](../../experiments/EXP-20260731-090-weapon-type-crosshair-binding.md)
+and
+[EXP-20260731-091](../../experiments/EXP-20260731-091-crosshair-gpu-resource-staging.md).
 
 ## Actor damage and surface reaction
 
@@ -516,8 +520,8 @@ effect.
 - Feed the recovered primary and selected-secondary live weapon identities into
   the implemented authenticated per-type sight binder, establish their static
   composition/visibility order, then feed changing owner/aim/collision state
-  through the crosshair rectangle plan into shared D3D11/Metal sprite
-  submission.
+  through the crosshair rectangle plan into sprite submission using the
+  already-staged D3D11/Metal resources.
 - Trace sample/effect commands associated with a shot.
 - Recover secondary weapon selection and each secondary projectile family.
 - Confirm ammunition-zero semantics and scheduler/x87 tolerance with controlled

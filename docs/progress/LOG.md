@@ -4650,3 +4650,24 @@ superseded evidence.
   126/126 portable CTests. A separate fresh MSVC 19.51/Ninja Release build
   completes 689/689 steps and passes 136/136 CTests, including the complete
   SDL3/D3D11/XAudio2 application and both native Windows product smokes.
+
+## 2026-07-31 - crosshair GPU resource staging
+
+- `EXP-20260731-091` connects the complete authenticated three-texture sight
+  set to platform resource ownership without adding a visible HUD policy.
+- Windows loads the room and crosshairs through one unchanged verified
+  session, prepares all D3D11 shader-resource views before the mission swap,
+  retains HUD-local identity separately from scene textures, and includes the
+  resources in diagnostic GPU-memory accounting.
+- iOS carries room, aircraft audio, and crosshairs in one private snapshot.
+  Metal validates the set, includes it in logical and aligned heap admission,
+  uploads every texture, shares checked mip generation, and retains the set and
+  native texture array in the immutable prepared-room owner.
+- A complete MSVC/Ninja product build and all 136 CTests pass. A production
+  owner-content D3D11 run also completes atomic publication and a private
+  1920x1080 full-room capture; no owner data or derived image enters Git.
+- Hosted `iphoneos` and `iphonesimulator` builds both compile the Metal
+  transaction successfully in pull-request run `30645339243`.
+- No crosshair draw is issued. Live weapon ownership, aim/collision state,
+  primary/secondary composition, blend/depth policy, and sprite submission
+  remain explicit later gates.

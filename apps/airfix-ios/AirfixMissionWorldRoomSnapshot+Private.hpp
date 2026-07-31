@@ -3,6 +3,7 @@
 #import "AirfixMissionWorldRoomSnapshot.h"
 
 #include "airfix/content/LegacyAircraftAudioClipSet.hpp"
+#include "airfix/content/LegacyWeaponCrosshairTextureSet.hpp"
 #include "airfix/content/MissionWorldRoomLoader.hpp"
 #include "airfix/content/WorldRoomPublicationGate.hpp"
 #include "airfix/simulation/PlayerSpawnPose.hpp"
@@ -17,7 +18,8 @@ namespace airfix::ios {
 [[nodiscard]] AirfixMissionWorldRoomSnapshot* makeMissionWorldRoomSnapshot(
     content::WorldRoomPublicationTicket ticket,
     content::LoadedMissionWorldRoom&& room,
-    content::LoadedLegacyAircraftAudioClips&& audioClips);
+    content::LoadedLegacyAircraftAudioClips&& audioClips,
+    content::LoadedLegacyWeaponCrosshairTextureSet&& crosshairs);
 
 // One-shot renderer handoff. A second call fails rather than returning a
 // moved-from payload.
@@ -25,6 +27,9 @@ namespace airfix::ios {
     AirfixMissionWorldRoomSnapshot* snapshot);
 [[nodiscard]] content::LoadedLegacyAircraftAudioClips
 takeLoadedLegacyAircraftAudioClips(
+    AirfixMissionWorldRoomSnapshot* snapshot);
+[[nodiscard]] content::LoadedLegacyWeaponCrosshairTextureSet
+takeLoadedLegacyWeaponCrosshairTextures(
     AirfixMissionWorldRoomSnapshot* snapshot);
 
 // Remains available after the payload has been taken so the main-thread

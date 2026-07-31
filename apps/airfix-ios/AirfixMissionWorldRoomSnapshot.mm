@@ -12,18 +12,23 @@ struct SnapshotStorage final {
     SnapshotStorage(
         airfix::content::WorldRoomPublicationTicket publicationTicket,
         airfix::content::LoadedMissionWorldRoom&& loadedRoom,
-        airfix::content::LoadedLegacyAircraftAudioClips&& loadedAudioClips)
+        airfix::content::LoadedLegacyAircraftAudioClips&& loadedAudioClips,
+        airfix::content::LoadedLegacyWeaponCrosshairTextureSet&&
+            loadedCrosshairs)
         : ticket(std::move(publicationTicket)),
           resultRevision(loadedRoom.revision),
           playerSpawnPose(loadedRoom.playerSpawnPose),
           room(std::move(loadedRoom)),
-          audioClips(std::move(loadedAudioClips)) {}
+          audioClips(std::move(loadedAudioClips)),
+          crosshairs(std::move(loadedCrosshairs)) {}
 
     airfix::content::WorldRoomPublicationTicket ticket;
     airfix::content::ContentRevision resultRevision;
     airfix::simulation::PlayerSpawnPose playerSpawnPose;
     std::optional<airfix::content::LoadedMissionWorldRoom> room;
     std::optional<airfix::content::LoadedLegacyAircraftAudioClips> audioClips;
+    std::optional<airfix::content::LoadedLegacyWeaponCrosshairTextureSet>
+        crosshairs;
 };
 
 dispatch_queue_t snapshotTeardownQueue() {
@@ -63,7 +68,7 @@ dispatch_queue_t snapshotTeardownQueue() {
 
     auto* const storage = static_cast<SnapshotStorage*>(loadedRoomStore);
     if (storage == nullptr || !storage->room.has_value() ||
-        !storage->audioClips.has_value()) {
+        !storage->audioClips.has_value() || !storage->crosshairs.has_value()) {
         delete storage;
         return nil;
     }
@@ -72,7 +77,8 @@ dispatch_queue_t snapshotTeardownQueue() {
     _requestSerial = requestSerial;
     _contentGeneration = storage->room->revision.generation;
     _packSize = storage->room->revision.pack.size;
-    _textureCount = storage->room->textures.size();
+    _textureCount =
+        storage->room->textures.size() + storage->crosshairs->textures.size();
     _meshCount = storage->room->submission.meshUploads.size();
     _drawCommandCount = storage->room->submission.commands.size();
     _audioClipCount = storage->audioClips->clips.size();
@@ -104,7 +110,8 @@ namespace airfix::ios {
 AirfixMissionWorldRoomSnapshot* makeMissionWorldRoomSnapshot(
     content::WorldRoomPublicationTicket ticket,
     content::LoadedMissionWorldRoom&& room,
-    content::LoadedLegacyAircraftAudioClips&& audioClips) {
+    content::LoadedLegacyAircraftAudioClips&& audioClips,
+    content::LoadedLegacyWeaponCrosshairTextureSet&& crosshairs) {
     if (content::validateMissionWorldRoomPublication(
             room, ticket.expectedRevision).has_value()) {
         throw std::invalid_argument(
@@ -116,12 +123,19 @@ AirfixMissionWorldRoomSnapshot* makeMissionWorldRoomSnapshot(
         throw std::invalid_argument(
             "mission audio snapshot failed its publication contract");
     }
+    if (!crosshairs.valid() ||
+        crosshairs.revision != ticket.expectedRevision ||
+        crosshairs.revision != room.revision) {
+        throw std::invalid_argument(
+            "mission crosshair snapshot failed its publication contract");
+    }
     // Initialize the long-lived teardown queue on the content worker so the
     // first stale release never has to create it from a main-thread dealloc.
     (void)snapshotTeardownQueue();
     const auto requestSerial = ticket.serial;
     auto* const storage = new SnapshotStorage(
-        std::move(ticket), std::move(room), std::move(audioClips));
+        std::move(ticket), std::move(room), std::move(audioClips),
+        std::move(crosshairs));
     AirfixMissionWorldRoomSnapshot* const snapshot =
         [[AirfixMissionWorldRoomSnapshot alloc]
             initWithRequestSerial:requestSerial
@@ -166,6 +180,24 @@ takeLoadedLegacyAircraftAudioClips(
     auto audioClips = std::move(*storage->audioClips);
     storage->audioClips.reset();
     return audioClips;
+}
+
+content::LoadedLegacyWeaponCrosshairTextureSet
+takeLoadedLegacyWeaponCrosshairTextures(
+    AirfixMissionWorldRoomSnapshot* const snapshot) {
+    if (snapshot == nil) {
+        throw std::invalid_argument("mission room snapshot is null");
+    }
+    auto* const storage =
+        static_cast<SnapshotStorage*>([snapshot airfix_privateStorage]);
+    if (storage == nullptr || !storage->crosshairs.has_value()) {
+        throw std::logic_error(
+            "mission crosshair snapshot payload was already consumed");
+    }
+
+    auto crosshairs = std::move(*storage->crosshairs);
+    storage->crosshairs.reset();
+    return crosshairs;
 }
 
 content::WorldRoomPublicationTicket missionWorldRoomPublicationTicket(

@@ -356,29 +356,37 @@ class AirfixD3D11Renderer::Implementation final {
 
   struct MissionResources {
     airfix::content::LoadedMissionWorldRoom room;
+    std::optional<airfix::content::LoadedLegacyWeaponCrosshairTextureSet>
+        crosshairs;
     std::shared_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>
         cameraMissionRuntime;
     std::shared_ptr<airfix::render::PlayerActorPoseRuntime> poseRuntime;
     std::vector<MeshResources> meshes;
     std::vector<ComPtr<ID3D11ShaderResourceView>> textures;
+    std::vector<ComPtr<ID3D11ShaderResourceView>> crosshairTextures;
     airfix::render::CameraLogicalExtent referenceCameraCanvas{};
     float referenceHorizontalFovDegrees{};
 
     MissionResources(
         airfix::content::LoadedMissionWorldRoom &&loadedRoom,
+        std::optional<airfix::content::LoadedLegacyWeaponCrosshairTextureSet>
+            &&loadedCrosshairs,
         std::shared_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>
             gameplayCameraRuntime,
         std::shared_ptr<airfix::render::PlayerActorPoseRuntime>
             playerPoseRuntime,
         std::vector<MeshResources> &&meshResources,
         std::vector<ComPtr<ID3D11ShaderResourceView>> &&textureResources,
+        std::vector<ComPtr<ID3D11ShaderResourceView>>
+            &&crosshairTextureResources,
         const airfix::render::CameraLogicalExtent cameraCanvas,
         const float horizontalFovDegrees)
-        : room(std::move(loadedRoom)),
+        : room(std::move(loadedRoom)), crosshairs(std::move(loadedCrosshairs)),
           cameraMissionRuntime(std::move(gameplayCameraRuntime)),
           poseRuntime(std::move(playerPoseRuntime)),
           meshes(std::move(meshResources)),
           textures(std::move(textureResources)),
+          crosshairTextures(std::move(crosshairTextureResources)),
           referenceCameraCanvas(cameraCanvas),
           referenceHorizontalFovDegrees(horizontalFovDegrees) {}
   };
@@ -635,6 +643,26 @@ public:
   void installLoadedMissionRoom(
       airfix::content::LoadedMissionWorldRoom &&room,
       const airfix::content::ContentRevision &expectedRevision) {
+    installLoadedMissionRoomTransaction(std::move(room), std::nullopt,
+                                        expectedRevision);
+  }
+
+  void installLoadedMissionRoom(
+      airfix::content::LoadedMissionWorldRoom &&room,
+      airfix::content::LoadedLegacyWeaponCrosshairTextureSet &&crosshairs,
+      const airfix::content::ContentRevision &expectedRevision) {
+    installLoadedMissionRoomTransaction(
+        std::move(room),
+        std::optional<airfix::content::LoadedLegacyWeaponCrosshairTextureSet>{
+            std::move(crosshairs)},
+        expectedRevision);
+  }
+
+  void installLoadedMissionRoomTransaction(
+      airfix::content::LoadedMissionWorldRoom &&room,
+      std::optional<airfix::content::LoadedLegacyWeaponCrosshairTextureSet>
+          &&crosshairs,
+      const airfix::content::ContentRevision &expectedRevision) {
     if (airfix::content::validateMissionWorldRoomPublication(room,
                                                              expectedRevision)
             .has_value()) {
@@ -649,6 +677,11 @@ public:
         rebuiltSubmission.plan->commands != room.submission.commands) {
       throw std::runtime_error(
           "authenticated mission room draw submission is inconsistent");
+    }
+    if (crosshairs.has_value() &&
+        (!crosshairs->valid() || crosshairs->revision != expectedRevision)) {
+      throw std::runtime_error(
+          "authenticated weapon crosshair set failed its publication contract");
     }
 
     const auto cameraInitializeInput = gameplayCameraInitializeInput(room);
@@ -691,6 +724,10 @@ public:
 
     auto meshes = createGeometryResources(room.model);
     auto textures = createMissionTextures(room.textures);
+    auto crosshairTextures =
+        crosshairs.has_value()
+            ? createWeaponCrosshairTextures(*crosshairs)
+            : std::vector<ComPtr<ID3D11ShaderResourceView>>{};
 
     // Full validation and GPU preparation must complete before mission-owned
     // collision storage is moved. The active mission remains untouched on
@@ -726,9 +763,11 @@ public:
 
     std::vector<airfix::content::LoadedTextureAsset>().swap(room.textures);
     auto candidate = std::make_unique<MissionResources>(
-        std::move(room), std::move(cameraMissionRuntime),
+        std::move(room), std::move(crosshairs),
+        std::move(cameraMissionRuntime),
         std::move(posePreparation.runtime), std::move(meshes),
-        std::move(textures), referenceCameraCanvas,
+        std::move(textures), std::move(crosshairTextures),
+        referenceCameraCanvas,
         referenceHorizontalFovDegrees);
     mission_ = std::move(candidate);
   }
@@ -1431,6 +1470,9 @@ private:
       for (const auto &texture : mission_->textures) {
         total = saturatingAdd(total, textureBytes(texture.Get()));
       }
+      for (const auto &texture : mission_->crosshairTextures) {
+        total = saturatingAdd(total, textureBytes(texture.Get()));
+      }
     } else {
       total = saturatingAdd(total, textureBytes(texture_.Get()));
     }
@@ -2053,8 +2095,9 @@ private:
     return view;
   }
 
-  [[nodiscard]] ComPtr<ID3D11ShaderResourceView> createMissionTexture(
-      const airfix::content::LoadedTextureAsset &source) const {
+  template <typename LoadedTexture>
+  [[nodiscard]] ComPtr<ID3D11ShaderResourceView> createUploadedTexture(
+      const LoadedTexture &source) const {
     const auto &upload = source.upload;
     if (upload.allocatedMipCount == 0U || upload.uploadedMipCount == 0U ||
         upload.uploadLevels.size() != upload.uploadedMipCount ||
@@ -2161,7 +2204,28 @@ private:
       if (sources[index].assetId.value != index) {
         throw std::runtime_error("mission textures do not use dense asset IDs");
       }
-      result.push_back(createMissionTexture(sources[index]));
+      result.push_back(createUploadedTexture(sources[index]));
+    }
+    return result;
+  }
+
+  [[nodiscard]] std::vector<ComPtr<ID3D11ShaderResourceView>>
+  createWeaponCrosshairTextures(
+      const airfix::content::LoadedLegacyWeaponCrosshairTextureSet &sources)
+      const {
+    if (!sources.valid()) {
+      throw std::runtime_error(
+          "weapon crosshair textures failed their upload contract");
+    }
+    std::vector<ComPtr<ID3D11ShaderResourceView>> result;
+    result.reserve(sources.textures.size());
+    for (std::size_t index = 0U; index < sources.textures.size(); ++index) {
+      const auto &source = sources.textures[index];
+      if (source.textureId.value != index) {
+        throw std::runtime_error(
+            "weapon crosshair textures do not use dense HUD-local IDs");
+      }
+      result.push_back(createUploadedTexture(source));
     }
     return result;
   }
@@ -2584,6 +2648,14 @@ void AirfixD3D11Renderer::installLoadedMissionRoom(
     airfix::content::LoadedMissionWorldRoom &&room,
     const airfix::content::ContentRevision &expectedRevision) {
   implementation_->installLoadedMissionRoom(std::move(room), expectedRevision);
+}
+
+void AirfixD3D11Renderer::installLoadedMissionRoom(
+    airfix::content::LoadedMissionWorldRoom &&room,
+    airfix::content::LoadedLegacyWeaponCrosshairTextureSet &&crosshairs,
+    const airfix::content::ContentRevision &expectedRevision) {
+  implementation_->installLoadedMissionRoom(
+      std::move(room), std::move(crosshairs), expectedRevision);
 }
 
 bool AirfixD3D11Renderer::missionWorldRoomInstalled() const noexcept {

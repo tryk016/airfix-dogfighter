@@ -1138,12 +1138,16 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
                 auto audioClips =
                     airfix::ios::takeLoadedLegacyAircraftAudioClips(
                         snapshot);
+                auto crosshairs =
+                    airfix::ios::takeLoadedLegacyWeaponCrosshairTextures(
+                        snapshot);
                 preparedAudioClips = std::make_shared<
                     airfix::content::LoadedLegacyAircraftAudioClips>(
                         std::move(audioClips));
                 preparedRoom =
                     [renderer
                         prepareLoadedMissionRoom:std::move(room)
+                               weaponCrosshairs:std::move(crosshairs)
                                           error:&preparationError];
             }
             catch (...) {

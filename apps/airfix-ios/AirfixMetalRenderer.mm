@@ -3,6 +3,7 @@
 #import <Metal/Metal.h>
 #import <simd/simd.h>
 
+#include "airfix/content/LegacyWeaponCrosshairTextureSet.hpp"
 #include "airfix/content/MissionWorldRoomLoader.hpp"
 #include "airfix/content/MissionWorldRoomPublication.hpp"
 #include "airfix/render/DrawModel.hpp"
@@ -516,6 +517,8 @@ gameplayCameraInitializeInput(
     airfix::render::DrawModelPayload _payload;
     airfix::render::DrawSubmissionPlan _submissionPlan;
     std::optional<airfix::content::LoadedMissionWorldRoom> _missionRoom;
+    std::optional<airfix::content::LoadedLegacyWeaponCrosshairTextureSet>
+        _crosshairs;
     std::vector<NSUInteger> _indexOffsets;
     std::shared_ptr<airfix::render::PlayerActorPoseRuntime>
         _scenePoseRuntime;
@@ -525,6 +528,7 @@ gameplayCameraInitializeInput(
 }
 @property(nonatomic, strong) NSArray<AirfixMetalMeshBuffers*>* meshBuffers;
 @property(nonatomic, strong) NSArray<id<MTLTexture>>* textures;
+@property(nonatomic, strong) NSArray<id<MTLTexture>>* crosshairTextures;
 @property(nonatomic, strong) id<MTLHeap> bufferHeap;
 @property(nonatomic, strong) id<MTLHeap> textureHeap;
 @end
@@ -538,6 +542,7 @@ gameplayCameraInitializeInput(
     _cameraMissionRuntime.reset();
     _meshBuffers = nil;
     _textures = nil;
+    _crosshairTextures = nil;
     _bufferHeap = nil;
     _textureHeap = nil;
 }
@@ -1002,9 +1007,10 @@ struct PrivateRoomPreflight {
     std::size_t aggregateCpuPackedBytes{};
 };
 
+template <typename LoadedTexture>
 void configurePrivateTextureDescriptor(
     MTLTextureDescriptor* descriptor,
-    const airfix::content::LoadedTextureAsset& source) noexcept {
+    const LoadedTexture& source) noexcept {
     const auto& upload = source.upload;
     const auto& base = upload.uploadLevels.front();
     descriptor.textureType = MTLTextureType2D;
@@ -1034,16 +1040,29 @@ bool uint64ToSize(
     return true;
 }
 
+[[nodiscard]] airfix::render::TextureAssetId textureAssetId(
+    const airfix::content::LoadedTextureAsset& texture) noexcept {
+    return texture.assetId;
+}
+
+[[nodiscard]] airfix::render::TextureAssetId textureAssetId(
+    const airfix::content::LoadedLegacyWeaponCrosshairTexture&
+        texture) noexcept {
+    return texture.textureId;
+}
+
+template <typename LoadedTexture>
 bool validateTextureAsset(
-    const airfix::content::LoadedTextureAsset& texture,
+    const LoadedTexture& texture,
     const std::size_t textureIndex,
     std::size_t& aggregateGpuBytes) noexcept {
     using airfix::render::GtiMipPolicy;
 
     const auto& upload = texture.upload;
     if (textureIndex > std::numeric_limits<std::uint32_t>::max() ||
-        texture.assetId.value != static_cast<std::uint32_t>(textureIndex) ||
-        upload.request.assetId != texture.assetId ||
+        textureAssetId(texture).value !=
+            static_cast<std::uint32_t>(textureIndex) ||
+        upload.request.assetId != textureAssetId(texture) ||
         upload.request.archiveFileIndex != texture.sourceFileIndex ||
         upload.uploadLevels.size() != texture.uploadLevels.size() ||
         upload.uploadLevels.size() != upload.uploadedMipCount ||
@@ -2679,6 +2698,8 @@ bool preflightPrivateRoom(
 
 - (nullable AirfixPreparedMetalRoom*)prepareLoadedMissionRoom:
     (airfix::content::LoadedMissionWorldRoom&&)room
+    weaponCrosshairs:
+        (airfix::content::LoadedLegacyWeaponCrosshairTextureSet&&)crosshairs
     error:(NSError* _Nullable* _Nullable)error {
     if (error != nullptr) {
         *error = nil;
@@ -2717,13 +2738,30 @@ bool preflightPrivateRoom(
             gameplayCameraInitializeInput(room);
 
         PrivateRoomPreflight preflight;
-        if (!preflightPrivateRoom(device, room, preflight)) {
+        if (!preflightPrivateRoom(device, room, preflight) ||
+            !crosshairs.valid() ||
+            crosshairs.revision != room.revision) {
             if (error != nullptr) {
                 *error = makeError(
                     RendererError::invalidPayload,
                     @"The private room failed the bounded Metal snapshot contract.");
             }
             return nil;
+        }
+        for (std::size_t textureIndex = 0U;
+             textureIndex < crosshairs.textures.size();
+             ++textureIndex) {
+            if (!validateTextureAsset(
+                    crosshairs.textures[textureIndex],
+                    textureIndex,
+                    preflight.aggregateGpuBytes)) {
+                if (error != nullptr) {
+                    *error = makeError(
+                        RendererError::invalidPayload,
+                        @"The private crosshair set failed the bounded Metal snapshot contract.");
+                }
+                return nil;
+            }
         }
         const auto scenePosePlan =
             airfix::render::planPlayerActorPoseRuntime(
@@ -2955,6 +2993,28 @@ bool preflightPrivateRoom(
                 }
             }
         }
+        if (heapPlanValid) {
+            for (const auto& source : crosshairs.textures) {
+                MTLTextureDescriptor* descriptor =
+                    [[MTLTextureDescriptor alloc] init];
+                if (descriptor == nil) {
+                    heapPlanValid = false;
+                    break;
+                }
+                configurePrivateTextureDescriptor(
+                    descriptor, source);
+                if (!accountHeapResourcePlacement(
+                        [device
+                            heapTextureSizeAndAlignWithDescriptor:
+                                descriptor],
+                        textureHeapBytes,
+                        textureHeapAlignment,
+                        kMaximumPrivateRoomGpuHeapPlanBytes)) {
+                    heapPlanValid = false;
+                    break;
+                }
+            }
+        }
         if (!heapPlanValid ||
             !finalizeHeapPlan(
                 bufferHeapBytes,
@@ -3134,9 +3194,14 @@ bool preflightPrivateRoom(
             [NSMutableArray
                 arrayWithCapacity:
                     static_cast<NSUInteger>(room.textures.size())];
+        NSMutableArray<id<MTLTexture>>* crosshairTextures =
+            [NSMutableArray
+                arrayWithCapacity:static_cast<NSUInteger>(
+                    crosshairs.textures.size())];
         NSMutableArray<id<MTLTexture>>* generatedMipTextures =
             [NSMutableArray array];
-        if (textures == nil || generatedMipTextures == nil) {
+        if (textures == nil || crosshairTextures == nil ||
+            generatedMipTextures == nil) {
             if (error != nullptr) {
                 *error = makeError(
                     RendererError::textureCreation,
@@ -3196,6 +3261,60 @@ bool preflightPrivateRoom(
                 [generatedMipTextures addObject:texture];
             }
             [textures addObject:texture];
+        }
+
+        for (const auto& source : crosshairs.textures) {
+            const auto& upload = source.upload;
+            MTLTextureDescriptor* descriptor =
+                [[MTLTextureDescriptor alloc] init];
+            if (descriptor == nil) {
+                if (error != nullptr) {
+                    *error = makeError(
+                        RendererError::textureCreation,
+                        @"Private crosshair metadata could not be allocated.");
+                }
+                return nil;
+            }
+            configurePrivateTextureDescriptor(descriptor, source);
+
+            id<MTLTexture> texture =
+                [textureHeap
+                    newTextureWithDescriptor:descriptor];
+            if (texture == nil ||
+                texture.width != descriptor.width ||
+                texture.height != descriptor.height ||
+                texture.mipmapLevelCount !=
+                    descriptor.mipmapLevelCount ||
+                texture.allocatedSize == 0U) {
+                if (error != nullptr) {
+                    *error = makeError(
+                        RendererError::textureCreation,
+                        @"Metal could not create every private crosshair texture.");
+                }
+                return nil;
+            }
+
+            for (std::size_t levelIndex = 0U;
+                 levelIndex < source.uploadLevels.size();
+                 ++levelIndex) {
+                const auto& level = upload.uploadLevels[levelIndex];
+                const auto& image = source.uploadLevels[levelIndex];
+                [texture
+                    replaceRegion:MTLRegionMake2D(
+                        0U,
+                        0U,
+                        static_cast<NSUInteger>(image.width),
+                        static_cast<NSUInteger>(image.height))
+                    mipmapLevel:static_cast<NSUInteger>(level.level)
+                    withBytes:image.pixels.data()
+                    bytesPerRow:
+                        static_cast<NSUInteger>(level.bytesPerRow)];
+            }
+            if (upload.mipPolicy ==
+                airfix::render::GtiMipPolicy::generateFromBase) {
+                [generatedMipTextures addObject:texture];
+            }
+            [crosshairTextures addObject:texture];
         }
 
         if (generatedMipTextures.count != 0U) {
@@ -3299,9 +3418,13 @@ bool preflightPrivateRoom(
         NSArray<AirfixMetalMeshBuffers*>* meshBufferSnapshot =
             [meshBuffers copy];
         NSArray<id<MTLTexture>>* textureSnapshot = [textures copy];
+        NSArray<id<MTLTexture>>* crosshairTextureSnapshot =
+            [crosshairTextures copy];
         if (meshBufferSnapshot == nil || textureSnapshot == nil ||
+            crosshairTextureSnapshot == nil ||
             meshBufferSnapshot.count != room.model.meshes.size() ||
-            textureSnapshot.count != room.textures.size()) {
+            textureSnapshot.count != room.textures.size() ||
+            crosshairTextureSnapshot.count != crosshairs.textures.size()) {
             if (error != nullptr) {
                 *error = makeError(
                     RendererError::unexpectedFailure,
@@ -3311,6 +3434,7 @@ bool preflightPrivateRoom(
         }
         candidateResources.meshBuffers = meshBufferSnapshot;
         candidateResources.textures = textureSnapshot;
+        candidateResources.crosshairTextures = crosshairTextureSnapshot;
         candidateResources.bufferHeap = bufferHeap;
         candidateResources.textureHeap = textureHeap;
         preparedRoom->_ownerToken = ownerToken;
@@ -3332,6 +3456,7 @@ bool preflightPrivateRoom(
         std::vector<airfix::content::LoadedTextureAsset>().swap(
             room.textures);
         candidateResources->_missionRoom.emplace(std::move(room));
+        candidateResources->_crosshairs.emplace(std::move(crosshairs));
 
         reservationHolder->_reservation.emplace(
             std::move(*privatePlanReservation));
