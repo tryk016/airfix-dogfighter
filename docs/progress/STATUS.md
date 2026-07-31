@@ -65,9 +65,13 @@
   weapon-crosshair distance scale, activation size latch, and centered output
   rectangle. Crosshair size follows output-fit UI scale plus the independent
   75-150% user setting and remains invariant to 3D render scale. Off-screen
-  and depth labels stay explicit. Authenticated selected-weapon sight loading,
-  changing aim/collision production, native sprite submission, the remaining
-  HUD, and screen effects are not yet connected.
+  and depth labels stay explicit. The three recovered sight roles now load as
+  one bounded format-8 `32x32` set through the exact authenticated content
+  handle; plan-only source/RGBA preflight precedes decode, publication is
+  atomic, and HUD-local texture IDs cannot collide with scene IDs. Actual
+  selected-weapon/type mapping, changing aim/collision production, native
+  sprite submission, the remaining HUD, and screen effects are not yet
+  connected.
 - The recovered CCF material contract now survives end to end from typed
   `0x2140/0x2150/0x2151` metadata and exact native defaults through world,
   aggregate mission, and player texture binding into each backend-neutral draw

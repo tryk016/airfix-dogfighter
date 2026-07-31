@@ -386,9 +386,17 @@ the reconstruction does not invent an interpolation step.
 top of `NativeGameplayScreenProjection`. Logical size follows the independent
 UI scale and user UI-scale setting; render scale remains irrelevant. Viewport
 and recovered-depth labels stay explicit rather than being converted into an
-unproved hide rule. Authenticated GTI loading, selected-weapon binding, live
-aim/collision production, and native sprite submission remain pending. See
+unproved hide rule. See
 [EXP-20260731-088](../../experiments/EXP-20260731-088-legacy-weapon-crosshair-projection.md).
+
+`LegacyWeaponCrosshairTextureSet` now resolves all three exact sight entries
+through one unchanged `VerifiedContentSession`, preflights source and RGBA
+budgets before decoding, requires selected format 8 at `32x32`, and publishes
+the complete owned set atomically. Its dense IDs live only inside the dedicated
+HUD set and are not scene texture IDs. Actual aircraft weapon/type selection,
+live aim/collision production, GPU upload and native sprite submission remain
+pending. See
+[EXP-20260731-089](../../experiments/EXP-20260731-089-authenticated-crosshair-texture-set.md).
 
 ## Actor damage and surface reaction
 
@@ -489,9 +497,9 @@ effect.
   creator BSP guard and terminal command data to private live actor/effect
   adapters.
 - Recreate the optional `mguntracer` and `FxRicochet` visual/effect adapters.
-- Load the selected weapon's authenticated sight GTI and feed changing
-  owner/aim/collision state through the implemented crosshair rectangle plan
-  into shared D3D11/Metal sprite submission.
+- Map the aircraft's recovered selected weapon/type to the implemented
+  authenticated sight set, then feed changing owner/aim/collision state through
+  the crosshair rectangle plan into shared D3D11/Metal sprite submission.
 - Trace sample/effect commands associated with a shot.
 - Recover secondary weapon selection and each secondary projectile family.
 - Confirm ammunition-zero semantics and scheduler/x87 tolerance with controlled

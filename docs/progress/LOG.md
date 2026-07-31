@@ -4600,3 +4600,30 @@ superseded evidence.
   MSVC 19.51/Ninja Release build of the Windows SDL3/D3D11/XAudio2 product
   passes 135/135 CTests including both native product smokes. Public-boundary,
   12/12 Rizin export-normalization, clang-format, and diff checks pass.
+
+## 2026-07-31 - authenticated weapon-crosshair texture set
+
+- `EXP-20260731-089` turns the three recovered `MGsight`/`ROsight`/`BOsight`
+  roles into one owner-content boundary. Every entry is resolved only inside
+  one unchanged `VerifiedContentSession`; no logical key is opened as a host
+  path and no loose or partial texture is accepted.
+- Plan-only GTI validation precedes pixel decoding. It requires unique physical
+  entries, selected format 8, exact `32x32` base dimensions, valid mip shape,
+  distinct source identities, checked source/decoded/upload/resident budgets,
+  and exact equality between preflight and materialized upload plans.
+- The published dense IDs are local to the dedicated HUD set rather than the
+  scene texture namespace. Role lookup revalidates the full set and exact
+  authenticated-stream provenance. Live weapon/type mapping, aim/collision,
+  GPU resource creation and D3D11/Metal sprite submission remain explicit
+  later gates.
+- A read-only private inventory smoke confirmed all three original entries are
+  unique and contain the expected one-mip 32x32 format-4/format-8 variants; no
+  owner bytes or output entered Git. Public coverage uses only synthetic
+  AFPACK, UDSP and GTI data.
+- A second private smoke used an existing owner-local AFPACK and the production
+  `VerifiedContentSession` loader. It published three valid selected-format-8
+  32x32 one-mip textures with 12,288 decoded/resident RGBA bytes; the throwaway
+  driver and all owner data remain outside Git.
+- Fresh Release validation passes 126/126 portable GCC/Ninja CTests and 136/136
+  native MSVC/Ninja CTests, including the SDL3/D3D11/XAudio2 product and both
+  Windows product smokes.

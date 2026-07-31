@@ -328,9 +328,12 @@ path while sharing the higher-level rendering contract.
   crosshair size/centering plan while preserving viewport/depth labels and
   leaving selected-weapon assets, live aim/collision, visibility policy, and
   backend sprite submission explicit.
-- [ ] Connect authenticated selected-weapon sight assets and changing live
-  aim/collision state to D3D11/Metal sprite submission, then add the remaining
-  HUD and screen-space effect consumers without inventing their policy.
+- [x] Materialize the three recovered sight roles as one bounded, authenticated
+  and atomic format-8 `32x32` CPU texture set with HUD-local IDs.
+- [ ] Map authenticated sights to the recovered live selected weapon/type and
+  changing aim/collision state, submit them through D3D11/Metal sprite passes,
+  then add the remaining HUD and screen-space effect consumers without
+  inventing their policy.
 - [ ] Implement the ordered image-quality stages above, maintaining separate
   `Classic` and `Enhanced` screenshot baselines.
 - [x] Keep all original and converted assets and owner-derived captures outside
