@@ -35,6 +35,7 @@ struct AirfixWindowsCommandLineOptions final {
   bool smokeTest{};
   bool validateContentOnly{};
   bool useInstalledContent{};
+  bool manageInstalledContent{};
   airfix::render::RenderPresentationSettingsOverride renderOverrides;
   std::optional<std::filesystem::path> contentRoot;
   std::optional<std::filesystem::path> importAfPackSource;
@@ -63,6 +64,7 @@ parseAirfixWindowsCommandLine(std::span<const std::string_view> arguments);
 [[nodiscard]] constexpr std::string_view airfixWindowsUsage() noexcept {
   return "usage: AirfixDogfighter.exe "
          "--import-afpack <private-package.afpack>\n"
+         "   or: AirfixDogfighter.exe --manage-installed-content\n"
          "   or: AirfixDogfighter.exe "
          "[--render-scale <50-200>] "
          "[--original-4x3 | --widescreen-hor-plus] "

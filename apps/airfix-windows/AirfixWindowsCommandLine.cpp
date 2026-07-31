@@ -185,6 +185,11 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
       if (importAfPackSource->extension() != ".afpack") {
         invalidCommandLine();
       }
+    } else if (option == "--manage-installed-content") {
+      if (options.manageInstalledContent) {
+        invalidCommandLine();
+      }
+      options.manageInstalledContent = true;
     } else if (option == "--installed-content" ||
                option == "--validate-installed-content") {
       if (options.useInstalledContent || options.contentRoot.has_value()) {
@@ -360,6 +365,10 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
       (hasImport &&
        (options.smokeTest || hasContentSelection || hasContentSpecificOption ||
         hasAnyCapture || captureSize.has_value() || hasRenderOverride)) ||
+      (options.manageInstalledContent &&
+       (options.smokeTest || hasContentSelection || hasContentSpecificOption ||
+        hasAnyCapture || captureSize.has_value() || hasRenderOverride ||
+        hasImport)) ||
       ((static_cast<unsigned>(captureFrameOutput.has_value()) +
         static_cast<unsigned>(captureOverviewFrameOutput.has_value()) +
         static_cast<unsigned>(

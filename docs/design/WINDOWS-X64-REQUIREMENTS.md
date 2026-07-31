@@ -188,15 +188,25 @@ The application imports an owner-created, validated `.afpack` or a documented
 successor generated locally from a lawfully owned installation. The same
 runtime format is consumed by Windows and iOS.
 
-The implemented baseline is an exclusive `--import-afpack` product operation.
-It resolves an undisclosed per-user `content/` directory through SDL, creates
-the canonical transaction UUID internally, rejects a competing same-session
-importer, and
-maps path-bearing installer diagnostics to fixed actionable categories.
+The implemented product boundary resolves an undisclosed per-user `content/`
+directory through SDL and offers both an exclusive `--import-afpack` operation
+and a modal `--manage-installed-content` pre-game manager. The manager uses
+native Windows picker, progress, cancellation, retry, and status surfaces. It
+offers rollback only after the shared recovery service has authenticated a
+previous generation. That generation must be restored before replacement
+import, preventing an invalid current generation from displacing the only
+known-good rollback reference. An indeterminate store permits only retry or
+close. The manager re-inspects the durable store after every ordinary
+operation. An ambiguous post-commit result terminates the manager and requires
+a process restart before another mutation. Import creates the canonical
+transaction UUID internally, rejects a
+competing same-session writer, and maps path-bearing installer diagnostics to
+fixed actionable categories. Outside the owner-controlled OS picker, status UI
+and product output never echo local or logical paths, checksums, generation
+identifiers, or backend diagnostics.
 `--installed-content` and `--validate-installed-content` reuse that root; the
-explicit-root development interface remains separate. Native picker/progress
-and rollback-choice presentation are staged follow-ups over the same portable
-transaction.
+explicit-root development interface remains separate. No manager operation
+hot-reloads an active mission.
 
 Original executables, archives, artwork, audio, converted packages,
 content-bearing installers, tool databases, private traces, and machine-local

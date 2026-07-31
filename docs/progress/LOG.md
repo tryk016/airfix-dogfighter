@@ -4815,3 +4815,42 @@ superseded evidence.
   generator continues to select a crashing HostX86 compiler probe despite an
   x64 preference, while direct HostX64 compilation succeeds; hosted Actions
   remain the authoritative preset gate.
+
+## 2026-07-31 - Windows native private-content bootstrap
+
+- Added an explicit pre-game `--manage-installed-content` workflow over the
+  existing SDL-private root, AFPACK installer, active-record inspection, and
+  rollback transaction. Native Windows dialogs provide the `.afpack` picker,
+  cancellable normalized progress, fixed status/actions, retry, replacement,
+  and verified-generation rollback without creating another parser or store.
+- Import and rollback share one named writer mutex and fresh transaction UUIDs.
+  Every ordinary attempted mutation is followed by a new authenticated
+  inspection. An ambiguous commit instead terminates the manager and requires
+  restart before another mutation.
+  When recovery has verified only the previous generation, the manager requires
+  restoring it before any replacement import; an indeterminate store permits
+  only retry or close. This preserves the sole known-good AFAC rollback
+  reference instead of rotating an invalid current generation over it.
+  Picker cancellation stays in the current state; ordinary failures are
+  reduced to path-free categories; an ambiguous commit remains distinct.
+  Outside the owner-controlled OS picker, the manager echoes no local/logical
+  path, checksum, generation identifier, or backend diagnostic and performs no
+  live mission reload.
+- Embedded Common Controls v6 manifests are used by the product and native
+  prerequisite test. TaskDialog is resolved only inside the explicit manager
+  path, which prevents missing UI activation from blocking the normal D3D11
+  product startup. Synthetic tests verify the coordinator state table,
+  cancellation/failure mapping, bounded retry, action gates, command-line
+  exclusivity, and native COM prerequisites without opening a window or
+  reading private content.
+- Independent read-only review caught and verified corrections for the
+  `rollbackAvailable` readiness/action gates, import from an indeterminate
+  store, terminal ambiguous-commit policy, TaskDialog failure mapping, and
+  recovery text. Final re-review reports no remaining P0-P3 findings.
+- A clean MSVC 19.51 HostX64/Ninja product build passes 139/139 CTests,
+  including the installer/recovery suites, native bootstrap tests, D3D11
+  renderer, and both product smokes. A separate clean Clang 22.1.8/Ninja
+  portable build passes 127/127 CTests; its 263-entry compilation database
+  contains no Windows-product or Apple-only source. Synthetic public-boundary
+  tests, the 670-file repository scan, changed-source clang-format, and `git
+  diff --check` pass. Hosted platform builds remain the publication gate.

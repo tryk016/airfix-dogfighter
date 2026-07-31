@@ -1,9 +1,9 @@
 # Private content installation and recovery
 
 **State:** portable installer, startup inspection, rollback transaction,
-owner-private Windows product import/consumption CLI, native iOS
-document-picker/progress/recovery UI, and authenticated runtime lease adoption
-implemented
+owner-private Windows native picker/progress/retry/rollback manager plus
+product import/consumption CLI, native iOS document-picker/progress/recovery
+UI, and authenticated runtime lease adoption implemented
 
 **Scope:** private sideload build, AFPACK v1, one serialized importer, no saves
 inside the content transaction
@@ -67,10 +67,21 @@ session-local named mutex rejects concurrent importers, a fresh canonical UUID
 is generated internally, and all installer diagnostics are mapped to fixed
 path-free product categories. `--installed-content` and
 `--validate-installed-content` consume that root without exposing it on the
-command line. The lower-level explicit-root tool and product switches remain
-available for controlled development roots. A native file picker, progress UI,
-and Windows rollback-choice UI remain follow-up presentation work; they must
-reuse this transaction rather than open package contents independently.
+command line. `--manage-installed-content` runs a modal pre-game native
+manager over that same store and transaction: `IFileOpenDialog` selects an
+`.afpack`, `IProgressDialog` reports normalized inspect/import/rollback phases
+and requests cooperative cancellation, and path-free task dialogs expose
+retry, authenticated replacement, close, and rollback only for a verified
+previous generation. A verified previous generation must be restored before a
+replacement import, so a failed current generation can never displace the only
+known-good rollback reference. An unavailable/indeterminate store permits only
+retry or close. Every ordinary mutation is followed by a fresh inspection. The
+manager never reloads a live mission and never displays local/logical paths,
+checksums, generation identifiers, or backend diagnostics outside the
+owner-controlled OS picker. The lower-level
+explicit-root tool and product switches remain available for controlled
+development roots. An ambiguous post-commit result is terminal for that
+manager run and deliberately skips same-process retry/reinspection.
 
 ## Transaction states
 

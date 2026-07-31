@@ -117,6 +117,10 @@ Implemented foundations include:
 - bounded UDSP, CCF, GTI, and related legacy-format parsing;
 - a private AFPACK container, strict validation, atomic installation, recovery,
   rollback, and authenticated content sessions;
+- a native pre-game Windows private-content manager with an AFPACK file
+  picker, cancellable progress, retry, authenticated replacement, and an
+  explicit verified-generation rollback action; the existing one-shot CLI
+  import remains available for controlled automation;
 - a bounded RIFF/WAVE PCM16 parser plus an atomic owner-local aircraft clip
   loader that resolves exact entries only through an authenticated content
   session, validates the four continuous sampler loops, keeps start/stop as
@@ -296,18 +300,31 @@ activates it in its own SDL preference root:
 
 ```powershell
 afpack-create --source <owned-installation-copy> --language English --output <private-package.afpack>
+AirfixDogfighter.exe --manage-installed-content
+
+# Optional non-interactive import for controlled local automation:
 AirfixDogfighter.exe --import-afpack <private-package.afpack>
 AirfixDogfighter.exe --validate-installed-content
 AirfixDogfighter.exe --installed-content
 ```
 
-Import is an exclusive one-shot operation. It generates the transaction UUID,
-serializes concurrent product imports in the same login session, retains the
-previous active generation
-on an ordinary failure, and never prints the selected path or a complete
-digest. A commit-unknown result explicitly asks the owner to restart and run
-`--validate-installed-content`. Reimporting identical content is safe and does
-not create a new generation.
+`--manage-installed-content` opens the native pre-game manager. It checks the
+private store, accepts only an owner-selected `.afpack`, reports redacted
+progress, supports safe cancellation and retry, and offers rollback only when
+the portable recovery service has already authenticated a previous
+generation. If the current generation is unusable but a previous generation is
+verified, restore is required before importing a replacement. An indeterminate
+store permits only retry or close. The manager does not reload a running
+mission and, outside the owner-controlled OS picker, never echoes a local path, logical archive path,
+checksum, generation identifier, or backend diagnostic.
+
+Both UI and CLI imports use the same exclusive transaction. It generates the
+transaction UUID, serializes concurrent product imports in the same login
+session, retains the previous active generation on an ordinary failure, and
+never prints the selected path or a complete digest. A commit-unknown result
+terminates the manager and requires restart plus a fresh installed-content
+check before another mutation.
+Reimporting identical content is safe and does not create a new generation.
 
 An explicit mission adds owner-private logical paths out of band without
 requiring the private storage location on the command line:

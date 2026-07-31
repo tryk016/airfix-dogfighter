@@ -253,8 +253,16 @@ one-shot `--import-afpack` adapter over the shared authenticated installer. It
 resolves an undisclosed SDL-private root, generates the transaction UUID,
 serializes same-session product importers, redacts path-bearing errors, and
 supports later validation or mission launch without repeating the root path.
-The native picker, progress surface, and rollback-choice UI remain staged over
-the same transaction; they must not create a second package parser or store.
+The same boundary now also owns a native pre-game
+`--manage-installed-content` workflow with an `.afpack` picker, normalized
+cancellable progress, retry, authenticated replacement, and explicit rollback
+only for the verified previous generation. Recovery must restore that known-
+good generation before a replacement import, and an indeterminate store admits
+only retry or close. It re-inspects after every ordinary operation, while an
+ambiguous commit terminates the manager and requires
+restart. It echoes no private path/checksum/generation detail outside the
+owner-controlled OS picker, performs no live mission reload, and creates
+neither a second package parser nor a second store.
 
 ## Phase 7 — gameplay and content parity
 
