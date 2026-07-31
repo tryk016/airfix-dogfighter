@@ -32,11 +32,19 @@ constexpr std::uint32_t panelPadding = 4U;
             native_render_policy::minimumRenderScalePercent ||
         sample.renderScalePercent >
             native_render_policy::maximumRenderScalePercent ||
+        !validateSceneTextureSamplingPolicy(
+            sample.sceneTextureSampling) ||
         !std::isfinite(sample.frameIntervalMilliseconds) ||
         sample.frameIntervalMilliseconds <= 0.0 ||
         !finiteNonNegative(sample.cpuFrameMilliseconds) ||
         sample.sceneDrawCallCount > sample.drawCallCount ||
         sample.sceneTriangleCount > sample.triangleCount) {
+        return false;
+    }
+    const auto expectedSampling =
+        sceneTextureSamplingPolicyForProfile(sample.visualProfile);
+    if (!expectedSampling.has_value() ||
+        *expectedSampling != sample.sceneTextureSampling) {
         return false;
     }
     if (sample.gpuFrameMilliseconds.has_value() &&
@@ -168,6 +176,8 @@ bool RenderFrameDiagnosticsAccumulator::record(
         .outputExtent = sample.outputExtent,
         .renderTargetExtent = sample.renderTargetExtent,
         .renderScalePercent = sample.renderScalePercent,
+        .visualProfile = sample.visualProfile,
+        .sceneTextureSampling = sample.sceneTextureSampling,
         .framesPerSecond = currentFps,
         .cpuFrameMilliseconds = sample.cpuFrameMilliseconds,
         .gpuFrameMilliseconds = sample.gpuFrameMilliseconds,
@@ -228,6 +238,24 @@ std::string formatRenderFrameDiagnostics(
         diagnostics.renderTargetExtent.width,
         diagnostics.renderTargetExtent.height,
         static_cast<double>(diagnostics.renderScalePercent));
+    const auto expectedSampling =
+        sceneTextureSamplingPolicyForProfile(
+            diagnostics.visualProfile);
+    if (!expectedSampling.has_value() ||
+        diagnostics.sceneTextureSampling != *expectedSampling) {
+        appendLine(result, "PROFILE INVALID  TEX INVALID");
+    } else if (diagnostics.visualProfile ==
+               VisualProfile::classic) {
+        appendLine(result, "PROFILE CLASSIC  TEX POINT");
+    } else if (diagnostics.visualProfile ==
+               VisualProfile::enhanced) {
+        appendLine(
+            result,
+            "PROFILE ENHANCED  TEX ANISO %uX",
+            diagnostics.sceneTextureSampling.maximumAnisotropy);
+    } else {
+        appendLine(result, "PROFILE INVALID  TEX INVALID");
+    }
     if (diagnostics.gpuFrameMilliseconds.has_value()) {
         appendLine(
             result,

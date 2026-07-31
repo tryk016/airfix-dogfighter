@@ -16,6 +16,7 @@
 #include "airfix/render/PublicRenderSmokeScene.hpp"
 #include "airfix/render/RenderFrameDiagnostics.hpp"
 #include "airfix/render/RenderPresentationTransaction.hpp"
+#include "airfix/render/SceneTextureSampling.hpp"
 #include "airfix/render/SnapshotGpuBudgetLedger.hpp"
 
 #include <algorithm>
@@ -1289,7 +1290,12 @@ bool preflightPrivateRoom(
 @property(nonatomic, strong) id<MTLDepthStencilState> depthState;
 @property(nonatomic, strong)
     id<MTLDepthStencilState> gameplayDepthState;
-@property(nonatomic, strong) id<MTLSamplerState> samplerState;
+@property(nonatomic, strong)
+    id<MTLSamplerState> classicSceneSamplerState;
+@property(nonatomic, strong)
+    id<MTLSamplerState> enhancedSceneSamplerState;
+@property(nonatomic, strong)
+    id<MTLSamplerState> overlaySamplerState;
 @property(nonatomic, strong)
     id<MTLRenderPipelineState> presentationPipelineState;
 @property(nonatomic, strong)
@@ -1589,17 +1595,64 @@ bool preflightPrivateRoom(
     samplerDescriptor.mipFilter = MTLSamplerMipFilterNearest;
     samplerDescriptor.sAddressMode = MTLSamplerAddressModeClampToEdge;
     samplerDescriptor.tAddressMode = MTLSamplerAddressModeClampToEdge;
-    id<MTLSamplerState> samplerState =
-        [device newSamplerStateWithDescriptor:samplerDescriptor];
-    if (samplerState == nil) {
+    const auto classicSampling =
+        airfix::render::sceneTextureSamplingPolicyForProfile(
+            airfix::render::VisualProfile::classic);
+    const auto enhancedSampling =
+        airfix::render::sceneTextureSamplingPolicyForProfile(
+            airfix::render::VisualProfile::enhanced);
+    if (!classicSampling.has_value() ||
+        !enhancedSampling.has_value()) {
         if (error != nullptr) {
-            *error = makeError(RendererError::samplerCreation, @"Metal sampler creation failed.");
+            *error = makeError(
+                RendererError::samplerCreation,
+                @"The portable scene texture sampling policy is invalid.");
+        }
+        return nil;
+    }
+    samplerDescriptor.maxAnisotropy =
+        static_cast<NSUInteger>(
+            classicSampling->maximumAnisotropy);
+    id<MTLSamplerState> classicSceneSamplerState =
+        [device newSamplerStateWithDescriptor:samplerDescriptor];
+    if (classicSceneSamplerState == nil) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::samplerCreation,
+                @"Metal Classic scene sampler creation failed.");
+        }
+        return nil;
+    }
+    id<MTLSamplerState> overlaySamplerState =
+        [device newSamplerStateWithDescriptor:samplerDescriptor];
+    if (overlaySamplerState == nil) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::samplerCreation,
+                @"Metal overlay sampler creation failed.");
+        }
+        return nil;
+    }
+    samplerDescriptor.minFilter = MTLSamplerMinMagFilterLinear;
+    samplerDescriptor.magFilter = MTLSamplerMinMagFilterLinear;
+    samplerDescriptor.mipFilter = MTLSamplerMipFilterLinear;
+    samplerDescriptor.maxAnisotropy =
+        static_cast<NSUInteger>(
+            enhancedSampling->maximumAnisotropy);
+    id<MTLSamplerState> enhancedSceneSamplerState =
+        [device newSamplerStateWithDescriptor:samplerDescriptor];
+    if (enhancedSceneSamplerState == nil) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::samplerCreation,
+                @"Metal Enhanced scene sampler creation failed.");
         }
         return nil;
     }
     samplerDescriptor.minFilter = MTLSamplerMinMagFilterLinear;
     samplerDescriptor.magFilter = MTLSamplerMinMagFilterLinear;
     samplerDescriptor.mipFilter = MTLSamplerMipFilterNotMipmapped;
+    samplerDescriptor.maxAnisotropy = 1U;
     id<MTLSamplerState> presentationSamplerState =
         [device newSamplerStateWithDescriptor:samplerDescriptor];
     if (presentationSamplerState == nil) {
@@ -2127,7 +2180,9 @@ bool preflightPrivateRoom(
     self.gameplayPipelineState = gameplayPipelineState;
     self.depthState = depthState;
     self.gameplayDepthState = gameplayDepthState;
-    self.samplerState = samplerState;
+    self.classicSceneSamplerState = classicSceneSamplerState;
+    self.enhancedSceneSamplerState = enhancedSceneSamplerState;
+    self.overlaySamplerState = overlaySamplerState;
     self.presentationPipelineState = presentationPipelineState;
     self.overlayPipelineState = overlayPipelineState;
     self.presentationSamplerState = presentationSamplerState;
@@ -3520,6 +3575,21 @@ bool preflightPrivateRoom(
         presentationSnapshot = *currentPresentation;
     const auto presentationSettings =
         presentationSnapshot.settings();
+    const auto sceneTextureSampling =
+        airfix::render::sceneTextureSamplingPolicyForProfile(
+            presentationSettings.visualProfile);
+    if (!sceneTextureSampling.has_value()) {
+        return;
+    }
+    id<MTLSamplerState> sceneSamplerState =
+        sceneTextureSampling->mode ==
+                airfix::render::SceneTextureSamplingMode::
+                    anisotropicMipLinear
+        ? self.enhancedSceneSamplerState
+        : self.classicSceneSamplerState;
+    if (sceneSamplerState == nil) {
+        return;
+    }
 
     AirfixMetalRoomSnapshot* snapshot = self.roomSnapshot;
     if (snapshot == nil) {
@@ -3714,7 +3784,7 @@ bool preflightPrivateRoom(
     };
     [encoder setViewport:metalSceneViewport];
     [encoder setCullMode:MTLCullModeNone];
-    [encoder setFragmentSamplerState:self.samplerState atIndex:0U];
+    [encoder setFragmentSamplerState:sceneSamplerState atIndex:0U];
 
     // One lease covers the whole encoded frame. The SPSC producer may publish
     // between frames; failed acquisition safely falls back to the immutable
@@ -3884,6 +3954,8 @@ bool preflightPrivateRoom(
             .renderTargetExtent = renderTargetExtent,
             .renderScalePercent =
                 presentationSettings.renderScalePercent,
+            .visualProfile = presentationSettings.visualProfile,
+            .sceneTextureSampling = *sceneTextureSampling,
             .frameIntervalMilliseconds =
                 frameIntervalMilliseconds,
             .cpuFrameMilliseconds = cpuFrameMilliseconds,
@@ -3987,7 +4059,7 @@ bool preflightPrivateRoom(
                 setFragmentTexture:retainedDiagnosticsOverlay
                            atIndex:0U];
             [overlayEncoder
-                setFragmentSamplerState:self.samplerState
+                setFragmentSamplerState:self.overlaySamplerState
                                atIndex:0U];
             [overlayEncoder
                 drawPrimitives:MTLPrimitiveTypeTriangle

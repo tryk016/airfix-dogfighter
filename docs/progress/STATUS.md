@@ -24,7 +24,7 @@
   text, safe areas, and input coordinates remain independent of scene render
   scale. Classic/Enhanced profiles, Low-Ultra tiers, staged lighting/material/
   HDR/effect work, platform budgets, diagnostics, aspect-ratio tests, and
-  matched screenshots are specified. The first implementation slice now
+  matched screenshots are specified. The implemented foundation now
   provides strongly typed domains, exact 100% target identity, Hor+, Original
   4:3 comparison math, safe-area/UI fitting, input transforms, and the
   ADR-0016 safe vertical-FOV increase. Both native
@@ -48,8 +48,12 @@
   triangles, lights, and labelled GPU-memory measurements. D3D11 and Metal
   composite the same output-resolution developer panel after scene
   presentation; Metal applies UIKit safe-area offsets. Both native products
-  now expose render settings through explicit pause/menu boundaries. Modern
-  visual stages and iOS runtime/device acceptance remain pending.
+  now expose render settings through explicit pause/menu boundaries. The first
+  sampling stage is also implemented: Classic retains the established
+  point-sampled scene-texture path and Enhanced uses trilinear 8x anisotropic
+  sampling on D3D11 and Metal. UI/diagnostic and final-presentation samplers
+  remain independent. Color-space classification, lighting, materials,
+  shadows, post-processing, and iOS runtime/device acceptance remain pending.
   Hosted iPhoneOS and iPhoneSimulator builds compile the complete Metal path;
   only physical-device visual/timing acceptance remains for this slice.
 - The recovered CCF material contract now survives end to end from typed
@@ -93,7 +97,9 @@
   retains the last good pair but does not render it to a mismatched drawable;
   zero extent retains it for restore. Exactly 100% remains a direct native
   target on both backends, diagnostics now defaults off on iOS, and Enhanced
-  remains a selector only, not a claim that modern passes exist. The portable
+  now selects the bounded scene-texture sampling policy above. It is still not
+  a claim that lighting, materials, shadows, color-space work, or post-effects
+  exist. The portable
   persistence slice now adds a canonical, checksummed, 4 KiB-bounded AFRS
   record plus strict current/backup/default recovery and atomic durable writes.
   Windows resolves the private `settings/` leaf only through SDL's preference

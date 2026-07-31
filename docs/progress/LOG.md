@@ -4534,3 +4534,27 @@ superseded evidence.
   CTests. The native MSVC 19.51/Ninja Windows product passes 132/132 CTests,
   including both D3D11 product smokes. Public-boundary tests, the 630-file
   repository scan, 12 Rizin normalization tests, and `git diff --check` pass.
+
+## 2026-07-31 - Enhanced scene-texture sampling
+
+- `EXP-20260731-086` turns the previously policy-only visual profile into its
+  first bounded pixel-affecting stage. Classic preserves the established
+  nearest/mip-point scene sampler; Enhanced selects trilinear 8x anisotropic
+  filtering through one backend-neutral C++20 contract.
+- D3D11 and Metal create independent immutable Classic, Enhanced, overlay, and
+  final-presentation samplers. Per-frame scene selection follows the same
+  immutable presentation snapshot recorded by diagnostics; UI pixels and
+  render-scale presentation cannot inherit the scene sampler.
+- Portable tests reject forged profiles, forged sampling modes, invalid
+  anisotropy, and mismatched diagnostics atomically. D3D11 renderer coverage
+  proves a successful profile transaction changes the selected scene policy
+  while existing resource-retention and layout guarantees remain intact.
+- Private 1920x1080 Classic and Enhanced captures of one authenticated mission
+  retain identical 278-draw/1,311-triangle geometry and 100% scene scale. The
+  Enhanced frame reports `TEX ANISO 8X`; 14.05% of uncompressed color bytes
+  differ and oblique room surfaces are visibly smoother. Captures and owner
+  content remain ignored and outside Git.
+- The complete portable suite passes 123/123 tests. The native MSVC
+  19.51/Ninja product build succeeds and passes 133/133 tests. Hosted Apple
+  compilation and the complete public-boundary gate remain publication
+  requirements; physical-device Metal inspection remains separate.

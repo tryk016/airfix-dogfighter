@@ -45,10 +45,13 @@ the complete candidate without clamping or partially copying fields. A forged
 enumeration, non-finite scale, unsupported schema, or invalid Boolean is an
 error.
 
-`Enhanced` is initially a typed policy selector only. It does not claim that
-the lighting, material, shadow, or post-processing stages in ADR-0013 exist,
-and it may produce the same scene pixels as `Classic` until those stages are
-implemented. It is distinct from the optional private HD texture mode.
+`Enhanced` is a typed visual-policy selector. Its first implemented behavior is
+bounded trilinear 8x anisotropic sampling for scene textures on D3D11 and
+Metal; Classic retains the established point/mip-point scene path. UI overlays
+and the final render-scale presentation use separate sampler contracts. This
+does not claim that the lighting, material, shadow, color-space, or
+post-processing stages in ADR-0013 exist. It is distinct from the optional
+private HD texture mode.
 
 The portable layer also owns:
 
@@ -218,8 +221,9 @@ or crash loop.
   sequencing are portable and testable without game data.
 - Adding later quality/FOV/texture fields requires a deliberate schema
   migration rather than silently changing defaults.
-- Classic/Enhanced selection can be wired before Enhanced effects exist, but
-  status and screenshots must continue to state that visual parity is pending.
+- Classic/Enhanced selection can gain bounded stages incrementally, but status
+  and screenshots must identify the stages actually implemented and continue
+  to state that complete visual parity is pending.
 
 ## Verification
 

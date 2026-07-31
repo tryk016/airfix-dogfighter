@@ -1,6 +1,7 @@
 #pragma once
 
 #include "airfix/render/NativeRenderLayout.hpp"
+#include "airfix/render/SceneTextureSampling.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -21,6 +22,8 @@ struct RenderFrameDiagnosticSample final {
     OutputPixelExtent outputExtent;
     RenderTargetPixelExtent renderTargetExtent;
     float renderScalePercent{100.0F};
+    VisualProfile visualProfile{VisualProfile::classic};
+    SceneTextureSamplingPolicy sceneTextureSampling;
     double frameIntervalMilliseconds{};
     double cpuFrameMilliseconds{};
     std::optional<double> gpuFrameMilliseconds;
@@ -38,6 +41,8 @@ struct RenderFrameDiagnostics final {
     OutputPixelExtent outputExtent;
     RenderTargetPixelExtent renderTargetExtent;
     float renderScalePercent{100.0F};
+    VisualProfile visualProfile{VisualProfile::classic};
+    SceneTextureSamplingPolicy sceneTextureSampling;
     double framesPerSecond{};
     double cpuFrameMilliseconds{};
     std::optional<double> gpuFrameMilliseconds;

@@ -7,8 +7,9 @@
 
 namespace airfix::render {
 
-// This selects presentation policy only. The enhanced selector does not imply
-// that any enhanced render passes, materials, or texture modes exist.
+// This selects bounded visual policy without changing deterministic gameplay.
+// Enhanced currently enables improved scene-texture sampling; lighting,
+// materials, shadows, and post-processing remain separate later stages.
 enum class VisualProfile : std::uint8_t {
     classic,
     enhanced,

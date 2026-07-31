@@ -22,6 +22,10 @@ void require(const bool condition, const std::string_view message) {
         .outputExtent = {1920U, 1080U},
         .renderTargetExtent = {1920U, 1080U},
         .renderScalePercent = 100.0F,
+        .visualProfile = VisualProfile::classic,
+        .sceneTextureSampling =
+            *sceneTextureSamplingPolicyForProfile(
+                VisualProfile::classic),
         .frameIntervalMilliseconds = 1000.0 / 60.0,
         .cpuFrameMilliseconds = 4.0,
         .gpuFrameMilliseconds = 3.0,
@@ -51,6 +55,16 @@ void testValidationAndAtomicPublication() {
             accumulator.latest()->framesPerSecond ==
                 baseline->framesPerSecond,
         "invalid sample changed the published diagnostics");
+
+    invalid = valid;
+    invalid.visualProfile = VisualProfile::enhanced;
+    require(!accumulator.record(invalid),
+            "profile/sampler mismatch was accepted");
+
+    invalid = valid;
+    invalid.sceneTextureSampling.maximumAnisotropy = 2U;
+    require(!accumulator.record(invalid),
+            "invalid scene sampling policy was accepted");
 
     invalid = valid;
     invalid.sceneDrawCallCount = invalid.drawCallCount + 1U;
@@ -116,11 +130,31 @@ void testFormattingAndRasterization() {
     require(text.find("OUT 1920X1080") != std::string::npos &&
                 text.find("RT 1920X1080") != std::string::npos &&
                 text.find("SCALE 100%") != std::string::npos &&
+                text.find("PROFILE CLASSIC  TEX POINT") !=
+                    std::string::npos &&
                 text.find("GPU 3.00MS") != std::string::npos &&
                 text.find("DRAW 122/120") != std::string::npos &&
                 text.find("TRI 170041/170039") != std::string::npos &&
                 text.find("VRAM 96.0MIB EST") != std::string::npos,
             "diagnostic text omitted required counters");
+
+    auto enhanced = diagnostics;
+    enhanced.visualProfile = VisualProfile::enhanced;
+    enhanced.sceneTextureSampling =
+        *sceneTextureSamplingPolicyForProfile(
+            VisualProfile::enhanced);
+    const auto enhancedText =
+        formatRenderFrameDiagnostics(enhanced);
+    require(
+        enhancedText.find("PROFILE ENHANCED  TEX ANISO 8X") !=
+            std::string::npos,
+        "Enhanced sampling policy was absent from diagnostics");
+
+    enhanced.sceneTextureSampling.maximumAnisotropy = 16U;
+    require(
+        formatRenderFrameDiagnostics(enhanced).find(
+            "PROFILE INVALID  TEX INVALID") != std::string::npos,
+        "mismatched Enhanced sampling formatted as valid");
 
     const auto image = rasterizeRenderFrameDiagnostics(diagnostics);
     require(image.complete(), "diagnostic panel was incomplete");

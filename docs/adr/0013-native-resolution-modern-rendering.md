@@ -312,6 +312,12 @@ path while sharing the higher-level rendering contract.
   surfaces and renderer diagnostics.
 - [x] Add the shared diagnostic contract and output-resolution overlays to
   D3D11 and Metal.
+- [x] Add one backend-neutral scene-texture sampling contract: Classic retains
+  the established point/mip-point path and Enhanced selects trilinear 8x
+  anisotropic filtering on D3D11 and Metal, independently of UI and final
+  presentation sampling.
+- [ ] Complete the remaining sampling/color stage: explicit texture
+  classification, linear/sRGB handling, MSAA, and final-image anti-aliasing.
 - [ ] Complete physical-device backbuffer/render-target and diagnostic
   acceptance on iPhone SE 3 and iPhone 17 Pro Max.
 - [ ] Implement the ordered image-quality stages above, maintaining separate
