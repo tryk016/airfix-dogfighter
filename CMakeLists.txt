@@ -107,6 +107,7 @@ add_library(airfix_simulation
     src/airfix/simulation/LegacyAircraftControlCommandStep.cpp
     src/airfix/simulation/LegacyAircraftControlEventStateOwner.cpp
     src/airfix/simulation/LegacyAircraftTypeCatalog.cpp
+    src/airfix/simulation/LegacyWeaponTypeCatalog.cpp
     src/airfix/simulation/LegacyAircraftVehicleRefreshGate.cpp
     src/airfix/simulation/LegacyAircraftPitchBankEventStep.cpp
     src/airfix/simulation/LegacyAircraftDestroyedDiveAudioState.cpp
@@ -335,6 +336,7 @@ add_library(airfix_content
     src/airfix/content/LegacyAircraftAudioClipSet.cpp
     src/airfix/content/LegacyProjectileRuntimeQueryAdapter.cpp
     src/airfix/content/LegacyWeaponCrosshairTextureSet.cpp
+    src/airfix/content/LegacyWeaponCrosshairBinding.cpp
     src/airfix/content/MissionLoadManifest.cpp
     src/airfix/content/MissionWorldRoomPublication.cpp
     src/airfix/content/MissionWorldRoomLoader.cpp

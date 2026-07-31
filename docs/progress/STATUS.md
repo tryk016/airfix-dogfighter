@@ -68,10 +68,14 @@
   and depth labels stay explicit. The three recovered sight roles now load as
   one bounded format-8 `32x32` set through the exact authenticated content
   handle; plan-only source/RGBA preflight precedes decode, publication is
-  atomic, and HUD-local texture IDs cannot collide with scene IDs. Actual
-  selected-weapon/type mapping, changing aim/collision production, native
-  sprite submission, the remaining HUD, and screen effects are not yet
-  connected.
+  atomic, and HUD-local texture IDs cannot collide with scene IDs. The exact
+  nine registered weapon types now map to MG/RO/BO or the affirmative
+  `WpParaMine` no-sight result. The portable binder preserves the type, role,
+  HUD-local texture ID, revision, and exact authenticated-stream identity;
+  primary and selected-secondary slots remain independent as in the recovered
+  `AirCraft+0x490/+0x494` state. Live slot ownership, changing aim/collision
+  production, primary/secondary composition policy, native sprite submission,
+  the remaining HUD, and screen effects are not yet connected.
 - The recovered CCF material contract now survives end to end from typed
   `0x2140/0x2150/0x2151` metadata and exact native defaults through world,
   aggregate mission, and player texture binding into each backend-neutral draw

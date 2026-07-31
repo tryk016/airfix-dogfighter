@@ -4627,3 +4627,26 @@ superseded evidence.
 - Fresh Release validation passes 126/126 portable GCC/Ninja CTests and 136/136
   native MSVC/Ninja CTests, including the SDL3/D3D11/XAudio2 product and both
   Windows product smokes.
+
+## 2026-07-31 - weapon-type crosshair binding
+
+- `EV-20260731-005` / `EXP-20260731-090` recovers the exact mapping of all nine
+  `Projectiles.type` weapon registrations: MG sight for `WpMGun`, bomb sight
+  for `WpBomb`/`WpABomb`, rocket sight for five projectile families, and an
+  affirmative no-sight result for `WpParaMine`.
+- Ghidra confirms the sight-bearing loaders store their texture reference in
+  type field `+0x4C`; `WpParaMine::Load` only delegates and sets its loaded
+  byte. Rizin independently matches seven relevant function ranges and exact
+  instruction bytes on the same hash-verified working copies.
+- The AirCraft transition at RVA `0x00007600` stops and deactivates an old
+  selected secondary at `+0x494`, stores a distinct non-null candidate, and
+  activates it. Primary `+0x490` remains separate; final simultaneous
+  composition or suppression is not inferred from static evidence.
+- `LegacyWeaponTypeCatalog` and the allocation-free authenticated binder now
+  publish type, role, HUD-local texture ID, content revision, and exact stream
+  identity. Invalid types, forged sets, and another equal-revision stream fail
+  closed; synthetic tests cover all nine mappings and no-sight behavior.
+- A fresh GCC 15.2/Ninja Release build completes 403/403 steps and passes
+  126/126 portable CTests. A separate fresh MSVC 19.51/Ninja Release build
+  completes 689/689 steps and passes 136/136 CTests, including the complete
+  SDL3/D3D11/XAudio2 application and both native Windows product smokes.

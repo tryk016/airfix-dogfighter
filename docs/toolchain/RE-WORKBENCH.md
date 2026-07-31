@@ -134,6 +134,21 @@ the `_controlfp`/`_control87`/`_clearfp`/`_fpreset`/`fenv` mutation families,
 including exception-state setters. It scans Ghidra-decoded instructions, not
 arbitrary byte offsets.
 
+When a virtual target is known only by one or more recovered vtable
+displacements, export every owning function without relying on symbol names:
+
+```powershell
+./tools/Invoke-GhidraAnalysis.ps1 `
+  -ProgramName 'AirCraft.type' `
+  -PostScript 'ExportIndirectCallsByDisplacement.java' `
+  -PostScriptArguments @('24', '28', '34') `
+  -ReportSuffix 'weapon-vcalls'
+```
+
+The exporter considers only decoded indirect `CALL` operands and exact scalar
+displacements. The resulting report remains ignored local evidence; only the
+minimal verified call sites and interpretation belong in project documents.
+
 ## Repeatable Rizin commands
 
 Set these shell variables to a verified portable installation and one verified

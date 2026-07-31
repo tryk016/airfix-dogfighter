@@ -2,6 +2,7 @@
 
 #include "airfix/content/VerifiedContentSession.hpp"
 #include "airfix/render/TextureRuntimeData.hpp"
+#include "airfix/simulation/LegacyWeaponTypeCatalog.hpp"
 
 #include <array>
 #include <cstddef>
@@ -14,11 +15,7 @@
 
 namespace airfix::content {
 
-enum class LegacyWeaponCrosshairTextureRole : std::uint8_t {
-  machineGun = 0U,
-  rocket = 1U,
-  bomb = 2U,
-};
+using LegacyWeaponCrosshairTextureRole = simulation::LegacyWeaponSightRole;
 
 inline constexpr std::size_t legacyWeaponCrosshairTextureCount = 3U;
 inline constexpr std::uint32_t legacyWeaponCrosshairTextureFormat = 8U;
