@@ -660,6 +660,8 @@ WorldRoomLoadResult loadWorldRoom(
         }
         std::vector<std::uint32_t> materialReferences;
         materialReferences.reserve(resolution.plan.materialIndices.size());
+        std::vector<render::DrawMaterialState> materialStates;
+        materialStates.reserve(resolution.plan.materialIndices.size());
         for (const auto materialIndex : resolution.plan.materialIndices) {
             if (materialIndex >= ccf.materials.size()) {
                 addIssue(
@@ -667,13 +669,16 @@ WorldRoomLoadResult loadWorldRoom(
                     WorldRoomLoadIssueKind::textureResolutionFailure);
                 return result;
             }
-            materialReferences.push_back(
-                ccf.materials[materialIndex].reference);
+            const auto& material = ccf.materials[materialIndex];
+            materialReferences.push_back(material.reference);
+            materialStates.push_back(
+                render::makeDrawMaterialState(material));
         }
         render::TextureBindingPlan binding;
         try {
             binding = render::buildTextureBindingPlan(
                 materialReferences,
+                materialStates,
                 resolution.plan.textures,
                 resolution.textures,
                 limits.textureBindings);

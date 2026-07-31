@@ -269,6 +269,17 @@ void appendRecord(
         .primaryTexture = primaryTexture,
         .secondaryTexture = secondaryTexture,
         .environmentTexture = environmentTexture,
+        .properties2140 = CcfMaterialProperties2140{
+            .firstVector = {x, x + 1.0F, x + 2.0F},
+            .secondVector = {x + 3.0F, x + 4.0F, x + 5.0F},
+            .scalar = x + 0.5F,
+        },
+        .properties2150 = CcfMaterialProperties2150{
+            .lightingMode = static_cast<std::uint8_t>(roomBase / 100U),
+            .gouraudShading = roomBase == 100U,
+            .blendMode = roomBase == 100U ? 0U : 3U,
+        },
+        .flag2151 = roomBase != 100U,
     }};
     ccf.meshes = {mesh(100U, 50U)};
     ccf.placedNodes = {
@@ -416,8 +427,28 @@ void testGlobalIdsSourceIsolationAndDeduplication() {
             first.primary == TextureAssetId{0U} &&
             first.secondary == TextureAssetId{0U} &&
             second.primary == TextureAssetId{1U} &&
-            second.environment == TextureAssetId{0U},
-        "ID zero, cross-role dedup, or source-local equal references changed");
+            second.environment == TextureAssetId{0U} &&
+            first.state ==
+                DrawMaterialState{
+                    .lightingMode = 1U,
+                    .gouraudShading = true,
+                    .blendMode = 0U,
+                    .flag2151 = false,
+                    .scalar2140 = 1.5F,
+                    .firstVector2140 = {1.0F, 2.0F, 3.0F},
+                    .secondVector2140 = {4.0F, 5.0F, 6.0F},
+                } &&
+            second.state ==
+                DrawMaterialState{
+                    .lightingMode = 2U,
+                    .gouraudShading = false,
+                    .blendMode = 3U,
+                    .flag2151 = true,
+                    .scalar2140 = 2.5F,
+                    .firstVector2140 = {2.0F, 3.0F, 4.0F},
+                    .secondVector2140 = {5.0F, 6.0F, 7.0F},
+                },
+        "ID zero, cross-role dedup, source isolation, or material state changed");
 }
 
 void testOutputCrossesAssemblyAndSubmissionBoundaries() {
@@ -454,8 +485,12 @@ void testOutputCrossesAssemblyAndSubmissionBoundaries() {
         assembly.model, bindings.imports.size());
     require(
         submission.plan.has_value() && submission.issues.empty() &&
-            submission.plan->commands.size() == 2U,
-        "global bindings did not cross draw submission");
+            submission.plan->commands.size() == 2U &&
+            submission.plan->commands[0].materialState ==
+                bindings.materialBindingsBySource[0][0].state &&
+            submission.plan->commands[1].materialState ==
+                bindings.materialBindingsBySource[1][0].state,
+        "global bindings or material states did not cross draw submission");
 }
 
 void testForgedIdentityCountAndCatalogFailAtomically() {

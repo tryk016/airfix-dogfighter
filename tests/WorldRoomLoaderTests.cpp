@@ -240,8 +240,18 @@ void requireOneTriangleRoom(
     require(
         room.submission.meshUploads.size() == 1U &&
             room.submission.commands.size() == 1U &&
-            room.submission.commands[0].indexCount == 3U,
-        "one triangle did not produce one complete draw command");
+            room.submission.commands[0].indexCount == 3U &&
+            room.submission.commands[0].materialState ==
+                airfix::render::DrawMaterialState{
+                    .lightingMode = 2U,
+                    .gouraudShading = true,
+                    .blendMode = 3U,
+                    .flag2151 = true,
+                    .scalar2140 = 0.625F,
+                    .firstVector2140 = {1.25F, 2.5F, 3.75F},
+                    .secondVector2140 = {4.5F, 5.25F, 6.75F},
+                },
+        "one triangle lost its non-default material state");
 }
 
 void testHappyOrdinaryRoomAndExactRgba() {

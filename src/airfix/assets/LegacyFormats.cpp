@@ -283,7 +283,7 @@ struct CcfName {
     CcfSpatialBudget& spatialBudget,
     bool primaryBinding);
 
-void validateCcfMaterialVectors(
+[[nodiscard]] CcfMaterialProperties2140 parseCcfMaterialProperties2140(
     const std::span<const std::uint8_t> bytes,
     const CcfChunk& chunk) {
     if (chunk.totalSize != 46U) {
@@ -297,6 +297,43 @@ void validateCcfMaterialVectors(
         readU32(bytes, static_cast<std::size_t>(second + 2U), "CCF material vector") != 18U) {
         throw ParseError("CCF material vectors do not contain two vec3 chunks");
     }
+    const auto firstPayload = checkedAdd(first, 6U, "CCF material first vector");
+    const auto secondPayload = checkedAdd(second, 6U, "CCF material second vector");
+    const auto scalar = checkedAdd(second, 18U, "CCF material vector scalar");
+    return {
+        .firstVector = {
+            readFloat(
+                bytes,
+                static_cast<std::size_t>(firstPayload),
+                "CCF material first vector X"),
+            readFloat(
+                bytes,
+                static_cast<std::size_t>(firstPayload + 4U),
+                "CCF material first vector Y"),
+            readFloat(
+                bytes,
+                static_cast<std::size_t>(firstPayload + 8U),
+                "CCF material first vector Z"),
+        },
+        .secondVector = {
+            readFloat(
+                bytes,
+                static_cast<std::size_t>(secondPayload),
+                "CCF material second vector X"),
+            readFloat(
+                bytes,
+                static_cast<std::size_t>(secondPayload + 4U),
+                "CCF material second vector Y"),
+            readFloat(
+                bytes,
+                static_cast<std::size_t>(secondPayload + 8U),
+                "CCF material second vector Z"),
+        },
+        .scalar = readFloat(
+            bytes,
+            static_cast<std::size_t>(scalar),
+            "CCF material vector scalar"),
+    };
 }
 
 [[nodiscard]] CcfMaterialMetadata parseCcfMaterial(
@@ -341,13 +378,13 @@ void validateCcfMaterialVectors(
         .primaryTexture = std::nullopt,
         .secondaryTexture = std::nullopt,
         .environmentTexture = std::nullopt,
+        .properties2140 = std::nullopt,
+        .properties2150 = std::nullopt,
+        .flag2151 = std::nullopt,
         .collisionMode2152 = std::nullopt,
+        .scalarProperties2152 = std::nullopt,
         .offset = material.offset,
     };
-    bool hasVectors = false;
-    bool hasFlags = false;
-    bool hasMode = false;
-    bool hasScalars = false;
     for (const auto& property : material.directChildren) {
         switch (property.id) {
         case 0x2110U:
@@ -372,37 +409,74 @@ void validateCcfMaterialVectors(
                 bytes, property, "CCF material environment texture", budget);
             break;
         case 0x2140U:
-            if (hasVectors) {
+            if (metadata.properties2140.has_value()) {
                 throw ParseError("CCF material has duplicate vector properties");
             }
-            validateCcfMaterialVectors(bytes, property);
-            hasVectors = true;
+            metadata.properties2140 =
+                parseCcfMaterialProperties2140(bytes, property);
             break;
         case 0x2150U:
-            if (hasFlags || property.totalSize != 12U) {
+            if (metadata.properties2150.has_value() ||
+                property.totalSize != 12U) {
                 throw ParseError("CCF material has invalid flag properties");
             }
-            hasFlags = true;
+            metadata.properties2150 = CcfMaterialProperties2150{
+                .lightingMode = bytes[static_cast<std::size_t>(
+                    checkedAdd(
+                        property.offset,
+                        6U,
+                        "CCF material 0x2150 lighting mode"))],
+                .gouraudShading =
+                    bytes[static_cast<std::size_t>(
+                        checkedAdd(
+                            property.offset,
+                            7U,
+                            "CCF material 0x2150 shading flag"))] != 0U,
+                .blendMode = readU32(
+                    bytes,
+                    static_cast<std::size_t>(checkedAdd(
+                        property.offset,
+                        8U,
+                        "CCF material 0x2150 blend mode")),
+                    "CCF material 0x2150 blend mode"),
+            };
             break;
         case 0x2151U:
-            if (hasMode || property.totalSize != 7U) {
+            if (metadata.flag2151.has_value() ||
+                property.totalSize != 7U) {
                 throw ParseError("CCF material has an invalid mode property");
             }
-            hasMode = true;
-            break;
-        case 0x2152U:
-            if (hasScalars || property.totalSize != 18U) {
-                throw ParseError("CCF material has invalid scalar properties");
-            }
-            metadata.collisionMode2152 = readU32(
-                bytes,
-                static_cast<std::size_t>(checkedAdd(
+            metadata.flag2151 =
+                bytes[static_cast<std::size_t>(checkedAdd(
                     property.offset,
                     6U,
-                    "CCF material 0x2152 collision mode")),
-                "CCF material 0x2152 collision mode");
-            hasScalars = true;
+                    "CCF material 0x2151 flag"))] != 0U;
             break;
+        case 0x2152U: {
+            if (metadata.collisionMode2152.has_value() ||
+                property.totalSize != 18U) {
+                throw ParseError("CCF material has invalid scalar properties");
+            }
+            const auto scalarPayload = checkedAdd(
+                property.offset,
+                6U,
+                "CCF material 0x2152 payload");
+            metadata.collisionMode2152 = readU32(
+                bytes,
+                static_cast<std::size_t>(scalarPayload),
+                "CCF material 0x2152 collision mode");
+            metadata.scalarProperties2152 = std::array<float, 2>{
+                readFloat(
+                    bytes,
+                    static_cast<std::size_t>(scalarPayload + 4U),
+                    "CCF material 0x2152 first scalar"),
+                readFloat(
+                    bytes,
+                    static_cast<std::size_t>(scalarPayload + 8U),
+                    "CCF material 0x2152 second scalar"),
+            };
+            break;
+        }
         default:
             // LoadSceneCcf closes unknown chunks and continues. Retain them in
             // directChildren so later schema versions remain inspectable.

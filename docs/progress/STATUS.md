@@ -52,6 +52,14 @@
   visual stages and iOS runtime/device acceptance remain pending.
   Hosted iPhoneOS and iPhoneSimulator builds compile the complete Metal path;
   only physical-device visual/timing acceptance remains for this slice.
+- The recovered CCF material contract now survives end to end from typed
+  `0x2140/0x2150/0x2151` metadata and exact native defaults through world,
+  aggregate mission, and player texture binding into each backend-neutral draw
+  command. The native four blend modes, fixed-function texture-stage behavior,
+  and per-room triangle/sprite/custom unsigned depth sort are statically
+  documented. D3D11 and Metal consumption remains deliberately off until a
+  triangle-level cross-kind queue and the policy-conditioned x87 `_ftol`
+  boundary are implemented; current output is unchanged.
 - ADR-0014 defines one cross-platform render-presentation settings transaction.
   Its portable C++20 foundation is implemented: render scale, Hor+/Original
   4:3, safe FOV, UI scale, diagnostics, and the Classic/Enhanced selector form
@@ -1159,6 +1167,14 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The recovered CCF material render contract passes fresh Windows GCC
+  15.2/Ninja and independent WSL2 GCC builds with all 120 portable CTests. An
+  isolated MSVC 19.51/Ninja build completes all 669 steps, links the Windows
+  product, and passes all 130 CTests including both native D3D11 product
+  smokes. Synthetic public-boundary tests, the 623-file repository scan,
+  340-row/14-column unique function catalogue, local-path review, and
+  `git diff --check` pass. Independent final review reports no remaining
+  finding. Hosted platform builds remain the publication gate.
 - The AFS mission-outcome bytecode boundary recognizes only the recovered
   `0x1B, 1, 0x24, 0x26, descriptor-token` call site and validates the exact
   immediate argument plus one-word descriptor shape before returning the

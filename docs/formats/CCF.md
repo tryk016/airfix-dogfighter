@@ -416,7 +416,10 @@ culling and dynamic-object collision remain separate work.
 
 ## Material records (`0x2100`)
 
-`EV-20260721-023` recovered and implemented every observed material record.
+`EV-20260721-023` recovered every observed material record.
+`EV-20260731-003` then cross-checked the numeric fields against native load,
+save, lighting, sorting, and Direct3D paths and implemented their lossless
+portable boundary.
 The corpus has the following strictly ordered property sequence:
 
 ```text
@@ -448,9 +451,9 @@ The meanings of the remaining numeric fields are intentionally not guessed:
 | `0x2110` | one `0xF020` primary texture string | 10,256 |
 | `0x2111` | one `0xF020` secondary texture string | 0 (loader-supported) |
 | `0x2120` | one `0xF020` environment texture string | 263 |
-| `0x2140` | two 18-byte `0xF030` vec3 chunks, then one float32 | 10,385 |
-| `0x2150` | two bytes, then one u32 | 10,385 |
-| `0x2151` | one byte | 10,385 |
+| `0x2140` | two 18-byte `0xF030` vec3 chunks, then one float32; copied to native `+0x44..+0x58` and `+0x40` | 10,385 |
+| `0x2150` | raw lighting byte at native `+0x3C`, Gouraud bool at `+0x00`, blend u32 at `+0x04` | 10,385 |
+| `0x2151` | bool at native `+0x01`; visible meaning unresolved | 10,385 |
 | `0x2152` | one collision-used u32, then two unresolved float32 values | 10,385 |
 
 All 10,385 records match one of four exact sequences: 10,069 have primary
@@ -459,19 +462,29 @@ and 53 have neither optional texture. No selected asset contains a secondary
 texture, but the original loader recognizes the field, so the portable model
 retains it.
 
-The first `0x2152` u32 is stored at native `CcMaterial + 0x5C`. The gameplay
+The first `0x2152` u32 is stored at native `CcMaterial + 0x5C`; the two floats
+are copied to `+0x60/+0x64`. The gameplay
 camera removes sphere contacts when that value is exactly `0` or `8`; no
 durable enumerant labels are assigned. The portable model exposes it as the
-optional raw `collisionMode2152`. Meanings for the two following floats remain
-unknown.
+optional raw `collisionMode2152` and retains both following floats without
+assigning meanings.
+
+The native material defaults are flat shading, blend mode zero, lighting mode
+zero, `0x2151` false, scalar/vector values of `1.0f`, collision mode zero, and
+two final values of `0.5f`. The portable renderer-owned state uses those exact
+defaults when compatible files omit optional properties. In the authenticated
+private corpus blend mode zero appears 7,487 times and straight-alpha mode
+three appears 2,898 times; no CCF material authors modes one or two, although
+both exist in native L3D/effect and multipass code.
 
 Malformed bounds, duplicate known properties, invalid fixed sizes, and an
 invalid nested vec3 shape are rejected. Loader-compatible unknown, reordered,
 or absent properties are retained in the chunk index without invalidating the
 material; this separates format compatibility from the stricter corpus profile.
-Names, prefixes, references, the three optional texture dependencies, and the
-collision-used first `0x2152` u32 are exposed as metadata. Other numeric
-material values remain uninterpreted. `cc-tools` also maps an unobserved
+Names, prefixes, references, all three optional texture dependencies, typed
+raw `0x2140/0x2150/0x2151` properties, and every `0x2152` value are exposed as
+metadata. The renderer retains only the render-relevant fields and preserves
+unresolved names. `cc-tools` also maps an unobserved
 `0x2153` shape, which remains preserved as unknown until an Airfix sample or
 loader path confirms it.
 

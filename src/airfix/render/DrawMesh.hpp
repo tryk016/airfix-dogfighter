@@ -37,11 +37,29 @@ struct TextureAssetId {
         const TextureAssetId&) = default;
 };
 
+struct DrawMaterialState {
+    // Defaults reproduce CcMaterial::ResetMembers. Field names deliberately
+    // retain the recovered/raw contract where higher-level semantics remain
+    // unproven.
+    std::uint8_t lightingMode{};
+    bool gouraudShading{};
+    std::uint32_t blendMode{};
+    bool flag2151{};
+    float scalar2140{1.0F};
+    Vec3 firstVector2140{1.0F, 1.0F, 1.0F};
+    Vec3 secondVector2140{1.0F, 1.0F, 1.0F};
+
+    [[nodiscard]] friend constexpr bool operator==(
+        const DrawMaterialState&,
+        const DrawMaterialState&) = default;
+};
+
 struct DrawMaterial {
     std::uint32_t sourceReference{};
     std::optional<TextureAssetId> primary;
     std::optional<TextureAssetId> secondary;
     std::optional<TextureAssetId> environment;
+    DrawMaterialState state{};
 
     [[nodiscard]] friend constexpr bool operator==(
         const DrawMaterial&,

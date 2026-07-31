@@ -113,10 +113,76 @@ void addUploadIssue(
     });
 }
 
+[[nodiscard]] TextureBindingPlan buildTextureBindingPlanImpl(
+    std::span<const std::uint32_t> materialReferences,
+    std::optional<std::span<const DrawMaterialState>> materialStates,
+    std::span<const assets::TextureDependency> expectedDependencies,
+    const assets::TextureEntryResolution& textureResolution,
+    const TextureBindingPlanLimits& limits);
+
 } // namespace
+
+DrawMaterialState makeDrawMaterialState(
+    const assets::CcfMaterialMetadata& material) noexcept {
+    DrawMaterialState state;
+    if (material.properties2140.has_value()) {
+        const auto& properties = *material.properties2140;
+        state.scalar2140 = properties.scalar;
+        state.firstVector2140 = {
+            properties.firstVector[0],
+            properties.firstVector[1],
+            properties.firstVector[2],
+        };
+        state.secondVector2140 = {
+            properties.secondVector[0],
+            properties.secondVector[1],
+            properties.secondVector[2],
+        };
+    }
+    if (material.properties2150.has_value()) {
+        const auto& properties = *material.properties2150;
+        state.lightingMode = properties.lightingMode;
+        state.gouraudShading = properties.gouraudShading;
+        state.blendMode = properties.blendMode;
+    }
+    if (material.flag2151.has_value()) {
+        state.flag2151 = *material.flag2151;
+    }
+    return state;
+}
 
 TextureBindingPlan buildTextureBindingPlan(
     const std::span<const std::uint32_t> materialReferences,
+    const std::span<const assets::TextureDependency> expectedDependencies,
+    const assets::TextureEntryResolution& textureResolution,
+    const TextureBindingPlanLimits& limits) {
+    return buildTextureBindingPlanImpl(
+        materialReferences,
+        std::nullopt,
+        expectedDependencies,
+        textureResolution,
+        limits);
+}
+
+TextureBindingPlan buildTextureBindingPlan(
+    const std::span<const std::uint32_t> materialReferences,
+    const std::span<const DrawMaterialState> materialStates,
+    const std::span<const assets::TextureDependency> expectedDependencies,
+    const assets::TextureEntryResolution& textureResolution,
+    const TextureBindingPlanLimits& limits) {
+    return buildTextureBindingPlanImpl(
+        materialReferences,
+        materialStates,
+        expectedDependencies,
+        textureResolution,
+        limits);
+}
+
+namespace {
+
+TextureBindingPlan buildTextureBindingPlanImpl(
+    const std::span<const std::uint32_t> materialReferences,
+    const std::optional<std::span<const DrawMaterialState>> materialStates,
     const std::span<const assets::TextureDependency> expectedDependencies,
     const assets::TextureEntryResolution& textureResolution,
     const TextureBindingPlanLimits& limits) {
@@ -127,6 +193,17 @@ TextureBindingPlan buildTextureBindingPlan(
         textureResolution.issues.size() > limits.maximumTextureEntries) {
         result.issues.push_back({
             .kind = TextureBindingIssueKind::limitExceeded,
+            .entryIndex = std::nullopt,
+            .materialReference = std::nullopt,
+            .role = std::nullopt,
+            .upstreamIssue = std::nullopt,
+        });
+        return result;
+    }
+    if (materialStates.has_value() &&
+        materialStates->size() != materialReferences.size()) {
+        result.issues.push_back({
+            .kind = TextureBindingIssueKind::materialStateMismatch,
             .entryIndex = std::nullopt,
             .materialReference = std::nullopt,
             .role = std::nullopt,
@@ -200,6 +277,9 @@ TextureBindingPlan buildTextureBindingPlan(
             .primary = std::nullopt,
             .secondary = std::nullopt,
             .environment = std::nullopt,
+            .state = materialStates.has_value()
+                ? (*materialStates)[index]
+                : DrawMaterialState{},
         });
     }
 
@@ -328,6 +408,8 @@ TextureBindingPlan buildTextureBindingPlan(
     }
     return result;
 }
+
+} // namespace
 
 GtiUploadDescription describeGtiUpload(
     const TextureImportRequest& request,

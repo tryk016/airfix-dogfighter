@@ -4460,3 +4460,28 @@ superseded evidence.
   `66ba042` passed all seven jobs: Ubuntu 24.04, macOS 26, Windows 2025, the
   dedicated Windows x64 D3D11/XAudio2 product smoke, clangd, iPhoneOS, and
   iPhoneSimulator.
+
+## 2026-07-31 - native material render contract
+
+- `EV-20260731-003` / `EXP-20260731-084` cross-checks the complete CCF
+  `0x2140/0x2150/0x2151/0x2152` mapping through native load and save paths and
+  recovers the Direct3D flat/Gouraud selector, three texture stages, four blend
+  modes, cull state, filtering, and render-phase depth modes.
+- Independent Ghidra/Rizin analysis also closes the per-room sorted-list
+  formula and instruction order, unsigned ascending radix order, prepend tie
+  behavior, cross-kind triangle/sprite/custom queue, and no-depth-write blend
+  phase. Only `_ftol` edge parity remains conditioned on the live x87 policy.
+- The parser now retains every numeric material property. Exact native reset
+  defaults and render-relevant raw fields flow through CCF-aware world,
+  aggregate mission, and player bindings into backend-neutral materials and
+  draw commands. A mismatched reference/state span fails atomically.
+- D3D11 and Metal output is intentionally unchanged. A later backend slice
+  needs triangle-level runtime keys and the shared cross-kind queue rather than
+  enabling partial transparency on range-level commands.
+- Fresh GCC 15.2/Ninja and independent WSL2 GCC builds each pass all 120
+  portable CTests. An isolated MSVC 19.51/Ninja build completes all 669 steps,
+  links the Windows product, and passes all 130 CTests. Synthetic
+  public-boundary tests, the 623-file repository scan, catalogue validation,
+  local-path review, and `git diff --check` pass. Independent final review
+  reports no remaining finding. Hosted platform builds remain the publication
+  gate.

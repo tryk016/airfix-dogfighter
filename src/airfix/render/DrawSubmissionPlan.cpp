@@ -99,6 +99,12 @@ void addIssue(
         finite(value.columns[2]);
 }
 
+[[nodiscard]] bool finite(const DrawMaterialState& value) noexcept {
+    return std::isfinite(value.scalar2140) &&
+        finite(value.firstVector2140) &&
+        finite(value.secondVector2140);
+}
+
 [[nodiscard]] bool ordered(const Bounds3& bounds) noexcept {
     return bounds.minimum.x <= bounds.maximum.x &&
         bounds.minimum.y <= bounds.maximum.y &&
@@ -334,6 +340,18 @@ DrawSubmissionDescription buildDrawSubmissionPlan(
              materialSlot < mesh.materials.size();
              ++materialSlot) {
             const auto& material = mesh.materials[materialSlot];
+            if (!finite(material.state)) {
+                addIssue(
+                    result,
+                    DrawSubmissionIssueKind::nonFiniteMaterialState,
+                    meshSlot,
+                    std::nullopt,
+                    std::nullopt,
+                    std::nullopt,
+                    std::nullopt,
+                    materialSlot);
+                return result;
+            }
             if (!validateTexture(
                     result,
                     material.primary,
@@ -496,6 +514,7 @@ DrawSubmissionDescription buildDrawSubmissionPlan(
                 .primary = material.primary,
                 .secondary = material.secondary,
                 .environment = material.environment,
+                .materialState = material.state,
             });
         }
     }

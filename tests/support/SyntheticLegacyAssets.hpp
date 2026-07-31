@@ -177,6 +177,14 @@ inline void appendBytes(
             payload,
             ccfChunk(0x2111U, ccfString(*options.secondaryTexture)));
     }
+    auto vectors = ccfVector3(0xF030U, 1.25F, 2.5F, 3.75F);
+    appendBytes(vectors, ccfVector3(0xF030U, 4.5F, 5.25F, 6.75F));
+    appendFloat(vectors, 0.625F);
+    appendBytes(payload, ccfChunk(0x2140U, vectors));
+    LegacyAssetBytes flags{2U, 1U};
+    appendU32(flags, 3U);
+    appendBytes(payload, ccfChunk(0x2150U, flags));
+    appendBytes(payload, ccfChunk(0x2151U, LegacyAssetBytes{1U}));
     return ccfChunk(0x2100U, payload);
 }
 
@@ -320,6 +328,19 @@ inline void validateCcf(
         parsed.materials[0].primaryTexture !=
             std::optional<std::string>{options.primaryTexture} ||
         parsed.materials[0].secondaryTexture != options.secondaryTexture ||
+        parsed.materials[0].properties2140 !=
+            assets::CcfMaterialProperties2140{
+                .firstVector = {1.25F, 2.5F, 3.75F},
+                .secondVector = {4.5F, 5.25F, 6.75F},
+                .scalar = 0.625F,
+            } ||
+        parsed.materials[0].properties2150 !=
+            assets::CcfMaterialProperties2150{
+                .lightingMode = 2U,
+                .gouraudShading = true,
+                .blendMode = 3U,
+            } ||
+        parsed.materials[0].flag2151 != true ||
         parsed.meshes.size() != 1U ||
         parsed.meshes[0].reference != 7U ||
         parsed.meshes[0].vertices.size() != 3U ||
