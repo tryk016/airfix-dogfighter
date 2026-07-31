@@ -120,6 +120,38 @@ target_link_libraries(airfix_windows_content_import
         ole32
 )
 
+add_library(airfix_windows_content_bootstrap STATIC
+    AirfixWindowsContentBootstrap.cpp
+    AirfixWindowsContentBootstrap.hpp
+)
+target_include_directories(airfix_windows_content_bootstrap PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+target_compile_features(airfix_windows_content_bootstrap PUBLIC cxx_std_20)
+target_compile_definitions(airfix_windows_content_bootstrap PRIVATE
+    NOMINMAX
+    WIN32_LEAN_AND_MEAN
+)
+if(MSVC)
+    target_compile_options(airfix_windows_content_bootstrap PRIVATE
+        /W4 /permissive-)
+else()
+    target_compile_options(airfix_windows_content_bootstrap PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+endif()
+target_link_libraries(airfix_windows_content_bootstrap
+    PUBLIC
+        airfix_windows_content_import
+    PRIVATE
+        ole32
+        shell32
+        user32
+        uuid
+)
+
 add_library(airfix_windows_settings_panel STATIC
     AirfixWindowsRenderSettingsPanel.cpp
     AirfixWindowsRenderSettingsPanel.hpp
@@ -278,6 +310,7 @@ target_link_libraries(airfix_windows_render_settings_coordinator PUBLIC
 )
 
 add_executable(airfix_windows WIN32
+    AirfixWindows.manifest
     AirfixWindowsApp.cpp
     AirfixXAudio2Backend.cpp
     AirfixXAudio2Backend.hpp
@@ -302,6 +335,7 @@ else()
 endif()
 target_link_libraries(airfix_windows PRIVATE
     airfix_windows_command_line
+    airfix_windows_content_bootstrap
     airfix_windows_content_import
     airfix_windows_controller_profile_coordinator
     airfix_windows_input
@@ -390,6 +424,26 @@ if(AIRFIX_BUILD_TESTS)
         airfix_windows_content_import)
     add_test(NAME airfix_windows_content_import_tests
         COMMAND airfix_windows_content_import_tests)
+
+    add_executable(airfix_windows_content_bootstrap_tests
+        AirfixWindows.manifest
+        AirfixWindowsContentBootstrapTests.cpp)
+    target_compile_features(airfix_windows_content_bootstrap_tests
+        PRIVATE cxx_std_20)
+    if(MSVC)
+        target_compile_options(airfix_windows_content_bootstrap_tests
+            PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(airfix_windows_content_bootstrap_tests PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+    endif()
+    target_link_libraries(airfix_windows_content_bootstrap_tests PRIVATE
+        airfix_windows_content_bootstrap)
+    add_test(NAME airfix_windows_content_bootstrap_tests
+        COMMAND airfix_windows_content_bootstrap_tests)
 
     add_executable(airfix_windows_input_mapping_tests
         AirfixSdlInputMappingTests.cpp)

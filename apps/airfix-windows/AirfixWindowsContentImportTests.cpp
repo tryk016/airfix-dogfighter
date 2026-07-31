@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
+#include <stop_token>
 #include <string>
 #include <string_view>
 
@@ -71,19 +72,25 @@ void operationReceivesExactPrivateInputs() {
       .activeChanged = false,
   };
   bool called = false;
+  bool progressCalled = false;
+  std::stop_source stopSource;
   const auto result = importAirfixWindowsContentWithOperation(
-      source, root, transaction,
+      source, root, transaction, stopSource.get_token(),
+      [&progressCalled](const auto &) { progressCalled = true; },
       [&](const std::filesystem::path &receivedSource,
           const std::filesystem::path &receivedRoot,
-          const std::string_view receivedTransaction) {
+          const std::string_view receivedTransaction,
+          const std::stop_token receivedStopToken, const auto &progress) {
         called = true;
         require(receivedSource == source, "private source path changed");
         require(receivedRoot == root, "private content root changed");
         require(receivedTransaction == transaction,
                 "transaction identifier changed");
+        require(receivedStopToken.stop_possible(), "stop token changed");
+        progress({});
         return expected;
       });
-  require(called && result == expected,
+  require(called && progressCalled && result == expected,
           "successful import operation result changed");
 }
 
@@ -93,9 +100,10 @@ void privateDiagnosticsAreRedacted() {
   constexpr std::string_view privateMarker = "PRIVATE-OWNER-PATH";
   try {
     (void)importAirfixWindowsContentWithOperation(
-        std::filesystem::path(privateMarker), "content", transaction,
+        std::filesystem::path(privateMarker), "content", transaction, {}, {},
         [](const std::filesystem::path &, const std::filesystem::path &,
-           std::string_view) -> AirfixWindowsContentImportResult {
+           std::string_view, std::stop_token,
+           const auto &) -> AirfixWindowsContentImportResult {
           throw std::runtime_error(
               "cannot open C:/PRIVATE-OWNER-PATH/source.afpack");
         });
@@ -116,9 +124,10 @@ void ambiguousCommitIsActionableAndRedacted() {
       "01234567-89ab-cdef-0123-456789abcdef";
   try {
     (void)importAirfixWindowsContentWithOperation(
-        "owner.afpack", "content", transaction,
+        "owner.afpack", "content", transaction, {}, {},
         [](const std::filesystem::path &, const std::filesystem::path &,
-           std::string_view) -> AirfixWindowsContentImportResult {
+           std::string_view, std::stop_token,
+           const auto &) -> AirfixWindowsContentImportResult {
           throw airfix::afpack::InstallCommitUnknown(
               airfix::afpack::ActiveRecord{});
         });
@@ -135,10 +144,33 @@ void ambiguousCommitIsActionableAndRedacted() {
   throw std::runtime_error("ambiguous commit was not mapped");
 }
 
+void cancellationHasItsOwnPathFreeCategory() {
+  try {
+    (void)importAirfixWindowsContentWithOperation(
+        "owner.afpack", "content", "01234567-89ab-cdef-0123-456789abcdef", {},
+        {},
+        [](const std::filesystem::path &, const std::filesystem::path &,
+           std::string_view, std::stop_token,
+           const auto &) -> AirfixWindowsContentImportResult {
+          throw airfix::afpack::InstallCancelled{};
+        });
+  } catch (const AirfixWindowsContentImportError &error) {
+    require(error.category() ==
+                AirfixWindowsContentImportErrorCategory::cancelled,
+            "cancelled import had the wrong category");
+    require(std::string_view(error.what()).find("owner") ==
+                std::string_view::npos,
+            "cancelled import exposed a private marker");
+    return;
+  }
+  throw std::runtime_error("cancelled import was not mapped");
+}
+
 void missingOperationFailsClosed() {
   try {
     (void)importAirfixWindowsContentWithOperation(
-        "owner.afpack", "content", "01234567-89ab-cdef-0123-456789abcdef", {});
+        "owner.afpack", "content", "01234567-89ab-cdef-0123-456789abcdef", {},
+        {}, {});
   } catch (const AirfixWindowsContentImportError &error) {
     require(error.category() ==
                 AirfixWindowsContentImportErrorCategory::transactionUnavailable,
@@ -156,6 +188,7 @@ int main() {
     operationReceivesExactPrivateInputs();
     privateDiagnosticsAreRedacted();
     ambiguousCommitIsActionableAndRedacted();
+    cancellationHasItsOwnPathFreeCategory();
     missingOperationFailsClosed();
     std::cout << "Airfix Windows content import tests passed\n";
     return 0;

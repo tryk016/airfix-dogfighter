@@ -182,7 +182,15 @@
   preserves the old active generation on ordinary failure, redacts filesystem
   diagnostics, and supports validation or mission launch through
   `--installed-content` without repeating the host path. Native picker,
-  progress, and rollback-choice UI remain staged over this same transaction.
+  progress, retry, and rollback-choice UI now run as a separate pre-game
+  `--manage-installed-content` workflow over this same transaction. The
+  manager offers rollback only for an authenticated previous generation,
+  requires restoring that known-good generation before replacement import,
+  allows only retry/close for an indeterminate store,
+  requests cooperative cancellation, re-inspects after every ordinary
+  operation, terminates on an ambiguous commit, and
+  echoes no private path, checksum, generation, or backend diagnostic outside
+  the owner-controlled OS picker.
   Windows now also owns the complete bounded gameplay-camera mission runtime
   already used by Metal. It validates the initial step-0/generation-1 packet,
   exposes a replacement-safe weak camera endpoint, and retains exactly one

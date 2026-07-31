@@ -1,6 +1,7 @@
 #include "AirfixD3D11Renderer.hpp"
 #include "AirfixSdlInputAdapter.hpp"
 #include "AirfixWindowsCommandLine.hpp"
+#include "AirfixWindowsContentBootstrap.hpp"
 #include "AirfixWindowsContentImport.hpp"
 #include "AirfixWindowsControllerProfileCoordinator.hpp"
 #include "AirfixWindowsRenderSettingsCoordinator.hpp"
@@ -543,6 +544,28 @@ int run(const int argumentCount, char *arguments[]) {
   struct SdlQuitGuard {
     ~SdlQuitGuard() { SDL_Quit(); }
   };
+  if (options.manageInstalledContent) {
+    if (!SDL_Init(0U)) {
+      throw std::runtime_error(SDL_GetError());
+    }
+    const SdlQuitGuard contentUiQuitGuard;
+    const auto result = airfix::windows::runAirfixWindowsContentBootstrap(
+        resolveInstalledContentRoot());
+    switch (result) {
+    case airfix::windows::AirfixWindowsContentBootstrapResult::
+        closedWithoutReadyContent:
+      std::cout << "Private AFPACK manager closed: content-not-ready\n";
+      return 0;
+    case airfix::windows::AirfixWindowsContentBootstrapResult::
+        closedWithReadyContent:
+      std::cout << "Private AFPACK manager closed: content-ready\n";
+      return 0;
+    case airfix::windows::AirfixWindowsContentBootstrapResult::failed:
+      throw std::runtime_error("private AFPACK manager failed safely");
+    }
+    throw std::runtime_error(
+        "private AFPACK manager returned an invalid state");
+  }
   if (options.importAfPackSource.has_value()) {
     if (!SDL_Init(0U)) {
       throw std::runtime_error(SDL_GetError());

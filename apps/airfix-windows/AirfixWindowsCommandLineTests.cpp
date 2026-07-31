@@ -44,6 +44,7 @@ void testEmptyAndSmokeModes() {
   const auto defaultOptions = parse(empty);
   require(!defaultOptions.smokeTest && !defaultOptions.contentRoot &&
               !defaultOptions.useInstalledContent &&
+              !defaultOptions.manageInstalledContent &&
               !defaultOptions.importAfPackSource && !defaultOptions.mission &&
               !defaultOptions.captureSize &&
               !defaultOptions.renderOverrides.renderScalePercent &&
@@ -173,6 +174,15 @@ void testInstalledContentAndImportRequests() {
               !importOptions.useInstalledContent && !importOptions.mission &&
               !importOptions.validateContentOnly,
           "private AFPACK import request was not retained");
+
+  const std::array manager{"--manage-installed-content"sv};
+  const auto managerOptions = parse(manager);
+  require(managerOptions.manageInstalledContent &&
+              !managerOptions.importAfPackSource &&
+              !managerOptions.useInstalledContent &&
+              !managerOptions.contentRoot && !managerOptions.mission &&
+              !managerOptions.smokeTest,
+          "private AFPACK manager request was not retained");
 }
 
 void testValidationAndRejections() {
@@ -222,6 +232,18 @@ void testValidationAndRejections() {
   requireRejected(std::array{"--import-afpack"sv, "owner-private.afpack"sv,
                              "--import-afpack"sv, "other.afpack"sv},
                   "duplicate AFPACK imports must fail closed");
+  requireRejected(std::array{"--manage-installed-content"sv,
+                             "--manage-installed-content"sv},
+                  "duplicate AFPACK managers must fail closed");
+  requireRejected(std::array{"--manage-installed-content"sv,
+                             "--import-afpack"sv, "owner-private.afpack"sv},
+                  "AFPACK manager and direct import must remain exclusive");
+  requireRejected(
+      std::array{"--manage-installed-content"sv, "--installed-content"sv},
+      "AFPACK manager and content consumption must remain exclusive");
+  requireRejected(
+      std::array{"--manage-installed-content"sv, "--render-scale"sv, "100"sv},
+      "AFPACK manager and renderer overrides must remain exclusive");
   requireRejected(std::array{"--smoke-test"sv, "--render-scale"sv, "49"sv},
                   "render scale below 50 percent must fail closed");
   requireRejected(std::array{"--smoke-test"sv, "--render-scale"sv, "201"sv},
