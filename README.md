@@ -290,39 +290,49 @@ AirfixDogfighter.exe `
 
 ### Private content for local Windows validation
 
-The tools can build and atomically install an owner-private AFPACK without
-placing original data in the repository:
+The tools can build an owner-private AFPACK without placing original data in
+the repository. The Windows product then copies, authenticates, and atomically
+activates it in its own SDL preference root:
 
 ```powershell
 afpack-create --source <owned-installation-copy> --language English --output <private-package.afpack>
-afpack-install --source <private-package.afpack> --content-root <private-content-root> --transaction <uuid>
-AirfixDogfighter.exe --validate-content-root <private-content-root>
-AirfixDogfighter.exe --content-root <private-content-root>
+AirfixDogfighter.exe --import-afpack <private-package.afpack>
+AirfixDogfighter.exe --validate-installed-content
+AirfixDogfighter.exe --installed-content
 ```
 
-An explicit mission adds owner-private logical paths out of band:
+Import is an exclusive one-shot operation. It generates the transaction UUID,
+serializes concurrent product imports in the same login session, retains the
+previous active generation
+on an ordinary failure, and never prints the selected path or a complete
+digest. A commit-unknown result explicitly asks the owner to restart and run
+`--validate-installed-content`. Reimporting identical content is safe and does
+not create a new generation.
+
+An explicit mission adds owner-private logical paths out of band without
+requiring the private storage location on the command line:
 
 ```powershell
-AirfixDogfighter.exe --validate-content-root <private-content-root> `
+AirfixDogfighter.exe --validate-installed-content `
   --setup <setup-logical-path> `
   --level <level-logical-path> `
   [--player-object <player-object-logical-path>] `
   [--start-index <uint32>]
 
-AirfixDogfighter.exe --content-root <private-content-root> `
+AirfixDogfighter.exe --installed-content `
   --setup <setup-logical-path> `
   --level <level-logical-path> `
   [--player-object <player-object-logical-path>] `
   [--start-index <uint32>]
 
-AirfixDogfighter.exe --content-root <private-content-root> `
+AirfixDogfighter.exe --installed-content `
   --setup <setup-logical-path> `
   --level <level-logical-path> `
   [--player-object <player-object-logical-path>] `
   [--start-index <uint32>] `
   --capture-frame <private-output.bmp>
 
-AirfixDogfighter.exe --content-root <private-content-root> `
+AirfixDogfighter.exe --installed-content `
   --setup <setup-logical-path> `
   --level <level-logical-path> `
   [--player-object <player-object-logical-path>] `
@@ -331,6 +341,11 @@ AirfixDogfighter.exe --content-root <private-content-root> `
   --capture-size 1920x1080 `
   --render-scale 100
 ```
+
+The lower-level `afpack-install`, `--content-root`, and
+`--validate-content-root` interfaces remain available to development tooling
+that deliberately manages a separate private root. They are not required for
+the normal owner-local product flow.
 
 All placeholders must point outside the repository. The validation mode opens a
 hidden window, authenticates the AFAC-selected package, decodes and checks the

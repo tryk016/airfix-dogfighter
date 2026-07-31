@@ -43,7 +43,9 @@ void testEmptyAndSmokeModes() {
   const std::array<std::string_view, 0U> empty{};
   const auto defaultOptions = parse(empty);
   require(!defaultOptions.smokeTest && !defaultOptions.contentRoot &&
-              !defaultOptions.mission && !defaultOptions.captureSize &&
+              !defaultOptions.useInstalledContent &&
+              !defaultOptions.importAfPackSource && !defaultOptions.mission &&
+              !defaultOptions.captureSize &&
               !defaultOptions.renderOverrides.renderScalePercent &&
               !defaultOptions.renderOverrides.scenePresentation &&
               !defaultOptions.renderOverrides.visualProfile &&
@@ -60,7 +62,8 @@ void testEmptyAndSmokeModes() {
   const std::array smoke{"--smoke-test"sv};
   const auto smokeOptions = parse(smoke);
   require(smokeOptions.smokeTest && !smokeOptions.contentRoot &&
-              !smokeOptions.mission &&
+              !smokeOptions.useInstalledContent &&
+              !smokeOptions.importAfPackSource && !smokeOptions.mission &&
               !smokeOptions.renderOverrides.renderScalePercent &&
               !smokeOptions.renderOverrides.scenePresentation &&
               !smokeOptions.renderOverrides.visualProfile &&
@@ -141,6 +144,37 @@ void testAuthenticatedMissionRequest() {
           "mission request fields changed during parsing");
 }
 
+void testInstalledContentAndImportRequests() {
+  const std::array installed{
+      "--installed-content"sv,        "--setup"sv,
+      "Game/Setup/mission.afs"sv,     "--level"sv,
+      "Game/Levels/mission.level"sv,  "--player-object"sv,
+      "Game/Objects/player.object"sv,
+  };
+  const auto installedOptions = parse(installed);
+  require(installedOptions.useInstalledContent &&
+              !installedOptions.validateContentOnly &&
+              !installedOptions.contentRoot && installedOptions.mission &&
+              !installedOptions.importAfPackSource,
+          "installed-content mission request was not retained");
+
+  const std::array validation{"--validate-installed-content"sv};
+  const auto validationOptions = parse(validation);
+  require(validationOptions.useInstalledContent &&
+              validationOptions.validateContentOnly &&
+              !validationOptions.contentRoot && !validationOptions.mission,
+          "installed-content validation request was not retained");
+
+  const std::array import{"--import-afpack"sv, "owner-private.afpack"sv};
+  const auto importOptions = parse(import);
+  require(importOptions.importAfPackSource ==
+                  std::filesystem::path("owner-private.afpack") &&
+              !importOptions.contentRoot &&
+              !importOptions.useInstalledContent && !importOptions.mission &&
+              !importOptions.validateContentOnly,
+          "private AFPACK import request was not retained");
+}
+
 void testValidationAndRejections() {
   const std::array validation{"--validate-content-root"sv, "private-pack"sv};
   const auto options = parse(validation);
@@ -167,6 +201,27 @@ void testValidationAndRejections() {
   requireRejected(
       std::array{"--smoke-test"sv, "--content-root"sv, "private-pack"sv},
       "the public smoke mode must remain exclusive");
+  requireRejected(
+      std::array{"--smoke-test"sv, "--installed-content"sv},
+      "the public smoke mode and installed content must remain exclusive");
+  requireRejected(
+      std::array{"--content-root"sv, "private-pack"sv, "--installed-content"sv},
+      "explicit and installed content roots must remain exclusive");
+  requireRejected(
+      std::array{"--installed-content"sv, "--validate-installed-content"sv},
+      "installed content modes must not be duplicated");
+  requireRejected(std::array{"--import-afpack"sv, "owner-private.AFPACK"sv},
+                  "non-canonical AFPACK extension must fail closed");
+  requireRejected(std::array{"--import-afpack"sv, "owner-private.afpack"sv,
+                             "--render-scale"sv, "100"sv},
+                  "AFPACK import and render overrides must remain exclusive");
+  requireRejected(
+      std::array{"--import-afpack"sv, "owner-private.afpack"sv,
+                 "--installed-content"sv},
+      "AFPACK import and content consumption must remain exclusive");
+  requireRejected(std::array{"--import-afpack"sv, "owner-private.afpack"sv,
+                             "--import-afpack"sv, "other.afpack"sv},
+                  "duplicate AFPACK imports must fail closed");
   requireRejected(std::array{"--smoke-test"sv, "--render-scale"sv, "49"sv},
                   "render scale below 50 percent must fail closed");
   requireRejected(std::array{"--smoke-test"sv, "--render-scale"sv, "201"sv},
@@ -511,6 +566,7 @@ int main() {
     testEmptyAndSmokeModes();
     testPresentationOptions();
     testAuthenticatedMissionRequest();
+    testInstalledContentAndImportRequests();
     testValidationAndRejections();
     testPrivateCaptureRequest();
     testPrivateOverviewCaptureRequest();

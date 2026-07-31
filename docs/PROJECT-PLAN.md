@@ -248,6 +248,14 @@ blocked with live flight on the separately recovered 12 ms AirCraft producer,
 x87 runtime evidence, and accepted numeric policy; no substitute platform
 movement law is introduced by this checkpoint.
 
+Windows private-content checkpoint (2026-07-31): the product now owns a
+one-shot `--import-afpack` adapter over the shared authenticated installer. It
+resolves an undisclosed SDL-private root, generates the transaction UUID,
+serializes same-session product importers, redacts path-bearing errors, and
+supports later validation or mission launch without repeating the root path.
+The native picker, progress surface, and rollback-choice UI remain staged over
+the same transaction; they must not create a second package parser or store.
+
 ## Phase 7 — gameplay and content parity
 
 **Goal:** expand by original module boundaries while protecting the vertical

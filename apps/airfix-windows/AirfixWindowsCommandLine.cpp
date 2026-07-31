@@ -118,6 +118,7 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
   std::optional<std::filesystem::path> captureSettingsPanelOutput;
   std::optional<std::filesystem::path> captureControllerCalibrationPanelOutput;
   std::optional<std::filesystem::path> captureControllerBindingsPanelOutput;
+  std::optional<std::filesystem::path> importAfPackSource;
   std::optional<AirfixWindowsCaptureSize> captureSize;
   bool scenePresentationSeen = false;
   bool visualProfileSeen = false;
@@ -175,9 +176,25 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
       renderDiagnosticsSeen = true;
       options.renderOverrides.diagnosticsOverlayEnabled =
           option == "--render-diagnostics";
+    } else if (option == "--import-afpack") {
+      if (importAfPackSource.has_value()) {
+        invalidCommandLine();
+      }
+      importAfPackSource =
+          std::filesystem::path(requireValue(arguments, index));
+      if (importAfPackSource->extension() != ".afpack") {
+        invalidCommandLine();
+      }
+    } else if (option == "--installed-content" ||
+               option == "--validate-installed-content") {
+      if (options.useInstalledContent || options.contentRoot.has_value()) {
+        invalidCommandLine();
+      }
+      options.useInstalledContent = true;
+      options.validateContentOnly = option == "--validate-installed-content";
     } else if (option == "--content-root" ||
                option == "--validate-content-root") {
-      if (options.contentRoot.has_value()) {
+      if (options.contentRoot.has_value() || options.useInstalledContent) {
         invalidCommandLine();
       }
       const auto value = requireValue(arguments, index);
@@ -302,15 +319,24 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
       captureSettingsPanelOutput.has_value() ||
       captureControllerCalibrationPanelOutput.has_value() ||
       captureControllerBindingsPanelOutput.has_value();
+  const bool hasContentSelection =
+      options.contentRoot.has_value() || options.useInstalledContent;
+  const bool hasRenderOverride =
+      options.renderOverrides.renderScalePercent.has_value() ||
+      options.renderOverrides.scenePresentation.has_value() ||
+      options.renderOverrides.verticalFovAdjustmentDegrees.has_value() ||
+      options.renderOverrides.visualProfile.has_value() ||
+      options.renderOverrides.diagnosticsOverlayEnabled.has_value();
+  const bool hasImport = importAfPackSource.has_value();
   if ((options.smokeTest &&
-       (options.contentRoot.has_value() || hasContentSpecificOption ||
+       (hasContentSelection || hasContentSpecificOption ||
         captureDiagnosticFrameOutput.has_value() ||
         captureSettingsPanelOutput.has_value() ||
         captureControllerCalibrationPanelOutput.has_value() ||
         captureControllerBindingsPanelOutput.has_value() ||
         captureSize.has_value())) ||
-      (!options.contentRoot.has_value() && hasContentSpecificOption) ||
-      (options.contentRoot.has_value() &&
+      (!hasContentSelection && hasContentSpecificOption) ||
+      (hasContentSelection &&
        (captureDiagnosticFrameOutput.has_value() ||
         captureSettingsPanelOutput.has_value() ||
         captureControllerCalibrationPanelOutput.has_value() ||
@@ -331,6 +357,9 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
       (captureControllerBindingsPanelOutput.has_value() &&
        (hasAnyMissionOption || options.validateContentOnly)) ||
       (captureSize.has_value() && !hasAnyCapture) ||
+      (hasImport &&
+       (options.smokeTest || hasContentSelection || hasContentSpecificOption ||
+        hasAnyCapture || captureSize.has_value() || hasRenderOverride)) ||
       ((static_cast<unsigned>(captureFrameOutput.has_value()) +
         static_cast<unsigned>(captureOverviewFrameOutput.has_value()) +
         static_cast<unsigned>(
@@ -362,6 +391,7 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
       std::move(captureControllerCalibrationPanelOutput);
   options.captureControllerBindingsPanelOutput =
       std::move(captureControllerBindingsPanelOutput);
+  options.importAfPackSource = std::move(importAfPackSource);
   options.captureSize = captureSize;
   if (options.captureDiagnosticFrameOutput.has_value()) {
     if (options.renderOverrides.diagnosticsOverlayEnabled == false) {

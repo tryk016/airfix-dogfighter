@@ -8,6 +8,7 @@
 
 namespace {
 
+using airfix::windows::airfixWindowsContentDirectoryFromUtf8PreferenceRoot;
 using airfix::windows::airfixWindowsSettingsDirectoryFromUtf8PreferenceRoot;
 
 void require(const bool condition, const std::string_view message) {
@@ -36,6 +37,14 @@ void absoluteRootAppendsSettings() {
   require(result == root.lexically_normal() / "settings",
           "absolute preference root did not append settings");
   require(result.is_absolute(), "settings directory must remain absolute");
+
+  const auto content = airfixWindowsContentDirectoryFromUtf8PreferenceRoot(
+      "C:\\Users\\Example\\AppData\\Roaming\\tryk016\\"
+      "Airfix Dogfighter\\");
+  require(content == root.lexically_normal() / "content",
+          "absolute preference root did not append content");
+  require(content.parent_path() == result.parent_path(),
+          "settings and content must remain sibling directories");
 }
 
 void utf8RootSurvivesNativeConversion() {
@@ -54,6 +63,9 @@ void invalidRootsAreRejected() {
   requireRejected(
       [] { (void)airfixWindowsSettingsDirectoryFromUtf8PreferenceRoot(""); },
       "empty preference root was accepted");
+  requireRejected(
+      [] { (void)airfixWindowsContentDirectoryFromUtf8PreferenceRoot(""); },
+      "empty preference root was accepted for content");
   requireRejected(
       [] {
         (void)airfixWindowsSettingsDirectoryFromUtf8PreferenceRoot(

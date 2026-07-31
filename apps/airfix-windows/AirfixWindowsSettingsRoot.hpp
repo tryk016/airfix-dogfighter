@@ -12,9 +12,20 @@ namespace airfix::windows {
 airfixWindowsSettingsDirectoryFromUtf8PreferenceRoot(
     std::string_view utf8PreferenceRoot);
 
+// Converts the same SDL UTF-8 preference root to the private content
+// directory. Settings and content are siblings so an AFPACK transaction can
+// never remove preferences, saves, or diagnostics.
+[[nodiscard]] std::filesystem::path
+airfixWindowsContentDirectoryFromUtf8PreferenceRoot(
+    std::string_view utf8PreferenceRoot);
+
 // Resolves the private per-user preference root through SDL and returns its
 // "settings" child. Failures throw std::runtime_error without disclosing the
 // host path.
 [[nodiscard]] std::filesystem::path resolveAirfixWindowsSettingsDirectory();
+
+// Resolves the owner-private per-user AFPACK root through SDL. Failures throw
+// std::runtime_error without disclosing the host path.
+[[nodiscard]] std::filesystem::path resolveAirfixWindowsContentDirectory();
 
 } // namespace airfix::windows

@@ -14,6 +14,7 @@ namespace {
 constexpr char organizationName[] = "tryk016";
 constexpr char applicationName[] = "Airfix Dogfighter";
 constexpr std::string_view settingsDirectoryName = "settings";
+constexpr std::string_view contentDirectoryName = "content";
 
 struct SdlMemoryDeleter final {
   void operator()(char *const memory) const noexcept { SDL_free(memory); }
@@ -34,10 +35,9 @@ using SdlString = std::unique_ptr<char, SdlMemoryDeleter>;
   return result;
 }
 
-} // namespace
-
-std::filesystem::path airfixWindowsSettingsDirectoryFromUtf8PreferenceRoot(
-    const std::string_view utf8PreferenceRoot) {
+[[nodiscard]] std::filesystem::path
+directoryFromUtf8PreferenceRoot(const std::string_view utf8PreferenceRoot,
+                                const std::string_view directoryName) {
   if (utf8PreferenceRoot.empty() ||
       utf8PreferenceRoot.find('\0') != std::string_view::npos) {
     invalidPreferenceRoot();
@@ -58,17 +58,39 @@ std::filesystem::path airfixWindowsSettingsDirectoryFromUtf8PreferenceRoot(
   }
 
   return preferenceRoot.lexically_normal() /
-         std::filesystem::path(settingsDirectoryName);
+         std::filesystem::path(directoryName);
 }
 
-std::filesystem::path resolveAirfixWindowsSettingsDirectory() {
+[[nodiscard]] std::filesystem::path
+resolveAirfixWindowsPrivateDirectory(const std::string_view directoryName) {
   SdlString preferenceRoot(SDL_GetPrefPath(organizationName, applicationName));
   if (!preferenceRoot) {
     throw std::runtime_error(
-        "SDL could not resolve the private settings directory");
+        "SDL could not resolve the private application directory");
   }
-  return airfixWindowsSettingsDirectoryFromUtf8PreferenceRoot(
-      preferenceRoot.get());
+  return directoryFromUtf8PreferenceRoot(preferenceRoot.get(), directoryName);
+}
+
+} // namespace
+
+std::filesystem::path airfixWindowsSettingsDirectoryFromUtf8PreferenceRoot(
+    const std::string_view utf8PreferenceRoot) {
+  return directoryFromUtf8PreferenceRoot(utf8PreferenceRoot,
+                                         settingsDirectoryName);
+}
+
+std::filesystem::path airfixWindowsContentDirectoryFromUtf8PreferenceRoot(
+    const std::string_view utf8PreferenceRoot) {
+  return directoryFromUtf8PreferenceRoot(utf8PreferenceRoot,
+                                         contentDirectoryName);
+}
+
+std::filesystem::path resolveAirfixWindowsSettingsDirectory() {
+  return resolveAirfixWindowsPrivateDirectory(settingsDirectoryName);
+}
+
+std::filesystem::path resolveAirfixWindowsContentDirectory() {
+  return resolveAirfixWindowsPrivateDirectory(contentDirectoryName);
 }
 
 } // namespace airfix::windows

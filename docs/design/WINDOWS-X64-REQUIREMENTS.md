@@ -188,6 +188,16 @@ The application imports an owner-created, validated `.afpack` or a documented
 successor generated locally from a lawfully owned installation. The same
 runtime format is consumed by Windows and iOS.
 
+The implemented baseline is an exclusive `--import-afpack` product operation.
+It resolves an undisclosed per-user `content/` directory through SDL, creates
+the canonical transaction UUID internally, rejects a competing same-session
+importer, and
+maps path-bearing installer diagnostics to fixed actionable categories.
+`--installed-content` and `--validate-installed-content` reuse that root; the
+explicit-root development interface remains separate. Native picker/progress
+and rollback-choice presentation are staged follow-ups over the same portable
+transaction.
+
 Original executables, archives, artwork, audio, converted packages,
 content-bearing installers, tool databases, private traces, and machine-local
 paths must not enter Git, public Actions logs, caches, artifacts, or release

@@ -175,6 +175,14 @@
   publication for both native renderers. D3D11 owns that pose runtime with its
   mission snapshot, retains one coherent pose lease through each gameplay draw
   pass, and exposes the same replacement-safe weak pose endpoint as Metal.
+  Windows now also imports an owner-selected `.afpack` through the product CLI
+  into its undisclosed SDL-private `content/` root. The one-shot transaction
+  generates its own canonical UUID, rejects competing same-session import
+  processes,
+  preserves the old active generation on ordinary failure, redacts filesystem
+  diagnostics, and supports validation or mission launch through
+  `--installed-content` without repeating the host path. Native picker,
+  progress, and rollback-choice UI remain staged over this same transaction.
   Windows now also owns the complete bounded gameplay-camera mission runtime
   already used by Metal. It validates the initial step-0/generation-1 packet,
   exposes a replacement-safe weak camera endpoint, and retains exactly one
