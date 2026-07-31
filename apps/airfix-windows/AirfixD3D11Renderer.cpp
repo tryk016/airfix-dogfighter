@@ -11,6 +11,7 @@
 #include "airfix/render/PublicRenderSmokeScene.hpp"
 #include "airfix/render/RenderFrameDiagnostics.hpp"
 #include "airfix/render/SceneOverviewCamera.hpp"
+#include "airfix/render/SceneTextureSampling.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -55,6 +56,24 @@ void requireSuccess(const HRESULT result, const char *operation) {
   if (FAILED(result)) {
     throwFailure(operation, result);
   }
+}
+
+[[nodiscard]] std::optional<D3D11_FILTER> d3dSamplerFilter(
+    const airfix::render::SceneTextureSamplingPolicy &policy) noexcept {
+  if (!airfix::render::validateSceneTextureSamplingPolicy(policy)) {
+    return std::nullopt;
+  }
+  switch (policy.mode) {
+  case airfix::render::SceneTextureSamplingMode::nearestMipPoint:
+    return D3D11_FILTER_MIN_MAG_MIP_POINT;
+  case airfix::render::SceneTextureSamplingMode::linearMipPoint:
+    return D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT;
+  case airfix::render::SceneTextureSamplingMode::linearMipLinear:
+    return D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+  case airfix::render::SceneTextureSamplingMode::anisotropicMipLinear:
+    return D3D11_FILTER_ANISOTROPIC;
+  }
+  return std::nullopt;
 }
 
 [[nodiscard]] UINT checkedByteWidth(const std::size_t elementCount,
@@ -596,6 +615,12 @@ public:
     return lastRenderedScenePresentation_;
   }
 
+  [[nodiscard]] std::optional<
+      airfix::render::SceneTextureSamplingPolicy>
+  lastSceneTextureSamplingPolicyForTesting() const noexcept {
+    return lastRenderedSceneTextureSamplingPolicy_;
+  }
+
   [[nodiscard]] bool
   hasDiagnosticsOverlayResourcesForTesting() const noexcept {
     return overlayTexture_ && overlayShaderResource_ &&
@@ -866,8 +891,24 @@ public:
                                    : smokePixelShader_.Get(),
                           nullptr, 0U);
 
-    ID3D11SamplerState *sampler = sampler_.Get();
+    const auto sceneTextureSampling =
+        airfix::render::sceneTextureSamplingPolicyForProfile(
+            settings_.visualProfile);
+    if (!sceneTextureSampling.has_value()) {
+      throw std::runtime_error(
+          "published visual profile has no scene texture sampler policy");
+    }
+    ID3D11SamplerState *sampler =
+        sceneTextureSampling->mode ==
+                airfix::render::SceneTextureSamplingMode::
+                    anisotropicMipLinear
+            ? enhancedSceneSampler_.Get()
+            : classicSceneSampler_.Get();
+    if (sampler == nullptr) {
+      throw std::runtime_error("scene texture sampler is unavailable");
+    }
     context_->PSSetSamplers(0U, 1U, &sampler);
+    lastRenderedSceneTextureSamplingPolicy_ = *sceneTextureSampling;
 
     const auto &model = gameplay ? mission_->room.model : scene_.model;
     const auto &submission = gameplay ? mission_->room.submission : plan_;
@@ -982,6 +1023,8 @@ public:
             },
         .renderTargetExtent = renderExtent,
         .renderScalePercent = settings_.renderScalePercent,
+        .visualProfile = settings_.visualProfile,
+        .sceneTextureSampling = *sceneTextureSampling,
         .frameIntervalMilliseconds = frameIntervalMilliseconds,
         .cpuFrameMilliseconds = cpuFrameMilliseconds,
         .gpuFrameMilliseconds = latestGpuFrameMilliseconds_,
@@ -1519,7 +1562,7 @@ private:
     ID3D11Buffer *uniformBuffer = overlayUniforms_.Get();
     context_->VSSetConstantBuffers(2U, 1U, &uniformBuffer);
     context_->PSSetShader(overlayPixelShader_.Get(), nullptr, 0U);
-    ID3D11SamplerState *sampler = sampler_.Get();
+    ID3D11SamplerState *sampler = uiSampler_.Get();
     context_->PSSetSamplers(0U, 1U, &sampler);
     ID3D11ShaderResourceView *view =
         overlayShaderResource_.Get();
@@ -1565,7 +1608,7 @@ private:
     ID3D11Buffer *uniformBuffer = overlayUniforms_.Get();
     context_->VSSetConstantBuffers(2U, 1U, &uniformBuffer);
     context_->PSSetShader(overlayPixelShader_.Get(), nullptr, 0U);
-    ID3D11SamplerState *sampler = sampler_.Get();
+    ID3D11SamplerState *sampler = uiSampler_.Get();
     context_->PSSetSamplers(0U, 1U, &sampler);
     ID3D11ShaderResourceView *view = productUiShaderResource_.Get();
     context_->PSSetShaderResources(0U, 1U, &view);
@@ -1797,14 +1840,45 @@ private:
                    "ID3D11Device::CreateBuffer(overlay uniforms)");
 
     D3D11_SAMPLER_DESC samplerDescription{};
-    samplerDescription.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
     samplerDescription.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
     samplerDescription.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
     samplerDescription.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
     samplerDescription.MaxLOD = D3D11_FLOAT32_MAX;
+    const auto classicSampling =
+        airfix::render::sceneTextureSamplingPolicyForProfile(
+            airfix::render::VisualProfile::classic);
+    const auto enhancedSampling =
+        airfix::render::sceneTextureSamplingPolicyForProfile(
+            airfix::render::VisualProfile::enhanced);
+    const auto classicFilter = classicSampling.has_value()
+                                   ? d3dSamplerFilter(*classicSampling)
+                                   : std::nullopt;
+    const auto enhancedFilter = enhancedSampling.has_value()
+                                    ? d3dSamplerFilter(*enhancedSampling)
+                                    : std::nullopt;
+    if (!classicSampling.has_value() || !enhancedSampling.has_value() ||
+        !classicFilter.has_value() || !enhancedFilter.has_value()) {
+      throw std::runtime_error(
+          "portable scene texture sampling policy is invalid");
+    }
+    samplerDescription.Filter = *classicFilter;
+    samplerDescription.MaxAnisotropy =
+        static_cast<UINT>(classicSampling->maximumAnisotropy);
     requireSuccess(device_->CreateSamplerState(&samplerDescription,
-                                               sampler_.GetAddressOf()),
-                   "ID3D11Device::CreateSamplerState");
+                                               classicSceneSampler_.GetAddressOf()),
+                   "ID3D11Device::CreateSamplerState(classic scene)");
+    samplerDescription.Filter = *enhancedFilter;
+    samplerDescription.MaxAnisotropy =
+        static_cast<UINT>(enhancedSampling->maximumAnisotropy);
+    requireSuccess(
+        device_->CreateSamplerState(&samplerDescription,
+                                    enhancedSceneSampler_.GetAddressOf()),
+        "ID3D11Device::CreateSamplerState(enhanced scene)");
+    samplerDescription.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
+    samplerDescription.MaxAnisotropy = 1U;
+    requireSuccess(device_->CreateSamplerState(&samplerDescription,
+                                               uiSampler_.GetAddressOf()),
+                   "ID3D11Device::CreateSamplerState(UI)");
     samplerDescription.Filter =
         D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT;
     requireSuccess(device_->CreateSamplerState(
@@ -2386,7 +2460,9 @@ private:
   ComPtr<ID3D11Buffer> smokeUniforms_;
   ComPtr<ID3D11Buffer> gameplayUniforms_;
   ComPtr<ID3D11Buffer> overlayUniforms_;
-  ComPtr<ID3D11SamplerState> sampler_;
+  ComPtr<ID3D11SamplerState> classicSceneSampler_;
+  ComPtr<ID3D11SamplerState> enhancedSceneSampler_;
+  ComPtr<ID3D11SamplerState> uiSampler_;
   ComPtr<ID3D11SamplerState> presentationSampler_;
   ComPtr<ID3D11RasterizerState> rasterizer_;
   ComPtr<ID3D11RasterizerState> overviewRasterizer_;
@@ -2417,6 +2493,8 @@ private:
       lastRenderedSceneViewport_;
   std::optional<airfix::render::ScenePresentationMode>
       lastRenderedScenePresentation_;
+  std::optional<airfix::render::SceneTextureSamplingPolicy>
+      lastRenderedSceneTextureSamplingPolicy_;
   std::optional<airfix::render::OutputPixelExtent>
       pendingResizeExtent_;
   std::uint32_t pendingResizeRetryDelayFrames_{};
@@ -2468,6 +2546,12 @@ reportSurfaceUnavailableForNextApplyForTesting() noexcept {
 bool AirfixD3D11Renderer::resizeToPixelExtentForTesting(
     const int width, const int height) {
   return implementation_->resizeToPixelExtentForTesting(width, height);
+}
+
+std::optional<airfix::render::SceneTextureSamplingPolicy>
+AirfixD3D11Renderer::lastSceneTextureSamplingPolicyForTesting()
+    const noexcept {
+  return implementation_->lastSceneTextureSamplingPolicyForTesting();
 }
 
 std::array<const void *, 5U>

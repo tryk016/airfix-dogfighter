@@ -203,6 +203,7 @@ add_library(airfix_render
     src/airfix/render/RenderPresentationTransaction.cpp
     src/airfix/render/RenderFrameDiagnostics.cpp
     src/airfix/render/SceneOverviewCamera.cpp
+    src/airfix/render/SceneTextureSampling.cpp
     src/airfix/render/DiagnosticRasterizer.cpp
     src/airfix/render/DynamicInstancePose.cpp
     src/airfix/render/DrawMesh.cpp
@@ -955,6 +956,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_render_frame_diagnostics_tests
         COMMAND airfix_render_frame_diagnostics_tests)
+
+    add_executable(airfix_scene_texture_sampling_tests
+        tests/SceneTextureSamplingTests.cpp)
+    target_link_libraries(airfix_scene_texture_sampling_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_scene_texture_sampling_tests
+        COMMAND airfix_scene_texture_sampling_tests)
 
     add_executable(airfix_legacy_depth_state_tests
         tests/LegacyDepthStateTests.cpp)

@@ -6,6 +6,7 @@
 #include "airfix/render/PlayerActorPoseRuntime.hpp"
 #include "airfix/render/RenderFrameDiagnostics.hpp"
 #include "airfix/render/RenderPresentationSettings.hpp"
+#include "airfix/render/SceneTextureSampling.hpp"
 
 #include <array>
 #include <cstdint>
@@ -153,6 +154,9 @@ private:
   lastSceneViewportForTesting() const noexcept;
   [[nodiscard]] std::optional<airfix::render::ScenePresentationMode>
   lastScenePresentationForTesting() const noexcept;
+  [[nodiscard]] std::optional<
+      airfix::render::SceneTextureSamplingPolicy>
+  lastSceneTextureSamplingPolicyForTesting() const noexcept;
   [[nodiscard]] bool
   hasDiagnosticsOverlayResourcesForTesting() const noexcept;
   [[nodiscard]] bool hasProductUiOverlayResourcesForTesting() const noexcept;

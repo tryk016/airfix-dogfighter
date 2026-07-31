@@ -56,6 +56,13 @@ struct AirfixD3D11RendererTestAccess final {
     return renderer.lastScenePresentationForTesting();
   }
 
+  [[nodiscard]] static std::optional<
+      airfix::render::SceneTextureSamplingPolicy>
+  lastSceneTextureSamplingPolicy(
+      const AirfixD3D11Renderer &renderer) noexcept {
+    return renderer.lastSceneTextureSamplingPolicyForTesting();
+  }
+
   [[nodiscard]] static bool hasDiagnosticsOverlayResources(
       const AirfixD3D11Renderer &renderer) noexcept {
     return renderer.hasDiagnosticsOverlayResourcesForTesting();
@@ -281,7 +288,17 @@ renderAndRequireLayout(
           diagnostics->renderScalePercent ==
               expected.renderScalePercent &&
           diagnostics->renderTargetExtent ==
-              layout.layout->renderTargetExtent(),
+              layout.layout->renderTargetExtent() &&
+          AirfixD3D11RendererTestAccess::
+                  lastSceneTextureSamplingPolicy(renderer) ==
+              airfix::render::
+                  sceneTextureSamplingPolicyForProfile(
+                      expected.visualProfile) &&
+          diagnostics->visualProfile == expected.visualProfile &&
+          diagnostics->sceneTextureSampling ==
+              *airfix::render::
+                  sceneTextureSamplingPolicyForProfile(
+                      expected.visualProfile),
       std::string(context) + " used the wrong render layout");
   return *diagnostics;
 }

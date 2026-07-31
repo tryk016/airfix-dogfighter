@@ -108,6 +108,12 @@ Implemented foundations include:
   independent 75-150% UI-content scale. Windows renders the scaled interface
   natively through DPI-aware D2D/DWrite with bounded row scrolling; iOS
   combines it with Dynamic Type, Auto Layout, safe areas, and native controls;
+- the visual-profile selector now has its first pixel-affecting implementation:
+  `Classic` preserves the established point-sampled scene-texture path, while
+  `Enhanced` selects trilinear sampling with bounded 8x anisotropy on D3D11 and
+  Metal. UI overlays and final render-scale presentation retain independent
+  samplers; lighting, material, shadow, color-space, and post-processing work
+  remains staged separately;
 - bounded UDSP, CCF, GTI, and related legacy-format parsing;
 - a private AFPACK container, strict validation, atomic installation, recovery,
   rollback, and authenticated content sessions;

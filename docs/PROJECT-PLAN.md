@@ -568,6 +568,6 @@ contract, evidence, implementation, tests, parity result, and documentation agre
     followed by the configurable visual overlay and on-device usability tests.
 12. Continue the implemented ADR-0013 foundation without blocking active
     player/gameplay reconstruction: extend the completed native-resolution,
-    50-200% scene-scale, telemetry, and independent UI-scale foundation into
-    HUD/effect projection, then advance sampling/color before lighting or
-    post-effects.
+    50-200% scene-scale, telemetry, independent UI-scale, and profile-dependent
+    texture-sampling foundation into HUD/effect projection and explicit color
+    handling before lighting or post-effects.
