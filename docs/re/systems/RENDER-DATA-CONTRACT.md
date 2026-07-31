@@ -146,11 +146,21 @@ rendering; producer prepend makes equal-key order the reverse of discovery.
 The list renders after opaque geometry under greater-equal depth testing with
 depth writes disabled and cannot be regrouped by material.
 
+`LegacySortedRenderQueue` now implements the isolated, backend-neutral sort
+boundary. One call accepts the already-prepended input chain for one room and
+performs four stable LSD byte passes to produce unsigned-key ascending order.
+Items contain only a kind (`triangle`, `sprite`, or `custom`), a caller-owned
+payload index, and the prepared key, so the queue neither invents missing
+sprite/custom layouts nor groups by kind or material. Explicit item and
+portable working-memory limits fail atomically before allocation. A separate
+integer helper reproduces `0x80000000u - uint32(q)` only after the caller has
+supplied `q`; floating-point conversion remains outside this boundary.
+
 The portable D3D11 and Metal backends deliberately do not consume this state
-yet. The current command is range-level while native ordering is triangle-level
-and cross-kind. Exact `_ftol` boundary behavior also remains conditioned on the
-live x87 policy. Enabling factors alone would be an incomplete visual
-implementation.
+or queue yet. The current command is range-level while native ordering is
+triangle-level and cross-kind. Runtime camera-space producers and exact
+`_ftol` boundary behavior remain conditioned on an explicit numeric policy.
+Enabling factors alone would be an incomplete visual implementation.
 
 ## CPU diagnostic
 

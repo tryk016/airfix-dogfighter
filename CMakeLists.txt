@@ -224,6 +224,7 @@ add_library(airfix_render
     src/airfix/render/LegacyGeometry.cpp
     src/airfix/render/LegacyQuaternionRotation.cpp
     src/airfix/render/LegacyScreenProjection.cpp
+    src/airfix/render/LegacySortedRenderQueue.cpp
     src/airfix/render/ObjectVisualDrawAssembly.cpp
     src/airfix/render/PlayerActorPoseFrame.cpp
     src/airfix/render/PlayerActorPoseRuntime.cpp
@@ -1116,6 +1117,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_draw_submission_plan_tests
         COMMAND airfix_draw_submission_plan_tests)
+
+    add_executable(airfix_legacy_sorted_render_queue_tests
+        tests/LegacySortedRenderQueueTests.cpp)
+    target_link_libraries(airfix_legacy_sorted_render_queue_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_legacy_sorted_render_queue_tests
+        COMMAND airfix_legacy_sorted_render_queue_tests)
 
     add_executable(airfix_room_draw_assembly_tests
         tests/CcfRoomDrawAssemblyTests.cpp)

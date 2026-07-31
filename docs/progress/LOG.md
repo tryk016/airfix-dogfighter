@@ -4485,3 +4485,25 @@ superseded evidence.
   local-path review, and `git diff --check` pass. Independent final review
   reports no remaining finding. Hosted platform builds remain the publication
   gate.
+
+## 2026-07-31 - portable legacy sorted-render queue
+
+- Added a per-room backend-neutral queue for already-keyed caller-owned
+  triangle, sprite, and custom references. It performs the recovered four
+  stable unsigned LSD byte passes without kind/material regrouping and retains
+  the supplied native input-chain order for equal keys.
+- The queue applies explicit item and portable two-array working-memory limits
+  before allocation and publishes no partial prefix on failure. Its integer
+  helper reproduces only the post-conversion key subtraction; `_ftol`, live
+  x87 policy, camera-space key production, triangle payload generation, and
+  backend consumption remain deliberately outside this slice.
+- Corrected the static trace: `PostSort` is the function that drains the sorted
+  queue between the two layer drains, not an additional hook after a prior
+  sorted-item drain.
+- Fresh Windows GCC 15.2/Ninja builds the complete portable tree and passes
+  121/121 CTests. MSVC 19.51/Ninja links the complete Windows product and
+  passes 131/131 CTests including both native D3D11 product smokes. Synthetic
+  public-boundary tests, the 626-file scan, the 340-row/14-column unique
+  function catalogue, and `git diff --check` pass. Two independent reviews
+  report no code finding; their sole P2 stale-validation-provenance finding is
+  corrected. WSL2 and hosted builds remain publication gates.
