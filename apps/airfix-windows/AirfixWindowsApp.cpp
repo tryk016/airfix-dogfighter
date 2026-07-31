@@ -10,6 +10,7 @@
 
 #include "airfix/audio/AudioCommand.hpp"
 #include "airfix/content/LegacyAircraftAudioClipSet.hpp"
+#include "airfix/content/LegacyWeaponCrosshairTextureSet.hpp"
 #include "airfix/content/MissionLoadManifest.hpp"
 #include "airfix/content/MissionWorldRoomLoader.hpp"
 #include "airfix/content/VerifiedContentSession.hpp"
@@ -416,6 +417,8 @@ struct LoadedPrivateContent final {
   airfix::content::ContentRevision revision;
   airfix::simulation::LegacyAircraftAudioBindings aircraftAudioBindings;
   std::optional<airfix::content::LoadedMissionWorldRoom> missionRoom;
+  std::optional<airfix::content::LoadedLegacyWeaponCrosshairTextureSet>
+      weaponCrosshairTextures;
 };
 
 [[nodiscard]] LoadedPrivateContent loadPrivateContent(
@@ -438,6 +441,8 @@ struct LoadedPrivateContent final {
   }
 
   std::optional<airfix::content::LoadedMissionWorldRoom> missionRoom;
+  std::optional<airfix::content::LoadedLegacyWeaponCrosshairTextureSet>
+      weaponCrosshairTextures;
   if (mission.has_value()) {
     const airfix::content::MissionLoadManifestRequest manifestRequest{
         .levelLogicalPath = mission->levelLogicalPath,
@@ -468,6 +473,18 @@ struct LoadedPrivateContent final {
           "authenticated Windows mission room could not be loaded");
     }
     missionRoom = std::move(*loadedRoom.room);
+
+    auto loadedCrosshairs =
+        airfix::content::loadLegacyWeaponCrosshairTextures(session);
+    if (!loadedCrosshairs.success() ||
+        !loadedCrosshairs.textures.has_value() ||
+        !loadedCrosshairs.textures->belongsTo(session) ||
+        loadedCrosshairs.textures->revision != revision ||
+        session.revision() != revision) {
+      throw std::runtime_error(
+          "authenticated weapon crosshair textures could not be loaded");
+    }
+    weaponCrosshairTextures = std::move(*loadedCrosshairs.textures);
   }
 
   for (const auto &clip : audioResult.clips->clipViews()) {
@@ -494,6 +511,7 @@ struct LoadedPrivateContent final {
       .revision = revision,
       .aircraftAudioBindings = *bindings,
       .missionRoom = std::move(missionRoom),
+      .weaponCrosshairTextures = std::move(weaponCrosshairTextures),
   };
 }
 
@@ -857,10 +875,17 @@ int run(const int argumentCount, char *arguments[]) {
         loadPrivateContent(*options.contentRoot, options.mission, audio));
   }
   if (privateContent.has_value() && privateContent->missionRoom.has_value()) {
+    if (!privateContent->weaponCrosshairTextures.has_value()) {
+      throw std::runtime_error(
+          "authenticated Windows mission has no weapon crosshair textures");
+    }
     playerSpawnPose = privateContent->missionRoom->playerSpawnPose;
-    renderer.installLoadedMissionRoom(std::move(*privateContent->missionRoom),
-                                      privateContent->revision);
+    renderer.installLoadedMissionRoom(
+        std::move(*privateContent->missionRoom),
+        std::move(*privateContent->weaponCrosshairTextures),
+        privateContent->revision);
     privateContent->missionRoom.reset();
+    privateContent->weaponCrosshairTextures.reset();
     if (!renderer.missionWorldRoomInstalled()) {
       throw std::runtime_error(
           "authenticated Windows mission was not published");

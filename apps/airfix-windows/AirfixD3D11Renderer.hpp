@@ -2,6 +2,7 @@
 
 #include "AirfixWindowsUiRasterizer.hpp"
 
+#include "airfix/content/LegacyWeaponCrosshairTextureSet.hpp"
 #include "airfix/content/MissionWorldRoomLoader.hpp"
 #include "airfix/render/PlayerActorPoseRuntime.hpp"
 #include "airfix/render/RenderFrameDiagnostics.hpp"
@@ -89,6 +90,14 @@ public:
   // scene. A failure leaves the public diagnostic scene installed.
   void installLoadedMissionRoom(
       airfix::content::LoadedMissionWorldRoom &&room,
+      const airfix::content::ContentRevision &expectedRevision);
+
+  // Product transaction: the room and all authenticated HUD crosshairs are
+  // prepared before a single no-fail ownership swap. The data-less overload
+  // above remains available for synthetic renderer tests.
+  void installLoadedMissionRoom(
+      airfix::content::LoadedMissionWorldRoom &&room,
+      airfix::content::LoadedLegacyWeaponCrosshairTextureSet &&crosshairs,
       const airfix::content::ContentRevision &expectedRevision);
 
   [[nodiscard]] bool missionWorldRoomInstalled() const noexcept;

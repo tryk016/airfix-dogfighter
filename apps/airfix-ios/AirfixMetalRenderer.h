@@ -7,6 +7,7 @@
 #include <optional>
 
 namespace airfix::content {
+struct LoadedLegacyWeaponCrosshairTextureSet;
 struct LoadedMissionWorldRoom;
 }
 namespace airfix::render {
@@ -68,6 +69,8 @@ NS_ASSUME_NONNULL_BEGIN
 // the main thread. On failure the old render snapshot and room stay unchanged.
 - (nullable AirfixPreparedMetalRoom*)prepareLoadedMissionRoom:
     (airfix::content::LoadedMissionWorldRoom&&)room
+    weaponCrosshairs:
+        (airfix::content::LoadedLegacyWeaponCrosshairTextureSet&&)crosshairs
     error:(NSError* _Nullable* _Nullable)error;
 
 // Read-only candidate identity. An empty optional is the authenticated

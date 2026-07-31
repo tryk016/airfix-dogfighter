@@ -1058,12 +1058,31 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
                     return;
                 }
 
+                auto crosshairResult =
+                    airfix::content::loadLegacyWeaponCrosshairTextures(
+                        *strongSelf->_verifiedSession,
+                        {},
+                        stopToken);
+                if (!strongSelf->_verifiedSession.has_value() ||
+                    strongSelf->_verifiedSession->revision() !=
+                        revisionBeforeLoad ||
+                    !crosshairResult.success() ||
+                    !crosshairResult.textures.has_value() ||
+                    !crosshairResult.textures->belongsTo(
+                        *strongSelf->_verifiedSession) ||
+                    crosshairResult.textures->revision !=
+                        ticket->expectedRevision) {
+                    publishFailure();
+                    return;
+                }
+
                 const auto resultRevision = result.room->revision;
                 AirfixMissionWorldRoomSnapshot* const snapshot =
                     airfix::ios::makeMissionWorldRoomSnapshot(
                         *ticket,
                         std::move(*result.room),
-                        std::move(*audioResult.clips));
+                        std::move(*audioResult.clips),
+                        std::move(*crosshairResult.textures));
                 dispatch_async(dispatch_get_main_queue(), ^{
                     AirfixContentCoordinator* coordinator = weakSelf;
                     if (coordinator == nil ||

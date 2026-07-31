@@ -73,7 +73,10 @@
   `WpParaMine` no-sight result. The portable binder preserves the type, role,
   HUD-local texture ID, revision, and exact authenticated-stream identity;
   primary and selected-secondary slots remain independent as in the recovered
-  `AirCraft+0x490/+0x494` state. Live slot ownership, changing aim/collision
+  `AirCraft+0x490/+0x494` state. Windows and iOS now also prepare all three
+  authenticated sight textures as separate D3D11/Metal resources inside the
+  mission transaction, before one atomic publication, and include them in
+  backend memory accounting. Live slot ownership, changing aim/collision
   production, primary/secondary composition policy, native sprite submission,
   the remaining HUD, and screen effects are not yet connected.
 - The recovered CCF material contract now survives end to end from typed
