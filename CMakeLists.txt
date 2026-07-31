@@ -23,6 +23,7 @@ endif()
 
 if(AIRFIX_BUILD_TESTS)
     enable_testing()
+    find_package(Python3 QUIET COMPONENTS Interpreter)
 endif()
 
 add_library(airfix_crypto
@@ -406,6 +407,13 @@ if(AIRFIX_BUILD_WINDOWS_APP)
 endif()
 
 if(AIRFIX_BUILD_TESTS)
+    if(Python3_Interpreter_FOUND)
+        add_test(
+            NAME airfix_aircraft_runtime_capture_validator_tests
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/AircraftRuntimeCaptureValidatorTests.py)
+    endif()
+
     add_executable(airfix_legacy_afs_function_schedule_tests
         tests/LegacyAfsFunctionScheduleTests.cpp)
     target_link_libraries(

@@ -38,6 +38,8 @@ __pycache__/
 *.dd64.bak
 *.trace32
 *.trace64
+*.aircraft-capture.jsonl
+*.aircraft-capture.jsonl.bak
 
 # Original copyrighted game data must remain outside this repository
 /original/

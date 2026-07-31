@@ -52,6 +52,9 @@ jobs:
       - name: Test deterministic Rizin report normalization
         run: python3 tests/RizinExportTests.py
 
+      - name: Test AirCraft runtime capture validation
+        run: python3 tests/AircraftRuntimeCaptureValidatorTests.py
+
       - name: Build code-intelligence preset
         run: cmake --build --preset code-intelligence --parallel
 
