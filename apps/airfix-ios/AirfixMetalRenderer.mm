@@ -1,5 +1,6 @@
 #import "AirfixMetalRenderer.h"
 
+#include "airfix/content/LegacyWeaponCrosshairSpriteSubmission.hpp"
 #import <Metal/Metal.h>
 #import <simd/simd.h>
 
@@ -109,6 +110,7 @@ struct alignas(16) GpuGameplayUniforms {
 struct alignas(16) GpuOverlayUniforms {
     simd_float4 outputAndPanelSize;
     simd_float4 panelOrigin;
+    simd_float4 tint;
 };
 
 static_assert(sizeof(GpuVertex) == 48U);
@@ -116,8 +118,19 @@ static_assert(alignof(GpuVertex) == 16U);
 static_assert(sizeof(GpuUniforms) == 64U);
 static_assert(sizeof(GpuGameplayUniforms) == 160U);
 static_assert(alignof(GpuGameplayUniforms) == 16U);
-static_assert(sizeof(GpuOverlayUniforms) == 32U);
+static_assert(sizeof(GpuOverlayUniforms) == 48U);
 static_assert(alignof(GpuOverlayUniforms) == 16U);
+
+[[nodiscard]] simd_float4 normalizedArgb(
+    const std::uint32_t argb) noexcept {
+    constexpr float inverseByte = 1.0F / 255.0F;
+    return {
+        static_cast<float>((argb >> 16U) & 0xFFU) * inverseByte,
+        static_cast<float>((argb >> 8U) & 0xFFU) * inverseByte,
+        static_cast<float>(argb & 0xFFU) * inverseByte,
+        static_cast<float>((argb >> 24U) & 0xFFU) * inverseByte,
+    };
+}
 
 NSError* makeError(const RendererError code, NSString* description) {
     return [NSError errorWithDomain:AirfixMetalRendererErrorDomain
@@ -1310,15 +1323,21 @@ bool preflightPrivateRoom(
 @property(nonatomic, strong)
     id<MTLDepthStencilState> gameplayDepthState;
 @property(nonatomic, strong)
+    id<MTLDepthStencilState> crosshairDepthState;
+@property(nonatomic, strong)
     id<MTLSamplerState> classicSceneSamplerState;
 @property(nonatomic, strong)
     id<MTLSamplerState> enhancedSceneSamplerState;
 @property(nonatomic, strong)
     id<MTLSamplerState> overlaySamplerState;
 @property(nonatomic, strong)
+    id<MTLSamplerState> crosshairSamplerState;
+@property(nonatomic, strong)
     id<MTLRenderPipelineState> presentationPipelineState;
 @property(nonatomic, strong)
     id<MTLRenderPipelineState> overlayPipelineState;
+@property(nonatomic, strong)
+    id<MTLRenderPipelineState> crosshairPipelineState;
 @property(nonatomic, strong)
     id<MTLSamplerState> presentationSamplerState;
 @property(nonatomic, strong) id<MTLTexture> diagnosticsOverlayTexture;
@@ -1339,6 +1358,15 @@ bool preflightPrivateRoom(
     AirfixMetalDiagnosticsState* diagnosticsState;
 
 - (BOOL)updateDiagnosticsOverlayTextureWithDevice:(id<MTLDevice>)device;
+- (BOOL)encodeLegacyWeaponCrosshairSprite:
+            (const airfix::content::
+                 LegacyWeaponCrosshairSpriteSubmission&)submission
+                              resources:(AirfixMetalRoomResources*)resources
+                           commandBuffer:(id<MTLCommandBuffer>)commandBuffer
+                              renderPass:(MTLRenderPassDescriptor*)renderPass
+                            outputExtent:
+                                (airfix::render::OutputPixelExtent)outputExtent
+                    drawableDepthTexture:(id<MTLTexture>)drawableDepthTexture;
 @end
 
 @implementation AirfixMetalRenderer
@@ -1453,9 +1481,12 @@ bool preflightPrivateRoom(
     id<MTLFunction> overlayVertexFunction =
         [library newFunctionWithName:@"airfixOverlayVertexMain"];
     id<MTLFunction> fragmentFunction = [library newFunctionWithName:@"airfixFragmentMain"];
+    id<MTLFunction> overlayFragmentFunction =
+        [library newFunctionWithName:@"airfixOverlayFragmentMain"];
     if (vertexFunction == nil || gameplayVertexFunction == nil ||
         presentationVertexFunction == nil ||
-        overlayVertexFunction == nil || fragmentFunction == nil) {
+        overlayVertexFunction == nil || fragmentFunction == nil ||
+        overlayFragmentFunction == nil) {
         if (error != nullptr) {
             *error = makeError(
                 RendererError::missingShaderFunction,
@@ -1536,6 +1567,7 @@ bool preflightPrivateRoom(
 
     pipelineDescriptor.label = @"Airfix render diagnostics overlay pipeline";
     pipelineDescriptor.vertexFunction = overlayVertexFunction;
+    pipelineDescriptor.fragmentFunction = overlayFragmentFunction;
     auto* overlayAttachment =
         pipelineDescriptor.colorAttachments[0];
     overlayAttachment.blendingEnabled = YES;
@@ -1563,6 +1595,29 @@ bool preflightPrivateRoom(
             *error = makeError(
                 RendererError::pipelineCreation,
                 [@"Metal diagnostics overlay pipeline creation failed: "
+                    stringByAppendingString:reason]);
+        }
+        return nil;
+    }
+
+    pipelineDescriptor.label = @"Airfix weapon crosshair sprite pipeline";
+    pipelineDescriptor.depthAttachmentPixelFormat =
+        MTLPixelFormatDepth32Float;
+    NSError* crosshairPipelineError = nil;
+    id<MTLRenderPipelineState> crosshairPipelineState =
+        [device
+            newRenderPipelineStateWithDescriptor:pipelineDescriptor
+                                           error:&crosshairPipelineError];
+    if (crosshairPipelineState == nil) {
+        if (error != nullptr) {
+            NSString* reason =
+                crosshairPipelineError.localizedDescription;
+            if (reason == nil) {
+                reason = @"unknown weapon crosshair pipeline error";
+            }
+            *error = makeError(
+                RendererError::pipelineCreation,
+                [@"Metal weapon crosshair pipeline creation failed: "
                     stringByAppendingString:reason]);
         }
         return nil;
@@ -1608,6 +1663,19 @@ bool preflightPrivateRoom(
         return nil;
     }
 
+    depthDescriptor.depthCompareFunction = MTLCompareFunctionAlways;
+    depthDescriptor.depthWriteEnabled = YES;
+    id<MTLDepthStencilState> crosshairDepthState =
+        [device newDepthStencilStateWithDescriptor:depthDescriptor];
+    if (crosshairDepthState == nil) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::depthStateCreation,
+                @"Metal weapon crosshair depth state creation failed.");
+        }
+        return nil;
+    }
+
     MTLSamplerDescriptor* samplerDescriptor = [[MTLSamplerDescriptor alloc] init];
     samplerDescriptor.minFilter = MTLSamplerMinMagFilterNearest;
     samplerDescriptor.magFilter = MTLSamplerMinMagFilterNearest;
@@ -1649,6 +1717,20 @@ bool preflightPrivateRoom(
             *error = makeError(
                 RendererError::samplerCreation,
                 @"Metal overlay sampler creation failed.");
+        }
+        return nil;
+    }
+    samplerDescriptor.minFilter = MTLSamplerMinMagFilterLinear;
+    samplerDescriptor.magFilter = MTLSamplerMinMagFilterLinear;
+    samplerDescriptor.mipFilter = MTLSamplerMipFilterNearest;
+    samplerDescriptor.maxAnisotropy = 1U;
+    id<MTLSamplerState> crosshairSamplerState =
+        [device newSamplerStateWithDescriptor:samplerDescriptor];
+    if (crosshairSamplerState == nil) {
+        if (error != nullptr) {
+            *error = makeError(
+                RendererError::samplerCreation,
+                @"Metal weapon crosshair sampler creation failed.");
         }
         return nil;
     }
@@ -2199,11 +2281,14 @@ bool preflightPrivateRoom(
     self.gameplayPipelineState = gameplayPipelineState;
     self.depthState = depthState;
     self.gameplayDepthState = gameplayDepthState;
+    self.crosshairDepthState = crosshairDepthState;
     self.classicSceneSamplerState = classicSceneSamplerState;
     self.enhancedSceneSamplerState = enhancedSceneSamplerState;
     self.overlaySamplerState = overlaySamplerState;
+    self.crosshairSamplerState = crosshairSamplerState;
     self.presentationPipelineState = presentationPipelineState;
     self.overlayPipelineState = overlayPipelineState;
+    self.crosshairPipelineState = crosshairPipelineState;
     self.presentationSamplerState = presentationSamplerState;
     self.fallbackResource = fallbackResource;
     self.roomSnapshot = roomSnapshot;
@@ -2630,6 +2715,111 @@ bool preflightPrivateRoom(
     return holder != nil
         ? holder->_desiredSettings
         : airfix::render::RenderPresentationSettings{};
+}
+
+- (BOOL)encodeLegacyWeaponCrosshairSprite:
+            (const airfix::content::
+                 LegacyWeaponCrosshairSpriteSubmission&)submission
+                              resources:(AirfixMetalRoomResources*)resources
+                           commandBuffer:(id<MTLCommandBuffer>)commandBuffer
+                              renderPass:(MTLRenderPassDescriptor*)renderPass
+                            outputExtent:
+                                (airfix::render::OutputPixelExtent)outputExtent
+                    drawableDepthTexture:(id<MTLTexture>)drawableDepthTexture {
+    if (resources == nil || commandBuffer == nil || renderPass == nil ||
+        drawableDepthTexture == nil ||
+        !resources->_crosshairs.has_value() ||
+        resources.crosshairTextures == nil ||
+        self.crosshairPipelineState == nil ||
+        self.crosshairDepthState == nil ||
+        self.crosshairSamplerState == nil ||
+        submission.blendMode !=
+            airfix::content::LegacyWeaponCrosshairBlendMode::
+                sourceAlphaOneMinusSourceAlpha ||
+        submission.depthMode !=
+            airfix::content::LegacyWeaponCrosshairDepthMode::alwaysWrite ||
+        submission.tintArgb !=
+            airfix::content::legacyWeaponCrosshairTintArgb ||
+        submission.uv !=
+            airfix::content::LegacyWeaponCrosshairUvRect{} ||
+        !submission.belongsTo(*resources->_crosshairs)) {
+        return NO;
+    }
+    const auto& rectangle = submission.outputRect;
+    if (outputExtent.width == 0U || outputExtent.height == 0U ||
+        !std::isfinite(rectangle.x) || !std::isfinite(rectangle.y) ||
+        !std::isfinite(rectangle.width) ||
+        !std::isfinite(rectangle.height) || rectangle.width <= 0.0F ||
+        rectangle.height <= 0.0F) {
+        return NO;
+    }
+    const NSUInteger textureIndex =
+        static_cast<NSUInteger>(submission.textureId.value);
+    if (textureIndex >= resources.crosshairTextures.count) {
+        return NO;
+    }
+    id<MTLTexture> texture =
+        resources.crosshairTextures[textureIndex];
+    id<MTLTexture> outputTexture =
+        renderPass.colorAttachments[0].texture;
+    if (texture == nil || outputTexture == nil) {
+        return NO;
+    }
+
+    MTLRenderPassDescriptor* spritePass =
+        [MTLRenderPassDescriptor renderPassDescriptor];
+    spritePass.colorAttachments[0].texture = outputTexture;
+    spritePass.colorAttachments[0].loadAction = MTLLoadActionLoad;
+    spritePass.colorAttachments[0].storeAction = MTLStoreActionStore;
+    spritePass.depthAttachment.texture = drawableDepthTexture;
+    // The recovered state writes depth with ALWAYS. Existing depth contents
+    // are irrelevant to that comparison and no later HUD pass consumes them.
+    spritePass.depthAttachment.loadAction = MTLLoadActionDontCare;
+    spritePass.depthAttachment.storeAction = MTLStoreActionDontCare;
+
+    id<MTLRenderCommandEncoder> encoder =
+        [commandBuffer renderCommandEncoderWithDescriptor:spritePass];
+    if (encoder == nil) {
+        return NO;
+    }
+    const GpuOverlayUniforms uniforms{
+        .outputAndPanelSize =
+            {
+                static_cast<float>(outputExtent.width),
+                static_cast<float>(outputExtent.height),
+                rectangle.width,
+                rectangle.height,
+            },
+        .panelOrigin =
+            {rectangle.x, rectangle.y, 0.0F, 0.0F},
+        .tint = normalizedArgb(submission.tintArgb),
+    };
+    [encoder setRenderPipelineState:self.crosshairPipelineState];
+    [encoder setDepthStencilState:self.crosshairDepthState];
+    [encoder setCullMode:MTLCullModeNone];
+    [encoder
+        setViewport:MTLViewport{
+            0.0,
+            0.0,
+            static_cast<double>(outputExtent.width),
+            static_cast<double>(outputExtent.height),
+            0.0,
+            1.0,
+        }];
+    [encoder setVertexBytes:&uniforms
+                     length:sizeof(uniforms)
+                    atIndex:2U];
+    [encoder setFragmentBytes:&uniforms
+                       length:sizeof(uniforms)
+                      atIndex:2U];
+    [encoder setFragmentTexture:texture atIndex:0U];
+    [encoder setFragmentSamplerState:self.crosshairSamplerState
+                              atIndex:0U];
+    [encoder drawPrimitives:MTLPrimitiveTypeTriangle
+                vertexStart:0U
+                vertexCount:6U];
+    [encoder endEncoding];
+    return YES;
 }
 
 - (BOOL)updateDiagnosticsOverlayTextureWithDevice:(id<MTLDevice>)device {
@@ -4163,6 +4353,7 @@ bool preflightPrivateRoom(
                     },
                 .panelOrigin =
                     {originX, originY, 0.0F, 0.0F},
+                .tint = {1.0F, 1.0F, 1.0F, 1.0F},
             };
             [overlayEncoder
                 setRenderPipelineState:
@@ -4180,6 +4371,9 @@ bool preflightPrivateRoom(
             [overlayEncoder setVertexBytes:&uniforms
                                     length:sizeof(uniforms)
                                    atIndex:2U];
+            [overlayEncoder setFragmentBytes:&uniforms
+                                      length:sizeof(uniforms)
+                                     atIndex:2U];
             [overlayEncoder
                 setFragmentTexture:retainedDiagnosticsOverlay
                            atIndex:0U];

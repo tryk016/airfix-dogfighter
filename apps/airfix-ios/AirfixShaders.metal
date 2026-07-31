@@ -26,6 +26,7 @@ struct GpuGameplayUniforms {
 struct GpuOverlayUniforms {
     float4 outputAndPanelSize;
     float4 panelOrigin;
+    float4 tint;
 };
 
 struct DiagnosticRasterVertex {
@@ -147,4 +148,12 @@ fragment float4 airfixFragmentMain(
     texture2d<float> colorTexture [[texture(0)]],
     sampler colorSampler [[sampler(0)]]) {
     return colorTexture.sample(colorSampler, input.uv);
+}
+
+fragment float4 airfixOverlayFragmentMain(
+    RasterFragmentInput input [[stage_in]],
+    constant GpuOverlayUniforms& uniforms [[buffer(2)]],
+    texture2d<float> colorTexture [[texture(0)]],
+    sampler colorSampler [[sampler(0)]]) {
+    return colorTexture.sample(colorSampler, input.uv) * uniforms.tint;
 }

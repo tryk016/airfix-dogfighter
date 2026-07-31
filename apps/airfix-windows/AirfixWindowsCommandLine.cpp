@@ -113,6 +113,7 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
   std::optional<std::uint32_t> startIndex;
   std::optional<std::filesystem::path> captureFrameOutput;
   std::optional<std::filesystem::path> captureOverviewFrameOutput;
+  std::optional<std::filesystem::path> captureCrosshairValidationFrameOutput;
   std::optional<std::filesystem::path> captureDiagnosticFrameOutput;
   std::optional<std::filesystem::path> captureSettingsPanelOutput;
   std::optional<std::filesystem::path> captureControllerCalibrationPanelOutput;
@@ -146,13 +147,11 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
               ? airfix::render::ScenePresentationMode::originalFourByThree
               : airfix::render::ScenePresentationMode::widescreenHorPlus;
     } else if (option == "--vertical-fov-adjustment") {
-      if (options.renderOverrides.verticalFovAdjustmentDegrees
-              .has_value()) {
+      if (options.renderOverrides.verticalFovAdjustmentDegrees.has_value()) {
         invalidCommandLine();
       }
-      options.renderOverrides.verticalFovAdjustmentDegrees =
-          static_cast<float>(parseVerticalFovAdjustmentDegrees(
-              requireValue(arguments, index)));
+      options.renderOverrides.verticalFovAdjustmentDegrees = static_cast<float>(
+          parseVerticalFovAdjustmentDegrees(requireValue(arguments, index)));
     } else if (option == "--visual-profile") {
       if (visualProfileSeen) {
         invalidCommandLine();
@@ -224,6 +223,17 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
       if (extension != ".bmp" && extension != ".BMP") {
         invalidCommandLine();
       }
+    } else if (option == "--capture-crosshair-validation-frame") {
+      if (captureCrosshairValidationFrameOutput.has_value()) {
+        invalidCommandLine();
+      }
+      captureCrosshairValidationFrameOutput =
+          std::filesystem::path(requireValue(arguments, index));
+      const auto extension =
+          captureCrosshairValidationFrameOutput->extension().string();
+      if (extension != ".bmp" && extension != ".BMP") {
+        invalidCommandLine();
+      }
     } else if (option == "--capture-diagnostic-frame") {
       if (captureDiagnosticFrameOutput.has_value()) {
         invalidCommandLine();
@@ -282,10 +292,12 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
                                    startIndex.has_value();
   const bool hasContentSpecificOption =
       hasAnyMissionOption || captureFrameOutput.has_value() ||
-      captureOverviewFrameOutput.has_value();
+      captureOverviewFrameOutput.has_value() ||
+      captureCrosshairValidationFrameOutput.has_value();
   const bool hasAnyCapture =
       captureFrameOutput.has_value() ||
       captureOverviewFrameOutput.has_value() ||
+      captureCrosshairValidationFrameOutput.has_value() ||
       captureDiagnosticFrameOutput.has_value() ||
       captureSettingsPanelOutput.has_value() ||
       captureControllerCalibrationPanelOutput.has_value() ||
@@ -308,6 +320,8 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
        (options.validateContentOnly || !hasMissionPair)) ||
       (captureOverviewFrameOutput.has_value() &&
        (options.validateContentOnly || !hasMissionPair)) ||
+      (captureCrosshairValidationFrameOutput.has_value() &&
+       (options.validateContentOnly || !hasMissionPair)) ||
       (captureDiagnosticFrameOutput.has_value() &&
        (hasAnyMissionOption || options.validateContentOnly)) ||
       (captureSettingsPanelOutput.has_value() &&
@@ -319,6 +333,8 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
       (captureSize.has_value() && !hasAnyCapture) ||
       ((static_cast<unsigned>(captureFrameOutput.has_value()) +
         static_cast<unsigned>(captureOverviewFrameOutput.has_value()) +
+        static_cast<unsigned>(
+            captureCrosshairValidationFrameOutput.has_value()) +
         static_cast<unsigned>(captureDiagnosticFrameOutput.has_value()) +
         static_cast<unsigned>(captureSettingsPanelOutput.has_value()) +
         static_cast<unsigned>(
@@ -336,8 +352,9 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
     };
   }
   options.captureFrameOutput = std::move(captureFrameOutput);
-  options.captureOverviewFrameOutput =
-      std::move(captureOverviewFrameOutput);
+  options.captureOverviewFrameOutput = std::move(captureOverviewFrameOutput);
+  options.captureCrosshairValidationFrameOutput =
+      std::move(captureCrosshairValidationFrameOutput);
   options.captureDiagnosticFrameOutput =
       std::move(captureDiagnosticFrameOutput);
   options.captureSettingsPanelOutput = std::move(captureSettingsPanelOutput);
@@ -353,6 +370,12 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
     options.renderOverrides.diagnosticsOverlayEnabled = true;
   }
   if (options.captureOverviewFrameOutput.has_value()) {
+    if (options.renderOverrides.diagnosticsOverlayEnabled == false) {
+      invalidCommandLine();
+    }
+    options.renderOverrides.diagnosticsOverlayEnabled = true;
+  }
+  if (options.captureCrosshairValidationFrameOutput.has_value()) {
     if (options.renderOverrides.diagnosticsOverlayEnabled == false) {
       invalidCommandLine();
     }

@@ -39,6 +39,7 @@ struct AirfixWindowsCommandLineOptions final {
   std::optional<AirfixWindowsMissionOptions> mission;
   std::optional<std::filesystem::path> captureFrameOutput;
   std::optional<std::filesystem::path> captureOverviewFrameOutput;
+  std::optional<std::filesystem::path> captureCrosshairValidationFrameOutput;
   std::optional<std::filesystem::path> captureDiagnosticFrameOutput;
   std::optional<std::filesystem::path> captureSettingsPanelOutput;
   std::optional<std::filesystem::path> captureControllerCalibrationPanelOutput;
@@ -74,7 +75,8 @@ parseAirfixWindowsCommandLine(std::span<const std::string_view> arguments);
          "--level <logical-path> [--player-object <logical-path>] "
          "[--start-index <uint32>] "
          "[--capture-frame <private-output.bmp> | "
-         "--capture-overview-frame <private-output.bmp>] "
+         "--capture-overview-frame <private-output.bmp> | "
+         "--capture-crosshair-validation-frame <private-output.bmp>] "
          "[--capture-size <width>x<height>]] | "
          "--validate-content-root <path> [--setup <logical-path> "
          "--level <logical-path> [--player-object <logical-path>] "

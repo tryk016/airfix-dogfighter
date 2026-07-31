@@ -48,10 +48,10 @@ void testEmptyAndSmokeModes() {
               !defaultOptions.renderOverrides.scenePresentation &&
               !defaultOptions.renderOverrides.visualProfile &&
               !defaultOptions.renderOverrides.diagnosticsOverlayEnabled &&
-              !defaultOptions.renderOverrides
-                   .verticalFovAdjustmentDegrees &&
+              !defaultOptions.renderOverrides.verticalFovAdjustmentDegrees &&
               !defaultOptions.captureDiagnosticFrameOutput &&
               !defaultOptions.captureOverviewFrameOutput &&
+              !defaultOptions.captureCrosshairValidationFrameOutput &&
               !defaultOptions.captureSettingsPanelOutput &&
               !defaultOptions.captureControllerCalibrationPanelOutput &&
               !defaultOptions.captureControllerBindingsPanelOutput,
@@ -65,16 +65,21 @@ void testEmptyAndSmokeModes() {
               !smokeOptions.renderOverrides.scenePresentation &&
               !smokeOptions.renderOverrides.visualProfile &&
               !smokeOptions.renderOverrides.diagnosticsOverlayEnabled &&
-              !smokeOptions.renderOverrides
-                   .verticalFovAdjustmentDegrees,
+              !smokeOptions.renderOverrides.verticalFovAdjustmentDegrees,
           "smoke mode without render flags must remain sparse");
 }
 
 void testPresentationOptions() {
   const std::array smoke{
-      "--smoke-test"sv,   "--render-scale"sv,       "50"sv,
-      "--original-4x3"sv, "--render-diagnostics"sv, "--visual-profile"sv,
-      "enhanced"sv,       "--vertical-fov-adjustment"sv, "25"sv,
+      "--smoke-test"sv,
+      "--render-scale"sv,
+      "50"sv,
+      "--original-4x3"sv,
+      "--render-diagnostics"sv,
+      "--visual-profile"sv,
+      "enhanced"sv,
+      "--vertical-fov-adjustment"sv,
+      "25"sv,
   };
   const auto smokeOptions = parse(smoke);
   require(smokeOptions.smokeTest &&
@@ -90,9 +95,14 @@ void testPresentationOptions() {
           "data-less smoke presentation settings were not retained");
 
   const std::array interactive{
-      "--render-scale"sv,   "200"sv,     "--widescreen-hor-plus"sv,
-      "--visual-profile"sv, "classic"sv, "--no-render-diagnostics"sv,
-      "--vertical-fov-adjustment"sv, "0"sv,
+      "--render-scale"sv,
+      "200"sv,
+      "--widescreen-hor-plus"sv,
+      "--visual-profile"sv,
+      "classic"sv,
+      "--no-render-diagnostics"sv,
+      "--vertical-fov-adjustment"sv,
+      "0"sv,
   };
   const auto interactiveOptions = parse(interactive);
   require(!interactiveOptions.smokeTest &&
@@ -103,8 +113,7 @@ void testPresentationOptions() {
                   VisualProfile::classic &&
               interactiveOptions.renderOverrides.diagnosticsOverlayEnabled ==
                   false &&
-              interactiveOptions.renderOverrides
-                      .verticalFovAdjustmentDegrees ==
+              interactiveOptions.renderOverrides.verticalFovAdjustmentDegrees ==
                   0.0F &&
               !interactiveOptions.contentRoot,
           "interactive sparse presentation overrides were not retained");
@@ -167,24 +176,23 @@ void testValidationAndRejections() {
   requireRejected(std::array{"--smoke-test"sv, "--render-scale"sv, "50"sv,
                              "--render-scale"sv, "100"sv},
                   "duplicate render scale must fail closed");
-  requireRejected(
-      std::array{"--vertical-fov-adjustment"sv, "26"sv},
-      "vertical-FOV adjustment above 25 degrees must fail closed");
-  requireRejected(
-      std::array{"--vertical-fov-adjustment"sv, "-1"sv},
-      "signed vertical-FOV adjustment must fail closed");
+  requireRejected(std::array{"--vertical-fov-adjustment"sv, "26"sv},
+                  "vertical-FOV adjustment above 25 degrees must fail closed");
+  requireRejected(std::array{"--vertical-fov-adjustment"sv, "-1"sv},
+                  "signed vertical-FOV adjustment must fail closed");
   requireRejected(
       std::array{"--vertical-fov-adjustment"sv, "12.5"sv},
       "fractional command-line vertical-FOV adjustment must fail closed");
   requireRejected(
       std::array{
-          "--vertical-fov-adjustment"sv, "5"sv,
-          "--vertical-fov-adjustment"sv, "10"sv,
+          "--vertical-fov-adjustment"sv,
+          "5"sv,
+          "--vertical-fov-adjustment"sv,
+          "10"sv,
       },
       "duplicate vertical-FOV adjustment must fail closed");
-  requireRejected(
-      std::array{"--vertical-fov-adjustment"sv},
-      "missing vertical-FOV adjustment must fail closed");
+  requireRejected(std::array{"--vertical-fov-adjustment"sv},
+                  "missing vertical-FOV adjustment must fail closed");
   requireRejected(
       std::array{"--smoke-test"sv, "--original-4x3"sv, "--original-4x3"sv},
       "duplicate Original 4:3 mode must fail closed");
@@ -241,6 +249,10 @@ void testValidationAndRejections() {
   requireRejected(std::array{"--content-root"sv, "private-pack"sv,
                              "--capture-overview-frame"sv, "frame.bmp"sv},
                   "overview capture without a mission must fail closed");
+  requireRejected(
+      std::array{"--content-root"sv, "private-pack"sv,
+                 "--capture-crosshair-validation-frame"sv, "frame.bmp"sv},
+      "crosshair validation capture without a mission must fail closed");
   requireRejected(std::array{"--content-root"sv, "private-pack"sv,
                              "--capture-size"sv, "3840x2160"sv},
                   "capture size without frame capture must fail closed");
@@ -304,18 +316,28 @@ void testValidationAndRejections() {
   requireRejected(std::array{"--capture-diagnostic-frame"sv, "public.bmp"sv,
                              "--no-render-diagnostics"sv},
                   "diagnostic capture and disabled diagnostics must conflict");
+  requireRejected(std::array{"--content-root"sv, "private-pack"sv, "--setup"sv,
+                             "mission.afs"sv, "--level"sv, "mission.level"sv,
+                             "--capture-overview-frame"sv, "overview.bmp"sv,
+                             "--no-render-diagnostics"sv},
+                  "overview capture and disabled diagnostics must conflict");
+  requireRejected(
+      std::array{"--content-root"sv, "private-pack"sv, "--setup"sv,
+                 "mission.afs"sv, "--level"sv, "mission.level"sv,
+                 "--capture-crosshair-validation-frame"sv, "crosshair.bmp"sv,
+                 "--no-render-diagnostics"sv},
+      "crosshair validation and disabled diagnostics must conflict");
+  requireRejected(std::array{"--content-root"sv, "private-pack"sv, "--setup"sv,
+                             "mission.afs"sv, "--level"sv, "mission.level"sv,
+                             "--capture-frame"sv, "frame.bmp"sv,
+                             "--capture-overview-frame"sv, "overview.bmp"sv},
+                  "private capture modes must remain mutually exclusive");
   requireRejected(
       std::array{"--content-root"sv, "private-pack"sv, "--setup"sv,
                  "mission.afs"sv, "--level"sv, "mission.level"sv,
                  "--capture-overview-frame"sv, "overview.bmp"sv,
-                 "--no-render-diagnostics"sv},
-      "overview capture and disabled diagnostics must conflict");
-  requireRejected(
-      std::array{"--content-root"sv, "private-pack"sv, "--setup"sv,
-                 "mission.afs"sv, "--level"sv, "mission.level"sv,
-                 "--capture-frame"sv, "frame.bmp"sv,
-                 "--capture-overview-frame"sv, "overview.bmp"sv},
-      "private capture modes must remain mutually exclusive");
+                 "--capture-crosshair-validation-frame"sv, "crosshair.bmp"sv},
+      "overview and crosshair validation captures must remain exclusive");
   requireRejected(std::array{"--content-root"sv, "private-pack"sv, "--setup"sv,
                              "mission.afs"sv, "--level"sv, "mission.level"sv,
                              "--capture-frame"sv, "frame.bmp"sv,
@@ -356,18 +378,10 @@ void testPrivateCaptureRequest() {
 
 void testPrivateOverviewCaptureRequest() {
   const std::array arguments{
-      "--content-root"sv,
-      "private-pack"sv,
-      "--setup"sv,
-      "mission.afs"sv,
-      "--level"sv,
-      "mission.level"sv,
-      "--player-object"sv,
-      "player.object"sv,
-      "--capture-overview-frame"sv,
-      "overview.BMP"sv,
-      "--capture-size"sv,
-      "1920x1080"sv,
+      "--content-root"sv,  "private-pack"sv,   "--setup"sv,
+      "mission.afs"sv,     "--level"sv,        "mission.level"sv,
+      "--player-object"sv, "player.object"sv,  "--capture-overview-frame"sv,
+      "overview.BMP"sv,    "--capture-size"sv, "1920x1080"sv,
   };
   const auto options = parse(arguments);
   require(options.mission.has_value() &&
@@ -378,6 +392,32 @@ void testPrivateOverviewCaptureRequest() {
               options.renderOverrides.diagnosticsOverlayEnabled == true &&
               !options.captureFrameOutput && !options.validateContentOnly,
           "private overview capture request was not retained");
+}
+
+void testPrivateCrosshairValidationCaptureRequest() {
+  const std::array arguments{
+      "--content-root"sv,
+      "private-pack"sv,
+      "--setup"sv,
+      "mission.afs"sv,
+      "--level"sv,
+      "mission.level"sv,
+      "--capture-crosshair-validation-frame"sv,
+      "crosshair.bmp"sv,
+      "--capture-size"sv,
+      "1920x1080"sv,
+  };
+  const auto options = parse(arguments);
+  require(options.mission.has_value() &&
+              options.captureCrosshairValidationFrameOutput ==
+                  std::filesystem::path("crosshair.bmp") &&
+              options.captureSize ==
+                  airfix::windows::AirfixWindowsCaptureSize{1920U, 1080U} &&
+              options.renderOverrides.diagnosticsOverlayEnabled == true &&
+              !options.captureFrameOutput &&
+              !options.captureOverviewFrameOutput &&
+              !options.validateContentOnly,
+          "private crosshair validation capture request was not retained");
 }
 
 void testPublicDiagnosticCaptureRequest() {
@@ -474,6 +514,7 @@ int main() {
     testValidationAndRejections();
     testPrivateCaptureRequest();
     testPrivateOverviewCaptureRequest();
+    testPrivateCrosshairValidationCaptureRequest();
     testPublicDiagnosticCaptureRequest();
     testPublicSettingsPanelCaptureRequest();
     testPublicControllerCalibrationPanelCaptureRequest();

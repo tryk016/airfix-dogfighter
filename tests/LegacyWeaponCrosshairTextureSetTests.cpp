@@ -1,4 +1,5 @@
 #include "airfix/content/LegacyWeaponCrosshairBinding.hpp"
+#include "airfix/content/LegacyWeaponCrosshairSpriteSubmission.hpp"
 #include "airfix/content/LegacyWeaponCrosshairTextureSet.hpp"
 #include "support/SyntheticContent.hpp"
 
@@ -8,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -21,11 +23,15 @@ namespace {
 
 using airfix::content::ContentRevision;
 using airfix::content::LegacyWeaponCrosshairBindingStatus;
+using airfix::content::LegacyWeaponCrosshairBlendMode;
+using airfix::content::LegacyWeaponCrosshairDepthMode;
+using airfix::content::LegacyWeaponCrosshairSpriteSubmissionStatus;
 using airfix::content::LegacyWeaponCrosshairTextureLoadIssueKind;
 using airfix::content::LegacyWeaponCrosshairTextureLoadLimits;
 using airfix::content::LegacyWeaponCrosshairTextureLoadPhase;
 using airfix::content::LegacyWeaponCrosshairTextureLoadResult;
 using airfix::content::LegacyWeaponCrosshairTextureRole;
+using airfix::content::LegacyWeaponCrosshairVisibilityDecision;
 using airfix::content::VerifiedContentSession;
 using airfix::simulation::LegacyWeaponSightRole;
 using airfix::simulation::LegacyWeaponTypeId;
@@ -523,6 +529,86 @@ void testCancellationCallbackAndIdentityGuards() {
   }
 }
 
+void testSpriteSubmissionPreservesRecoveredContractAndCallerPolicy() {
+  PackFixture fixture(representativeEntries());
+  auto session = fixture.open();
+  const auto loadedResult =
+      airfix::content::loadLegacyWeaponCrosshairTextures(session);
+  require(loadedResult.success(), "sprite fixture did not load");
+  const auto &loaded = *loadedResult.textures;
+  const auto binding = airfix::content::bindLegacyWeaponCrosshairTexture(
+      loaded, session, LegacyWeaponTypeId::machineGun);
+  require(binding.success(), "sprite fixture did not bind the machine gun");
+
+  const airfix::render::LegacyWeaponCrosshairSpritePlan plan{
+      .projectedTarget = {},
+      .outputRect = {-7.5F, 102.25F, 64.0F, 48.0F},
+      .logicalDistanceScale = 1.5F,
+      .insideSceneViewport = false,
+      .withinRecoveredDepthRange = true,
+  };
+  const auto drawn =
+      airfix::content::buildLegacyWeaponCrosshairSpriteSubmission(
+          plan, *binding.binding,
+          LegacyWeaponCrosshairVisibilityDecision::draw);
+  require(
+      drawn.ready() && drawn.submission->belongsTo(loaded) &&
+          drawn.submission->weaponType == LegacyWeaponTypeId::machineGun &&
+          drawn.submission->role ==
+              LegacyWeaponCrosshairTextureRole::machineGun &&
+          drawn.submission->textureId.value == 0U &&
+          drawn.submission->outputRect == plan.outputRect &&
+          drawn.submission->uv ==
+              airfix::content::LegacyWeaponCrosshairUvRect{} &&
+          drawn.submission->tintArgb ==
+              airfix::content::legacyWeaponCrosshairTintArgb &&
+          drawn.submission->blendMode ==
+              LegacyWeaponCrosshairBlendMode::sourceAlphaOneMinusSourceAlpha &&
+          drawn.submission->depthMode ==
+              LegacyWeaponCrosshairDepthMode::alwaysWrite &&
+          !drawn.submission->insideSceneViewport &&
+          drawn.submission->withinRecoveredDepthRange,
+      "ready sprite did not preserve geometry, provenance or recovered state");
+
+  const auto suppressed =
+      airfix::content::buildLegacyWeaponCrosshairSpriteSubmission(
+          plan, *binding.binding,
+          LegacyWeaponCrosshairVisibilityDecision::suppress);
+  require(suppressed.status ==
+                  LegacyWeaponCrosshairSpriteSubmissionStatus::suppressed &&
+              !suppressed.submission.has_value(),
+          "explicit caller suppression published a sprite");
+
+  auto forgedBinding = *binding.binding;
+  forgedBinding.textureId.value = 2U;
+  const auto forged =
+      airfix::content::buildLegacyWeaponCrosshairSpriteSubmission(
+          plan, forgedBinding, LegacyWeaponCrosshairVisibilityDecision::draw);
+  require(forged.status ==
+                  LegacyWeaponCrosshairSpriteSubmissionStatus::invalidBinding &&
+              !forged.submission.has_value(),
+          "role/texture namespace mismatch was accepted");
+
+  auto invalidPlan = plan;
+  invalidPlan.outputRect.width = std::numeric_limits<float>::quiet_NaN();
+  const auto invalidRectangle =
+      airfix::content::buildLegacyWeaponCrosshairSpriteSubmission(
+          invalidPlan, *binding.binding,
+          LegacyWeaponCrosshairVisibilityDecision::draw);
+  require(invalidRectangle.status ==
+                  LegacyWeaponCrosshairSpriteSubmissionStatus::
+                      invalidOutputRectangle &&
+              !invalidRectangle.submission.has_value(),
+          "non-finite output rectangle reached a native backend");
+
+  auto otherSession = fixture.open();
+  const auto otherLoaded =
+      airfix::content::loadLegacyWeaponCrosshairTextures(otherSession);
+  require(otherLoaded.success() &&
+              !drawn.submission->belongsTo(*otherLoaded.textures),
+          "equal revision on another authenticated handle reused a sprite");
+}
+
 } // namespace
 
 int main() {
@@ -534,6 +620,7 @@ int main() {
     testGtiContractFailuresAreTypedAndAtomic();
     testBudgetsFailBeforePublication();
     testCancellationCallbackAndIdentityGuards();
+    testSpriteSubmissionPreservesRecoveredContractAndCallerPolicy();
     std::cout << "Legacy weapon crosshair texture-set tests passed\n";
     return 0;
   } catch (const std::exception &error) {

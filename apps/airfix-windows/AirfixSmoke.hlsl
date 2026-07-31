@@ -45,6 +45,7 @@ cbuffer OverlayUniforms : register(b2)
 {
     float4 outputAndPanelSize;
     float4 panelOrigin;
+    float4 overlayTint;
 };
 
 SmokeRasterInput AirfixSmokeVS(SmokeVertexInput input)
@@ -159,5 +160,5 @@ float4 AirfixPresentationPS(PresentationRasterInput input) : SV_TARGET
 
 float4 AirfixOverlayPS(PresentationRasterInput input) : SV_TARGET
 {
-    return colorTexture.Sample(colorSampler, input.uv);
+    return colorTexture.Sample(colorSampler, input.uv) * overlayTint;
 }

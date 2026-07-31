@@ -76,9 +76,14 @@
   `AirCraft+0x490/+0x494` state. Windows and iOS now also prepare all three
   authenticated sight textures as separate D3D11/Metal resources inside the
   mission transaction, before one atomic publication, and include them in
-  backend memory accounting. Live slot ownership, changing aim/collision
-  production, primary/secondary composition policy, native sprite submission,
-  the remaining HUD, and screen effects are not yet connected.
+  backend memory accounting. The final static sprite contract is now also
+  recovered: full UVs, ARGB `0x7FFFFFFF`, source-alpha blending, and
+  always-write depth enter one authenticated value packet. D3D11 consumes it
+  in a private 1920x1080 validation capture and Metal prepares the equivalent
+  provenance-gated encoder. Ordinary frames still issue no manufactured HUD
+  draw. Live slot ownership, changing aim/collision production,
+  primary/secondary composition and visibility policy, the remaining HUD, and
+  screen effects are not yet connected.
 - The recovered CCF material contract now survives end to end from typed
   `0x2140/0x2150/0x2151` metadata and exact native defaults through world,
   aggregate mission, and player texture binding into each backend-neutral draw

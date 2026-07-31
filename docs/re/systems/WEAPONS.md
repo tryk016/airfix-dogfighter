@@ -418,6 +418,17 @@ not drawn. See
 and
 [EXP-20260731-091](../../experiments/EXP-20260731-091-crosshair-gpu-resource-staging.md).
 
+`EV-20260731-006` resolves the final `GtScreen` call used by
+`AfWeapon::RenderCrosshair`. Vtable slot `+0x60` expands the whole source image
+to a two-triangle screen rectangle, using full `0..1` UVs, ARGB tint
+`0x7FFFFFFF`, texture/vertex alpha modulation, source-alpha/inverse-source-
+alpha blending, and depth state `ALWAYS` with writes enabled. The portable
+sprite packet preserves those fields and the authenticated binding while
+requiring the caller to choose draw or suppress explicitly. D3D11 executes a
+validated private capture path; Metal has the equivalent prepared encoder.
+Neither ordinary renderer manufactures live weapon or aim state. See
+[EXP-20260731-092](../../experiments/EXP-20260731-092-crosshair-sprite-submission.md).
+
 ## Actor damage and surface reaction
 
 The actor-hit override at RVA `0x0000B2C0` emits damage event `0x7D` only when
@@ -520,8 +531,7 @@ effect.
 - Feed the recovered primary and selected-secondary live weapon identities into
   the implemented authenticated per-type sight binder, establish their static
   composition/visibility order, then feed changing owner/aim/collision state
-  through the crosshair rectangle plan into sprite submission using the
-  already-staged D3D11/Metal resources.
+  through the implemented rectangle and native sprite-submission boundary.
 - Trace sample/effect commands associated with a shot.
 - Recover secondary weapon selection and each secondary projectile family.
 - Confirm ammunition-zero semantics and scheduler/x87 tolerance with controlled
