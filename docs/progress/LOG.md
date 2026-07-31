@@ -4427,5 +4427,7 @@ superseded evidence.
   affected tests; strict warnings-as-errors retains only the documented
   pre-existing diagnostic-format warning. Synthetic public-boundary tests, the
   621-file scan, changed-line formatting, local-path review, and
-  `git diff --check` pass. Hosted Windows/iPhoneOS/iPhoneSimulator builds remain
-  publication gates.
+  `git diff --check` pass. PR #87's first hosted validation passes all seven
+  jobs: Ubuntu 24.04, macOS 26, Windows 2025, the Windows x64 D3D11/XAudio2
+  product smoke, clangd, iPhoneOS, and iPhoneSimulator. Physical-device iOS
+  acceptance remains separate.

@@ -1,7 +1,7 @@
 # EXP-20260731-082: independent native UI scale
 
 - Date: 2026-07-31
-- Status: implemented and locally validated; hosted platform validation pending
+- Status: implemented and validated locally and in hosted platform builds
 - Scope: portable settings/persistence, Windows native UI, iOS UIKit, and
   renderer diagnostics
 
@@ -74,9 +74,10 @@ Local results at implementation:
 - SDL3 3.4.12 input archive SHA-256 matched the pinned project value
   `f07b958a9ac5020fb7a44cadb957f658b2149c3c8abb4f63145fac9303249db7`.
 
-Hosted Windows, iPhoneOS, and iPhoneSimulator builds remain publication gates.
-Physical-device iOS visual, touch, Dynamic Type, and VoiceOver acceptance
-remains separate.
+The first hosted validation for PR #87 passed all seven jobs: Ubuntu 24.04,
+macOS 26, Windows 2025, the Windows x64 D3D11/XAudio2 product smoke, the clangd
+preset, iPhoneOS, and iPhoneSimulator. Physical-device iOS visual, touch,
+Dynamic Type, and VoiceOver acceptance remains separate.
 
 ## Result
 
