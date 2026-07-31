@@ -108,3 +108,8 @@ D3D11/Metal submission consumers.
 **NO-GO** for ordinary live crosshair wiring until the changing primary and
 selected-secondary identities, owner/aim/collision producer, explicit
 visibility policy, and primary/secondary composition order are established.
+
+Follow-up
+[EXP-20260731-093](EXP-20260731-093-crosshair-render-event-composition.md)
+resolves event `0x06` and the selected-secondary-before-primary order without
+changing the remaining live-producer and visibility-policy NO-GO.

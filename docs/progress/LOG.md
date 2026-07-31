@@ -4735,3 +4735,30 @@ superseded evidence.
   The generated compilation database contains 263 entries and no Apple-only
   sources. The catalogue retains only its two known historical missing
   references. Hosted Actions remain the publication gate.
+
+## 2026-07-31 - crosshair render-event composition
+
+- `EV-20260731-007` / `EXP-20260731-093` maps packed event `0x06` to the exact
+  `AfVehicle::ProcessEvent` branch and proves its order: type gate, independent
+  virtual AirCraft HUD stage, inactive gate, attached-camera gate, selected-
+  secondary `+0x494` `RenderCrosshair`, then primary `+0x490`
+  `RenderCrosshair`.
+- Ghidra 12.1.2 supplies the canonical function/vtable interpretation. Rizin
+  0.9.1 independently matches the branch instructions and the
+  `[0x10006B00,0x10007321)` AirCraft HUD-stage range on hash-verified read-only
+  copies. The complete HUD body remains only partially understood and is not
+  implemented.
+- `composeLegacyWeaponCrosshairRenderEvent` accepts optional, already-built
+  authenticated packets and publishes them in exact selected-secondary-before-
+  primary order. Missing slots remain independent; type, inactive, and camera
+  gates publish nothing; one forged packet rejects the complete plan. It does
+  not infer visibility, aim/collision, changing weapon ownership, or live frame
+  lifecycle.
+- Synthetic tests cover two-slot order, primary-only and empty plans, every
+  recovered crosshair gate, bounds-safe access, and atomic provenance failure.
+  Portable GCC and code-intelligence builds each pass 127/127 tests; the latter
+  emits 263 compilation-database entries with no Apple-only sources. Native
+  MSVC 19.51 builds the D3D11 product and passes 137/137 tests. Repeatable
+  Ghidra/Rizin wrappers, 12/12 Rizin-export tests, the 661-file public boundary,
+  formatting, catalogue checks, and changed-range clangd diagnostics pass.
+  Hosted platform builds remain the publication gate for this branch.

@@ -80,10 +80,13 @@
   recovered: full UVs, ARGB `0x7FFFFFFF`, source-alpha blending, and
   always-write depth enter one authenticated value packet. D3D11 consumes it
   in a private 1920x1080 validation capture and Metal prepares the equivalent
-  provenance-gated encoder. Ordinary frames still issue no manufactured HUD
-  draw. Live slot ownership, changing aim/collision production,
-  primary/secondary composition and visibility policy, the remaining HUD, and
-  screen effects are not yet connected.
+  provenance-gated encoder. Event `0x06` is now statically closed around the
+  crosshair substage: after its independent AirCraft HUD call and the recovered
+  type/active/camera gates, selected secondary renders before primary. A
+  bounded value plan preserves that order and rejects mixed-provenance packets
+  atomically. Ordinary frames still issue no manufactured HUD draw. Live slot
+  ownership, changing aim/collision production, explicit visibility policy,
+  the remaining HUD, and screen effects are not yet connected.
 - The recovered CCF material contract now survives end to end from typed
   `0x2140/0x2150/0x2151` metadata and exact native defaults through world,
   aggregate mission, and player texture binding into each backend-neutral draw
