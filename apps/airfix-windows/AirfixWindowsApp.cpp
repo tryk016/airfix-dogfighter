@@ -849,6 +849,8 @@ int run(const int argumentCount, char *arguments[]) {
   std::optional<LoadedPrivateContent> privateContent;
   std::optional<airfix::simulation::PlayerSpawnPose> playerSpawnPose;
   airfix::runtime::PlayerActorPoseRuntimeEndpoint playerActorPoseRuntime;
+  std::weak_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>
+      gameplayCameraMissionRuntime;
   if (options.contentRoot.has_value()) {
     privateContent.emplace(
         loadPrivateContent(*options.contentRoot, options.mission, audio));
@@ -863,6 +865,12 @@ int run(const int argumentCount, char *arguments[]) {
           "authenticated Windows mission was not published");
     }
     playerActorPoseRuntime = renderer.playerActorPoseRuntimeEndpoint();
+    gameplayCameraMissionRuntime =
+        renderer.gameplayCameraMissionRuntimeEndpoint();
+    if (gameplayCameraMissionRuntime.expired()) {
+      throw std::runtime_error(
+          "authenticated Windows gameplay camera was not published");
+    }
   }
   audio.setActive(false);
   if (options.captureFrameOutput.has_value()) {
@@ -949,11 +957,12 @@ int run(const int argumentCount, char *arguments[]) {
     throw std::runtime_error(SDL_GetError());
   }
 
-  if (renderer.missionWorldRoomInstalled() && playerSpawnPose.has_value()) {
-    // Windows currently commits the authenticated room, audio clips, and
-    // frozen spawn pose plus its replacement-safe pose runtime as one startup
-    // transaction. Changing pose/camera inputs remain a later trace-driven
-    // milestone.
+  if (renderer.missionWorldRoomInstalled() && playerSpawnPose.has_value() &&
+      !gameplayCameraMissionRuntime.expired()) {
+    // Windows commits the authenticated room, audio clips, frozen spawn pose,
+    // pose runtime, and replacement-safe gameplay-camera runtime as one
+    // startup transaction. Supplying changing camera inputs remains a later
+    // trace-driven milestone.
     session.setContentState(airfix::runtime::ContentState::ready);
   }
   airfix::windows::AirfixSdlInputAdapter input{controllerInputConfiguration};
@@ -973,7 +982,8 @@ int run(const int argumentCount, char *arguments[]) {
                airfix::runtime::LifecycleState::foregroundPaused &&
            windowFocused && simulationPipelineReady &&
            playerAircraftPresentation.healthy() &&
-           renderer.missionWorldRoomInstalled() && playerSpawnPose.has_value();
+           renderer.missionWorldRoomInstalled() && playerSpawnPose.has_value() &&
+           !gameplayCameraMissionRuntime.expired();
   };
   const auto refreshRenderSettingsPanel = [&]() {
     if (!renderSettingsPanel.has_value()) {
@@ -1221,6 +1231,10 @@ int run(const int argumentCount, char *arguments[]) {
           std::cerr << "Windows deterministic input consumer halted after "
                        "an invalid state transition\n";
         }
+        // Do not call gameplayCameraMissionRuntime.tryAdvance() from this
+        // 60 Hz input loop. The recovered camera consumes the complete
+        // trace-driven AirCraft producer state on its independent 12 ms
+        // cadence; guessing that contract here would break parity.
       }
       inputAccumulator -= inputStepNanoseconds;
     }

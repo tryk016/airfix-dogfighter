@@ -116,9 +116,13 @@
   state/hash changes, but the player remains at the authenticated spawn because
   no flight law is inferred from input intentions. One portable planner now
   validates exact pose limits, retained bytes, and bit-identical step-zero
-  publication for both native renderers. D3D11 owns that runtime with its
-  mission snapshot, retains one coherent lease through each gameplay draw
-  pass, and exposes the same replacement-safe weak producer endpoint as Metal.
+  publication for both native renderers. D3D11 owns that pose runtime with its
+  mission snapshot, retains one coherent pose lease through each gameplay draw
+  pass, and exposes the same replacement-safe weak pose endpoint as Metal.
+  Windows now also owns the complete bounded gameplay-camera mission runtime
+  already used by Metal. It validates the initial step-0/generation-1 packet,
+  exposes a replacement-safe weak camera endpoint, and retains exactly one
+  current camera lease across layout construction and every draw in a frame.
   A separate XAudio2 2.9 backend consumes the new bounded portable
   command/PCM16 contract, owns copied clips, pauses with focus, recovers
   outside its callback, and accepts commands safely without an output
@@ -135,9 +139,11 @@
   output, and a separate one-shot mode saves that checked frame as a
   non-overwriting private BMP for local parity work; an optional capture extent
   is accepted only when it matches the physical backbuffer. The public product
-  smoke remains synthetic and data-less. The loaded room and camera are still
-  static because live flight
-  simulation is not connected, so this is not yet a playable build.
+  smoke remains synthetic and data-less. The renderer is ready to consume
+  changing camera generations, but the room, player, and camera remain at
+  their bootstrap state because the trace-driven 12 ms AirCraft producer is
+  not connected. The 60 Hz input loop deliberately does not advance the
+  camera runtime, so this is not yet a playable build.
 - The native iOS audio adapter consumes the same monotonic command batches.
   It converts bounded PCM16 registrations once into AVAudioEngine's standard
   deinterleaved Float32 representation, uses one player/varispeed graph per

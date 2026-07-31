@@ -15,6 +15,10 @@
 
 struct SDL_Window;
 
+namespace airfix::render {
+class LegacyGameplayCameraMissionRuntime;
+}
+
 namespace airfix::windows {
 
 enum class RenderPresentationSettingsApplyIssueKind : std::uint8_t {
@@ -93,6 +97,14 @@ public:
   [[nodiscard]] std::optional<
       std::weak_ptr<airfix::render::PlayerActorPoseRuntime>>
   playerActorPoseRuntimeEndpoint() const noexcept;
+
+  // The renderer remains the strong owner for the installed camera runtime.
+  // Replacement or renderer destruction expires every previously returned
+  // endpoint. The simulation producer must not advance this endpoint until it
+  // can supply the complete recovered AirCraft input contract.
+  [[nodiscard]]
+  std::weak_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>
+  gameplayCameraMissionRuntimeEndpoint() const noexcept;
 
   // Renders and writes one private local D3D11 frame as a top-down BGRA8 BMP.
   // Callers must keep the derived screenshot outside public source control.

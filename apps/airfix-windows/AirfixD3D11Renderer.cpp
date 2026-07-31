@@ -5,7 +5,7 @@
 #include "airfix/content/MissionWorldRoomPublication.hpp"
 #include "airfix/render/DrawSubmissionPlan.hpp"
 #include "airfix/render/LegacyDepthState.hpp"
-#include "airfix/render/LegacyGameplayCameraClipPacket.hpp"
+#include "airfix/render/LegacyGameplayCameraMissionRuntime.hpp"
 #include "airfix/render/NativeRenderLayout.hpp"
 #include "airfix/render/PlayerActorPoseRuntimePreparation.hpp"
 #include "airfix/render/PublicRenderSmokeScene.hpp"
@@ -258,8 +258,9 @@ makeSmokeUniforms(const airfix::render::DrawMeshInstance &instance) {
   };
 }
 
-[[nodiscard]] airfix::render::LegacyGameplayCameraBootstrapInput
-cameraBootstrapInput(
+[[nodiscard]]
+airfix::render::LegacyGameplayCameraStepCoordinatorInitializeInput
+gameplayCameraInitializeInput(
     const airfix::content::LoadedMissionWorldRoom &room) noexcept {
   const auto vectorAt = [](const std::array<float, 3U> &value) {
     return airfix::render::Vec3{value[0], value[1], value[2]};
@@ -280,6 +281,7 @@ cameraBootstrapInput(
                   },
           },
       .worldRoomIndex = room.playerSpawnPose.worldRoomIndex,
+      .cameraCyclePressCount = 0U,
   };
 }
 
@@ -334,22 +336,31 @@ class AirfixD3D11Renderer::Implementation final {
 
   struct MissionResources {
     airfix::content::LoadedMissionWorldRoom room;
-    airfix::render::LegacyGameplayCameraClipPacket camera;
+    std::shared_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>
+        cameraMissionRuntime;
     std::shared_ptr<airfix::render::PlayerActorPoseRuntime> poseRuntime;
     std::vector<MeshResources> meshes;
     std::vector<ComPtr<ID3D11ShaderResourceView>> textures;
+    airfix::render::CameraLogicalExtent referenceCameraCanvas{};
+    float referenceHorizontalFovDegrees{};
 
     MissionResources(
         airfix::content::LoadedMissionWorldRoom &&loadedRoom,
-        airfix::render::LegacyGameplayCameraClipPacket cameraPacket,
+        std::shared_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>
+            gameplayCameraRuntime,
         std::shared_ptr<airfix::render::PlayerActorPoseRuntime>
             playerPoseRuntime,
         std::vector<MeshResources> &&meshResources,
-        std::vector<ComPtr<ID3D11ShaderResourceView>> &&textureResources)
-        : room(std::move(loadedRoom)), camera(std::move(cameraPacket)),
+        std::vector<ComPtr<ID3D11ShaderResourceView>> &&textureResources,
+        const airfix::render::CameraLogicalExtent cameraCanvas,
+        const float horizontalFovDegrees)
+        : room(std::move(loadedRoom)),
+          cameraMissionRuntime(std::move(gameplayCameraRuntime)),
           poseRuntime(std::move(playerPoseRuntime)),
           meshes(std::move(meshResources)),
-          textures(std::move(textureResources)) {}
+          textures(std::move(textureResources)),
+          referenceCameraCanvas(cameraCanvas),
+          referenceHorizontalFovDegrees(horizontalFovDegrees) {}
   };
 
   enum class ResizeAttemptKind : std::uint8_t {
@@ -614,12 +625,7 @@ public:
           "authenticated mission room draw submission is inconsistent");
     }
 
-    auto cameraResult =
-        airfix::render::buildLegacyGameplayCameraBootstrapClipPacket(
-            cameraBootstrapInput(room));
-    if (!cameraResult.complete()) {
-      throw std::runtime_error("authenticated mission camera bootstrap failed");
-    }
+    const auto cameraInitializeInput = gameplayCameraInitializeInput(room);
 
     const auto posePlan =
         airfix::render::planPlayerActorPoseRuntime(
@@ -659,11 +665,45 @@ public:
 
     auto meshes = createGeometryResources(room.model);
     auto textures = createMissionTextures(room.textures);
+
+    // Full validation and GPU preparation must complete before mission-owned
+    // collision storage is moved. The active mission remains untouched on
+    // every failure before the final no-fail publication.
+    auto cameraRuntimeBuild =
+        airfix::render::LegacyGameplayCameraMissionRuntime::create(
+            std::move(room.spatialArena),
+            std::move(room.placedDynamicCollision),
+            std::move(room.playerActorCollision), room.runtimeBasis,
+            cameraInitializeInput);
+    if (!cameraRuntimeBuild.complete()) {
+      throw std::runtime_error(
+          "authenticated mission gameplay camera runtime is invalid");
+    }
+    auto cameraMissionRuntime = std::shared_ptr<
+        airfix::render::LegacyGameplayCameraMissionRuntime>(
+        std::move(cameraRuntimeBuild.runtime));
+    const auto initialCamera = cameraMissionRuntime->tryAcquire();
+    if (!initialCamera.has_value() || !initialCamera->valid() ||
+        initialCamera->packet() == nullptr ||
+        initialCamera->simulationStep() != 0U ||
+        initialCamera->cameraPublicationGeneration() != 1U) {
+      throw std::runtime_error(
+          "authenticated mission gameplay camera bootstrap is invalid");
+    }
+    const auto *const initialCameraPacket = initialCamera->packet();
+    const airfix::render::CameraLogicalExtent referenceCameraCanvas{
+        initialCameraPacket->logicalCanvasWidth(),
+        initialCameraPacket->logicalCanvasHeight(),
+    };
+    const float referenceHorizontalFovDegrees =
+        initialCameraPacket->pose().projection().horizontalFovDegrees();
+
     std::vector<airfix::content::LoadedTextureAsset>().swap(room.textures);
     auto candidate = std::make_unique<MissionResources>(
-        std::move(room), std::move(*cameraResult.packet),
+        std::move(room), std::move(cameraMissionRuntime),
         std::move(posePreparation.runtime), std::move(meshes),
-        std::move(textures));
+        std::move(textures), referenceCameraCanvas,
+        referenceHorizontalFovDegrees);
     mission_ = std::move(candidate);
   }
 
@@ -679,6 +719,15 @@ public:
     }
     return std::weak_ptr<airfix::render::PlayerActorPoseRuntime>{
         mission_->poseRuntime};
+  }
+
+  [[nodiscard]]
+  std::weak_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>
+  gameplayCameraMissionRuntimeEndpoint() const noexcept {
+    if (mission_ == nullptr || mission_->cameraMissionRuntime == nullptr) {
+      return {};
+    }
+    return mission_->cameraMissionRuntime;
   }
 
   [[nodiscard]] std::optional<airfix::render::RenderFrameDiagnostics>
@@ -727,9 +776,29 @@ public:
 
     constexpr std::array<float, 4U> clearColor{0.035F, 0.055F, 0.085F, 1.0F};
     const bool gameplay = mission_ != nullptr;
+    std::optional<airfix::render::LegacyGameplayCameraPacketLease>
+        gameplayCameraLease;
+    if (gameplay) {
+      if (mission_->cameraMissionRuntime == nullptr) {
+        return false;
+      }
+      // Exactly one read lease owns the camera packet for the entire frame.
+      // A bounded acquisition miss drops this frame; private gameplay never
+      // falls back to the immutable bootstrap camera.
+      gameplayCameraLease = mission_->cameraMissionRuntime->tryAcquire();
+      if (!gameplayCameraLease.has_value() ||
+          !gameplayCameraLease->valid() ||
+          gameplayCameraLease->packet() == nullptr) {
+        return false;
+      }
+    }
+    const auto *const gameplayCamera =
+        gameplayCameraLease.has_value()
+        ? gameplayCameraLease->packet()
+        : nullptr;
     const auto layout = buildLayout(
         settings_, static_cast<std::uint32_t>(width_),
-        static_cast<std::uint32_t>(height_));
+        static_cast<std::uint32_t>(height_), gameplayCamera);
     if (!layout.complete()) {
       throw std::runtime_error("native render layout is invalid");
     }
@@ -838,7 +907,7 @@ public:
                       authoredInstance.modelTranslation,
               };
         const GameplayUniforms uniforms = makeGameplayUniforms(
-            resolvedPose, mission_->camera, *layout.layout);
+            resolvedPose, *gameplayCamera, *layout.layout);
         context_->UpdateSubresource(gameplayUniforms_.Get(), 0U, nullptr,
                                     &uniforms, 0U, 0U);
         ID3D11Buffer *constantBuffer = gameplayUniforms_.Get();
@@ -1078,7 +1147,9 @@ private:
   buildLayout(
       const airfix::render::RenderPresentationSettings &settings,
       const std::uint32_t outputWidth,
-      const std::uint32_t outputHeight) const noexcept {
+      const std::uint32_t outputHeight,
+      const airfix::render::LegacyGameplayCameraClipPacket
+          *const gameplayCamera = nullptr) const noexcept {
     auto config = airfix::render::NativeRenderLayoutConfig{
         .outputExtent = {
             outputWidth,
@@ -1089,14 +1160,19 @@ private:
         .verticalFovAdjustmentDegrees =
             settings.verticalFovAdjustmentDegrees,
     };
-    if (mission_ != nullptr) {
-      const auto &cameraProjection = mission_->camera.pose().projection();
+    if (gameplayCamera != nullptr) {
       config.referenceCameraCanvas = {
-          mission_->camera.logicalCanvasWidth(),
-          mission_->camera.logicalCanvasHeight(),
+          gameplayCamera->logicalCanvasWidth(),
+          gameplayCamera->logicalCanvasHeight(),
       };
       config.referenceHorizontalFovDegrees =
-          cameraProjection.horizontalFovDegrees();
+          gameplayCamera->pose().projection().horizontalFovDegrees();
+    } else if (mission_ != nullptr) {
+      // Target preparation outside a render frame cannot borrow the SPSC
+      // consumer endpoint. Gameplay frames always provide the leased packet.
+      config.referenceCameraCanvas = mission_->referenceCameraCanvas;
+      config.referenceHorizontalFovDegrees =
+          mission_->referenceHorizontalFovDegrees;
     }
     return airfix::render::buildNativeRenderLayout(config);
   }
@@ -2370,6 +2446,11 @@ bool AirfixD3D11Renderer::missionWorldRoomInstalled() const noexcept {
 std::optional<std::weak_ptr<airfix::render::PlayerActorPoseRuntime>>
 AirfixD3D11Renderer::playerActorPoseRuntimeEndpoint() const noexcept {
   return implementation_->playerActorPoseRuntimeEndpoint();
+}
+
+std::weak_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>
+AirfixD3D11Renderer::gameplayCameraMissionRuntimeEndpoint() const noexcept {
+  return implementation_->gameplayCameraMissionRuntimeEndpoint();
 }
 
 void AirfixD3D11Renderer::captureFrameToBmp(
