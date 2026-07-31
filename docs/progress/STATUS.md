@@ -1172,11 +1172,13 @@ These questions do not block static analysis or the archive work.
 - The portable legacy sorted-render queue passes a fresh complete Windows GCC
   15.2/Ninja build with 121/121 CTests and a complete MSVC 19.51/Ninja Windows
   product build with 131/131 CTests, including both D3D11 product smokes.
-  Synthetic public-boundary tests, the 626-file repository scan, the
-  340-row/14-column unique function catalogue, and `git diff --check` pass.
-  Two independent reviews report no code finding; their sole P2 stale
-  validation-provenance finding is corrected. WSL2 and hosted platform builds
-  remain publication gates.
+  Exact commit `88235e8` additionally builds all 376 steps from a clean source
+  export under the dedicated WSL2 GCC 13.3/Ninja environment and passes
+  121/121 CTests. Synthetic public-boundary tests, the 626-file repository
+  scan, the 340-row/14-column unique function catalogue, and
+  `git diff --check` pass. Two independent reviews report no code finding;
+  their sole P2 stale validation-provenance finding is corrected. Hosted
+  platform builds remain the publication gate.
 - The recovered CCF material render contract passes fresh Windows GCC
   15.2/Ninja and independent WSL2 GCC builds with all 120 portable CTests. An
   isolated MSVC 19.51/Ninja build completes all 669 steps, links the Windows

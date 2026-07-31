@@ -185,12 +185,15 @@ Tests cover:
 
 A fresh Windows GCC/Ninja build completes and all 121 portable CTests pass. An
 isolated native MSVC 19.51/Ninja build links the Windows product and passes all
-131 CTests, including both D3D11 product smokes. Synthetic public-boundary tests,
-the 626-file repository scan, the 340-row/14-column unique function catalogue,
-and `git diff --check` pass. Two independent reviews report no code finding;
-their sole P2 identified stale validation provenance in this expanded report,
-which is corrected by this paragraph. Isolated WSL2 and hosted platform builds
-remain publication gates for the queue addition.
+131 CTests, including both D3D11 product smokes. Exact commit `88235e8` also
+builds all 376 steps in a clean exported source tree under the dedicated
+`Airfix-Dev` WSL2 GCC 13.3/Ninja environment and passes all 121 CTests.
+Synthetic public-boundary tests, the 626-file repository scan, the
+340-row/14-column unique function catalogue, and `git diff --check` pass. Two
+independent reviews report no code finding; their sole P2 identified stale
+validation provenance in this expanded report, which is corrected by this
+paragraph. Hosted platform builds remain the publication gate for the queue
+addition.
 
 ## Decision
 

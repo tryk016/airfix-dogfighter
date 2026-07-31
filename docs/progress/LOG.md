@@ -4503,7 +4503,9 @@ superseded evidence.
 - Fresh Windows GCC 15.2/Ninja builds the complete portable tree and passes
   121/121 CTests. MSVC 19.51/Ninja links the complete Windows product and
   passes 131/131 CTests including both native D3D11 product smokes. Synthetic
-  public-boundary tests, the 626-file scan, the 340-row/14-column unique
-  function catalogue, and `git diff --check` pass. Two independent reviews
-  report no code finding; their sole P2 stale-validation-provenance finding is
-  corrected. WSL2 and hosted builds remain publication gates.
+  commit `88235e8` also builds all 376 steps from a clean source export in the
+  dedicated WSL2 GCC 13.3/Ninja environment and passes 121/121 CTests. The
+  public-boundary tests, 626-file scan, 340-row/14-column unique function
+  catalogue, and `git diff --check` pass. Two independent reviews report no
+  code finding; their sole P2 stale-validation-provenance finding is corrected.
+  Hosted builds remain the publication gate.
