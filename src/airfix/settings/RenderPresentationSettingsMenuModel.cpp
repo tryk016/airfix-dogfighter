@@ -77,6 +77,14 @@ RenderPresentationSettingsMenuModel::setDiagnosticsOverlayEnabled(
   return edit(overrides);
 }
 
+RenderPresentationSettingsMenuEditResult
+RenderPresentationSettingsMenuModel::setVerticalFovAdjustmentDegrees(
+    const float value) noexcept {
+  render::RenderPresentationSettingsOverride overrides;
+  overrides.verticalFovAdjustmentDegrees = value;
+  return edit(overrides);
+}
+
 bool RenderPresentationSettingsMenuModel::cancelDraft() noexcept {
   if (!canCancel()) {
     return false;

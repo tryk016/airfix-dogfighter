@@ -36,6 +36,7 @@ RenderPresentationSettings
   scene presentation: Hor+ | Original 4:3, default Hor+
   diagnostics overlay: disabled | enabled, default disabled
   visual profile: Classic | Enhanced, default Classic
+  vertical FOV increase: 0..25 degrees, default 0
 ```
 
 All fields are orthogonal. Validation accepts a complete candidate or rejects
@@ -57,7 +58,9 @@ The portable layer also owns:
 - a versioned, storage-neutral semantic record mapping with strict all-fields
   validation.
 
-The record contains no content root, logical asset path, checksum, GPU or
+ADR-0016 extends the record to schema 2 with the safe vertical-FOV field.
+Schema 1 migrates to an exact zero-degree increase; later schemas remain
+opaque. The record contains no content root, logical asset path, checksum, GPU or
 device identifier, save-game state, or gameplay value.
 
 This semantic record is not a file codec. The later persistence slice owns a
@@ -119,7 +122,8 @@ record and the previous effective renderer snapshot. A renderer never reports a
 new scale while drawing with resources prepared for a different scale.
 
 Render scale may replace only the private scene color/depth targets. Original
-4:3 changes layout only. Diagnostics toggles only the output-resolution overlay.
+4:3 and safe FOV change layout only. Diagnostics toggles only the
+output-resolution overlay.
 None of these changes reloads a mission, recreates the app, resets input,
 changes `AppSession`, or modifies simulation state.
 
@@ -172,9 +176,10 @@ settings screen. A later UI slice will expose these values to mouse, keyboard,
 touch, and controller navigation. It must use the same transaction and must
 show a safe user-facing failure without revealing paths or record contents.
 
-Safe FOV, UI scale, Low-Ultra quality tiers, per-effect controls, and the
-private HD texture selector remain separate settings extensions because their
-runtime resource and migration policies are not yet complete.
+UI scale, Low-Ultra quality tiers, per-effect controls, and the private HD
+texture selector remain separate settings extensions because their runtime
+resource and migration policies are not yet complete. Safe FOV is now the
+schema-2 extension specified by ADR-0016.
 
 ## Options considered
 
@@ -217,8 +222,9 @@ or crash loop.
 Public synthetic tests must cover:
 
 - exact defaults and semantic record round-trips;
-- 49/50/100/200/201%, NaN, infinity, forged enums, invalid stored Boolean
-  values, sparse overrides, and future schemas;
+- 49/50/100/200/201%, FOV 0/25 and adjacent invalid values, NaN, infinity,
+  forged enums, invalid stored Boolean values, sparse overrides, schema-1
+  migration, and future schemas;
 - in the persistence slice, missing/duplicate fields, trailing data, oversized
   input, and canonical byte round-trips;
 - sparse override precedence and all-or-nothing rejection;
@@ -251,3 +257,5 @@ area, orientation, memory pressure, and target-allocation fallback on iPhone SE
 - [ ] Capture and compare the public synthetic Windows matrix.
 - [x] Add the iOS touch/controller render-settings UI as a separate slice.
 - [x] Add the equivalent Windows keyboard/mouse/controller product settings UI.
+- [x] Extend both product settings surfaces and schema migration with the
+  ADR-0016 safe vertical-FOV control.

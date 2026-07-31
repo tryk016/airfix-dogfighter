@@ -60,7 +60,7 @@ included in this repository.**
 | iOS validation devices | iPhone 17 Pro Max (iOS 26.6) and iPhone SE, 3rd generation (iOS 26.3) |
 | Gameplay | Single-player campaign and required menus |
 | Controls | Windows keyboard/mouse and controllers; iOS touch and Bluetooth/USB extended controllers |
-| Rendering | Native-resolution 3D at 100% scale, Hor+ widescreen, optional Original 4:3, sharp independent UI, and `Classic`/`Enhanced` profiles |
+| Rendering | Native-resolution 3D at 100% scale, Hor+ widescreen, optional Original 4:3, explicit safe vertical-FOV adjustment, sharp independent UI, and `Classic`/`Enhanced` profiles |
 | Not in version 1 | Multiplayer, House Editor, Paint Room, and unavailable CD audio |
 
 The device list is the intended validation matrix, not a compatibility claim
@@ -70,6 +70,8 @@ for acceptance criteria and
 modern-rendering contract. The versioned, cross-platform presentation-settings
 model and its safe application rules are defined by
 [ADR-0014](docs/adr/0014-render-presentation-settings.md).
+The independent, presentation-only FOV policy and schema migration are defined
+by [ADR-0016](docs/adr/0016-safe-fov-settings.md).
 
 ## Current state
 
@@ -98,8 +100,9 @@ Implemented foundations include:
   3D render-target pixels, logical camera coordinates, UI design coordinates,
   safe areas, and input transforms separate; it guarantees an exact target
   identity at 100% scale, computes the 50-200% policy, preserves reference
-  vertical FOV across 4:3 through 32:9, and retains Original 4:3 as a tested
-  comparison policy;
+  vertical FOV across 4:3 through 32:9, retains Original 4:3 as a tested
+  comparison policy, and applies an optional bounded vertical-FOV increase
+  without changing render targets, UI scale, or simulation state;
 - bounded UDSP, CCF, GTI, and related legacy-format parsing;
 - a private AFPACK container, strict validation, atomic installation, recovery,
   rollback, and authenticated content sessions;

@@ -81,7 +81,8 @@ and Apple developer tools when that phase begins.
   audio capture suitable for controlled comparison with the original.
 - ADR-0013 native-resolution rendering on both products: exact physical 3D
   targets at 100% render scale, Hor+ widescreen, Original 4:3 comparison,
-  independent sharp UI/safe-area/input transforms, and staged
+  optional safe vertical-FOV adjustment, independent sharp
+  UI/safe-area/input transforms, and staged
   `Classic`/`Enhanced` quality. Windows and iOS use separate renderer backends
   over the same API-neutral command model.
 - Private content conversion and packaging from the available installation.

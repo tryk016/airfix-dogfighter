@@ -63,7 +63,9 @@ static_assert(
     !std::is_move_assignable_v<NativeRenderLayout>);
 static_assert(
     native_render_policy::minimumRenderScalePercent == 50.0F &&
-    native_render_policy::maximumRenderScalePercent == 200.0F);
+    native_render_policy::maximumRenderScalePercent == 200.0F &&
+    native_render_policy::minimumVerticalFovAdjustmentDegrees == 0.0F &&
+    native_render_policy::maximumVerticalFovAdjustmentDegrees == 25.0F);
 
 void require(const bool condition, const char* const message) {
     if (!condition) {
@@ -223,6 +225,89 @@ void testOriginalFourByThreeRemainsAComparisonMode() {
         "Original 4:3 did not preserve the reference projection");
 }
 
+void testSafeFovAdjustmentIsAspectIndependent() {
+    constexpr std::array<OutputPixelExtent, 6U> outputs{{
+        {1600U, 1200U},
+        {1920U, 1200U},
+        {1920U, 1080U},
+        {2535U, 1170U},
+        {2520U, 1080U},
+        {3840U, 1080U},
+    }};
+
+    float previousHorizontalFov = 0.0F;
+    for (const auto output : outputs) {
+        const auto baselineBuilt = buildNativeRenderLayout({
+            .outputExtent = output,
+        });
+        const auto adjustedBuilt = buildNativeRenderLayout({
+            .outputExtent = output,
+            .verticalFovAdjustmentDegrees = 25.0F,
+        });
+        const auto& baseline = requireLayout(
+            baselineBuilt,
+            "baseline safe-FOV layout was rejected");
+        const auto& adjusted = requireLayout(
+            adjustedBuilt,
+            "maximum safe-FOV layout was rejected");
+
+        require(
+            adjusted.outputExtent() == baseline.outputExtent() &&
+                adjusted.renderTargetExtent() ==
+                    baseline.renderTargetExtent() &&
+                adjusted.sceneViewportInRenderTarget() ==
+                    baseline.sceneViewportInRenderTarget() &&
+                adjusted.uiViewportInOutput() ==
+                    baseline.uiViewportInOutput(),
+            "safe FOV changed physical raster or UI domains");
+        require(
+            adjusted.verticalFovAdjustmentDegrees() == 25.0F &&
+                close(
+                    adjusted.verticalFovDegrees(),
+                    98.7398F, 1.0e-2F) &&
+                adjusted.cameraLogicalExtent().height >
+                    baseline.cameraLogicalExtent().height &&
+                adjusted.horizontalFovDegrees() >=
+                    previousHorizontalFov,
+            "safe FOV was not vertical-first and aspect independent");
+        require(
+            adjusted.mapReferenceCameraPoint({320.0F, 240.0F}) ==
+                adjusted.cameraLogicalCentre(),
+            "safe FOV moved the reference camera centre");
+        previousHorizontalFov = adjusted.horizontalFovDegrees();
+    }
+}
+
+void testSafeFovAdjustmentPreservesDynamicCameraOrdering() {
+    for (const float referenceHorizontalFov : std::array{1.0F, 90.0F, 175.0F}) {
+        const auto baselineBuilt = buildNativeRenderLayout({
+            .outputExtent = {3840U, 1080U},
+            .referenceHorizontalFovDegrees =
+                referenceHorizontalFov,
+        });
+        const auto adjustedBuilt = buildNativeRenderLayout({
+            .outputExtent = {3840U, 1080U},
+            .verticalFovAdjustmentDegrees = 25.0F,
+            .referenceHorizontalFovDegrees =
+                referenceHorizontalFov,
+        });
+        const auto& baseline = requireLayout(
+            baselineBuilt,
+            "dynamic baseline FOV layout was rejected");
+        const auto& adjusted = requireLayout(
+            adjustedBuilt,
+            "dynamic adjusted FOV layout was rejected");
+        require(
+            adjusted.verticalFovDegrees() >
+                    baseline.verticalFovDegrees() &&
+                adjusted.horizontalFovDegrees() >
+                    baseline.horizontalFovDegrees() &&
+                adjusted.verticalFovDegrees() < 180.0F &&
+                adjusted.horizontalFovDegrees() < 180.0F,
+            "safe FOV lost ordering or reached a singular projection");
+    }
+}
+
 void testUiUsesOutputSafeAreaInsteadOfRenderTarget() {
     const auto built = buildNativeRenderLayout({
         .outputExtent = {2400U, 1200U},
@@ -310,6 +395,24 @@ void testInvalidInputsFailAtomically() {
         "unsafe reference FOV was not rejected");
 
     config = {.outputExtent = {1920U, 1080U}};
+    config.verticalFovAdjustmentDegrees =
+        std::numeric_limits<float>::quiet_NaN();
+    requireIssue(
+        config,
+        NativeRenderLayoutBuildIssueKind::nonFiniteConfig,
+        "NaN vertical-FOV adjustment was not rejected");
+
+    for (const float invalidFov : std::array{-0.01F, 25.01F}) {
+        config = {.outputExtent = {1920U, 1080U}};
+        config.verticalFovAdjustmentDegrees = invalidFov;
+        requireIssue(
+            config,
+            NativeRenderLayoutBuildIssueKind::
+                verticalFovAdjustmentOutOfRange,
+            "out-of-range vertical-FOV adjustment was not rejected");
+    }
+
+    config = {.outputExtent = {1920U, 1080U}};
     config.outputSafeArea = {
         .left = 960.0F,
         .right = 960.0F,
@@ -372,6 +475,8 @@ int main() {
         testRenderScaleIsIndependentOfOutputAndUi();
         testRequiredAspectRatiosUseHorPlus();
         testOriginalFourByThreeRemainsAComparisonMode();
+        testSafeFovAdjustmentIsAspectIndependent();
+        testSafeFovAdjustmentPreservesDynamicCameraOrdering();
         testUiUsesOutputSafeAreaInsteadOfRenderTarget();
         testInvalidInputsFailAtomically();
         testBuildDoesNotAllocate();

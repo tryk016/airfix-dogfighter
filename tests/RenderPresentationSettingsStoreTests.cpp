@@ -89,16 +89,27 @@ void writeRaw(const std::filesystem::path& path, const std::span<const std::uint
     }
 }
 
-void repairFutureEnvelope(std::vector<std::uint8_t>& bytes) {
-    bytes[8U] = 2U;
-    bytes[9U] = 0U;
-    bytes[10U] = 0U;
-    bytes[11U] = 0U;
+void putU32(std::vector<std::uint8_t>& bytes,
+            const std::size_t offset,
+            const std::uint32_t value) {
+    for (std::size_t index = 0U; index < 4U; ++index) {
+        bytes[offset + index] =
+            static_cast<std::uint8_t>(value >> (index * 8U));
+    }
+}
+
+void repairEnvelope(std::vector<std::uint8_t>& bytes) {
+    putU32(bytes, 12U, static_cast<std::uint32_t>(bytes.size()));
     airfix::crypto::Sha256 hash;
     hash.update(std::span<const std::uint8_t>(bytes).first(16U));
     hash.update(std::span<const std::uint8_t>(bytes).subspan(48U));
     const auto digest = hash.finish();
     std::copy(digest.begin(), digest.end(), bytes.begin() + 16);
+}
+
+void repairFutureEnvelope(std::vector<std::uint8_t>& bytes) {
+    putU32(bytes, 8U, 3U);
+    repairEnvelope(bytes);
 }
 
 void requireStoreError(const std::function<void()>& action,
@@ -189,6 +200,38 @@ void testMalformedAndFuturePreservation() {
         },
         airfix::settings::RenderSettingsStoreErrorKind::persistenceBlocked, temporary.settings());
     require(readFile(temporary.current()) == before, "downgrade save rewrote a future schema");
+}
+
+void testLegacySchemaMigratesToDefaultFov() {
+    TempDirectory temporary;
+    const auto legacySettings = settings(135.0F, true);
+    (void)airfix::settings::saveRenderPresentationSettings(
+        temporary.settings(), legacySettings);
+
+    auto legacy = readFile(temporary.current());
+    legacy.resize(71U);
+    putU32(legacy, 8U, 1U);
+    repairEnvelope(legacy);
+    writeRaw(temporary.current(), legacy);
+
+    const auto loaded =
+        airfix::settings::loadRenderPresentationSettings(
+            temporary.settings());
+    require(
+        loaded.source ==
+                airfix::settings::RenderSettingsLoadSource::current &&
+            loaded.settings == legacySettings &&
+            loaded.settings.verticalFovAdjustmentDegrees == 0.0F &&
+            !loaded.persistenceBlocked,
+        "legacy schema did not migrate to a safe default FOV");
+
+    const auto saved =
+        airfix::settings::saveRenderPresentationSettings(
+            temporary.settings(), loaded.settings);
+    require(
+        saved.backupRotated && readFile(temporary.current()).size() == 79U &&
+            readFile(temporary.backup()) == legacy,
+        "saving migrated settings did not preserve and replace schema 1");
 }
 
 struct ReplaceHookContext final {
@@ -364,6 +407,7 @@ int main() {
     try {
         testMissingSaveAndRotation();
         testMalformedAndFuturePreservation();
+        testLegacySchemaMigratesToDefaultFov();
         testFailureAndAmbiguousReadback();
         testWrongTypesBlockPersistence();
         testOversizedAndLinkedRecords();

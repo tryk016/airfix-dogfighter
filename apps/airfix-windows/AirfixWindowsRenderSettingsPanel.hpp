@@ -32,6 +32,7 @@ enum class AirfixWindowsRenderSettingsItem : std::uint8_t {
   resume,
   renderScale,
   presentation,
+  verticalFovAdjustment,
   visualProfile,
   rendererStatistics,
   apply,
@@ -84,6 +85,7 @@ enum class AirfixWindowsRenderSettingsSessionOverride : std::uint8_t {
   presentation = 1U << 1U,
   visualProfile = 1U << 2U,
   rendererStatistics = 1U << 3U,
+  verticalFovAdjustment = 1U << 4U,
 };
 
 using AirfixWindowsRenderSettingsSessionOverrideMask = std::uint8_t;
@@ -98,7 +100,10 @@ inline constexpr AirfixWindowsRenderSettingsSessionOverrideMask
         static_cast<std::uint8_t>(
             AirfixWindowsRenderSettingsSessionOverride::visualProfile) |
         static_cast<std::uint8_t>(
-            AirfixWindowsRenderSettingsSessionOverride::rendererStatistics));
+            AirfixWindowsRenderSettingsSessionOverride::rendererStatistics) |
+        static_cast<std::uint8_t>(
+            AirfixWindowsRenderSettingsSessionOverride::
+                verticalFovAdjustment));
 
 [[nodiscard]] constexpr AirfixWindowsRenderSettingsSessionOverrideMask
 airfixWindowsRenderSettingsSessionOverrideMask(
@@ -119,6 +124,11 @@ airfixWindowsRenderSettingsSessionOverrideMask(
   if (overrides.diagnosticsOverlayEnabled.has_value()) {
     mask |= static_cast<std::uint8_t>(
         AirfixWindowsRenderSettingsSessionOverride::rendererStatistics);
+  }
+  if (overrides.verticalFovAdjustmentDegrees.has_value()) {
+    mask |= static_cast<std::uint8_t>(
+        AirfixWindowsRenderSettingsSessionOverride::
+            verticalFovAdjustment);
   }
   return mask;
 }

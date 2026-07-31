@@ -4381,3 +4381,23 @@ superseded evidence.
   missing references, changed-document links, local-path and evidence-ID
   checks, and `git diff --check` pass. The read-only formatting check and
   hosted platform builds remain publication gates.
+
+## 2026-07-31 - safe FOV presentation setting
+
+- `EXP-20260731-081` implements ADR-0016 as a shared presentation-only
+  `0..25` degree vertical-FOV increase with exact zero default. A bounded
+  tangent-space multiplier expands the centered logical camera canvas without
+  mutating recovered camera state, simulation, physical targets, viewport,
+  safe area, or UI coordinates.
+- D3D11 and Metal consume the same portable layout value. Windows exposes the
+  setting through its DPI-aware panel and a validated session-only command-line
+  override; iOS exposes it through the safe-area UIKit panel. Both native menu
+  paths support one-degree controller edits.
+- AFRS advances to canonical schema 2 with an exact binary32 field. Schema 1
+  migrates to exact zero, future schemas remain opaque, and malformed or
+  non-finite values fail closed. FOV-only application reuses compatible GPU
+  targets through the existing prepare-save-publish transaction.
+- The complete portable build passes 120/120 CTests. Focused MSVC syntax checks
+  for the changed Windows surfaces and `git diff --check` pass. Hosted Windows,
+  iPhoneOS, and iPhoneSimulator compilation plus physical-device visual
+  acceptance remain the publication and device gates.

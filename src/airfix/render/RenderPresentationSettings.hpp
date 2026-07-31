@@ -21,6 +21,8 @@ struct RenderPresentationSettings final {
         ScenePresentationMode::widescreenHorPlus};
     VisualProfile visualProfile{VisualProfile::classic};
     bool diagnosticsOverlayEnabled{};
+    float verticalFovAdjustmentDegrees{
+        native_render_policy::defaultVerticalFovAdjustmentDegrees};
 
     [[nodiscard]] friend constexpr bool operator==(
         const RenderPresentationSettings&,
@@ -35,6 +37,7 @@ struct RenderPresentationSettingsOverride final {
     std::optional<ScenePresentationMode> scenePresentation;
     std::optional<VisualProfile> visualProfile;
     std::optional<bool> diagnosticsOverlayEnabled;
+    std::optional<float> verticalFovAdjustmentDegrees;
 };
 
 enum class RenderPresentationSettingsIssueKind : std::uint8_t {
@@ -44,6 +47,8 @@ enum class RenderPresentationSettingsIssueKind : std::uint8_t {
     unsupportedVisualProfile,
     unsupportedSchema,
     invalidStoredDiagnosticsValue,
+    nonFiniteVerticalFovAdjustment,
+    verticalFovAdjustmentOutOfRange,
 };
 
 struct RenderPresentationSettingsIssue final {
@@ -105,16 +110,17 @@ resolveRenderPresentationSettings(
     const RenderPresentationSettingsOverride& overrides) noexcept;
 
 // Compares two already-resolved snapshots. Scale-target recreation depends
-// only on render scale. Layout changes depend on render scale or presentation;
-// diagnostics and visual-profile policy remain orthogonal. Both snapshots are
-// validated before comparison, and invalid input produces no delta.
+// only on render scale. Layout changes depend on render scale, presentation,
+// or safe FOV; diagnostics and visual-profile policy remain orthogonal. Both
+// snapshots are validated before comparison, and invalid input produces no
+// delta.
 [[nodiscard]] RenderPresentationSettingsDeltaResult
 diffRenderPresentationSettings(
     const RenderPresentationSettings& previous,
     const RenderPresentationSettings& candidate) noexcept;
 
 inline constexpr std::uint32_t
-    renderPresentationSettingsRecordSchemaVersion = 1U;
+    renderPresentationSettingsRecordSchemaVersion = 2U;
 
 // Storage-neutral semantic record. Platform adapters map these named fields
 // into their chosen store; the in-memory object representation is not a file
@@ -127,6 +133,8 @@ struct RenderPresentationSettingsRecord final {
     std::uint8_t scenePresentation{};
     std::uint8_t visualProfile{};
     std::uint8_t diagnosticsOverlayEnabled{};
+    float verticalFovAdjustmentDegrees{
+        native_render_policy::defaultVerticalFovAdjustmentDegrees};
 
     [[nodiscard]] friend constexpr bool operator==(
         const RenderPresentationSettingsRecord&,

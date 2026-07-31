@@ -368,12 +368,15 @@ This phase is split into ordered, independently shippable stages:
 Implementation checkpoint (2026-07-30): stages 1-2 have their portable
 foundation. Strongly typed resolution domains, exact 100% target identity,
 Hor+, Original 4:3 layout math, safe-area/UI fitting, input transforms, and the
-required aspect-ratio tests are implemented. D3D11 and Metal render directly
+required aspect-ratio tests are implemented. The shared `0..25` degree
+vertical-FOV increase is now a durable schema-2 setting on Windows and iOS; it
+expands only the logical projection and composes with recovered camera FOV.
+D3D11 and Metal render directly
 to the native output at 100% and use backend-private offscreen color/depth
 targets plus linear presentation at non-100% scales. Windows direct backbuffer
 captures verify 1080p, 1440p, 4K, and 32:9, and a controlled 50%/200% trial
 verifies that output and 3D raster extents vary independently. Remaining stage
-1-2 work is complete HUD/effect integration, safe FOV control, and iOS
+1-2 work is complete HUD/effect integration, independent UI scale, and iOS
 runtime/device acceptance. Both platform shells now expose the shared settings
 transaction through explicit pause boundaries: iOS uses a safe-area
 touch/controller panel, while Windows uses a DPI-aware DirectWrite/Direct2D
@@ -386,7 +389,7 @@ not advance the lighting/material/post-processing stages.
 
 ADR-0014 now supplies the finished cross-backend runtime settings foundation:
 one validated portable snapshot for render scale, Hor+/Original 4:3,
-diagnostics, and the Classic/Enhanced selector; sparse launch/UI overrides;
+safe FOV, diagnostics, and the Classic/Enhanced selector; sparse launch/UI overrides;
 deterministic delta classification; a versioned storage-neutral record; and a
 portable prepare/final-validate/commit transaction with immutable target
 ownership and deterministic resize retry. D3D11 prepares a complete replacement
@@ -553,5 +556,6 @@ contract, evidence, implementation, tests, parity result, and documentation agre
     followed by the configurable visual overlay and on-device usability tests.
 12. Continue the implemented ADR-0013 foundation without blocking active
     player/gameplay reconstruction: add backend 50-200% offscreen target/
-    presentation paths, expose Original 4:3 and UI/FOV settings, then add
+    presentation paths, finish independent UI settings and HUD/effect
+    projection, then add
     renderer telemetry before lighting or post-effects.

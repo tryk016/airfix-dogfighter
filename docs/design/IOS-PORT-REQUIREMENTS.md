@@ -74,6 +74,9 @@ Detailed contract: `docs/systems/INPUT.md`.
 - Use Hor+ as the standard widescreen policy while preserving reference
   vertical FOV. Keep Original 4:3 as an aspect-fitted comparison mode and never
   stretch geometry/UI. (P0/P1)
+- Expose the shared, durable 0-25 degree vertical-FOV increase as an explicit
+  option. It must not overwrite authored camera state or change simulation,
+  render-target, UI, or safe-area domains. (P1)
 - Keep reference camera coordinates, UI design space, Metal drawable pixels,
   3D render-target pixels, viewport/safe area, and render scale explicit. At
   100%, the 3D target exactly matches the drawable extent. (P0)

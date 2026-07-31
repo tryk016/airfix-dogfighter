@@ -316,6 +316,7 @@ void testOrthogonalSettingsReuseBundle() {
         ScenePresentationMode::originalFourByThree;
     settings.visualProfile = VisualProfile::enhanced;
     settings.diagnosticsOverlayEnabled = true;
+    settings.verticalFovAdjustmentDegrees = 20.0F;
     auto prepared =
         transaction.prepare(settings, currentSurface, factory.seam());
     require(
@@ -336,6 +337,8 @@ void testOrthogonalSettingsReuseBundle() {
         .outputExtent = currentSurface.outputExtent,
         .renderScalePercent = settings.renderScalePercent,
         .scenePresentation = settings.scenePresentation,
+        .verticalFovAdjustmentDegrees =
+            settings.verticalFovAdjustmentDegrees,
     });
     require(
         active.settings() == settings &&
@@ -343,8 +346,9 @@ void testOrthogonalSettingsReuseBundle() {
             depthIdentity(active) == oldDepth &&
             layout.complete() &&
             layout.layout->sceneViewportInRenderTarget() ==
-                RenderTargetPixelRect{50.0F, 0.0F, 300.0F, 225.0F},
-        "Original 4:3, diagnostics, or Enhanced changed target ownership");
+                RenderTargetPixelRect{50.0F, 0.0F, 300.0F, 225.0F} &&
+            layout.layout->verticalFovDegrees() > 73.0F,
+        "layout-only settings changed target ownership or omitted FOV");
 }
 
 void testLateFailuresRollbackAndRetry() {

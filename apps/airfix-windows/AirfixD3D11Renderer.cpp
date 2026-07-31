@@ -1086,6 +1086,8 @@ private:
         },
         .renderScalePercent = settings.renderScalePercent,
         .scenePresentation = settings.scenePresentation,
+        .verticalFovAdjustmentDegrees =
+            settings.verticalFovAdjustmentDegrees,
     };
     if (mission_ != nullptr) {
       const auto &cameraProjection = mission_->camera.pose().projection();

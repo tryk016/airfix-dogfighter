@@ -33,13 +33,16 @@ The first non-visual-quality stage is implemented:
   camera coordinates, UI coordinates, safe areas, and input points;
 - the layout guarantees that 100% render scale is an exact integer identity,
   implements full-target Hor+ while preserving reference vertical FOV, and
-  retains Original 4:3 as an aspect-fitted comparison policy;
+  retains Original 4:3 as an aspect-fitted comparison policy; an explicit
+  `0..25` degree safe vertical-FOV increase expands the logical camera canvas
+  without changing those physical resolution domains;
 - D3D11 and Metal consume the same layout, render directly to the native output
   at 100%, and use private color/depth scene targets plus a linear presentation
   pass at non-100% scales;
-- the Windows product exposes validated 50-200% render scale and Original 4:3
-  command-line settings, while Metal exposes the equivalent fail-closed
-  main-thread backend settings for later product UI binding;
+- the Windows and iOS product panels expose validated 50-200% render scale,
+  Hor+/Original 4:3, Classic/Enhanced intent, diagnostics, and the shared safe
+  FOV control; Windows also supplies sparse session-only command-line
+  overrides;
 - a shared frame-diagnostics contract now publishes output/scene extents,
   render scale, FPS, CPU/GPU frame time, draw calls, triangles, lights, and an
   explicitly estimated or backend-reported GPU-memory figure; D3D11 and Metal
@@ -53,14 +56,16 @@ The first non-visual-quality stage is implemented:
   480x270 target at 50% and a 1920x1080 target at 200%.
 
 This is a foundation milestone, not completion of this ADR. The portable core
-and both native backends now execute the 50-200% render-scale and diagnostic
-overlay policies, but finished product settings UI, visual profiles, modern
-lighting, and physical-device iOS acceptance remain pending. See
+and both native backends now execute the 50-200% render-scale, safe-FOV, and
+diagnostic-overlay policies. Independent UI scale, quality/effect settings,
+modern lighting, and physical-device iOS acceptance remain pending. See
 [EXP-20260729-049](../experiments/EXP-20260729-049-native-render-layout-horplus.md)
 and
 [EXP-20260729-050](../experiments/EXP-20260729-050-backend-render-scale-targets.md)
 and
 [EXP-20260729-051](../experiments/EXP-20260729-051-render-frame-diagnostics-overlay.md).
+Safe-FOV policy and settings migration are specified by
+[ADR-0016](0016-safe-fov-settings.md).
 
 ### Resolution domains
 
@@ -299,7 +304,9 @@ path while sharing the higher-level rendering contract.
 - [x] Add portable Hor+, FOV, viewport, UI-scale, safe-area, and
   input-coordinate tests for the required aspect ratios.
 - [x] Add backend offscreen render-scale targets and presentation passes.
-- [ ] Expose Original 4:3, render scale, safe FOV, and independent UI settings.
+- [x] Expose Original 4:3, render scale, and safe FOV through both product
+  settings surfaces.
+- [ ] Expose independent UI-scale settings.
 - [x] Add the shared diagnostic contract and output-resolution overlays to
   D3D11 and Metal.
 - [ ] Complete physical-device backbuffer/render-target and diagnostic

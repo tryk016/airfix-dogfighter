@@ -21,13 +21,16 @@ constexpr std::uint16_t renderScaleField = 1U;
 constexpr std::uint16_t scenePresentationField = 2U;
 constexpr std::uint16_t visualProfileField = 3U;
 constexpr std::uint16_t diagnosticsField = 4U;
+constexpr std::uint16_t verticalFovAdjustmentField = 5U;
+constexpr std::uint32_t legacySchemaVersion = 1U;
 constexpr std::size_t fieldHeaderBytes = 4U;
 constexpr std::size_t canonicalDocumentBytes =
-    headerBytes + (fieldHeaderBytes + 4U) + (fieldHeaderBytes + 1U) * 3U;
+    headerBytes + (fieldHeaderBytes + 4U) * 2U +
+    (fieldHeaderBytes + 1U) * 3U;
 
 static_assert(sizeof(float) == sizeof(std::uint32_t));
 static_assert(std::numeric_limits<float>::is_iec559);
-static_assert(canonicalDocumentBytes == 71U);
+static_assert(canonicalDocumentBytes == 79U);
 
 [[noreturn]] void fail(const RenderSettingsCodecErrorKind kind,
                        const std::optional<std::uint32_t> schemaVersion,
@@ -115,6 +118,11 @@ encodeRenderSettingsDocument(const render::RenderPresentationSettingsRecord& rec
     output.push_back(record.visualProfile);
     appendFieldHeader(output, diagnosticsField, 1U);
     output.push_back(record.diagnosticsOverlayEnabled);
+    appendFieldHeader(output, verticalFovAdjustmentField, 4U);
+    appendU32(
+        output,
+        std::bit_cast<std::uint32_t>(
+            record.verticalFovAdjustmentDegrees));
 
     if (output.size() != canonicalDocumentBytes) {
         throw std::logic_error("AFRS encoder produced a noncanonical size");
@@ -174,15 +182,22 @@ decodeRenderSettingsDocument(const std::span<const std::uint8_t> bytes,
             .exactBytes = {bytes.begin(), bytes.end()},
         };
     }
-    if (schemaVersion != render::renderPresentationSettingsRecordSchemaVersion) {
+    if (schemaVersion != legacySchemaVersion &&
+        schemaVersion !=
+            render::renderPresentationSettingsRecordSchemaVersion) {
         fail(RenderSettingsCodecErrorKind::invalidSchemaVersion, schemaVersion,
              "AFRS semantic schema version is unsupported");
     }
 
     render::RenderPresentationSettingsRecord record{
-        .schemaVersion = schemaVersion,
+        .schemaVersion =
+            render::renderPresentationSettingsRecordSchemaVersion,
     };
-    std::array<bool, diagnosticsField + 1U> seen{};
+    const std::uint16_t maximumField =
+        schemaVersion == legacySchemaVersion
+            ? diagnosticsField
+            : verticalFovAdjustmentField;
+    std::array<bool, verticalFovAdjustmentField + 1U> seen{};
     std::uint16_t previousField = 0U;
     std::size_t offset = headerBytes;
     while (offset < bytes.size()) {
@@ -201,7 +216,7 @@ decodeRenderSettingsDocument(const std::span<const std::uint8_t> bytes,
             fail(RenderSettingsCodecErrorKind::nonCanonicalFieldOrder, schemaVersion,
                  "AFRS fields are not in canonical order");
         }
-        if (field == 0U || field > diagnosticsField) {
+        if (field == 0U || field > maximumField) {
             fail(RenderSettingsCodecErrorKind::unknownField, schemaVersion,
                  "AFRS contains an unknown current-schema field");
         }
@@ -216,7 +231,11 @@ decodeRenderSettingsDocument(const std::span<const std::uint8_t> bytes,
                  "AFRS field payload is truncated");
         }
 
-        const auto expectedSize = field == renderScaleField ? 4U : 1U;
+        const auto expectedSize =
+            field == renderScaleField ||
+                    field == verticalFovAdjustmentField
+                ? 4U
+                : 1U;
         if (size != expectedSize) {
             fail(RenderSettingsCodecErrorKind::invalidFieldSize, schemaVersion,
                  "AFRS field size is invalid");
@@ -228,11 +247,16 @@ decodeRenderSettingsDocument(const std::span<const std::uint8_t> bytes,
         case scenePresentationField: record.scenePresentation = bytes[offset]; break;
         case visualProfileField: record.visualProfile = bytes[offset]; break;
         case diagnosticsField: record.diagnosticsOverlayEnabled = bytes[offset]; break;
+        case verticalFovAdjustmentField:
+            record.verticalFovAdjustmentDegrees =
+                std::bit_cast<float>(readU32(bytes, offset));
+            break;
         default: throw std::logic_error("validated AFRS field is unreachable");
         }
         offset += size;
     }
-    for (std::uint16_t field = renderScaleField; field <= diagnosticsField; ++field) {
+    for (std::uint16_t field = renderScaleField;
+         field <= maximumField; ++field) {
         if (!seen[field]) {
             fail(RenderSettingsCodecErrorKind::missingField, schemaVersion,
                  "AFRS is missing a required field");
