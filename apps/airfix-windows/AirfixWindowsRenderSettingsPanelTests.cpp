@@ -71,9 +71,11 @@ void openSettings(AirfixWindowsRenderSettingsPanel &panel) {
 
 [[nodiscard]] AirfixWindowsRenderSettingsPanel
 makePanel(const float scale = 100.0F, const bool persistenceAvailable = true,
-          const AirfixWindowsUiPixelExtent output = {}) {
+          const AirfixWindowsUiPixelExtent output = {},
+          const float uiScale = 100.0F) {
   RenderPresentationSettings settings;
   settings.renderScalePercent = scale;
+  settings.uiScalePercent = uiScale;
   auto panel = AirfixWindowsRenderSettingsPanel::create(
       settings, persistenceAvailable, output);
   require(panel.has_value(), "valid panel fixture was rejected");
@@ -141,7 +143,16 @@ clickNext(const AirfixWindowsRenderSettingsViewItem &item) noexcept {
 
 void activateItem(AirfixWindowsRenderSettingsPanel &panel,
                   const AirfixWindowsRenderSettingsItem item) {
+  for (std::size_t index = 0U; index < 32U; ++index) {
+    move(panel, -1);
+  }
+  for (std::size_t index = 0U;
+       index < 32U && panel.snapshot().selectedItem != item; ++index) {
+    move(panel, 1);
+  }
   const auto snapshot = panel.snapshot();
+  require(snapshot.selectedItem == item,
+          "navigation item does not belong to the active screen");
   const auto intent = panel.consumePointer(click(findItem(snapshot, item)));
   require(intent.empty(), "navigation-only item emitted an intent");
 }
@@ -311,6 +322,18 @@ void editsUseStepsShouldersAndBounds() {
   move(panel, 1);
   static_cast<void>(
       panel.consumeInputFrame(pressedFrame(DigitalAction::uiTabNext)));
+  require(panel.snapshot().draftSettings.uiScalePercent == 105.0F,
+          "interface scale did not use a five-percent step");
+  for (std::uint8_t index = 0U; index < 20U; ++index) {
+    static_cast<void>(
+        panel.consumeInputFrame(pressedFrame(DigitalAction::uiTabNext)));
+  }
+  require(panel.snapshot().draftSettings.uiScalePercent == 150.0F,
+          "interface scale moved above its maximum");
+
+  move(panel, 1);
+  static_cast<void>(
+      panel.consumeInputFrame(pressedFrame(DigitalAction::uiTabNext)));
   require(panel.snapshot().draftSettings.scenePresentation ==
               airfix::render::ScenePresentationMode::originalFourByThree,
           "next shoulder did not select Original 4:3");
@@ -349,7 +372,7 @@ void applyCancelAndResumeAreDistinctIntents() {
   openSettings(panel);
   static_cast<void>(
       panel.consumeInputFrame(pressedFrame(DigitalAction::uiTabNext)));
-  for (std::uint8_t index = 0U; index < 5U; ++index) {
+  for (std::uint8_t index = 0U; index < 6U; ++index) {
     move(panel, 1);
   }
 
@@ -388,7 +411,7 @@ void applyCancelAndResumeAreDistinctIntents() {
   openSettings(cancelledPanel);
   static_cast<void>(
       cancelledPanel.consumeInputFrame(pressedFrame(DigitalAction::uiTabNext)));
-  for (std::uint8_t index = 0U; index < 6U; ++index) {
+  for (std::uint8_t index = 0U; index < 7U; ++index) {
     move(cancelledPanel, 1);
   }
   const auto close =
@@ -457,6 +480,65 @@ void layoutFitsDefaultSmallAndHighDpiOutputs() {
               "adaptive settings rows overlap");
     }
   }
+}
+
+void interfaceScaleUsesNativeRasterAndScrollableRows() {
+  auto panel = makePanel(100.0F, true,
+                         {
+                             .width = 1920U,
+                             .height = 1080U,
+                             .dpiScale = 1.0F,
+                         });
+  openSettings(panel);
+  const auto baseline = panel.snapshot();
+  require(std::fabs(baseline.layoutScale - 1.0F) < 1.0e-6F &&
+              baseline.itemCount == 8U,
+          "default interface scale changed the native Windows layout");
+
+  move(panel, 1);
+  for (std::size_t index = 0U; index < 10U; ++index) {
+    static_cast<void>(
+        panel.consumeInputFrame(pressedFrame(DigitalAction::uiTabNext)));
+  }
+  const auto enlarged = panel.snapshot();
+  require(
+      enlarged.draftSettings.uiScalePercent == 150.0F &&
+          std::fabs(enlarged.layoutScale - 1.5F) < 1.0e-6F &&
+          enlarged.itemCount < 8U &&
+          findItem(enlarged, AirfixWindowsRenderSettingsItem::interfaceScale)
+              .selected,
+      "enlarged interface did not use native DPI scaling and a visible row "
+      "window");
+  requireSnapshotInsideOutput(enlarged);
+
+  for (std::size_t index = 0U; index < 16U; ++index) {
+    move(panel, 1);
+  }
+  const auto scrolled = panel.snapshot();
+  require(
+      scrolled.selectedItem == AirfixWindowsRenderSettingsItem::cancel &&
+          findItem(scrolled, AirfixWindowsRenderSettingsItem::cancel).selected,
+      "selection did not auto-scroll enlarged interface rows");
+  requireSnapshotInsideOutput(scrolled);
+
+  auto shortUltrawide = makePanel(
+      100.0F, true,
+      {
+          .width = 1280U,
+          .height = 360U,
+          .dpiScale = 1.0F,
+      },
+      150.0F);
+  openSettings(shortUltrawide);
+  const auto shortSnapshot = shortUltrawide.snapshot();
+  require(shortSnapshot.itemCount > 0U,
+          "short ultrawide interface hid every settings row");
+  const auto &lastRow =
+      shortSnapshot.items[shortSnapshot.itemCount - 1U].bounds;
+  require(lastRow.y + lastRow.height <=
+              shortSnapshot.statusBounds.y + 0.25F,
+          "short ultrawide settings row overlaps the status region");
+  requireSnapshotInsideOutput(shortSnapshot);
 }
 
 void pointerUsesPhysicalLayoutAndWheel() {
@@ -1024,6 +1106,7 @@ int main() {
     applyCancelAndResumeAreDistinctIntents();
     resumeRemainsDisabledWithoutReadyGameplay();
     layoutFitsDefaultSmallAndHighDpiOutputs();
+    interfaceScaleUsesNativeRasterAndScrollableRows();
     pointerUsesPhysicalLayoutAndWheel();
     controllerCalibrationUsesSharedPreviewAndSavesForNextLaunch();
     controllerCalibrationCancelFailureAndRetryAreAtomic();

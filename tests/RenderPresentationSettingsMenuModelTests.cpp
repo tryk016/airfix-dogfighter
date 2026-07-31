@@ -39,13 +39,15 @@ settings(const float scale = 100.0F,
              ScenePresentationMode::widescreenHorPlus,
          const VisualProfile profile = VisualProfile::classic,
          const bool diagnostics = false,
-         const float verticalFovAdjustment = 0.0F) {
+         const float verticalFovAdjustment = 0.0F,
+         const float uiScale = 100.0F) {
   return {
       .renderScalePercent = scale,
       .scenePresentation = presentation,
       .visualProfile = profile,
       .diagnosticsOverlayEnabled = diagnostics,
       .verticalFovAdjustmentDegrees = verticalFovAdjustment,
+      .uiScalePercent = uiScale,
   };
 }
 
@@ -75,27 +77,31 @@ void testCreationAcceptsAllBoundaryCombinations() {
   };
   constexpr bool diagnosticStates[]{false, true};
   constexpr float fovAdjustments[]{0.0F, 25.0F};
+  constexpr float uiScales[]{75.0F, 150.0F};
 
   for (const float scale : scales) {
     for (const auto presentation : presentations) {
       for (const auto profile : profiles) {
         for (const bool diagnostics : diagnosticStates) {
           for (const float fov : fovAdjustments) {
-            const auto applied =
-                settings(scale, presentation, profile, diagnostics, fov);
-            const auto created =
-                RenderPresentationSettingsMenuModel::create(applied);
-            require(created.has_value(),
-                    "valid boundary combination was rejected");
-            require(created->appliedSettings() == applied &&
-                        created->draftSettings() == applied,
-                    "created snapshots differ from applied");
-            require(!created->dirty() &&
-                        created->delta() == RenderPresentationSettingsDelta{} &&
-                        !created->canApply() && created->canCancel() &&
-                        created->phase() ==
-                            RenderPresentationSettingsMenuPhase::idle,
-                    "created model is not clean and idle");
+            for (const float uiScale : uiScales) {
+              const auto applied =
+                  settings(scale, presentation, profile, diagnostics, fov,
+                           uiScale);
+              const auto created =
+                  RenderPresentationSettingsMenuModel::create(applied);
+              require(created.has_value(),
+                      "valid boundary combination was rejected");
+              require(created->appliedSettings() == applied &&
+                          created->draftSettings() == applied,
+                      "created snapshots differ from applied");
+              require(!created->dirty() &&
+                          created->delta() == RenderPresentationSettingsDelta{} &&
+                          !created->canApply() && created->canCancel() &&
+                          created->phase() ==
+                              RenderPresentationSettingsMenuPhase::idle,
+                      "created model is not clean and idle");
+            }
           }
         }
       }
@@ -137,6 +143,16 @@ void testCreationRejectsEveryInvalidAppliedClass() {
     require(!RenderPresentationSettingsMenuModel::create(invalid).has_value(),
             "invalid vertical-FOV adjustment created a model");
   }
+  for (const float uiScale : {
+           std::numeric_limits<float>::quiet_NaN(),
+           74.99F,
+           150.01F,
+       }) {
+    invalid = settings();
+    invalid.uiScalePercent = uiScale;
+    require(!RenderPresentationSettingsMenuModel::create(invalid).has_value(),
+            "invalid UI scale created a model");
+  }
 }
 
 void testTypedEditsAreAtomicAndProduceExactDelta() {
@@ -165,9 +181,11 @@ void testTypedEditsAreAtomicAndProduceExactDelta() {
           "valid diagnostics edit failed");
   require(menu.setVerticalFovAdjustmentDegrees(12.0F).accepted(),
           "valid vertical-FOV edit failed");
+  require(menu.setUiScalePercent(125.0F).accepted(),
+          "valid UI-scale edit failed");
   require(menu.draftSettings() ==
               settings(150.0F, ScenePresentationMode::originalFourByThree,
-                       VisualProfile::enhanced, true, 12.0F),
+                       VisualProfile::enhanced, true, 12.0F, 125.0F),
           "combined typed edits produced wrong draft");
   require(menu.delta() ==
               RenderPresentationSettingsDelta{
@@ -175,6 +193,7 @@ void testTypedEditsAreAtomicAndProduceExactDelta() {
                   .layoutChanged = true,
                   .diagnosticsChanged = true,
                   .visualProfileChanged = true,
+                  .uiLayoutChanged = true,
               },
           "combined typed edits produced wrong delta");
 
@@ -274,6 +293,16 @@ void testEverySingleFieldDeltaIsExact() {
                     .diagnosticsChanged = true,
                 },
             "diagnostics-only edit produced wrong delta");
+  }
+  {
+    auto menu = model();
+    require(menu.setUiScalePercent(125.0F).accepted(),
+            "UI-scale-only edit failed");
+    require(menu.delta() ==
+                RenderPresentationSettingsDelta{
+                    .uiLayoutChanged = true,
+                },
+            "UI-scale-only edit produced wrong delta");
   }
 }
 

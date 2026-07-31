@@ -103,6 +103,11 @@ Implemented foundations include:
   vertical FOV across 4:3 through 32:9, retains Original 4:3 as a tested
   comparison policy, and applies an optional bounded vertical-FOV increase
   without changing render targets, UI scale, or simulation state;
+- one durable cross-platform presentation snapshot now carries scene render
+  scale, presentation, safe FOV, visual profile, diagnostics, and an
+  independent 75-150% UI-content scale. Windows renders the scaled interface
+  natively through DPI-aware D2D/DWrite with bounded row scrolling; iOS
+  combines it with Dynamic Type, Auto Layout, safe areas, and native controls;
 - bounded UDSP, CCF, GTI, and related legacy-format parsing;
 - a private AFPACK container, strict validation, atomic installation, recovery,
   rollback, and authenticated content sessions;

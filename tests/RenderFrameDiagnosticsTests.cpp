@@ -144,6 +144,16 @@ void testFormattingAndRasterization() {
     const auto fourKImage = rasterizeRenderFrameDiagnostics(fourK);
     require(fourKImage.complete() && fourKImage.pixelScale == 4U,
             "4K diagnostic panel did not scale in output pixels");
+    const auto compactImage = rasterizeRenderFrameDiagnostics(fourK, 75.0F);
+    const auto enlargedImage = rasterizeRenderFrameDiagnostics(fourK, 150.0F);
+    require(compactImage.complete() && compactImage.pixelScale == 3U &&
+                enlargedImage.complete() && enlargedImage.pixelScale == 6U,
+            "diagnostic panel did not honor independent UI scale");
+    require(!rasterizeRenderFrameDiagnostics(
+                 fourK, std::numeric_limits<float>::quiet_NaN())
+                    .complete() &&
+                !rasterizeRenderFrameDiagnostics(fourK, 151.0F).complete(),
+            "diagnostic panel accepted invalid UI scale");
 
     auto unavailable = diagnostics;
     unavailable.gpuFrameMilliseconds.reset();

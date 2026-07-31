@@ -22,15 +22,17 @@ constexpr std::uint16_t scenePresentationField = 2U;
 constexpr std::uint16_t visualProfileField = 3U;
 constexpr std::uint16_t diagnosticsField = 4U;
 constexpr std::uint16_t verticalFovAdjustmentField = 5U;
+constexpr std::uint16_t uiScaleField = 6U;
 constexpr std::uint32_t legacySchemaVersion = 1U;
+constexpr std::uint32_t safeFovSchemaVersion = 2U;
 constexpr std::size_t fieldHeaderBytes = 4U;
 constexpr std::size_t canonicalDocumentBytes =
-    headerBytes + (fieldHeaderBytes + 4U) * 2U +
+    headerBytes + (fieldHeaderBytes + 4U) * 3U +
     (fieldHeaderBytes + 1U) * 3U;
 
 static_assert(sizeof(float) == sizeof(std::uint32_t));
 static_assert(std::numeric_limits<float>::is_iec559);
-static_assert(canonicalDocumentBytes == 79U);
+static_assert(canonicalDocumentBytes == 87U);
 
 [[noreturn]] void fail(const RenderSettingsCodecErrorKind kind,
                        const std::optional<std::uint32_t> schemaVersion,
@@ -123,6 +125,8 @@ encodeRenderSettingsDocument(const render::RenderPresentationSettingsRecord& rec
         output,
         std::bit_cast<std::uint32_t>(
             record.verticalFovAdjustmentDegrees));
+    appendFieldHeader(output, uiScaleField, 4U);
+    appendU32(output, std::bit_cast<std::uint32_t>(record.uiScalePercent));
 
     if (output.size() != canonicalDocumentBytes) {
         throw std::logic_error("AFRS encoder produced a noncanonical size");
@@ -183,6 +187,7 @@ decodeRenderSettingsDocument(const std::span<const std::uint8_t> bytes,
         };
     }
     if (schemaVersion != legacySchemaVersion &&
+        schemaVersion != safeFovSchemaVersion &&
         schemaVersion !=
             render::renderPresentationSettingsRecordSchemaVersion) {
         fail(RenderSettingsCodecErrorKind::invalidSchemaVersion, schemaVersion,
@@ -196,8 +201,10 @@ decodeRenderSettingsDocument(const std::span<const std::uint8_t> bytes,
     const std::uint16_t maximumField =
         schemaVersion == legacySchemaVersion
             ? diagnosticsField
-            : verticalFovAdjustmentField;
-    std::array<bool, verticalFovAdjustmentField + 1U> seen{};
+            : schemaVersion == safeFovSchemaVersion
+                  ? verticalFovAdjustmentField
+                  : uiScaleField;
+    std::array<bool, uiScaleField + 1U> seen{};
     std::uint16_t previousField = 0U;
     std::size_t offset = headerBytes;
     while (offset < bytes.size()) {
@@ -233,7 +240,8 @@ decodeRenderSettingsDocument(const std::span<const std::uint8_t> bytes,
 
         const auto expectedSize =
             field == renderScaleField ||
-                    field == verticalFovAdjustmentField
+                    field == verticalFovAdjustmentField ||
+                    field == uiScaleField
                 ? 4U
                 : 1U;
         if (size != expectedSize) {
@@ -249,6 +257,10 @@ decodeRenderSettingsDocument(const std::span<const std::uint8_t> bytes,
         case diagnosticsField: record.diagnosticsOverlayEnabled = bytes[offset]; break;
         case verticalFovAdjustmentField:
             record.verticalFovAdjustmentDegrees =
+                std::bit_cast<float>(readU32(bytes, offset));
+            break;
+        case uiScaleField:
+            record.uiScalePercent =
                 std::bit_cast<float>(readU32(bytes, offset));
             break;
         default: throw std::logic_error("validated AFRS field is unreachable");

@@ -63,10 +63,10 @@ using DecodedRenderSettingsDocument =
 // AFRS is a bounded, canonical little-endian envelope. Its checksum covers the
 // complete header except the checksum field itself and every TLV payload byte.
 // Current-schema fields are required exactly once and in ascending field-ID
-// order. Schema 1 migrates to the current semantic record with safe FOV at its
-// exact default. A structurally intact future schema is returned as opaque
-// exact bytes so a downgrade can preserve it without interpreting or
-// rewriting it.
+// order. Schema 1 migrates with safe FOV and UI scale at their exact defaults;
+// schema 2 migrates with UI scale at its exact default. A structurally intact
+// future schema is returned as opaque exact bytes so a downgrade can preserve
+// it without interpreting or rewriting it.
 [[nodiscard]] DecodedRenderSettingsDocument
 decodeRenderSettingsDocument(std::span<const std::uint8_t> bytes,
                              std::size_t maximumBytes = maximumRenderSettingsDocumentBytes);

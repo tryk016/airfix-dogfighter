@@ -228,6 +228,8 @@ itemLabel(const AirfixWindowsRenderSettingsItem item) noexcept {
     return L"Resume";
   case AirfixWindowsRenderSettingsItem::renderScale:
     return L"Render scale";
+  case AirfixWindowsRenderSettingsItem::interfaceScale:
+    return L"Interface scale";
   case AirfixWindowsRenderSettingsItem::presentation:
     return L"Presentation";
   case AirfixWindowsRenderSettingsItem::verticalFovAdjustment:
@@ -288,6 +290,7 @@ itemLabel(const AirfixWindowsRenderSettingsItem item) noexcept {
 isValueItem(const AirfixWindowsRenderSettingsItem item) noexcept {
   switch (item) {
   case AirfixWindowsRenderSettingsItem::renderScale:
+  case AirfixWindowsRenderSettingsItem::interfaceScale:
   case AirfixWindowsRenderSettingsItem::presentation:
   case AirfixWindowsRenderSettingsItem::verticalFovAdjustment:
   case AirfixWindowsRenderSettingsItem::visualProfile:
@@ -385,6 +388,10 @@ itemValue(const AirfixWindowsRenderSettingsItem item,
     static_cast<void>(
         swprintf_s(scratch.data(), scratch.size(), L"%.0f%%",
                    static_cast<double>(draft.renderScalePercent)));
+    return scratch.data();
+  case AirfixWindowsRenderSettingsItem::interfaceScale:
+    static_cast<void>(swprintf_s(scratch.data(), scratch.size(), L"%.0f%%",
+                                 static_cast<double>(draft.uiScalePercent)));
     return scratch.data();
   case AirfixWindowsRenderSettingsItem::presentation:
     return draft.scenePresentation ==

@@ -12,6 +12,7 @@ namespace airfix::windows {
 namespace {
 
 constexpr float renderScaleStep = 5.0F;
+constexpr float uiScaleStep = 5.0F;
 constexpr float verticalFovAdjustmentStep = 1.0F;
 constexpr std::uint16_t controllerDeadzoneStep = 512U;
 constexpr std::uint16_t controllerSensitivityStep = 50U;
@@ -30,8 +31,9 @@ constexpr std::array<Item, 3U> pauseItemsWithControllerProfile{
     Item::controllerCalibration,
     Item::resume,
 };
-constexpr std::array<Item, 7U> displaySettingsItems{
+constexpr std::array<Item, 8U> displaySettingsItems{
     Item::renderScale,
+    Item::interfaceScale,
     Item::presentation,
     Item::verticalFovAdjustment,
     Item::visualProfile,
@@ -115,6 +117,7 @@ magnitude(const input::Q15 value) noexcept {
 isValueItem(const AirfixWindowsRenderSettingsItem item) noexcept {
   switch (item) {
   case Item::renderScale:
+  case Item::interfaceScale:
   case Item::presentation:
   case Item::verticalFovAdjustment:
   case Item::visualProfile:
@@ -162,6 +165,16 @@ isValueItem(const AirfixWindowsRenderSettingsItem item) noexcept {
                       renderScaleStep);
 }
 
+[[nodiscard]] float nextUiScaleValue(const float current,
+                                     const std::int32_t direction) noexcept {
+  if (direction < 0) {
+    return std::max(render::native_render_policy::minimumUiScalePercent,
+                    (std::ceil(current / uiScaleStep) - 1.0F) * uiScaleStep);
+  }
+  return std::min(render::native_render_policy::maximumUiScalePercent,
+                  (std::floor(current / uiScaleStep) + 1.0F) * uiScaleStep);
+}
+
 struct PanelLayout final {
   float scale{1.0F};
   AirfixWindowsUiPixelRect panel;
@@ -173,12 +186,16 @@ struct PanelLayout final {
   float rowHeight{};
   float rowGap{};
   float controlWidth{};
+  std::size_t firstVisibleItem{};
+  std::size_t visibleItemCount{};
 };
 
 [[nodiscard]] PanelLayout
 makeLayout(const AirfixWindowsUiPixelExtent output,
            const AirfixWindowsRenderSettingsScreen screen,
-           const std::size_t visibleItemCount) noexcept {
+           const std::size_t totalItemCount,
+           const std::size_t selectedItemIndex,
+           const float uiScalePercent) noexcept {
   const float width = static_cast<float>(output.width);
   const float height = static_cast<float>(output.height);
   const float dpi =
@@ -189,7 +206,7 @@ makeLayout(const AirfixWindowsUiPixelExtent output,
                           screen == Screen::controllerButtonBindings ||
                           screen == Screen::controllerBindingConflict;
   const float basePanelWidth = pause ? 590.0F : (controller ? 920.0F : 840.0F);
-  const float itemCount = static_cast<float>(visibleItemCount);
+  const float itemCount = static_cast<float>(totalItemCount);
   const float baseRowHeight = pause ? 78.0F : (controller ? 61.0F : 67.0F);
   const float baseRowGap = 10.0F;
   const float baseTopSpace = pause ? 124.0F : 114.0F;
@@ -204,40 +221,68 @@ makeLayout(const AirfixWindowsUiPixelExtent output,
       std::min(20.0F * dpi, std::max(0.001F, shortestSide * 0.04F));
   const float availableWidth = std::max(0.001F, width - margin * 2.0F);
   const float availableHeight = std::max(0.001F, height - margin * 2.0F);
+  const float requestedScale =
+      dpi *
+      std::clamp(uiScalePercent,
+                 render::native_render_policy::minimumUiScalePercent,
+                 render::native_render_policy::maximumUiScalePercent) /
+      100.0F;
   const float scale =
-      std::max(0.001F, std::min({dpi, availableWidth / basePanelWidth,
-                                 availableHeight / basePanelHeight}));
+      std::max(0.001F, std::min(requestedScale, availableWidth / basePanelWidth));
   const float panelWidth = basePanelWidth * scale;
-  const float panelHeight = basePanelHeight * scale;
+  const float panelHeight = std::min(basePanelHeight * scale, availableHeight);
   const float rowHeight = baseRowHeight * scale;
   const float rowGap = baseRowGap * scale;
-  const float topSpace = baseTopSpace * scale;
-  const float bottomSpace = baseBottomSpace * scale;
+  const float desiredTopSpace = baseTopSpace * scale;
+  const float desiredBottomSpace = baseBottomSpace * scale;
+  const float availableChromeHeight = std::max(0.0F, panelHeight - rowHeight);
+  const float chromeCompression =
+      std::min(1.0F, availableChromeHeight /
+                         (desiredTopSpace + desiredBottomSpace));
+  const float topSpace = desiredTopSpace * chromeCompression;
+  const float bottomSpace = desiredBottomSpace * chromeCompression;
   const float panelX = (width - panelWidth) * 0.5F;
   const float panelY = (height - panelHeight) * 0.5F;
   const float innerMargin = std::min(42.0F * scale, panelWidth * 0.07F);
   const float rowWidth = panelWidth - innerMargin * 2.0F;
-  const float rowsHeight = itemCount * rowHeight + (itemCount - 1.0F) * rowGap;
-  const float idealRowY = panelY + topSpace;
-  const float maximumRowY = panelY + panelHeight - bottomSpace - rowsHeight;
+  const float rowViewportHeight =
+      std::max(rowHeight, panelHeight - topSpace - bottomSpace);
+  const auto rowsThatFit = static_cast<std::size_t>(std::max(
+      1.0F, std::floor((rowViewportHeight + rowGap) / (rowHeight + rowGap))));
+  const auto visibleItemCount = std::min(totalItemCount, rowsThatFit);
+  const auto maximumFirst = totalItemCount - visibleItemCount;
+  const auto preferredFirst = selectedItemIndex > visibleItemCount / 2U
+                                  ? selectedItemIndex - visibleItemCount / 2U
+                                  : 0U;
+  const auto firstVisibleItem = std::min(preferredFirst, maximumFirst);
+  const float visibleRowsHeight =
+      static_cast<float>(visibleItemCount) * rowHeight +
+      static_cast<float>(visibleItemCount > 0U ? visibleItemCount - 1U : 0U) *
+          rowGap;
   const float rowY =
-      std::max(panelY + 74.0F * scale, std::min(idealRowY, maximumRowY));
-  const float statusTop = rowY + rowsHeight + 18.0F * scale;
+      panelY + topSpace +
+      std::max(0.0F, (rowViewportHeight - visibleRowsHeight) * 0.5F);
+  const float statusGap = std::min(18.0F * scale, bottomSpace * 0.25F);
+  const float statusBottomInset = statusGap;
+  const float statusTop =
+      panelY + panelHeight - bottomSpace + statusGap;
+  const float statusHeight =
+      std::max(0.0F, bottomSpace - statusGap - statusBottomInset);
 
   return {
       .scale = scale,
       .panel = {panelX, panelY, panelWidth, panelHeight},
       .title = {panelX + innerMargin, panelY + 28.0F * scale, rowWidth,
                 52.0F * scale},
-      .status = {panelX + innerMargin, statusTop, rowWidth,
-                 std::max(30.0F * scale,
-                          panelY + panelHeight - statusTop - 18.0F * scale)},
+      .status = {panelX + innerMargin, statusTop, rowWidth, statusHeight},
       .rowX = panelX + innerMargin,
       .rowY = rowY,
       .rowWidth = rowWidth,
       .rowHeight = rowHeight,
       .rowGap = rowGap,
       .controlWidth = std::min(290.0F * scale, rowWidth * 0.48F),
+      .firstVisibleItem = firstVisibleItem,
+      .visibleItemCount = visibleItemCount,
   };
 }
 
@@ -520,14 +565,23 @@ AirfixWindowsRenderSettingsPanel::snapshot() const noexcept {
 
   const auto visibleItems =
       itemsForScreen(screen_, controllerProfileModel_.has_value());
-  const auto layout = makeLayout(output_, screen_, visibleItems.size());
+  const auto selected = selectionForCurrentScreen();
+  const auto selectedIterator =
+      std::find(visibleItems.begin(), visibleItems.end(), selected);
+  const auto selectedIndex =
+      selectedIterator == visibleItems.end()
+          ? 0U
+          : static_cast<std::size_t>(selectedIterator - visibleItems.begin());
+  const auto layout =
+      makeLayout(output_, screen_, visibleItems.size(), selectedIndex,
+                 result.draftSettings.uiScalePercent);
   result.layoutScale = layout.scale;
   result.panelBounds = layout.panel;
   result.titleBounds = layout.title;
   result.statusBounds = layout.status;
-  result.itemCount = static_cast<std::uint8_t>(visibleItems.size());
+  result.itemCount = static_cast<std::uint8_t>(layout.visibleItemCount);
   for (std::uint8_t index = 0U; index < result.itemCount; ++index) {
-    const auto item = visibleItems[index];
+    const auto item = visibleItems[layout.firstVisibleItem + index];
     bool enabled = true;
     switch (item) {
     case Item::resume:
@@ -537,6 +591,7 @@ AirfixWindowsRenderSettingsPanel::snapshot() const noexcept {
       enabled = controllerProfileModel_.has_value();
       break;
     case Item::renderScale:
+    case Item::interfaceScale:
     case Item::presentation:
     case Item::verticalFovAdjustment:
     case Item::visualProfile:
@@ -840,6 +895,10 @@ void AirfixWindowsRenderSettingsPanel::adjustSelectedValue(
       result = model_.setRenderScalePercent(
           nextScaleValue(draft.renderScalePercent, direction));
       break;
+    case Item::interfaceScale:
+      result = model_.setUiScalePercent(
+          nextUiScaleValue(draft.uiScalePercent, direction));
+      break;
     case Item::presentation:
       result = model_.setScenePresentation(
           direction < 0 ? render::ScenePresentationMode::widescreenHorPlus
@@ -984,6 +1043,7 @@ AirfixWindowsRenderSettingsPanel::activateSelectedItem() noexcept {
   if (screen_ == Screen::displaySettings) {
     switch (selectedSettingsItem_) {
     case Item::renderScale:
+    case Item::interfaceScale:
     case Item::presentation:
     case Item::verticalFovAdjustment:
     case Item::visualProfile:

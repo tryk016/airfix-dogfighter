@@ -1349,7 +1349,7 @@ private:
         !overlayShaderResource_) {
       const auto image =
           airfix::render::rasterizeRenderFrameDiagnostics(
-              *diagnostics_.latest());
+              *diagnostics_.latest(), settings_.uiScalePercent);
       updateDiagnosticsOverlayTexture(image);
       lastOverlayRefresh_ = frameStarted;
     }

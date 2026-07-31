@@ -116,6 +116,9 @@ inline constexpr float defaultRenderScalePercent = 100.0F;
 inline constexpr float minimumVerticalFovAdjustmentDegrees = 0.0F;
 inline constexpr float maximumVerticalFovAdjustmentDegrees = 25.0F;
 inline constexpr float defaultVerticalFovAdjustmentDegrees = 0.0F;
+inline constexpr float minimumUiScalePercent = 75.0F;
+inline constexpr float maximumUiScalePercent = 150.0F;
+inline constexpr float defaultUiScalePercent = 100.0F;
 
 } // namespace native_render_policy
 

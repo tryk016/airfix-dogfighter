@@ -108,7 +108,7 @@ void repairEnvelope(std::vector<std::uint8_t>& bytes) {
 }
 
 void repairFutureEnvelope(std::vector<std::uint8_t>& bytes) {
-    putU32(bytes, 8U, 3U);
+    putU32(bytes, 8U, 4U);
     repairEnvelope(bytes);
 }
 
@@ -202,7 +202,7 @@ void testMalformedAndFuturePreservation() {
     require(readFile(temporary.current()) == before, "downgrade save rewrote a future schema");
 }
 
-void testLegacySchemaMigratesToDefaultFov() {
+void testLegacySchemasMigrateToCurrentDefaults() {
     TempDirectory temporary;
     const auto legacySettings = settings(135.0F, true);
     (void)airfix::settings::saveRenderPresentationSettings(
@@ -229,9 +229,32 @@ void testLegacySchemaMigratesToDefaultFov() {
         airfix::settings::saveRenderPresentationSettings(
             temporary.settings(), loaded.settings);
     require(
-        saved.backupRotated && readFile(temporary.current()).size() == 79U &&
+        saved.backupRotated && readFile(temporary.current()).size() == 87U &&
             readFile(temporary.backup()) == legacy,
         "saving migrated settings did not preserve and replace schema 1");
+
+    TempDirectory safeFovTemporary;
+    auto safeFovSettings = settings(145.0F, true);
+    safeFovSettings.verticalFovAdjustmentDegrees = 12.0F;
+    safeFovSettings.uiScalePercent = 125.0F;
+    (void)airfix::settings::saveRenderPresentationSettings(
+        safeFovTemporary.settings(), safeFovSettings);
+
+    auto safeFovSchema = readFile(safeFovTemporary.current());
+    safeFovSchema.resize(79U);
+    putU32(safeFovSchema, 8U, 2U);
+    repairEnvelope(safeFovSchema);
+    writeRaw(safeFovTemporary.current(), safeFovSchema);
+
+    const auto safeFovLoaded =
+        airfix::settings::loadRenderPresentationSettings(
+            safeFovTemporary.settings());
+    require(safeFovLoaded.source ==
+                    airfix::settings::RenderSettingsLoadSource::current &&
+                safeFovLoaded.settings.verticalFovAdjustmentDegrees == 12.0F &&
+                safeFovLoaded.settings.uiScalePercent == 100.0F &&
+                !safeFovLoaded.persistenceBlocked,
+            "schema 2 did not retain FOV and default UI scale");
 }
 
 struct ReplaceHookContext final {
@@ -407,7 +430,7 @@ int main() {
     try {
         testMissingSaveAndRotation();
         testMalformedAndFuturePreservation();
-        testLegacySchemaMigratesToDefaultFov();
+        testLegacySchemasMigrateToCurrentDefaults();
         testFailureAndAmbiguousReadback();
         testWrongTypesBlockPersistence();
         testOversizedAndLinkedRecords();
