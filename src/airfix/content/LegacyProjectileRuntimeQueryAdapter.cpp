@@ -1,5 +1,7 @@
 #include "airfix/content/LegacyProjectileRuntimeQueryAdapter.hpp"
 
+#include "airfix/assets/MissionWorldRooms.hpp"
+
 #include <bit>
 #include <cmath>
 #include <optional>
@@ -31,8 +33,13 @@ using simulation::LegacyProjectileCollisionQueryStatus;
     };
 }
 
+[[nodiscard]] bool validRoomIdentity(
+    const std::size_t worldRoomCount) noexcept {
+    return assets::legacyCcRoomIdForWorldRoomIndex(worldRoomCount, 0U)
+        .has_value();
+}
+
 struct PublishedQueryContext final {
-    const assets::MissionWorldRoomCatalog* catalog{};
     const render::LegacyGameplayCameraMissionRuntime* runtime{};
     bool projectileIsServer{};
     LegacyProjectileLiveActorQuery actorQuery{};
@@ -70,15 +77,13 @@ queryPublishedPlayerActor(
     }
     const auto& context =
         *static_cast<const PublishedQueryContext*>(opaqueContext);
-    if (context.catalog == nullptr ||
-        context.runtime == nullptr ||
+    if (context.runtime == nullptr ||
         context.lineTraceOptions == nullptr) {
         return rejected();
     }
 
-    const auto worldRoomIndex =
-        assets::worldRoomIndexForLegacyCcRoomId(
-            *context.catalog, input.roomId);
+    const auto worldRoomIndex = assets::worldRoomIndexForLegacyCcRoomId(
+        context.runtime->worldRoomCount(), input.roomId);
     if (!worldRoomIndex.has_value()) {
         return rejected();
     }
@@ -97,7 +102,7 @@ queryPublishedPlayerActor(
             },
             *context.lineTraceOptions);
     return legacyProjectileQueryResultFromRuntimeTrace(
-        *context.catalog,
+        context.runtime->worldRoomCount(),
         trace,
         context.projectileIsServer,
         context.actorQuery,
@@ -136,12 +141,12 @@ queryPublishedLegacyProjectilePlayerActor(
 
 LegacyProjectileCollisionQueryResult
 legacyProjectileQueryResultFromRuntimeTrace(
-    const assets::MissionWorldRoomCatalog& catalog,
+    const std::size_t worldRoomCount,
     const render::MissionWorldRuntimeCombinedLineTraceResult& trace,
     const bool projectileIsServer,
     const LegacyProjectileLiveActorQuery actorQuery,
     void* const actorQueryContext) noexcept {
-    if (!catalog.complete()) {
+    if (!validRoomIdentity(worldRoomCount)) {
         return rejected();
     }
 
@@ -224,16 +229,15 @@ legacyProjectileQueryResultFromRuntimeTrace(
             if (!source.portalWorldRoomIndex.has_value()) {
                 return rejected();
             }
-            hit.portalRoomId =
-                assets::legacyCcRoomIdForWorldRoomIndex(
-                    catalog, *source.portalWorldRoomIndex);
+            hit.portalRoomId = assets::legacyCcRoomIdForWorldRoomIndex(
+                worldRoomCount, *source.portalWorldRoomIndex);
             if (!hit.portalRoomId.has_value()) {
                 return rejected();
             }
         } else if (source.portalType == 1) {
             if (!source.portalWorldRoomIndex.has_value() ||
                 !assets::legacyCcRoomIdForWorldRoomIndex(
-                     catalog, *source.portalWorldRoomIndex)
+                     worldRoomCount, *source.portalWorldRoomIndex)
                      .has_value()) {
                 return rejected();
             }
@@ -287,15 +291,13 @@ legacyProjectileQueryResultFromRuntimeTrace(
 
 LegacyProjectileCollisionLoopResult
 resolvePublishedLegacyProjectileCollisionLoop(
-    const assets::MissionWorldRoomCatalog& catalog,
     const render::LegacyGameplayCameraMissionRuntime& runtime,
     const LegacyProjectileCollisionQueryInput& input,
     const bool projectileIsServer,
     const LegacyProjectileLiveActorQuery actorQuery,
     void* const actorQueryContext,
     const LegacyPublishedProjectileCollisionOptions& options) noexcept {
-    if (!catalog.complete() ||
-        catalog.rooms.size() != runtime.worldRoomCount()) {
+    if (!validRoomIdentity(runtime.worldRoomCount())) {
         return {
             .status = LegacyProjectileCollisionLoopStatus::invalidInput,
             .decision = std::nullopt,
@@ -305,7 +307,6 @@ resolvePublishedLegacyProjectileCollisionLoop(
     }
 
     PublishedQueryContext context{
-        .catalog = &catalog,
         .runtime = &runtime,
         .projectileIsServer = projectileIsServer,
         .actorQuery = actorQuery,
@@ -321,7 +322,6 @@ resolvePublishedLegacyProjectileCollisionLoop(
 
 LegacyProjectileCollisionLoopResult
 resolvePublishedLegacyProjectileCollisionLoop(
-    const assets::MissionWorldRoomCatalog& catalog,
     const render::LegacyGameplayCameraMissionRuntime& runtime,
     const LegacyProjectileCollisionQueryInput& input,
     const bool projectileIsServer,
@@ -330,7 +330,6 @@ resolvePublishedLegacyProjectileCollisionLoop(
         .runtime = &runtime,
     };
     return resolvePublishedLegacyProjectileCollisionLoop(
-        catalog,
         runtime,
         input,
         projectileIsServer,
@@ -341,7 +340,6 @@ resolvePublishedLegacyProjectileCollisionLoop(
 
 LegacyPublishedMachineGunProjectileCollisionResult
 resolvePublishedLegacyMachineGunProjectileCollision(
-    const assets::MissionWorldRoomCatalog& catalog,
     const render::LegacyGameplayCameraMissionRuntime& runtime,
     const simulation::LegacyMachineGunProjectileState& current,
     const simulation::LegacyMachineGunAmmoProfile& profile,
@@ -359,7 +357,6 @@ resolvePublishedLegacyMachineGunProjectileCollision(
     }
 
     result.collision = resolvePublishedLegacyProjectileCollisionLoop(
-        catalog,
         runtime,
         input,
         projectileIsServer,
@@ -376,7 +373,6 @@ resolvePublishedLegacyMachineGunProjectileCollision(
 
 LegacyPublishedMachineGunProjectileCollisionResult
 resolvePublishedLegacyMachineGunProjectileCollision(
-    const assets::MissionWorldRoomCatalog& catalog,
     const render::LegacyGameplayCameraMissionRuntime& runtime,
     const simulation::LegacyMachineGunProjectileState& current,
     const simulation::LegacyMachineGunAmmoProfile& profile,
@@ -387,7 +383,6 @@ resolvePublishedLegacyMachineGunProjectileCollision(
         .runtime = &runtime,
     };
     return resolvePublishedLegacyMachineGunProjectileCollision(
-        catalog,
         runtime,
         current,
         profile,
@@ -400,7 +395,6 @@ resolvePublishedLegacyMachineGunProjectileCollision(
 
 LegacyPublishedMachineGunProjectileCollisionResult
 resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
-    const assets::MissionWorldRoomCatalog& catalog,
     const render::LegacyGameplayCameraMissionRuntime& runtime,
     const simulation::LegacyMachineGunProjectileState& current,
     const simulation::LegacyMachineGunAmmoProfile& profile,
@@ -423,7 +417,6 @@ resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
 
     if (current.creatorUid == 0U) {
         result = resolvePublishedLegacyMachineGunProjectileCollision(
-            catalog,
             runtime,
             current,
             profile,
@@ -455,7 +448,6 @@ resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
             return result;
         }
         result = resolvePublishedLegacyMachineGunProjectileCollision(
-            catalog,
             runtime,
             current,
             profile,
@@ -478,7 +470,6 @@ resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
     }
 
     result = resolvePublishedLegacyMachineGunProjectileCollision(
-        catalog,
         runtime,
         current,
         profile,
@@ -508,7 +499,6 @@ resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
 
 LegacyPublishedMachineGunProjectileCollisionResult
 resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
-    const assets::MissionWorldRoomCatalog& catalog,
     const render::LegacyGameplayCameraMissionRuntime& runtime,
     const simulation::LegacyMachineGunProjectileState& current,
     const simulation::LegacyMachineGunAmmoProfile& profile,
@@ -521,7 +511,6 @@ resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
     };
     return
         resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
-            catalog,
             runtime,
             current,
             profile,
@@ -535,7 +524,6 @@ resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
 
 LegacyPublishedMachineGunProjectileSlotsAdvanceResult
 advancePublishedLegacyMachineGunProjectileSlots(
-    const assets::MissionWorldRoomCatalog& catalog,
     const render::LegacyGameplayCameraMissionRuntime& runtime,
     const std::span<simulation::LegacyMachineGunProjectileSlot> slots,
     const std::span<LegacyPublishedMachineGunProjectileSlotAdvanceResult>
@@ -552,8 +540,7 @@ advancePublishedLegacyMachineGunProjectileSlots(
         return result;
     }
     if (!std::isfinite(deltaSeconds) || deltaSeconds < 0.0F ||
-        !catalog.complete() ||
-        catalog.rooms.size() != runtime.worldRoomCount()) {
+        !validRoomIdentity(runtime.worldRoomCount())) {
         return result;
     }
 
@@ -610,7 +597,7 @@ advancePublishedLegacyMachineGunProjectileSlots(
         };
         const auto collision =
             resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
-                catalog, runtime, flight->state, slot.ammoProfile, query,
+                runtime, flight->state, slot.ammoProfile, query,
                 projectileIsServer, actorQuery, actorQueryContext,
                 creatorBspGuard, options);
         slotResult.creatorBspGuard = collision.creatorBspGuard;
@@ -656,7 +643,6 @@ advancePublishedLegacyMachineGunProjectileSlots(
 
 LegacyPublishedMachineGunProjectileSlotsAdvanceResult
 advancePublishedLegacyMachineGunProjectileSlots(
-    const assets::MissionWorldRoomCatalog& catalog,
     const render::LegacyGameplayCameraMissionRuntime& runtime,
     const std::span<simulation::LegacyMachineGunProjectileSlot> slots,
     const std::span<LegacyPublishedMachineGunProjectileSlotAdvanceResult>
@@ -668,7 +654,7 @@ advancePublishedLegacyMachineGunProjectileSlots(
         .runtime = &runtime,
     };
     return advancePublishedLegacyMachineGunProjectileSlots(
-        catalog, runtime, slots, results, deltaSeconds, projectileIsServer,
+        runtime, slots, results, deltaSeconds, projectileIsServer,
         queryPublishedPlayerActor, &actorContext, creatorBspGuard, options);
 }
 

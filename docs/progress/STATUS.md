@@ -993,9 +993,9 @@
   exists, activates semantic event `0xE2`, and returns a generation-tagged
   handle. First-free selection is an explicit deterministic port policy;
   saturated generations fail closed and reuse cannot revive stale handles.
-  Root ID zero,
-  monotonic ordinary-room IDs, and newest-first lookup now map bidirectionally
-  to the retained mission-world catalogue without native pointers.
+  Root ID zero, monotonic ordinary-room IDs, and newest-first lookup now map
+  bidirectionally through the immutable room count retained by the mission
+  runtime, without native pointers or a surviving build catalogue.
   `PhLine::GetBspCollision` now also confirms static-before-dynamic traversal
   through one strict-nearest fraction plus recursive visible type-zero portal
   continuation. An allocation-free single-hit decision seam implements the
@@ -1013,8 +1013,10 @@
   projectile-level type-zero portal, preserves the full endpoint, returns all
   existing terminal decisions, and fails closed on query/decision errors or
   bounded cycles without allocation. An authenticated adapter now maps its
-  current signed room through the retained catalogue, invokes the published
-  runtime portal trace, preserves the exact `0x2152` material bits, and
+  current signed room through the immutable room count owned by the published
+  runtime arena, so the temporary build catalogue need not survive mission
+  loading. It invokes the published runtime portal trace, preserves the exact
+  `0x2152` material bits, and
   resolves the primary player's server actor gates from state committed in
   the same complete collision-frame generation. A typed callback remains for
   future non-player actors. A fail-closed terminal reducer now commits the

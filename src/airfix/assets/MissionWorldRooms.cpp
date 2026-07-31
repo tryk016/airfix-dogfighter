@@ -536,11 +536,11 @@ MissionWorldRoomCatalog buildMissionWorldRoomCatalog(
 }
 
 std::optional<std::int32_t> legacyCcRoomIdForWorldRoomIndex(
-    const MissionWorldRoomCatalog& catalog,
+    const std::size_t worldRoomCount,
     const std::size_t worldRoomIndex) noexcept {
-    if (!catalog.complete() ||
-        worldRoomIndex >= catalog.rooms.size() ||
-        catalog.rooms.size() - 1U >
+    if (worldRoomCount == 0U ||
+        worldRoomIndex >= worldRoomCount ||
+        worldRoomCount - 1U >
             static_cast<std::size_t>(
                 std::numeric_limits<std::int32_t>::max())) {
         return std::nullopt;
@@ -548,16 +548,15 @@ std::optional<std::int32_t> legacyCcRoomIdForWorldRoomIndex(
     if (worldRoomIndex == 0U) {
         return 0;
     }
-    return static_cast<std::int32_t>(
-        catalog.rooms.size() - worldRoomIndex);
+    return static_cast<std::int32_t>(worldRoomCount - worldRoomIndex);
 }
 
 std::optional<std::size_t> worldRoomIndexForLegacyCcRoomId(
-    const MissionWorldRoomCatalog& catalog,
+    const std::size_t worldRoomCount,
     const std::int32_t roomId) noexcept {
-    if (!catalog.complete() ||
+    if (worldRoomCount == 0U ||
         roomId < 0 ||
-        catalog.rooms.size() - 1U >
+        worldRoomCount - 1U >
             static_cast<std::size_t>(
                 std::numeric_limits<std::int32_t>::max())) {
         return std::nullopt;
@@ -566,10 +565,30 @@ std::optional<std::size_t> worldRoomIndexForLegacyCcRoomId(
         return 0U;
     }
     const auto unsignedRoomId = static_cast<std::size_t>(roomId);
-    if (unsignedRoomId >= catalog.rooms.size()) {
+    if (unsignedRoomId >= worldRoomCount) {
         return std::nullopt;
     }
-    return catalog.rooms.size() - unsignedRoomId;
+    return worldRoomCount - unsignedRoomId;
+}
+
+std::optional<std::int32_t>
+legacyCcRoomIdForWorldRoomIndex(
+    const MissionWorldRoomCatalog& catalog,
+    const std::size_t worldRoomIndex) noexcept {
+    if (!catalog.complete()) {
+        return std::nullopt;
+    }
+    return legacyCcRoomIdForWorldRoomIndex(catalog.rooms.size(), worldRoomIndex);
+}
+
+std::optional<std::size_t>
+worldRoomIndexForLegacyCcRoomId(
+    const MissionWorldRoomCatalog& catalog,
+    const std::int32_t roomId) noexcept {
+    if (!catalog.complete()) {
+        return std::nullopt;
+    }
+    return worldRoomIndexForLegacyCcRoomId(catalog.rooms.size(), roomId);
 }
 
 MissionWorldStartResolution resolveMissionStartsInWorld(
