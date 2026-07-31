@@ -1,5 +1,6 @@
 #include "airfix/content/LegacyProjectileRuntimeQueryAdapter.hpp"
 
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdlib>
@@ -670,6 +671,360 @@ buildPlayerRuntime() {
         std::move(player),
         {},
         initializeInput());
+}
+
+void publishPlayerCollisionFrame(LegacyGameplayCameraMissionRuntime& runtime) {
+    const auto published = runtime.tryPublishDynamicCollisionFrame(
+        {
+            .linear = {},
+            .translation = {0.0F, 0.0F, 2.0F},
+            .rawScalar = 1.0F,
+        },
+        {
+            .objectId = 91U,
+            .active = true,
+            .projectileActorCollisionsEnabled = true,
+            .actorAcceptsProjectileCollision = true,
+        },
+        0U);
+    require(published.published(), "player frame publication failed");
+}
+
+[[nodiscard]] LegacyMachineGunProjectileSlot
+activeProjectileSlot(const LegacyMachineGunVector3 position,
+                     const LegacyMachineGunVector3 velocity,
+                     const float ageSeconds, const std::uint32_t creatorUid,
+                     const std::uint64_t generation = 1U) {
+    const auto profile = legacyMachineGunAmmoProfile(0U);
+    require(profile.has_value(), "projectile slot profile missing");
+    return {
+        .state =
+            {
+                .position = position,
+                .velocity = velocity,
+                .ageSeconds = ageSeconds,
+                .roomId = 0,
+                .creatorUid = creatorUid,
+                .targetUid = 0U,
+                .active = true,
+                .waterContacted = false,
+            },
+        .ammoProfile = *profile,
+        .effectiveTechLevel = 0U,
+        .generation = generation,
+    };
+}
+
+void testPublishedProjectileSlotFlightLifetimeAndInactive() {
+    auto built = buildPlayerRuntime();
+    require(built.complete(), "slot-flight runtime creation failed");
+    publishPlayerCollisionFrame(*built.runtime);
+    const auto rooms = catalog();
+
+    std::array<LegacyMachineGunProjectileSlot, 3U> slots{};
+    slots[0].ammoProfile.impactDamage = std::numeric_limits<float>::quiet_NaN();
+    slots[1] = activeProjectileSlot({10.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 4.0F},
+                                    0.0F, 0U, 4U);
+    slots[2] = activeProjectileSlot({10.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 4.0F},
+                                    3.9F, 72U, 5U);
+    const auto expectedFlight = legacyMachineGunProjectileAdvanceUnobstructed(
+        slots[1].state, slots[1].ammoProfile, 1.0F);
+    const auto expectedLifetime = legacyMachineGunProjectileAdvanceUnobstructed(
+        slots[2].state, slots[2].ammoProfile, 1.0F);
+    require(expectedFlight.has_value() &&
+                !expectedFlight->deactivatedByLifetime &&
+                expectedLifetime.has_value() &&
+                expectedLifetime->deactivatedByLifetime,
+            "slot-flight expectations failed");
+
+    CreatorBspGuardState mustNotRun;
+    mustNotRun.disableResult = {
+        .status = LegacyProjectileCreatorBspDisableStatus::rejected,
+    };
+    std::array<LegacyPublishedMachineGunProjectileSlotAdvanceResult, 3U>
+        firstResults{};
+    const auto first = advancePublishedLegacyMachineGunProjectileSlots(
+        rooms, *built.runtime, slots, firstResults, 1.0F, true,
+        creatorBspGuard(mustNotRun));
+    require(first.completed() &&
+                first.status ==
+                    LegacyPublishedMachineGunProjectileSlotsAdvanceStatus::
+                        completed &&
+                first.visitedSlotCount == 3U && first.activeSlotCount == 2U &&
+                first.stateCommitCount == 2U && first.rejectedSlotCount == 0U &&
+                firstResults[0].status ==
+                    LegacyPublishedMachineGunProjectileSlotAdvanceStatus::
+                        inactive &&
+                !firstResults[0].projectile.has_value() &&
+                firstResults[1].status ==
+                    LegacyPublishedMachineGunProjectileSlotAdvanceStatus::
+                        advanced &&
+                firstResults[1].projectile ==
+                    LegacyMachineGunProjectileHandle{
+                        .slotIndex = 1U,
+                        .generation = 4U,
+                    } &&
+                firstResults[1].outcome ==
+                    LegacyProjectileCollisionOutcome::advanceNoHit &&
+                firstResults[1].queryCount == 1U &&
+                firstResults[1].portalTransitionCount == 0U &&
+                firstResults[1].creatorBspGuard ==
+                    LegacyProjectileCreatorBspGuardStatus::noCreatorUid &&
+                !firstResults[1].damage.has_value() &&
+                !firstResults[1].surface.has_value() &&
+                slots[1].state == expectedFlight->state &&
+                firstResults[2].status ==
+                    LegacyPublishedMachineGunProjectileSlotAdvanceStatus::
+                        deactivatedByLifetime &&
+                firstResults[2].projectile ==
+                    LegacyMachineGunProjectileHandle{
+                        .slotIndex = 2U,
+                        .generation = 5U,
+                    } &&
+                !firstResults[2].outcome.has_value() &&
+                firstResults[2].queryCount == 0U &&
+                firstResults[2].creatorBspGuard ==
+                    LegacyProjectileCreatorBspGuardStatus::notRequested &&
+                slots[2].state == expectedLifetime->state &&
+                !slots[2].state.active && mustNotRun.disableCallCount == 0U &&
+                mustNotRun.enableCallCount == 0U,
+            "inactive/no-hit/lifetime slot composition mismatch");
+}
+
+void testPublishedProjectileSlotActorContactAndFailureIsolation() {
+    auto built = buildPlayerRuntime();
+    require(built.complete(), "slot-contact runtime creation failed");
+    publishPlayerCollisionFrame(*built.runtime);
+    const auto rooms = catalog();
+
+    std::array slots{
+        activeProjectileSlot({0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 4.0F}, 0.0F, 7U,
+                             8U),
+    };
+    CreatorBspGuardState missingCreator;
+    missingCreator.disableResult = {
+        .status = LegacyProjectileCreatorBspDisableStatus::actorNotFound,
+    };
+    std::array<LegacyPublishedMachineGunProjectileSlotAdvanceResult, 1U>
+        results{};
+    const auto contact = advancePublishedLegacyMachineGunProjectileSlots(
+        rooms, *built.runtime, slots, results, 1.0F, true,
+        creatorBspGuard(missingCreator));
+    require(contact.completed() && contact.stateCommitCount == 1U &&
+                results[0].status ==
+                    LegacyPublishedMachineGunProjectileSlotAdvanceStatus::
+                        advanced &&
+                results[0].outcome ==
+                    LegacyProjectileCollisionOutcome::actorContact &&
+                results[0].damage.has_value() &&
+                results[0].damage->targetUid == 91U &&
+                results[0].damage->creatorUid == 7U &&
+                results[0].creatorBspGuard ==
+                    LegacyProjectileCreatorBspGuardStatus::actorNotFound &&
+                results[0].queryCount == 1U && !slots[0].state.active &&
+                slots[0].state.position.x == 0.0F &&
+                slots[0].state.position.y < 0.0F &&
+                slots[0].state.position.y > -1.0F &&
+                slots[0].state.position.z == 2.0F &&
+                legacyMachineGunProjectileSlotForHandle(
+                    std::span{slots}, *results[0].projectile) == nullptr &&
+                missingCreator.disableCallCount == 1U &&
+                missingCreator.enableCallCount == 0U,
+            "active slot did not commit actor contact and damage request");
+
+    std::array isolatedSlots{
+        activeProjectileSlot({10.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 2.0F}, 0.0F, 17U,
+                             10U),
+        activeProjectileSlot({12.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 2.0F}, 0.0F, 0U,
+                             11U),
+    };
+    const auto rejectedOriginal = isolatedSlots[0].state;
+    const auto acceptedFlight = legacyMachineGunProjectileAdvanceUnobstructed(
+        isolatedSlots[1].state, isolatedSlots[1].ammoProfile, 0.5F);
+    require(acceptedFlight.has_value(), "isolated accepted flight failed");
+    CreatorBspGuardState rejectedCreator;
+    rejectedCreator.disableResult = {
+        .status = LegacyProjectileCreatorBspDisableStatus::rejected,
+    };
+    std::array<LegacyPublishedMachineGunProjectileSlotAdvanceResult, 2U>
+        isolatedResults{};
+    const auto isolated = advancePublishedLegacyMachineGunProjectileSlots(
+        rooms, *built.runtime, isolatedSlots, isolatedResults, 0.5F, true,
+        creatorBspGuard(rejectedCreator));
+    require(isolated.completed() &&
+                isolated.status ==
+                    LegacyPublishedMachineGunProjectileSlotsAdvanceStatus::
+                        completedWithRejectedSlots &&
+                isolated.visitedSlotCount == 2U &&
+                isolated.activeSlotCount == 2U &&
+                isolated.stateCommitCount == 1U &&
+                isolated.rejectedSlotCount == 1U &&
+                isolatedResults[0].status ==
+                    LegacyPublishedMachineGunProjectileSlotAdvanceStatus::
+                        collisionRejected &&
+                isolatedResults[0].creatorBspGuard ==
+                    LegacyProjectileCreatorBspGuardStatus::disableRejected &&
+                isolatedSlots[0].state == rejectedOriginal &&
+                isolatedResults[1].status ==
+                    LegacyPublishedMachineGunProjectileSlotAdvanceStatus::
+                        advanced &&
+                isolatedSlots[1].state == acceptedFlight->state &&
+                rejectedCreator.disableCallCount == 1U &&
+                rejectedCreator.enableCallCount == 0U,
+            "one rejected collision mutated its slot or blocked a later slot");
+}
+
+void testPublishedProjectileSlotRestoreFailureAndPreflight() {
+    auto built = buildPlayerRuntime();
+    require(built.complete(), "slot-restore runtime creation failed");
+    publishPlayerCollisionFrame(*built.runtime);
+    const auto rooms = catalog();
+
+    std::array slots{
+        activeProjectileSlot({0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 4.0F}, 0.0F, 7U,
+                             20U),
+        activeProjectileSlot({10.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 2.0F}, 0.0F, 0U,
+                             21U),
+    };
+    const auto firstOriginal = slots[0].state;
+    const auto secondOriginal = slots[1].state;
+    CreatorBspGuardState restoreFailure;
+    restoreFailure.disableResult = {
+        .status = LegacyProjectileCreatorBspDisableStatus::completed,
+        .actorHandle = &restoreFailure,
+        .bspWasEnabled = true,
+    };
+    restoreFailure.enableResult =
+        LegacyProjectileCreatorBspEnableStatus::rejected;
+    std::array<LegacyPublishedMachineGunProjectileSlotAdvanceResult, 2U>
+        results{};
+    const auto aborted = advancePublishedLegacyMachineGunProjectileSlots(
+        rooms, *built.runtime, slots, results, 1.0F, true,
+        queryActorWhileCreatorBspDisabled, &restoreFailure,
+        creatorBspGuard(restoreFailure));
+    require(
+        !aborted.completed() &&
+            aborted.status ==
+                LegacyPublishedMachineGunProjectileSlotsAdvanceStatus::
+                    creatorRestoreFailed &&
+            aborted.visitedSlotCount == 1U && aborted.activeSlotCount == 1U &&
+            aborted.stateCommitCount == 0U && aborted.rejectedSlotCount == 1U &&
+            results[0].status ==
+                LegacyPublishedMachineGunProjectileSlotAdvanceStatus::
+                    creatorRestoreFailed &&
+            results[0].creatorBspGuard ==
+                LegacyProjectileCreatorBspGuardStatus::enableRejected &&
+            results[1].status ==
+                LegacyPublishedMachineGunProjectileSlotAdvanceStatus::
+                    notVisited &&
+            slots[0].state == firstOriginal &&
+            slots[1].state == secondOriginal &&
+            restoreFailure.disableCallCount == 1U &&
+            restoreFailure.actorQueryCallCount == 1U &&
+            restoreFailure.enableCallCount == 1U &&
+            restoreFailure.actorQueryObservedDisabled &&
+            restoreFailure.bspDisabled,
+        "creator restore failure did not abort the remaining slot batch");
+
+    std::array validationSlots{
+        activeProjectileSlot({10.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 2.0F}, 0.0F, 0U,
+                             30U),
+    };
+    const auto validationOriginal = validationSlots[0].state;
+    std::array<LegacyPublishedMachineGunProjectileSlotAdvanceResult, 1U>
+        validationResults{};
+    validationResults[0].status =
+        LegacyPublishedMachineGunProjectileSlotAdvanceStatus::advanced;
+    validationResults[0].queryCount = 99U;
+    CreatorBspGuardState preflightMustNotRun;
+    const auto invalidDelta = advancePublishedLegacyMachineGunProjectileSlots(
+        rooms, *built.runtime, validationSlots, validationResults, -0.1F, true,
+        creatorBspGuard(preflightMustNotRun));
+    require(invalidDelta.status ==
+                    LegacyPublishedMachineGunProjectileSlotsAdvanceStatus::
+                        invalidInput &&
+                validationSlots[0].state == validationOriginal &&
+                validationResults[0].status ==
+                    LegacyPublishedMachineGunProjectileSlotAdvanceStatus::
+                        advanced &&
+                validationResults[0].queryCount == 99U &&
+                preflightMustNotRun.disableCallCount == 0U,
+            "invalid batch delta changed output, slot, or callback state");
+
+    std::span<LegacyPublishedMachineGunProjectileSlotAdvanceResult> noResults;
+    const auto wrongOutput = advancePublishedLegacyMachineGunProjectileSlots(
+        rooms, *built.runtime, validationSlots, noResults, 0.1F, true,
+        creatorBspGuard(preflightMustNotRun));
+    require(wrongOutput.status ==
+                    LegacyPublishedMachineGunProjectileSlotsAdvanceStatus::
+                        outputSizeMismatch &&
+                validationSlots[0].state == validationOriginal,
+            "output-size mismatch changed a projectile slot");
+
+    auto mismatchedCatalog = catalog(2U);
+    const auto wrongCatalog = advancePublishedLegacyMachineGunProjectileSlots(
+        mismatchedCatalog, *built.runtime, validationSlots, validationResults,
+        0.1F, true, creatorBspGuard(preflightMustNotRun));
+    require(wrongCatalog.status ==
+                    LegacyPublishedMachineGunProjectileSlotsAdvanceStatus::
+                        invalidInput &&
+                validationSlots[0].state == validationOriginal &&
+                validationResults[0].queryCount == 99U,
+            "catalog/runtime mismatch changed output or a projectile slot");
+
+    validationSlots[0].generation = 0U;
+    const auto invalidGeneration =
+        advancePublishedLegacyMachineGunProjectileSlots(
+            rooms, *built.runtime, validationSlots, validationResults, 0.1F,
+            true, creatorBspGuard(preflightMustNotRun));
+    require(invalidGeneration.completed() &&
+                invalidGeneration.status ==
+                    LegacyPublishedMachineGunProjectileSlotsAdvanceStatus::
+                        completedWithRejectedSlots &&
+                invalidGeneration.activeSlotCount == 1U &&
+                invalidGeneration.stateCommitCount == 0U &&
+                invalidGeneration.rejectedSlotCount == 1U &&
+                validationResults[0].status ==
+                    LegacyPublishedMachineGunProjectileSlotAdvanceStatus::
+                        invalidSlot &&
+                !validationResults[0].projectile.has_value() &&
+                validationSlots[0].state == validationOriginal &&
+                preflightMustNotRun.disableCallCount == 0U,
+            "zero-generation active slot produced a handle or changed state");
+}
+
+void testPublishedProjectileSlotAdvanceDoesNotAllocate() {
+    auto built = buildPlayerRuntime();
+    require(built.complete(), "slot-allocation runtime creation failed");
+    publishPlayerCollisionFrame(*built.runtime);
+    const auto rooms = catalog();
+    std::array slots{
+        activeProjectileSlot({10.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 2.0F}, 0.0F, 0U,
+                             40U),
+    };
+    const auto initial = slots[0].state;
+    std::array<LegacyPublishedMachineGunProjectileSlotAdvanceResult, 1U>
+        results{};
+    CreatorBspGuardState mustNotRun;
+    const auto guard = creatorBspGuard(mustNotRun);
+
+    bool complete = true;
+    allocationCount.store(0U, std::memory_order_relaxed);
+    countAllocations.store(true, std::memory_order_relaxed);
+    for (std::size_t index = 0U; index < 4'096U; ++index) {
+        slots[0].state = initial;
+        const auto advanced = advancePublishedLegacyMachineGunProjectileSlots(
+            rooms, *built.runtime, slots, results, 0.01F, true, guard);
+        complete =
+            complete && advanced.completed() &&
+            advanced.stateCommitCount == 1U &&
+            results[0].status ==
+                LegacyPublishedMachineGunProjectileSlotAdvanceStatus::advanced;
+    }
+    countAllocations.store(false, std::memory_order_relaxed);
+    require(complete, "allocation-counted slot advance failed");
+    require(allocationCount.load(std::memory_order_relaxed) == 0U,
+            "active projectile slot advance allocated");
 }
 
 void testPublishedPlayerActorResolverAndNoAllocations() {
@@ -1515,11 +1870,31 @@ int main() {
             std::declval<
                 const LegacyProjectileCreatorBspGuard&>())));
 
+    static_assert(noexcept(advancePublishedLegacyMachineGunProjectileSlots(
+        std::declval<const MissionWorldRoomCatalog&>(),
+        std::declval<const LegacyGameplayCameraMissionRuntime&>(),
+        std::declval<std::span<LegacyMachineGunProjectileSlot>>(),
+        std::declval<
+            std::span<LegacyPublishedMachineGunProjectileSlotAdvanceResult>>(),
+        0.012F, true, nullptr, nullptr,
+        std::declval<const LegacyProjectileCreatorBspGuard&>())));
+    static_assert(noexcept(advancePublishedLegacyMachineGunProjectileSlots(
+        std::declval<const MissionWorldRoomCatalog&>(),
+        std::declval<const LegacyGameplayCameraMissionRuntime&>(),
+        std::declval<std::span<LegacyMachineGunProjectileSlot>>(),
+        std::declval<
+            std::span<LegacyPublishedMachineGunProjectileSlotAdvanceResult>>(),
+        0.012F, true, std::declval<const LegacyProjectileCreatorBspGuard&>())));
+
     testNoHitAndStaticMapping();
     testMaterialAndClientActorOrder();
     testServerActorResolutionStates();
     testPortalAndSignedMaterialMapping();
     testMalformedRuntimeResultsFailClosed();
+    testPublishedProjectileSlotFlightLifetimeAndInactive();
+    testPublishedProjectileSlotActorContactAndFailureIsolation();
+    testPublishedProjectileSlotRestoreFailureAndPreflight();
+    testPublishedProjectileSlotAdvanceDoesNotAllocate();
     testPublishedPlayerActorResolverAndNoAllocations();
     testCreatorBspGuardTransactionAndNoAllocations();
     testPublishedRuntimePortalLoopAndNoAllocations();

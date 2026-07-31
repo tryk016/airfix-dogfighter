@@ -3,9 +3,12 @@
 #include "airfix/assets/MissionWorldRooms.hpp"
 #include "airfix/render/LegacyGameplayCameraMissionRuntime.hpp"
 #include "airfix/simulation/LegacyMachineGunProjectileCollisionCommit.hpp"
+#include "airfix/simulation/LegacyMachineGunProjectileRuntime.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 
 namespace airfix::content {
 
@@ -95,6 +98,65 @@ struct LegacyPublishedMachineGunProjectileCollisionResult final {
             commit->committed() &&
             creatorBspGuard !=
                 LegacyProjectileCreatorBspGuardStatus::enableRejected;
+    }
+};
+
+enum class LegacyPublishedMachineGunProjectileSlotAdvanceStatus : std::uint8_t {
+    notVisited,
+    inactive,
+    invalidSlot,
+    deactivatedByLifetime,
+    advanced,
+    collisionRejected,
+    creatorRestoreFailed,
+};
+
+// Parallel result for exactly one caller-owned projectile slot. projectile is
+// the pre-step generation identity and may no longer resolve after a lifetime
+// or contact deactivation. Damage and surface values are bounded dispatch
+// requests; this layer never calls an actor event or effect runtime.
+struct LegacyPublishedMachineGunProjectileSlotAdvanceResult final {
+    LegacyPublishedMachineGunProjectileSlotAdvanceStatus status{
+        LegacyPublishedMachineGunProjectileSlotAdvanceStatus::notVisited};
+    std::optional<simulation::LegacyMachineGunProjectileHandle> projectile;
+    std::optional<simulation::LegacyProjectileCollisionOutcome> outcome;
+    std::optional<simulation::LegacyMachineGunDamageCommand> damage;
+    std::optional<simulation::LegacyMachineGunSurfaceContactResult> surface;
+    LegacyProjectileCreatorBspGuardStatus creatorBspGuard{
+        LegacyProjectileCreatorBspGuardStatus::notRequested};
+    std::size_t queryCount{};
+    std::size_t portalTransitionCount{};
+
+    [[nodiscard]] constexpr bool stateCommitted() const noexcept {
+        return status == LegacyPublishedMachineGunProjectileSlotAdvanceStatus::
+                             deactivatedByLifetime ||
+               status == LegacyPublishedMachineGunProjectileSlotAdvanceStatus::
+                             advanced;
+    }
+};
+
+enum class LegacyPublishedMachineGunProjectileSlotsAdvanceStatus : std::
+    uint8_t {
+        completed,
+        completedWithRejectedSlots,
+        invalidInput,
+        outputSizeMismatch,
+        creatorRestoreFailed,
+    };
+
+struct LegacyPublishedMachineGunProjectileSlotsAdvanceResult final {
+    LegacyPublishedMachineGunProjectileSlotsAdvanceStatus status{
+        LegacyPublishedMachineGunProjectileSlotsAdvanceStatus::invalidInput};
+    std::size_t visitedSlotCount{};
+    std::size_t activeSlotCount{};
+    std::size_t stateCommitCount{};
+    std::size_t rejectedSlotCount{};
+
+    [[nodiscard]] constexpr bool completed() const noexcept {
+        return status == LegacyPublishedMachineGunProjectileSlotsAdvanceStatus::
+                             completed ||
+               status == LegacyPublishedMachineGunProjectileSlotsAdvanceStatus::
+                             completedWithRejectedSlots;
     }
 };
 
@@ -210,6 +272,47 @@ resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
     const simulation::LegacyMachineGunAmmoProfile& profile,
     const simulation::LegacyProjectileCollisionQueryInput& input,
     bool projectileIsServer,
+    const LegacyProjectileCreatorBspGuard& creatorBspGuard,
+    const LegacyPublishedProjectileCollisionOptions& options = {}) noexcept;
+
+// Advances each active generation-tagged slot in stable caller-owned index
+// order through the recovered ballistic/lifetime transition and the complete
+// published collision transaction. The fixed pool and slot order are explicit
+// deterministic port policy, not a native allocator/scheduler claim.
+//
+// Input shape, delta, and catalog/runtime ownership are validated before any
+// output or slot changes. Inactive slots do not inspect their profile. One
+// malformed slot or rejected collision remains unchanged and does not block a
+// later slot. A lifetime expiry commits without touching collision callbacks.
+// A successful collision commits state before exposing bounded damage/surface
+// requests. Creator-BSP restoration failure aborts the remaining slots and
+// must be treated by the caller as a fatal live-runtime condition.
+//
+// results must have exactly one element per slot. The operation is single-
+// writer, bounded, allocation-free, and noexcept. It owns no scheduler,
+// projectile producer, live callback dispatch, tracer, ricochet effect, or
+// render publication.
+[[nodiscard]] LegacyPublishedMachineGunProjectileSlotsAdvanceResult
+advancePublishedLegacyMachineGunProjectileSlots(
+    const assets::MissionWorldRoomCatalog& catalog,
+    const render::LegacyGameplayCameraMissionRuntime& runtime,
+    std::span<simulation::LegacyMachineGunProjectileSlot> slots,
+    std::span<LegacyPublishedMachineGunProjectileSlotAdvanceResult> results,
+    float deltaSeconds, bool projectileIsServer,
+    LegacyProjectileLiveActorQuery actorQuery, void* actorQueryContext,
+    const LegacyProjectileCreatorBspGuard& creatorBspGuard,
+    const LegacyPublishedProjectileCollisionOptions& options = {}) noexcept;
+
+// Primary-player actor-query convenience overload. Mutable creator-BSP
+// bracketing remains explicit because the immutable published frame cannot
+// expose live actor methods safely.
+[[nodiscard]] LegacyPublishedMachineGunProjectileSlotsAdvanceResult
+advancePublishedLegacyMachineGunProjectileSlots(
+    const assets::MissionWorldRoomCatalog& catalog,
+    const render::LegacyGameplayCameraMissionRuntime& runtime,
+    std::span<simulation::LegacyMachineGunProjectileSlot> slots,
+    std::span<LegacyPublishedMachineGunProjectileSlotAdvanceResult> results,
+    float deltaSeconds, bool projectileIsServer,
     const LegacyProjectileCreatorBspGuard& creatorBspGuard,
     const LegacyPublishedProjectileCollisionOptions& options = {}) noexcept;
 

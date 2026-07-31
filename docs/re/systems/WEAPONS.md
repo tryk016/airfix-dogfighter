@@ -519,6 +519,17 @@ deactivation invalidates its handle immediately, and reuse cannot revive a
 stale identity. The complete operation is bounded, `noexcept`, and
 allocation-free.
 
+`advancePublishedLegacyMachineGunProjectileSlots` now applies the existing
+flight, lifetime, published collision/portal, primary-player actor, terminal
+commit, and creator-BSP transactions to every already-active slot in stable
+supplied-index order. Inactive slots do not inspect profiles; lifetime expiry
+does not touch collision callbacks; a rejected slot stays unchanged without
+blocking later slots. Failed creator-BSP restoration aborts the remainder as a
+fatal live-runtime condition. Each committed result carries only bounded
+damage or surface/ricochet requests for a later dispatcher. The fixed pool and
+slot order are deterministic port policy, not native scheduler evidence. See
+[EXP-20260731-094](../../experiments/EXP-20260731-094-active-machine-gun-projectile-slot-advance.md).
+
 The helpers accept seconds because the owning scheduler boundary already
 performs the recovered millisecond conversion. They reject non-finite or unsafe
 consumed inputs instead of reproducing x87 unordered behavior or invalid
@@ -527,16 +538,15 @@ automatic and projectile-level portal paths, including the atomic
 primary-player resolver and the terminal machine-gun state/command reducer.
 Ownerless retained-room contacts deactivate but deliberately suppress the
 optional ricochet request when no owner-backed material provenance exists.
-The remaining live transaction must supply authored muzzle transforms, advance
-active slots through the published collision transaction, publish and resolve
-other actor geometry/state, provide concrete creator BSP callbacks, and
-dispatch the reduced terminal events/effects without inventing an actor or
-effect.
+The remaining live transaction must supply authored muzzle transforms,
+publish and resolve other actor geometry/state, provide concrete creator BSP
+callbacks, schedule the implemented active-slot step, and dispatch the reduced
+terminal events/effects without inventing an actor or effect.
 
 ## Remaining work
 
-- Feed real rotated-muzzle snapshots into the portable runtime and advance
-  active generation-tagged slots through the published collision transaction.
+- Feed real rotated-muzzle snapshots into the portable runtime and schedule the
+  implemented active generation-tagged slot advancement.
 - Feed the implemented player collider and concrete resolver from the changing
   actor producer, extend the same authenticated publication/resolution to
   other live actors and dynamic portal objects, then connect the implemented
