@@ -239,6 +239,15 @@ Exit gate:
   documented parity tolerances. The product is a native x64 build and exercises
   no Windows-specific gameplay or physics implementation.
 
+Implementation checkpoint (2026-07-31): Windows and iOS now own the same
+bounded `LegacyGameplayCameraMissionRuntime` contract. Each backend keeps one
+camera-packet lease for an entire gameplay draw pass, and each product shell
+holds only a replacement-safe weak producer endpoint. Windows does not advance
+that endpoint from its 60 Hz semantic-input loop. A moving camera remains
+blocked with live flight on the separately recovered 12 ms AirCraft producer,
+x87 runtime evidence, and accepted numeric policy; no substitute platform
+movement law is introduced by this checkpoint.
+
 ## Phase 7 — gameplay and content parity
 
 **Goal:** expand by original module boundaries while protecting the vertical

@@ -1,5 +1,9 @@
 #include "AirfixD3D11Renderer.hpp"
 
+#include "airfix/content/MissionWorldRoomPublication.hpp"
+#include "airfix/render/LegacyGameplayCameraCollision.hpp"
+#include "airfix/render/LegacyGameplayCameraMissionRuntime.hpp"
+
 #include <SDL3/SDL.h>
 
 #include <algorithm>
@@ -76,6 +80,53 @@ using airfix::windows::RenderPresentationSettingsApplyResult;
 using airfix::windows::RenderPresentationSettingsPublicationGate;
 using ScaledTargetIdentity = std::array<const void *, 5U>;
 
+[[nodiscard]] airfix::content::ContentRevision
+revision(const std::uint64_t generation) {
+  airfix::content::ContentRevision result{
+      .generation = generation,
+      .pack =
+          {
+              .size = 4'096U,
+              .sha256 = {},
+          },
+  };
+  for (std::size_t index = 0U; index < result.pack.sha256.size(); ++index) {
+    result.pack.sha256[index] = static_cast<std::uint8_t>(0x20U + index);
+  }
+  return result;
+}
+
+[[nodiscard]] airfix::content::LoadedMissionWorldRoom
+syntheticCameraRoom(const airfix::content::ContentRevision &contentRevision) {
+  airfix::content::LoadedMissionWorldRoom room;
+  room.revision = contentRevision;
+  room.setupEntry.logicalPath = "Missions/Test/Setup.txt";
+  room.setupEntry.archiveFileIndex = 0U;
+  room.startSelection = {
+      .source =
+          airfix::assets::MissionWorldStartSelectionSource::rootRoomFallback,
+      .startPositionIndex = std::nullopt,
+      .worldRoomIndex = 0U,
+  };
+  room.semanticCcfSourceCount = 1U;
+  room.uniqueCcfSourceCount = 1U;
+  room.ccfCacheIndexByLoadSource = {0U};
+  room.spatialArena.rooms.resize(1U);
+  room.spatialArena.retainedPayloadBytes =
+      sizeof(airfix::assets::MissionWorldSpatialRoom);
+  room.retainedSpatialBytes = room.spatialArena.retainedPayloadBytes;
+  room.placedDynamicCollision.roomObjectRanges.resize(1U);
+  room.placedDynamicCollision.retainedPayloadBytes =
+      sizeof(airfix::render::LegacyDynamicBspRoomObjectRange);
+  room.publishedCpuBytes =
+      sizeof(airfix::content::LoadedMissionWorldRoom) +
+      room.setupEntry.logicalPath.size() +
+      room.ccfCacheIndexByLoadSource.size() * sizeof(std::size_t) +
+      room.retainedSpatialBytes +
+      room.placedDynamicCollision.retainedPayloadBytes;
+  return room;
+}
+
 void require(const bool condition, const std::string &message) {
   if (!condition) {
     throw std::runtime_error(message);
@@ -123,6 +174,73 @@ void requireRejected(
       !result.accepted() && !result.changed &&
           result.issue == expected,
       std::string(context) + " reported the wrong failure");
+}
+
+void exerciseMissionCameraRuntime(AirfixD3D11Renderer &renderer) {
+  const auto firstRevision = revision(7U);
+  auto firstRoom = syntheticCameraRoom(firstRevision);
+  require(!airfix::content::validateMissionWorldRoomPublication(firstRoom,
+                                                                firstRevision)
+               .has_value(),
+          "synthetic camera room failed its publication contract");
+  renderer.installLoadedMissionRoom(std::move(firstRoom), firstRevision);
+
+  auto firstEndpoint = renderer.gameplayCameraMissionRuntimeEndpoint();
+  auto firstRuntime = firstEndpoint.lock();
+  require(firstRuntime != nullptr,
+          "Windows renderer did not publish the camera runtime endpoint");
+  const auto bootstrap = firstRuntime->currentSnapshot();
+  require(bootstrap.has_value() && bootstrap->simulationStep == 0U &&
+              bootstrap->publicationGeneration == 1U,
+          "Windows camera runtime did not preserve the bootstrap generation");
+
+  const auto advanced = firstRuntime->tryAdvance({
+      .vehicleChaseWorldPosition = {},
+      .vehicleWorldAnchor = {},
+      .vehicleWorldRotation = {},
+      .refreshDeltaSeconds =
+          airfix::render::legacyAircraftNominalRefreshDeltaSeconds,
+      .vehicleHealth = 1.0F,
+      .vehicleInactive = false,
+      .cameraCyclePressCount = 0U,
+      .rearViewHeld = false,
+      .simulationStep = 1U,
+  });
+  require(advanced.published(),
+          "synthetic camera producer did not publish generation two");
+  firstRuntime.reset();
+  require(renderer.renderFrame(false),
+          "D3D11 did not consume the advanced synthetic camera packet");
+
+  auto rejectedRoom = syntheticCameraRoom(firstRevision);
+  ++rejectedRoom.publishedCpuBytes;
+  bool replacementRejected = false;
+  try {
+    renderer.installLoadedMissionRoom(std::move(rejectedRoom), firstRevision);
+  } catch (const std::runtime_error &) {
+    replacementRejected = true;
+  }
+  require(replacementRejected && !firstEndpoint.expired(),
+          "invalid replacement discarded the active camera runtime");
+
+  const auto secondRevision = revision(8U);
+  auto secondRoom = syntheticCameraRoom(secondRevision);
+  require(!airfix::content::validateMissionWorldRoomPublication(secondRoom,
+                                                                secondRevision)
+               .has_value(),
+          "replacement synthetic camera room failed publication");
+  renderer.installLoadedMissionRoom(std::move(secondRoom), secondRevision);
+  require(firstEndpoint.expired(),
+          "replacing the mission retained the old camera producer endpoint");
+
+  auto secondRuntime = renderer.gameplayCameraMissionRuntimeEndpoint().lock();
+  const auto replacementBootstrap = secondRuntime != nullptr
+                                        ? secondRuntime->currentSnapshot()
+                                        : std::nullopt;
+  require(replacementBootstrap.has_value() &&
+              replacementBootstrap->simulationStep == 0U &&
+              replacementBootstrap->publicationGeneration == 1U,
+          "replacement mission did not publish a fresh camera runtime");
 }
 
 [[nodiscard]] bool completeIdentity(
@@ -566,6 +684,7 @@ void testTransactionalSettingsRuntime() {
               scaledSceneTargetIdentity(renderer)),
       "final 100 percent transition retained scaled targets");
   renderAndRequireLayout(renderer, candidate, "final direct frame");
+  exerciseMissionCameraRuntime(renderer);
 }
 
 } // namespace

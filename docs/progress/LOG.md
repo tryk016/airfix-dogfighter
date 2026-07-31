@@ -4431,3 +4431,30 @@ superseded evidence.
   jobs: Ubuntu 24.04, macOS 26, Windows 2025, the Windows x64 D3D11/XAudio2
   product smoke, clangd, iPhoneOS, and iPhoneSimulator. Physical-device iOS
   acceptance remains separate.
+
+## 2026-07-31 - Windows gameplay-camera runtime parity
+
+- `EXP-20260731-083` replaces the D3D11 mission's frozen bootstrap camera
+  packet with the same bounded `LegacyGameplayCameraMissionRuntime` already
+  owned by Metal. Publication still validates the complete mission and prepares
+  GPU resources before moving collision ownership or replacing the active
+  snapshot.
+- The bootstrap must expose simulation step `0` and camera generation `1`.
+  Windows publishes only a replacement-safe weak producer endpoint and retains
+  one packet lease from layout construction through the complete draw pass.
+  Missing acquisition drops the gameplay frame instead of falling back to a
+  stale static camera.
+- The product shell includes endpoint lifetime in ready/resume decisions but
+  deliberately does not advance the camera from the 60 Hz input pump. Live
+  motion remains gated on the distinct trace-driven 12 ms AirCraft producer
+  and accepted x87 numeric policy.
+- A synthetic D3D11 mission test covers bootstrap, a direct generation-2
+  publication and render, failed replacement retention, successful replacement
+  expiry, and fresh replacement bootstrap without private data.
+- A fresh portable GCC 15.2/Ninja build completed 383 steps and passed 120/120
+  tests. The current MSVC 19.51/Ninja Windows product build completed all
+  pending targets and passed 130/130 tests, including the D3D11 renderer and
+  both native product smokes. Independent review reported no findings.
+  Synthetic public-boundary tests, the 622-file scan, changed-range formatting,
+  local-path review, and `git diff --check` pass. Hosted platform builds remain
+  the publication gate.
