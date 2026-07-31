@@ -4698,3 +4698,40 @@ superseded evidence.
   `136/136`; the portable preset passes `126/126`. Public-boundary, Ghidra,
   Rizin, and compilation-database checks are green. Hosted Apple compilation
   remains the publication gate.
+
+## 2026-07-31 - AFS function activation and initial order
+
+- `EV-20260731-001` / `EXP-20260731-079` follows source through the forward
+  lexer, tail-appended tokens, contiguous AST children, ascending object-child
+  compilation, prepended compiled records, filtered process construction and
+  FIFO execution nodes. Ghidra 12.1.2 is canonical; Rizin 0.9.1 and rzpipe
+  0.6.2 independently confirm the selected PE32/i386 boundaries and
+  instructions.
+- The compiler maps `event` to Autoexec off and `action`/`timer` to Autoexec
+  on. One new process therefore queues initial actions/timers in reverse source
+  declaration order, while events remain available through explicit named
+  calls. The evidence does not establish bytecode semantics, live
+  `Load`/`Start` replacement, dynamic process mutation, or global dispatcher
+  and presentation order.
+- A bounded read-only census of all 52 authenticated local AFS objects found
+  114 events, 328 actions, no timers, 47 mission-fail calls, 20
+  mission-success calls, and no dynamic `Call`, `KillProcess`, or `LoadScript`
+  use. Only aggregates are public; no script text, logical path, per-file
+  result, original binary, or private resource is tracked.
+- Added the portable `LegacyAfsFunctionSchedule` oracle for already-classified
+  declarations. It preserves source indices and duplicates, emits only
+  Autoexec declarations in the proven reverse order, and rejects forged kinds
+  atomically. It does not parse, compile, execute, resolve names, own process
+  state, or wire a live mission.
+- After rebasing onto current `main`, a fresh Windows GCC/Ninja build completes
+  408/408 steps and passes 127/127 CTests. A clean MSVC 19.51/Ninja build of
+  the complete SDL3/D3D11/XAudio2 product passes 137/137 CTests. The Visual
+  Studio generator again stalled in its compiler probe, so it was replaced by
+  the equivalent MSVC/Ninja validation rather than treated as a source
+  failure. Focused clang-format 22.1.3 warnings-as-errors also passes.
+- Both analysis-wrapper suites, all 12 Rizin exporter tests, synthetic
+  public-boundary tests, the 660-file repository boundary scan, the
+  362-row/14-column unique function catalogue, and `git diff --check` pass.
+  The generated compilation database contains 263 entries and no Apple-only
+  sources. The catalogue retains only its two known historical missing
+  references. Hosted Actions remain the publication gate.

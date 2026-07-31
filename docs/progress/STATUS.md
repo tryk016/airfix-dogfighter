@@ -1064,8 +1064,21 @@
   sides and the native `INT32_MAX` wraparound, and owns no FourCC, roster,
   score/stat mutation, file write, AFS wiring, or UI execution. Ordinary
   mission refresh also now has a static process-before-trigger-poll boundary,
-  but unresolved compiler/bytecode/global-order evidence still forbids live
-  AFS integration.
+  but unresolved VM/lifecycle/global-order evidence still forbids live AFS
+  integration.
+- `EV-20260731-001` closes the AFS compiled-function activation and initial
+  single-process order boundary. The compiler maps `event` to Autoexec off and
+  `action`/`timer` to Autoexec on, compiles function declarations in source
+  order, prepends each record, and then appends accepted records to the process
+  FIFO; initial actions/timers therefore execute in reverse source order.
+  `LegacyAfsFunctionSchedule` implements only this already-classified rule and
+  atomically rejects forged kinds. A comment/string-aware read-only census of
+  all 52 authenticated local AFS objects found 114 events, 328 actions, no
+  timers, 47 mission-fail calls, 20 mission-success calls, and no dynamic
+  `Call`, `KillProcess`, or `LoadScript` use. No script text, logical name, or
+  private/original dependency is public. The live `Load`/`Start` lifecycle, VM
+  execution, dynamic process mutation, and global dispatcher/presentation
+  order remain NO-GO.
 - `EV-20260731-002` closes the exact five-word AFS mission-outcome call site.
   All 67 recovered calls supply source literal `true`; token registration maps
   it to tag `0x137`, and the compiler emits
@@ -1157,10 +1170,10 @@
    water, collision, engine-transition, and too-high branches; establish
    x87-versus-portable numeric tolerances and deterministic replacement PRNG
    sequencing before composing the statically recovered 12 ms flight law.
-3. Keep the isolated mission-outcome state and implemented downstream
-   result/progression consumer unwired until the remaining AFS compiler flag,
-   compiled-function source order, representative bytecode, extra process
-   owners, and global dispatcher/presentation order are proven. Then recover
+3. Keep the isolated mission-outcome state, initial AFS function schedule, and
+   downstream result/progression consumer unwired until representative
+   bytecode, a bounded VM, the `Load`/`Start` lifecycle, mutation during
+   refresh, and global dispatcher/presentation order are proven. Then recover
    the roster lifecycle, score/stat contract, schema, corruption recovery, and
    atomic modern save boundary before implementing `THRD`/`AXMI`/`ALMI`/`SCOR`
    storage. Preserve one already-ordered outcome call per transition; do not
