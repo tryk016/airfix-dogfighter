@@ -166,6 +166,12 @@ PC53/nearest-even to observed live parity.
 
 ## Minimal controlled dynamic capture
 
+The fail-closed normalized contract and synthetic validator for this step are
+now documented in
+[EXP-20260731-097](EXP-20260731-097-aircraft-runtime-capture-validator.md) and
+the [capture runbook](../toolchain/AIRCRAFT-RUNTIME-CAPTURE.md). No real capture
+has yet been performed.
+
 The next numeric experiment should use the verified x32dbg environment as an
 ordinary user, offline from analysis services, on working copies only.
 It must not patch files, inject code, save modified executables, or use

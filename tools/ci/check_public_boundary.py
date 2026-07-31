@@ -49,6 +49,8 @@ BLOCKED_PATH_PREFIXES = {
 }
 
 BLOCKED_FILE_ENDINGS = {
+    ".aircraft-capture.jsonl",
+    ".aircraft-capture.jsonl.bak",
     ".dd32.bak",
     ".dd64.bak",
 }

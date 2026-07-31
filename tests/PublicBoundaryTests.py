@@ -68,6 +68,11 @@ def main() -> int:
         assert_blocked(root, "notes/function.bndb", "forbidden file type")
         assert_blocked(root, "notes/session.trace32", "forbidden file type")
         assert_blocked(root, "notes/session.dd32.bak", "forbidden file type")
+        assert_blocked(
+            root,
+            "notes/private.aircraft-capture.jsonl",
+            "forbidden file type",
+        )
 
     print("Public boundary tests passed.")
     return 0

@@ -4876,3 +4876,30 @@ superseded evidence.
   263-entry portable compilation-database check, all 12 Rizin exporter tests,
   changed-addition local-path scanning, and `git diff --check` pass. Hosted
   platform builds remain the publication gate.
+
+## 2026-07-31 - AirCraft controlled runtime-capture validator
+
+- `EXP-20260731-097` and the capture runbook define a bounded, path-free JSONL
+  contract for the exact reference modules and 14 recovered consumer,
+  scheduler, event, and rigid-body RVAs. The fail-closed validator binds every
+  sample to a stable thread and x87/MXCSR control policy while retaining sticky
+  exception status as evidence.
+- Exact rational arithmetic validates the 11 signed event-store vectors without
+  host floating-point assumptions. The V1-V6 oracles cover recovered state,
+  derivative, spill, precision-control, and rounding-control discriminators.
+  Acceptance also requires chronological startup records and contiguous
+  zero/one/many 12 ms refresh observations. Observation-only captures always
+  remain NO-GO.
+- Inputs are limited to 4 MiB, 10,000 samples, and 64 KiB per line. Symlinks,
+  unknown or duplicate fields, wrong hashes/RVAs, mixed threads or policies,
+  out-of-range times, malformed values, and oracle mismatches are rejected.
+  Output never echoes filenames, paths, hashes, payloads, or state. Capture
+  JSONL and debugger artefacts are ignored and blocked at the public boundary.
+- Nine synthetic validator tests pass. The clean GCC 15.2/Ninja build completed
+  408 steps and passes 128/128 CTests; the clean MSVC 19.51 HostX64/Ninja
+  Windows-product build completed 712 steps and passes 140/140 CTests. The
+  263-entry portable compilation database contains no Windows or Apple source.
+  Public-boundary tests and the 675-file scan, all 12 Rizin exporter tests,
+  actionlint, Python bytecode compilation, and `git diff --check` pass. No real
+  capture or original/private data entered the repository; hosted platform
+  builds remain the publication gate.
