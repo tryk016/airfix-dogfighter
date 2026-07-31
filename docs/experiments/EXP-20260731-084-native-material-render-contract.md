@@ -124,9 +124,10 @@ grouping is bypassed for this list; an `A/B/A` sequence must remain `A/B/A`.
 
 `CcCamera::RenderRoom` drains opaque phases first. It then selects native depth
 mode three (`GREATER_EQUAL`, depth write disabled), renders a pre-sorted layer,
-sorts and drains the shared triangle/sprite/custom queue, runs `PostSort`, and
-drains the post-sort layer. Sorting is scoped to each room/portal render call,
-not globally to a frame.
+sorts the shared triangle/sprite/custom queue, calls `PostSort` to drain that
+queue, and drains the following layer. `PostSort` is the sorted-item drain, not
+a separate hook after an earlier drain. Sorting is scoped to each room/portal
+render call, not globally to a frame.
 
 The formula, unsigned direction, stability, prepend tie behavior, cross-kind
 queue, and depth phase are high-confidence static results. Exact `_ftol`
@@ -152,9 +153,17 @@ with `DrawMaterial` into each `DrawSubmissionCommand`, alongside all three
 texture roles. Existing generic callers that do not own CCF metadata receive
 the native reset defaults.
 
-This is a data-preservation change only. Neither native backend consumes the
-new state yet, so it cannot cause a partial or incorrectly ordered
-transparency implementation.
+`LegacySortedRenderQueue` implements the recovered `CcLinkSort::Sort` ordering
+for already-keyed, caller-owned triangle/sprite/custom references. It accepts
+one native input-chain order, rejects invalid kinds and explicit item/working-
+memory limit violations before allocation, and performs four stable unsigned
+LSD byte passes. Equal keys retain input-chain order; native reverse-discovery
+ties remain a producer-side consequence of prepending. The helper that maps an
+already-quantized signed depth to a key uses exact unsigned arithmetic but does
+not perform or emulate `_ftol`.
+
+Neither native backend consumes the new state or queue yet, so this boundary
+cannot cause a partial or incorrectly ordered transparency implementation.
 
 ## Synthetic verification
 
@@ -169,22 +178,31 @@ Tests cover:
   span for a non-empty material list;
 - texture-binding and draw-command propagation;
 - fail-closed rejection of non-finite material scalars/vectors with material
-  context.
+  context;
+- unsigned ordering across all four key bytes, stable mixed-kind ties,
+  caller-owned identity, empty/single inputs, and exact item/working-memory
+  limits for the portable sorted queue.
 
-A fresh Windows GCC/Ninja build completed and all 120 portable CTests passed.
-An isolated native MSVC 19.51/Ninja build completed all 669 steps, linked the
-Windows product, and passed all 130 CTests. Independent WSL2 GCC validation
-passed all 120 portable CTests. Synthetic public-boundary tests and the
-623-file repository scan passed, and independent final review reported no
-remaining finding.
+A fresh Windows GCC/Ninja build completes and all 121 portable CTests pass. An
+isolated native MSVC 19.51/Ninja build links the Windows product and passes all
+131 CTests, including both D3D11 product smokes. Exact commit `88235e8` also
+builds all 376 steps in a clean exported source tree under the dedicated
+`Airfix-Dev` WSL2 GCC 13.3/Ninja environment and passes all 121 CTests.
+Synthetic public-boundary tests, the 626-file repository scan, the
+340-row/14-column unique function catalogue, and `git diff --check` pass. Two
+independent reviews report no code finding; their sole P2 identified stale
+validation provenance in this expanded report, which is corrected by this
+paragraph. PR #90 hosted runs `30622519149` and `30622518942` pass all seven
+required Windows product, Windows/Ubuntu/macOS portable, clangd, iPhoneOS, and
+iPhoneSimulator jobs.
 
 ## Decision
 
 **GO** for retaining the recovered material state through the public C++20
 parser, binding, mesh, and draw-command boundary.
 
-**GO** for designing the later per-room unsigned sorted-item queue from the
-recovered formula, shared item kinds, prepend tie order, and depth phase.
+**GO** for the implemented per-room unsigned sorted-item queue over already
+prepared native-chain items and already-quantized keys.
 
 **NO-GO** for enabling native-backend blend or multitexture behavior in this
 slice. The current range-level draw plan cannot reproduce triangle-level
