@@ -4575,3 +4575,28 @@ superseded evidence.
   inputs, overflow, and allocation freedom. The complete portable suite passes
   124/124 CTests; the native MSVC Windows product builds and passes 134/134,
   including both D3D11 product smokes.
+
+## 2026-07-31 - legacy weapon crosshair projection
+
+- `EV-20260731-004` / `EXP-20260731-088` recovers the shared
+  `AfWeapon::RenderCrosshair` gates, state fields, exact `2.0`/`0.5` constants,
+  first-visible-size latch, collision-dependent logical size, and centred
+  textured draw. Ghidra supplies the canonical MSVC class interpretation;
+  Rizin independently matches the three selected function ranges.
+- The original type module loads three separate 32x32 format-8 GTI roles:
+  `MGsight`, `ROsight`, and `BOsight`. The source and decoded images remain
+  private and outside Git.
+- A new allocation-free shared C++20 planner composes recovered logical sizing
+  with the native output projection. Position follows the gameplay camera;
+  size follows output-fit UI scale and the independent user UI scale; 3D render
+  scale has no effect. Off-screen and depth states remain labelled results for
+  the later selected-weapon consumer.
+- Synthetic tests cover the recovered canvas, first-visible latch, every
+  required aspect family, 50-200% render scale, 75-150% UI scale, Original
+  4:3, invalid input, nested projection failure, and 4,096 projections without
+  allocation. Authenticated sight loading, live aim/collision, and native
+  sprite submission remain separate work.
+- A fresh GCC 15.2/Ninja Release build passes 125/125 portable CTests. A fresh
+  MSVC 19.51/Ninja Release build of the Windows SDL3/D3D11/XAudio2 product
+  passes 135/135 CTests including both native product smokes. Public-boundary,
+  12/12 Rizin export-normalization, clang-format, and diff checks pass.

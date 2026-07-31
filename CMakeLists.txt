@@ -200,6 +200,7 @@ add_library(airfix_render
     src/airfix/render/MissionWorldDynamicCollisionFrame.cpp
     src/airfix/render/NativeRenderLayout.cpp
     src/airfix/render/NativeGameplayScreenProjection.cpp
+    src/airfix/render/LegacyWeaponCrosshairProjection.cpp
     src/airfix/render/RenderPresentationSettings.cpp
     src/airfix/render/RenderPresentationTransaction.cpp
     src/airfix/render/RenderFrameDiagnostics.cpp
@@ -943,6 +944,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_native_gameplay_screen_projection_tests
         COMMAND airfix_native_gameplay_screen_projection_tests)
+
+    add_executable(airfix_legacy_weapon_crosshair_projection_tests
+        tests/LegacyWeaponCrosshairProjectionTests.cpp)
+    target_link_libraries(airfix_legacy_weapon_crosshair_projection_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_legacy_weapon_crosshair_projection_tests
+        COMMAND airfix_legacy_weapon_crosshair_projection_tests)
 
     add_executable(airfix_render_presentation_settings_tests
         tests/RenderPresentationSettingsTests.cpp)

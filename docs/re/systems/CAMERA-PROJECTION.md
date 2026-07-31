@@ -475,6 +475,17 @@ widescreen or used the same off-screen visibility rule. The implementation and
 required-aspect tests are recorded in
 [EXP-20260731-087](../../experiments/EXP-20260731-087-native-gameplay-screen-projection.md).
 
+`src/airfix/render/LegacyWeaponCrosshairProjection.cpp` is the first concrete
+consumer of that bridge. It applies the recovered `AfWeapon::RenderCrosshair`
+distance scale, first-visible-size latch, and half-size centring in the legacy
+logical UI domain, then multiplies size by the output-fit UI scale and the
+independent user UI-scale setting. The 3D render scale never affects the
+rectangle. Off-screen and recovered-depth labels are forwarded unchanged so a
+later selected-weapon consumer can choose a visibility policy without changing
+projection or presenting that policy as native evidence. The evidence and
+portable tests are recorded in
+[EXP-20260731-088](../../experiments/EXP-20260731-088-legacy-weapon-crosshair-projection.md).
+
 `src/airfix/render/LegacyGameplayCameraStepCoordinator.cpp` composes the
 recovered producer stages without hiding missing inputs. It accepts the raw
 AirCraft scheduler delta, live health, and inactive state, applies cumulative
@@ -605,3 +616,4 @@ evidence is recovered.
 - [AirCraft camera input contract](../../experiments/EXP-20260728-025-camera-aircraft-input-contract.md)
 - [Native render layout and Hor+ integration](../../experiments/EXP-20260729-049-native-render-layout-horplus.md)
 - [Native gameplay screen projection](../../experiments/EXP-20260731-087-native-gameplay-screen-projection.md)
+- [Legacy weapon crosshair projection](../../experiments/EXP-20260731-088-legacy-weapon-crosshair-projection.md)
