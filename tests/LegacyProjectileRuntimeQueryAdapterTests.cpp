@@ -31,13 +31,6 @@ void require(const bool condition, const char* const message) {
     }
 }
 
-[[nodiscard]] MissionWorldRoomCatalog catalog(
-    const std::size_t roomCount = 1U) {
-    MissionWorldRoomCatalog result;
-    result.rooms.resize(roomCount);
-    return result;
-}
-
 [[nodiscard]] MissionWorldRuntimeCombinedLineTraceResult noHitTrace() {
     return {
         .status = MissionWorldRuntimeCombinedLineTraceStatus::noHit,
@@ -198,9 +191,8 @@ queryActorWhileCreatorBspDisabled(
 }
 
 void testNoHitAndStaticMapping() {
-    const auto rooms = catalog();
     const auto noHit = legacyProjectileQueryResultFromRuntimeTrace(
-        rooms, noHitTrace(), true, nullptr, nullptr);
+        1U, noHitTrace(), true, nullptr, nullptr);
     require(
         noHit.status == LegacyProjectileCollisionQueryStatus::noHit &&
             !noHit.hit.has_value(),
@@ -208,7 +200,7 @@ void testNoHitAndStaticMapping() {
 
     const auto mappedStatic =
         legacyProjectileQueryResultFromRuntimeTrace(
-            rooms, staticTrace(), true, nullptr, nullptr);
+        1U, staticTrace(), true, nullptr, nullptr);
     require(
         mappedStatic.status ==
                 LegacyProjectileCollisionQueryStatus::hit &&
@@ -223,7 +215,6 @@ void testNoHitAndStaticMapping() {
 }
 
 void testMaterialAndClientActorOrder() {
-    const auto rooms = catalog();
     ActorQueryState mustNotRun{
         .result =
             {
@@ -232,7 +223,7 @@ void testMaterialAndClientActorOrder() {
             },
     };
     const auto material = legacyProjectileQueryResultFromRuntimeTrace(
-        rooms,
+        1U,
         dynamicTrace(
             91U,
             static_cast<std::uint32_t>(
@@ -254,7 +245,7 @@ void testMaterialAndClientActorOrder() {
 
     const auto materialBeforePortal =
         legacyProjectileQueryResultFromRuntimeTrace(
-            rooms,
+        1U,
             dynamicTrace(
                 0U,
                 static_cast<std::uint32_t>(
@@ -274,7 +265,7 @@ void testMaterialAndClientActorOrder() {
         "material 8 was incorrectly gated by later portal metadata");
 
     const auto client = legacyProjectileQueryResultFromRuntimeTrace(
-        rooms,
+        1U,
         dynamicTrace(92U),
         false,
         queryActor,
@@ -291,7 +282,6 @@ void testMaterialAndClientActorOrder() {
 }
 
 void testServerActorResolutionStates() {
-    const auto rooms = catalog();
     ActorQueryState resolved{
         .result =
             {
@@ -303,7 +293,7 @@ void testServerActorResolutionStates() {
             },
     };
     auto mapped = legacyProjectileQueryResultFromRuntimeTrace(
-        rooms,
+        1U,
         dynamicTrace(93U),
         true,
         queryActor,
@@ -331,7 +321,7 @@ void testServerActorResolutionStates() {
             },
     };
     mapped = legacyProjectileQueryResultFromRuntimeTrace(
-        rooms,
+        1U,
         dynamicTrace(94U),
         true,
         queryActor,
@@ -353,14 +343,14 @@ void testServerActorResolutionStates() {
     };
     const auto rejectedResult =
         legacyProjectileQueryResultFromRuntimeTrace(
-            rooms,
+        1U,
             dynamicTrace(95U),
             true,
             queryActor,
             &rejectedState);
     const auto missingResolver =
         legacyProjectileQueryResultFromRuntimeTrace(
-            rooms,
+        1U,
             dynamicTrace(96U),
             true,
             nullptr,
@@ -374,7 +364,7 @@ void testServerActorResolutionStates() {
     };
     const auto unknownResult =
         legacyProjectileQueryResultFromRuntimeTrace(
-            rooms,
+        1U,
             dynamicTrace(97U),
             true,
             queryActor,
@@ -390,9 +380,8 @@ void testServerActorResolutionStates() {
 }
 
 void testPortalAndSignedMaterialMapping() {
-    const auto rooms = catalog(4U);
     const auto portal = legacyProjectileQueryResultFromRuntimeTrace(
-        rooms,
+        4U,
         dynamicTrace(0U, 4U, 0, 1U),
         true,
         nullptr,
@@ -407,7 +396,7 @@ void testPortalAndSignedMaterialMapping() {
 
     const auto rawNegative =
         legacyProjectileQueryResultFromRuntimeTrace(
-            rooms,
+        4U,
             dynamicTrace(0U, 0xFFFFFFFFU),
             true,
             nullptr,
@@ -421,7 +410,6 @@ void testPortalAndSignedMaterialMapping() {
 }
 
 void testMalformedRuntimeResultsFailClosed() {
-    const auto rooms = catalog();
     auto inconsistentNoHit = noHitTrace();
     inconsistentNoHit.hit = staticTrace().hit;
     auto missingHit = noHitTrace();
@@ -441,49 +429,52 @@ void testMalformedRuntimeResultsFailClosed() {
     inconsistentRange.hit->withinRequestedSegment = false;
     auto badStatic = staticTrace();
     badStatic.hit->dynamicObjectIndex = 0U;
-    MissionWorldRoomCatalog incompleteCatalog;
 
     const auto rejectedStatus =
         LegacyProjectileCollisionQueryStatus::rejected;
     require(
         legacyProjectileQueryResultFromRuntimeTrace(
-            rooms, inconsistentNoHit, true, nullptr, nullptr)
+            1U, inconsistentNoHit, true, nullptr, nullptr)
                 .status == rejectedStatus &&
             legacyProjectileQueryResultFromRuntimeTrace(
-                rooms, missingHit, true, nullptr, nullptr)
+                1U, missingHit, true, nullptr, nullptr)
                 .status == rejectedStatus &&
             legacyProjectileQueryResultFromRuntimeTrace(
-                rooms, invalidStatus, true, nullptr, nullptr)
+                   1U, invalidStatus, true, nullptr, nullptr)
                 .status == rejectedStatus &&
             legacyProjectileQueryResultFromRuntimeTrace(
-                rooms, incompleteDynamic, true, nullptr, nullptr)
+                   1U, incompleteDynamic, true, nullptr, nullptr)
                 .status == rejectedStatus &&
             legacyProjectileQueryResultFromRuntimeTrace(
-                rooms, badPortal, true, nullptr, nullptr)
+                1U, badPortal, true, nullptr, nullptr)
                 .status == rejectedStatus &&
             legacyProjectileQueryResultFromRuntimeTrace(
-                rooms, badType, true, nullptr, nullptr)
+                1U, badType, true, nullptr, nullptr)
                 .status == rejectedStatus &&
             legacyProjectileQueryResultFromRuntimeTrace(
-                rooms,
+                   1U,
                 missingSolidPortalTarget,
                 true,
                 nullptr,
                 nullptr)
                 .status == rejectedStatus &&
             legacyProjectileQueryResultFromRuntimeTrace(
-                rooms, inconsistentRange, true, nullptr, nullptr)
+                   1U, inconsistentRange, true, nullptr, nullptr)
                 .status == rejectedStatus &&
             legacyProjectileQueryResultFromRuntimeTrace(
-                rooms, badStatic, true, nullptr, nullptr)
+                1U, badStatic, true, nullptr, nullptr)
                 .status == rejectedStatus &&
             legacyProjectileQueryResultFromRuntimeTrace(
-                incompleteCatalog,
+                   0U,
                 noHitTrace(),
                 true,
                 nullptr,
                 nullptr)
-                .status == rejectedStatus,
+                .status == rejectedStatus &&
+            legacyProjectileQueryResultFromRuntimeTrace(
+                std::numeric_limits<std::size_t>::max(), noHitTrace(), true,
+                nullptr, nullptr)
+                    .status == rejectedStatus,
         "malformed runtime trace crossed the adapter");
 }
 
@@ -719,7 +710,6 @@ void testPublishedProjectileSlotFlightLifetimeAndInactive() {
     auto built = buildPlayerRuntime();
     require(built.complete(), "slot-flight runtime creation failed");
     publishPlayerCollisionFrame(*built.runtime);
-    const auto rooms = catalog();
 
     std::array<LegacyMachineGunProjectileSlot, 3U> slots{};
     slots[0].ammoProfile.impactDamage = std::numeric_limits<float>::quiet_NaN();
@@ -744,7 +734,7 @@ void testPublishedProjectileSlotFlightLifetimeAndInactive() {
     std::array<LegacyPublishedMachineGunProjectileSlotAdvanceResult, 3U>
         firstResults{};
     const auto first = advancePublishedLegacyMachineGunProjectileSlots(
-        rooms, *built.runtime, slots, firstResults, 1.0F, true,
+        *built.runtime, slots, firstResults, 1.0F, true,
         creatorBspGuard(mustNotRun));
     require(first.completed() &&
                 first.status ==
@@ -795,7 +785,6 @@ void testPublishedProjectileSlotActorContactAndFailureIsolation() {
     auto built = buildPlayerRuntime();
     require(built.complete(), "slot-contact runtime creation failed");
     publishPlayerCollisionFrame(*built.runtime);
-    const auto rooms = catalog();
 
     std::array slots{
         activeProjectileSlot({0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 4.0F}, 0.0F, 7U,
@@ -808,7 +797,7 @@ void testPublishedProjectileSlotActorContactAndFailureIsolation() {
     std::array<LegacyPublishedMachineGunProjectileSlotAdvanceResult, 1U>
         results{};
     const auto contact = advancePublishedLegacyMachineGunProjectileSlots(
-        rooms, *built.runtime, slots, results, 1.0F, true,
+        *built.runtime, slots, results, 1.0F, true,
         creatorBspGuard(missingCreator));
     require(contact.completed() && contact.stateCommitCount == 1U &&
                 results[0].status ==
@@ -849,7 +838,7 @@ void testPublishedProjectileSlotActorContactAndFailureIsolation() {
     std::array<LegacyPublishedMachineGunProjectileSlotAdvanceResult, 2U>
         isolatedResults{};
     const auto isolated = advancePublishedLegacyMachineGunProjectileSlots(
-        rooms, *built.runtime, isolatedSlots, isolatedResults, 0.5F, true,
+        *built.runtime, isolatedSlots, isolatedResults, 0.5F, true,
         creatorBspGuard(rejectedCreator));
     require(isolated.completed() &&
                 isolated.status ==
@@ -878,7 +867,6 @@ void testPublishedProjectileSlotRestoreFailureAndPreflight() {
     auto built = buildPlayerRuntime();
     require(built.complete(), "slot-restore runtime creation failed");
     publishPlayerCollisionFrame(*built.runtime);
-    const auto rooms = catalog();
 
     std::array slots{
         activeProjectileSlot({0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 4.0F}, 0.0F, 7U,
@@ -899,7 +887,7 @@ void testPublishedProjectileSlotRestoreFailureAndPreflight() {
     std::array<LegacyPublishedMachineGunProjectileSlotAdvanceResult, 2U>
         results{};
     const auto aborted = advancePublishedLegacyMachineGunProjectileSlots(
-        rooms, *built.runtime, slots, results, 1.0F, true,
+        *built.runtime, slots, results, 1.0F, true,
         queryActorWhileCreatorBspDisabled, &restoreFailure,
         creatorBspGuard(restoreFailure));
     require(
@@ -938,7 +926,7 @@ void testPublishedProjectileSlotRestoreFailureAndPreflight() {
     validationResults[0].queryCount = 99U;
     CreatorBspGuardState preflightMustNotRun;
     const auto invalidDelta = advancePublishedLegacyMachineGunProjectileSlots(
-        rooms, *built.runtime, validationSlots, validationResults, -0.1F, true,
+        *built.runtime, validationSlots, validationResults, -0.1F, true,
         creatorBspGuard(preflightMustNotRun));
     require(invalidDelta.status ==
                     LegacyPublishedMachineGunProjectileSlotsAdvanceStatus::
@@ -953,7 +941,7 @@ void testPublishedProjectileSlotRestoreFailureAndPreflight() {
 
     std::span<LegacyPublishedMachineGunProjectileSlotAdvanceResult> noResults;
     const auto wrongOutput = advancePublishedLegacyMachineGunProjectileSlots(
-        rooms, *built.runtime, validationSlots, noResults, 0.1F, true,
+        *built.runtime, validationSlots, noResults, 0.1F, true,
         creatorBspGuard(preflightMustNotRun));
     require(wrongOutput.status ==
                     LegacyPublishedMachineGunProjectileSlotsAdvanceStatus::
@@ -961,21 +949,10 @@ void testPublishedProjectileSlotRestoreFailureAndPreflight() {
                 validationSlots[0].state == validationOriginal,
             "output-size mismatch changed a projectile slot");
 
-    auto mismatchedCatalog = catalog(2U);
-    const auto wrongCatalog = advancePublishedLegacyMachineGunProjectileSlots(
-        mismatchedCatalog, *built.runtime, validationSlots, validationResults,
-        0.1F, true, creatorBspGuard(preflightMustNotRun));
-    require(wrongCatalog.status ==
-                    LegacyPublishedMachineGunProjectileSlotsAdvanceStatus::
-                        invalidInput &&
-                validationSlots[0].state == validationOriginal &&
-                validationResults[0].queryCount == 99U,
-            "catalog/runtime mismatch changed output or a projectile slot");
-
     validationSlots[0].generation = 0U;
     const auto invalidGeneration =
         advancePublishedLegacyMachineGunProjectileSlots(
-            rooms, *built.runtime, validationSlots, validationResults, 0.1F,
+            *built.runtime, validationSlots, validationResults, 0.1F,
             true, creatorBspGuard(preflightMustNotRun));
     require(invalidGeneration.completed() &&
                 invalidGeneration.status ==
@@ -997,7 +974,6 @@ void testPublishedProjectileSlotAdvanceDoesNotAllocate() {
     auto built = buildPlayerRuntime();
     require(built.complete(), "slot-allocation runtime creation failed");
     publishPlayerCollisionFrame(*built.runtime);
-    const auto rooms = catalog();
     std::array slots{
         activeProjectileSlot({10.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 2.0F}, 0.0F, 0U,
                              40U),
@@ -1014,7 +990,7 @@ void testPublishedProjectileSlotAdvanceDoesNotAllocate() {
     for (std::size_t index = 0U; index < 4'096U; ++index) {
         slots[0].state = initial;
         const auto advanced = advancePublishedLegacyMachineGunProjectileSlots(
-            rooms, *built.runtime, slots, results, 0.01F, true, guard);
+            *built.runtime, slots, results, 0.01F, true, guard);
         complete =
             complete && advanced.completed() &&
             advanced.stateCommitCount == 1U &&
@@ -1072,7 +1048,6 @@ void testPublishedPlayerActorResolverAndNoAllocations() {
                 LegacyProjectileLiveActorQueryStatus::rejected,
         "published player resolver state mismatch");
 
-    const auto rooms = catalog();
     const LegacyProjectileCollisionQueryInput input{
         .segmentStart = {0.0F, 0.0F, 0.0F},
         .segmentEnd = {0.0F, 0.0F, 4.0F},
@@ -1080,7 +1055,7 @@ void testPublishedPlayerActorResolverAndNoAllocations() {
     };
     const auto actorContact =
         resolvePublishedLegacyProjectileCollisionLoop(
-            rooms, *built.runtime, input, true);
+            *built.runtime, input, true);
     require(
         actorContact.completed() &&
             actorContact.queryCount == 1U &&
@@ -1109,7 +1084,6 @@ void testPublishedPlayerActorResolverAndNoAllocations() {
     };
     const auto actorTransaction =
         resolvePublishedLegacyMachineGunProjectileCollision(
-            rooms,
             *built.runtime,
             projectile,
             *ammo,
@@ -1133,7 +1107,6 @@ void testPublishedPlayerActorResolverAndNoAllocations() {
     mismatchedProjectile.position.z = 3.0F;
     const auto mismatchedTransaction =
         resolvePublishedLegacyMachineGunProjectileCollision(
-            rooms,
             *built.runtime,
             mismatchedProjectile,
             *ammo,
@@ -1159,7 +1132,7 @@ void testPublishedPlayerActorResolverAndNoAllocations() {
             0U);
     const auto projectileGate =
         resolvePublishedLegacyProjectileCollisionLoop(
-            rooms, *built.runtime, input, true);
+            *built.runtime, input, true);
     require(
         projectileGatePublication.published() &&
             projectileGate.completed() &&
@@ -1179,10 +1152,10 @@ void testPublishedPlayerActorResolverAndNoAllocations() {
             0U);
     const auto actorGate =
         resolvePublishedLegacyProjectileCollisionLoop(
-            rooms, *built.runtime, input, true);
+            *built.runtime, input, true);
     const auto clientGate =
         resolvePublishedLegacyProjectileCollisionLoop(
-            rooms, *built.runtime, input, false);
+            *built.runtime, input, false);
     require(
         gatedPublication.published() &&
             actorGate.completed() &&
@@ -1199,7 +1172,6 @@ void testPublishedPlayerActorResolverAndNoAllocations() {
     for (std::size_t index = 0U; index < 4'096U; ++index) {
         const auto repeated =
             resolvePublishedLegacyMachineGunProjectileCollision(
-                rooms,
                 *built.runtime,
                 projectile,
                 *ammo,
@@ -1236,7 +1208,7 @@ void testPublishedPlayerActorResolverAndNoAllocations() {
             *built.runtime, 91U);
     const auto inactiveTrace =
         resolvePublishedLegacyProjectileCollisionLoop(
-            rooms, *built.runtime, input, true);
+            *built.runtime, input, true);
     require(
         inactivePublication.published() &&
             inactiveActor.status ==
@@ -1267,7 +1239,6 @@ void testCreatorBspGuardTransactionAndNoAllocations() {
             0U);
     require(published.published(), "guard player publication failed");
 
-    const auto rooms = catalog();
     const LegacyProjectileCollisionQueryInput input{
         .segmentStart = {0.0F, 0.0F, 0.0F},
         .segmentEnd = {0.0F, 0.0F, 4.0F},
@@ -1296,7 +1267,6 @@ void testCreatorBspGuardTransactionAndNoAllocations() {
     auto guard = creatorBspGuard(restored);
     const auto restoredTransaction =
         resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
-            rooms,
             *built.runtime,
             projectile,
             *ammo,
@@ -1333,7 +1303,6 @@ void testCreatorBspGuardTransactionAndNoAllocations() {
     guard = creatorBspGuard(alreadyDisabled);
     const auto alreadyDisabledTransaction =
         resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
-            rooms,
             *built.runtime,
             projectile,
             *ammo,
@@ -1361,7 +1330,6 @@ void testCreatorBspGuardTransactionAndNoAllocations() {
     guard = creatorBspGuard(creatorNotFound);
     const auto missingCreatorTransaction =
         resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
-            rooms,
             *built.runtime,
             projectile,
             *ammo,
@@ -1388,7 +1356,6 @@ void testCreatorBspGuardTransactionAndNoAllocations() {
     guard = creatorBspGuard(disableRejected);
     const auto rejectedDisableTransaction =
         resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
-            rooms,
             *built.runtime,
             projectile,
             *ammo,
@@ -1413,7 +1380,6 @@ void testCreatorBspGuardTransactionAndNoAllocations() {
     const LegacyProjectileCreatorBspGuard missingCallbacks;
     const auto missingCallbackTransaction =
         resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
-            rooms,
             *built.runtime,
             projectile,
             *ammo,
@@ -1442,7 +1408,6 @@ void testCreatorBspGuardTransactionAndNoAllocations() {
     guard = creatorBspGuard(malformedMissingCreator);
     const auto malformedDisableTransaction =
         resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
-            rooms,
             *built.runtime,
             projectile,
             *ammo,
@@ -1469,7 +1434,6 @@ void testCreatorBspGuardTransactionAndNoAllocations() {
     guard = creatorBspGuard(missingRestoreHandle);
     const auto missingHandleTransaction =
         resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
-            rooms,
             *built.runtime,
             projectile,
             *ammo,
@@ -1499,7 +1463,6 @@ void testCreatorBspGuardTransactionAndNoAllocations() {
     guard = creatorBspGuard(enableRejected);
     const auto rejectedEnableTransaction =
         resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
-            rooms,
             *built.runtime,
             projectile,
             *ammo,
@@ -1531,7 +1494,6 @@ void testCreatorBspGuardTransactionAndNoAllocations() {
     zeroCreatorProjectile.creatorUid = 0U;
     const auto zeroCreatorTransaction =
         resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
-            rooms,
             *built.runtime,
             zeroCreatorProjectile,
             *ammo,
@@ -1563,7 +1525,6 @@ void testCreatorBspGuardTransactionAndNoAllocations() {
     mismatchedProjectile.position.z = 3.0F;
     const auto invalidTransaction =
         resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
-            rooms,
             *built.runtime,
             mismatchedProjectile,
             *ammo,
@@ -1595,7 +1556,6 @@ void testCreatorBspGuardTransactionAndNoAllocations() {
     for (std::size_t index = 0U; index < 4'096U; ++index) {
         const auto repeated =
             resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
-                rooms,
                 *built.runtime,
                 projectile,
                 *ammo,
@@ -1645,7 +1605,6 @@ void testPublishedRuntimePortalLoopAndNoAllocations() {
                 LegacyProjectileLiveActorQueryStatus::notFound,
         "portal runtime publication failed");
 
-    const auto rooms = catalog(2U);
     const LegacyProjectileCollisionQueryInput input{
         .segmentStart = {0.0F, 0.0F, 0.0F},
         .segmentEnd = {0.0F, 0.0F, 4.0F},
@@ -1653,7 +1612,6 @@ void testPublishedRuntimePortalLoopAndNoAllocations() {
     };
     const auto resolved =
         resolvePublishedLegacyProjectileCollisionLoop(
-            rooms,
             *built.runtime,
             input,
             true);
@@ -1686,7 +1644,6 @@ void testPublishedRuntimePortalLoopAndNoAllocations() {
     };
     const auto transaction =
         resolvePublishedLegacyMachineGunProjectileCollision(
-            rooms,
             *built.runtime,
             projectile,
             *ammo,
@@ -1717,7 +1674,6 @@ void testPublishedRuntimePortalLoopAndNoAllocations() {
     };
     const auto guardedPortal =
         resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
-            rooms,
             *built.runtime,
             projectile,
             *ammo,
@@ -1743,7 +1699,6 @@ void testPublishedRuntimePortalLoopAndNoAllocations() {
     for (std::size_t index = 0U; index < 4'096U; ++index) {
         const auto repeated =
             resolvePublishedLegacyMachineGunProjectileCollision(
-                rooms,
                 *built.runtime,
                 projectile,
                 *ammo,
@@ -1760,19 +1715,6 @@ void testPublishedRuntimePortalLoopAndNoAllocations() {
     require(
         allocationCount.load(std::memory_order_relaxed) == 0U,
         "steady-state runtime projectile query allocated");
-
-    const auto mismatchedRooms = catalog(1U);
-    const auto mismatch =
-        resolvePublishedLegacyProjectileCollisionLoop(
-            mismatchedRooms,
-            *built.runtime,
-            input,
-            true);
-    require(
-        mismatch.status ==
-                LegacyProjectileCollisionLoopStatus::invalidInput &&
-            mismatch.queryCount == 0U,
-        "catalog/runtime room mismatch reached the trace");
 }
 
 } // namespace
@@ -1814,7 +1756,7 @@ void operator delete[](
 int main() {
     static_assert(noexcept(
         legacyProjectileQueryResultFromRuntimeTrace(
-            std::declval<const MissionWorldRoomCatalog&>(),
+        1U,
             std::declval<
                 const MissionWorldRuntimeCombinedLineTraceResult&>(),
             true,
@@ -1822,9 +1764,7 @@ int main() {
             nullptr)));
     static_assert(noexcept(
         resolvePublishedLegacyProjectileCollisionLoop(
-            std::declval<const MissionWorldRoomCatalog&>(),
-            std::declval<
-                const LegacyGameplayCameraMissionRuntime&>(),
+            std::declval<const LegacyGameplayCameraMissionRuntime&>(),
             std::declval<
                 const LegacyProjectileCollisionQueryInput&>(),
             true,
@@ -1837,17 +1777,13 @@ int main() {
             1U)));
     static_assert(noexcept(
         resolvePublishedLegacyProjectileCollisionLoop(
-            std::declval<const MissionWorldRoomCatalog&>(),
-            std::declval<
-                const LegacyGameplayCameraMissionRuntime&>(),
+            std::declval<const LegacyGameplayCameraMissionRuntime&>(),
             std::declval<
                 const LegacyProjectileCollisionQueryInput&>(),
             true)));
     static_assert(noexcept(
         resolvePublishedLegacyMachineGunProjectileCollision(
-            std::declval<const MissionWorldRoomCatalog&>(),
-            std::declval<
-                const LegacyGameplayCameraMissionRuntime&>(),
+            std::declval<const LegacyGameplayCameraMissionRuntime&>(),
             std::declval<
                 const LegacyMachineGunProjectileState&>(),
             std::declval<
@@ -1857,9 +1793,7 @@ int main() {
             true)));
     static_assert(noexcept(
         resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
-            std::declval<const MissionWorldRoomCatalog&>(),
-            std::declval<
-                const LegacyGameplayCameraMissionRuntime&>(),
+            std::declval<const LegacyGameplayCameraMissionRuntime&>(),
             std::declval<
                 const LegacyMachineGunProjectileState&>(),
             std::declval<
@@ -1871,7 +1805,6 @@ int main() {
                 const LegacyProjectileCreatorBspGuard&>())));
 
     static_assert(noexcept(advancePublishedLegacyMachineGunProjectileSlots(
-        std::declval<const MissionWorldRoomCatalog&>(),
         std::declval<const LegacyGameplayCameraMissionRuntime&>(),
         std::declval<std::span<LegacyMachineGunProjectileSlot>>(),
         std::declval<
@@ -1879,7 +1812,6 @@ int main() {
         0.012F, true, nullptr, nullptr,
         std::declval<const LegacyProjectileCreatorBspGuard&>())));
     static_assert(noexcept(advancePublishedLegacyMachineGunProjectileSlots(
-        std::declval<const MissionWorldRoomCatalog&>(),
         std::declval<const LegacyGameplayCameraMissionRuntime&>(),
         std::declval<std::span<LegacyMachineGunProjectileSlot>>(),
         std::declval<

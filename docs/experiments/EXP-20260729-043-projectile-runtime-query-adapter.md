@@ -25,7 +25,8 @@ This integration uses only previously confirmed contracts:
 - retained static and dynamic traces already preserve that value on their
   selected polygon;
 - the authenticated room catalogue maps newest-first world indices to root ID
-  zero and monotonically assigned positive `CcRoom` IDs; and
+  zero and monotonically assigned positive `CcRoom` IDs; after publication the
+  same immutable mapping requires only the runtime-owned room count; and
 - the projectile applies material `8`, client/server actor gates, actor lookup,
   projectile-level portals, and surfaces in that exact order.
 
@@ -85,11 +86,14 @@ The explicit callback contract remains the extension seam for other actors.
 
 ## Runtime composition
 
-`resolvePublishedLegacyProjectileCollisionLoop` verifies that the
-authenticated catalogue is complete and parallel to the runtime-owned arena.
-Each query converts the current signed room ID to a world index, invokes the
-latest published combined portal-line trace, maps its result, and lets the
-bounded simulation coordinator handle any later projectile-level portal.
+`resolvePublishedLegacyProjectileCollisionLoop` now takes only the
+mission-lifetime runtime. The runtime-owned spatial arena supplies the exact
+immutable room count, which is sufficient to convert the current signed room
+ID to a world index and a portal target back to a legacy ID. The temporary
+name/contributor build catalogue may therefore be destroyed after publication.
+Each query invokes the latest published combined portal-line trace, maps its
+result, and lets the bounded simulation coordinator handle any later
+projectile-level portal.
 
 The adapter, trace, mapper, and coordinator allocate no memory internally.
 The follow-up terminal reducer in
@@ -110,7 +114,7 @@ Synthetic mapping tests cover:
 - server resolved, lookup-miss, rejected, missing, and unknown actor states;
 - portal target conversion and signed material bit preservation; and
 - inconsistent statuses, missing provenance/material, unsupported portals,
-  incomplete catalogues, and catalogue/runtime room-count mismatch.
+  zero/overflowing compact room identities, and out-of-range room IDs.
 
 An integration fixture publishes two retained rooms. A hidden type-zero placed
 portal wins in the root room, the projectile-level loop switches to legacy
@@ -157,3 +161,4 @@ live slot/effect adapters, and controlled executable traces exist.
 - [Projectile portal loop](EXP-20260729-042-projectile-collision-portal-loop.md)
 - [Projectile creator BSP guard](EXP-20260729-046-projectile-creator-bsp-guard.md)
 - [Portable projectile runtime pool](EXP-20260729-047-portable-projectile-runtime-pool.md)
+- [Runtime-owned projectile room identity](EXP-20260731-096-projectile-runtime-room-identity.md)

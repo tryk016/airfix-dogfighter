@@ -151,6 +151,13 @@ void testLegacyRoomIdsFollowCreationOrder() {
                 catalog, expectedIds[worldRoomIndex]) ==
                 std::optional{worldRoomIndex},
             "legacy room ID did not round-trip to its world-room index");
+        require(airfix::assets::legacyCcRoomIdForWorldRoomIndex(
+                    catalog.rooms.size(), worldRoomIndex)
+                    == roomId
+                && airfix::assets::worldRoomIndexForLegacyCcRoomId(
+                       catalog.rooms.size(), expectedIds[worldRoomIndex])
+                    == std::optional{worldRoomIndex},
+            "compact room-count identity diverged from the build catalog");
     }
 
     require(
@@ -163,6 +170,17 @@ void testLegacyRoomIdsFollowCreationOrder() {
         !airfix::assets::worldRoomIndexForLegacyCcRoomId(
             catalog, 4).has_value(),
         "invalid legacy room ID was accepted");
+    require(
+        !airfix::assets::legacyCcRoomIdForWorldRoomIndex(0U, 0U).has_value() &&
+            !airfix::assets::worldRoomIndexForLegacyCcRoomId(0U, 0)
+                 .has_value() &&
+            !airfix::assets::legacyCcRoomIdForWorldRoomIndex(
+                 std::numeric_limits<std::size_t>::max(), 0U)
+                 .has_value() &&
+            !airfix::assets::worldRoomIndexForLegacyCcRoomId(
+                 std::numeric_limits<std::size_t>::max(), 0)
+                 .has_value(),
+        "invalid compact room identity was accepted");
 
     auto incomplete = catalog;
     incomplete.issues.push_back({

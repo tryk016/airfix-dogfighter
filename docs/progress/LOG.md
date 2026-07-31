@@ -4854,3 +4854,25 @@ superseded evidence.
   contains no Windows-product or Apple-only source. Synthetic public-boundary
   tests, the 670-file repository scan, changed-source clang-format, and `git
   diff --check` pass. Hosted platform builds remain the publication gate.
+
+## 2026-07-31 - runtime-owned projectile room identity
+
+- `EXP-20260731-096` removes the last projectile-query dependency on the
+  temporary `MissionWorldRoomCatalog`. The recovered root/creation-order ID
+  mapping is exposed through bounded room-count overloads, while the original
+  catalogue overloads remain build-time validators over the same code.
+- Projectile portal queries, terminal reduction, creator-BSP bracketing, and
+  active-slot advancement now derive room identity only from
+  `LegacyGameplayCameraMissionRuntime::worldRoomCount()`. The count belongs to
+  the same retained arena and collision frame used for tracing, so a caller
+  cannot join geometry from one mission to a catalogue from another.
+- Synthetic tests prove catalogue/count equivalence, zero/overflow and
+  index/ID rejection, one-room actor mapping, two-room portal continuation,
+  unchanged creator/slot transactions, and steady-state allocation freedom.
+  The fresh GCC 15.2/Ninja build completed 408 steps and passes 127/127 CTests.
+  The fresh MSVC 19.51 HostX64/Ninja Windows-product build completed 702 steps;
+  its final affected-graph rebuild passes 139/139 CTests, including both
+  product smokes. Public-boundary synthetic tests and the 671-file scan, the
+  263-entry portable compilation-database check, all 12 Rizin exporter tests,
+  changed-addition local-path scanning, and `git diff --check` pass. Hosted
+  platform builds remain the publication gate.

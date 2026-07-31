@@ -1,6 +1,5 @@
 #pragma once
 
-#include "airfix/assets/MissionWorldRooms.hpp"
 #include "airfix/render/LegacyGameplayCameraMissionRuntime.hpp"
 #include "airfix/simulation/LegacyMachineGunProjectileCollisionCommit.hpp"
 #include "airfix/simulation/LegacyMachineGunProjectileRuntime.hpp"
@@ -177,20 +176,21 @@ queryPublishedLegacyProjectilePlayerActor(
 // valid native surface fallback. The function performs no internal allocation.
 [[nodiscard]] simulation::LegacyProjectileCollisionQueryResult
 legacyProjectileQueryResultFromRuntimeTrace(
-    const assets::MissionWorldRoomCatalog& catalog,
+    std::size_t worldRoomCount,
     const render::MissionWorldRuntimeCombinedLineTraceResult& trace,
     bool projectileIsServer,
     LegacyProjectileLiveActorQuery actorQuery,
     void* actorQueryContext) noexcept;
 
 // Executes the implemented projectile-level portal loop against the most
-// recently published mission dynamic-collision frame. The catalog must be the
-// authenticated catalog parallel to the runtime-owned arena. Creator collision
-// BSP control and terminal actor/surface reduction remain higher-level
-// transactions and are intentionally not dispatched by this loop-only API.
+// recently published mission dynamic-collision frame. Legacy CcRoom IDs are
+// translated from the immutable room count owned by that same runtime, so the
+// temporary build catalog does not have to survive mission publication.
+// Creator collision BSP control and terminal actor/surface reduction remain
+// higher-level transactions and are intentionally not dispatched by this
+// loop-only API.
 [[nodiscard]] simulation::LegacyProjectileCollisionLoopResult
 resolvePublishedLegacyProjectileCollisionLoop(
-    const assets::MissionWorldRoomCatalog& catalog,
     const render::LegacyGameplayCameraMissionRuntime& runtime,
     const simulation::LegacyProjectileCollisionQueryInput& input,
     bool projectileIsServer,
@@ -204,7 +204,6 @@ resolvePublishedLegacyProjectileCollisionLoop(
 // explicit callback overload above.
 [[nodiscard]] simulation::LegacyProjectileCollisionLoopResult
 resolvePublishedLegacyProjectileCollisionLoop(
-    const assets::MissionWorldRoomCatalog& catalog,
     const render::LegacyGameplayCameraMissionRuntime& runtime,
     const simulation::LegacyProjectileCollisionQueryInput& input,
     bool projectileIsServer,
@@ -217,7 +216,6 @@ resolvePublishedLegacyProjectileCollisionLoop(
 // dispatched here.
 [[nodiscard]] LegacyPublishedMachineGunProjectileCollisionResult
 resolvePublishedLegacyMachineGunProjectileCollision(
-    const assets::MissionWorldRoomCatalog& catalog,
     const render::LegacyGameplayCameraMissionRuntime& runtime,
     const simulation::LegacyMachineGunProjectileState& current,
     const simulation::LegacyMachineGunAmmoProfile& profile,
@@ -231,7 +229,6 @@ resolvePublishedLegacyMachineGunProjectileCollision(
 // the published collision frame.
 [[nodiscard]] LegacyPublishedMachineGunProjectileCollisionResult
 resolvePublishedLegacyMachineGunProjectileCollision(
-    const assets::MissionWorldRoomCatalog& catalog,
     const render::LegacyGameplayCameraMissionRuntime& runtime,
     const simulation::LegacyMachineGunProjectileState& current,
     const simulation::LegacyMachineGunAmmoProfile& profile,
@@ -250,7 +247,6 @@ resolvePublishedLegacyMachineGunProjectileCollision(
 // data so callers cannot apply it after restoration failed.
 [[nodiscard]] LegacyPublishedMachineGunProjectileCollisionResult
 resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
-    const assets::MissionWorldRoomCatalog& catalog,
     const render::LegacyGameplayCameraMissionRuntime& runtime,
     const simulation::LegacyMachineGunProjectileState& current,
     const simulation::LegacyMachineGunAmmoProfile& profile,
@@ -266,7 +262,6 @@ resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
 // collision frame cannot safely expose mutable actor methods.
 [[nodiscard]] LegacyPublishedMachineGunProjectileCollisionResult
 resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
-    const assets::MissionWorldRoomCatalog& catalog,
     const render::LegacyGameplayCameraMissionRuntime& runtime,
     const simulation::LegacyMachineGunProjectileState& current,
     const simulation::LegacyMachineGunAmmoProfile& profile,
@@ -280,7 +275,7 @@ resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
 // published collision transaction. The fixed pool and slot order are explicit
 // deterministic port policy, not a native allocator/scheduler claim.
 //
-// Input shape, delta, and catalog/runtime ownership are validated before any
+// Input shape, delta, and runtime-owned room identity are validated before any
 // output or slot changes. Inactive slots do not inspect their profile. One
 // malformed slot or rejected collision remains unchanged and does not block a
 // later slot. A lifetime expiry commits without touching collision callbacks.
@@ -294,7 +289,6 @@ resolvePublishedLegacyMachineGunProjectileCollisionWithCreatorBspGuard(
 // render publication.
 [[nodiscard]] LegacyPublishedMachineGunProjectileSlotsAdvanceResult
 advancePublishedLegacyMachineGunProjectileSlots(
-    const assets::MissionWorldRoomCatalog& catalog,
     const render::LegacyGameplayCameraMissionRuntime& runtime,
     std::span<simulation::LegacyMachineGunProjectileSlot> slots,
     std::span<LegacyPublishedMachineGunProjectileSlotAdvanceResult> results,
@@ -308,7 +302,6 @@ advancePublishedLegacyMachineGunProjectileSlots(
 // expose live actor methods safely.
 [[nodiscard]] LegacyPublishedMachineGunProjectileSlotsAdvanceResult
 advancePublishedLegacyMachineGunProjectileSlots(
-    const assets::MissionWorldRoomCatalog& catalog,
     const render::LegacyGameplayCameraMissionRuntime& runtime,
     std::span<simulation::LegacyMachineGunProjectileSlot> slots,
     std::span<LegacyPublishedMachineGunProjectileSlotAdvanceResult> results,
