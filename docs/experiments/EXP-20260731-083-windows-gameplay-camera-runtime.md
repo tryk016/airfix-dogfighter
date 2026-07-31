@@ -1,7 +1,7 @@
 # EXP-20260731-083: Windows gameplay-camera runtime parity
 
 - Date: 2026-07-31
-- Status: implemented and validated locally; hosted validation pending
+- Status: implemented and validated locally and in the hosted platform matrix
 - Scope: Windows D3D11 mission ownership and render-frame consumption
 
 ## Question
@@ -64,8 +64,9 @@ separate 12 ms/x87 evidence and numeric-policy work.
 - Synthetic public-boundary tests, the 622-file repository scan, changed-range
   formatting, local-path review, and `git diff --check` passed.
 
-Windows, iPhoneOS, and iPhoneSimulator hosted builds remain the publication
-gate.
+GitHub Actions passed all seven publication jobs for commit `66ba042`:
+Ubuntu 24.04, macOS 26, Windows 2025, the dedicated Windows x64 D3D11/XAudio2
+product smoke, clangd, iPhoneOS, and iPhoneSimulator.
 
 ## Result
 

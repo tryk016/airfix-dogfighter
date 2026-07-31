@@ -4456,5 +4456,7 @@ superseded evidence.
   pending targets and passed 130/130 tests, including the D3D11 renderer and
   both native product smokes. Independent review reported no findings.
   Synthetic public-boundary tests, the 622-file scan, changed-range formatting,
-  local-path review, and `git diff --check` pass. Hosted platform builds remain
-  the publication gate.
+  local-path review, and `git diff --check` pass. GitHub Actions for commit
+  `66ba042` passed all seven jobs: Ubuntu 24.04, macOS 26, Windows 2025, the
+  dedicated Windows x64 D3D11/XAudio2 product smoke, clangd, iPhoneOS, and
+  iPhoneSimulator.
