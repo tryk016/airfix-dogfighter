@@ -67,8 +67,9 @@ identity; it is not silently converted into an unproven global HUD mode.
   The frame contains the room, placed objects, player aircraft, textures, and
   diagnostics overlay. The capture and all owner data remain ignored and
   outside Git.
-- Hosted `iphoneos` and `iphonesimulator` compilation remain required before
-  merge; physical-device Metal inspection remains a separate acceptance gate.
+- Hosted `iphoneos` and `iphonesimulator` compilation both pass in pull-request
+  run `30645339243`. Physical-device Metal inspection remains a separate
+  acceptance gate.
 
 ## Deliberate non-goals
 

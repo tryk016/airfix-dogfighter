@@ -4666,6 +4666,8 @@ superseded evidence.
 - A complete MSVC/Ninja product build and all 136 CTests pass. A production
   owner-content D3D11 run also completes atomic publication and a private
   1920x1080 full-room capture; no owner data or derived image enters Git.
+- Hosted `iphoneos` and `iphonesimulator` builds both compile the Metal
+  transaction successfully in pull-request run `30645339243`.
 - No crosshair draw is issued. Live weapon ownership, aim/collision state,
   primary/secondary composition, blend/depth policy, and sprite submission
   remain explicit later gates.
