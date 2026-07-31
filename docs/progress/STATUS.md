@@ -996,6 +996,18 @@
   mission refresh also now has a static process-before-trigger-poll boundary,
   but unresolved compiler/bytecode/global-order evidence still forbids live
   AFS integration.
+- `EV-20260731-002` closes the exact five-word AFS mission-outcome call site.
+  All 67 recovered calls supply source literal `true`; token registration maps
+  it to tag `0x137`, and the compiler emits
+  `0x1B, 1, 0x24, 0x26, descriptor-token`. The registered
+  `MissionFail`/`MissionSuccess`
+  descriptors each require one ignored type-`2` argument word and carry an
+  explicit handler plus identifier `0x47`/`0x48`. A fail-closed C++20
+  recognizer validates that exact projection and composes the typed result
+  with the existing outcome transition. An aggregate-only scan found 67
+  structurally consistent outcome calls across 52 AFS members without
+  publishing script text, paths, or content. The complete VM, live stack,
+  process ordering, and runtime integration remain excluded.
 - `EV-20260730-007` independently cross-checks the complete 17-record
   `AirCraft.type` registry in Ghidra and Rizin. The portable catalogue retains
   exact source words and registration order without applying constructor
@@ -1129,6 +1141,17 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The AFS mission-outcome bytecode boundary recognizes only the recovered
+  `0x1B, 1, 0x24, 0x26, descriptor-token` call site and validates the exact
+  immediate argument plus one-word descriptor shape before returning the
+  existing typed outcome call. Complete
+  clean Windows GCC 15.2, WSL2 GCC 13.3, and Windows MSVC 19.51/Ninja builds
+  each pass `120/120` CTests. Focused WSL2 Clang 18.1 warnings-as-errors, both
+  Rizin wrapper suites, all 12 exporter tests, synthetic public-boundary tests,
+  the 617-file scan, changed-document links, local-path and evidence-ID checks,
+  the 330-row/14-column unique catalogue, and `git diff --check` pass. Focused
+  WSL2 ASan/UBSan also passes. A read-only formatting check and hosted platform
+  builds remain publication gates.
 - The native ADR-0015 text pickers expose the same bounded seven-action
   transaction through keyboard/mouse/controller input on Windows and
   touch/controller input on iOS, while retaining one complete AFIP draft and

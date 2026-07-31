@@ -13,13 +13,15 @@ It does not implement the AFS VM, trigger-to-process live integration, score or
 stat registration, roster chunks or file writes, multiplayer replication, or
 either platform's menu.
 
-Primary evidence is `EV-20260730-005`, recorded by
+Primary state evidence is `EV-20260730-005`, recorded by
 [`EXP-20260730-070`](../../experiments/EXP-20260730-070-mission-outcome-state.md),
 and downstream/scheduler evidence `EV-20260730-006`, recorded by
 [`EXP-20260730-075`](../../experiments/EXP-20260730-075-mission-outcome-consumer.md).
+AFS bytecode evidence `EV-20260731-002` is recorded by
+[`EXP-20260731-080`](../../experiments/EXP-20260731-080-afs-mission-outcome-bytecode.md).
 Ghidra 12.1.2 is the canonical static source; Rizin 0.9.1 independently
-confirms the sixteen selected `AfEngine.dll` function boundaries and
-instructions.
+confirms the selected `AfEngine.dll` function boundaries and instructions and
+supplies the new compiler-emission evidence.
 
 ## Native state
 
@@ -51,8 +53,54 @@ sets the other flag and leaves both true.
 | `MissionFail` | `0x47` |
 | `MissionSuccess` | `0x48` |
 
-Cases `0x47` and `0x48` do not read their argument buffer and both return
-zero. The absence of a payload is part of the portable boundary.
+Each registration adds one formal type-`2` parameter, named `dummy`, which
+occupies one VM argument word. Cases `0x47` and `0x48` do not read the value
+from their argument buffer and both return zero. The payload value therefore
+has no semantic effect, but its one-word calling-convention width is part of
+the recovered bytecode boundary.
+
+## AFS bytecode boundary
+
+The token/grammar registration maps source literal `true` to compiler AST tag
+`0x137`; the recursive compiler emits that tag as two words:
+
+```text
+0x1B, 0x00000001
+```
+
+Opcode `0x1B` pushes the following immediate word. The recursive compiler then
+resolves registered native functions before script functions. After compiling
+the argument in source order, it appends the native call triplet:
+
+```text
+0x24, 0x26, descriptor-token
+```
+
+Opcode `0x24` pushes the current execution object. Opcode `0x26` consumes the
+descriptor token, removes the execution word plus the descriptor's argument
+words from the VM stack, and invokes the explicit handler with the native
+identifier. A script-function call instead uses `0x23, 0x25,
+descriptor-token`; that sequence is outside the mission-outcome boundary.
+
+The portable descriptor projection validates a nonzero matching token, an
+explicit handler, argument-word count `1`, and identifier `0x47` or `0x48`.
+It deliberately does not retain native pointers or model the descriptor's
+linked lists.
+
+A private aggregate-only scan of the verified resource working copy found 52
+AFS members and 67 outcome calls: 47 fail and 20 success. Every call is a
+statement in an `action` body, is terminal in its block, and supplies the
+built-in literal `true`. No script text, logical path, or asset is published.
+The complete outcome call site is therefore exactly:
+
+```text
+0x1B, 0x00000001, 0x24, 0x26, descriptor-token
+```
+
+The compiler's `action` case creates an auto-executed function with a
+0.25-second yield/condition loop, sets an action-state slot when the condition
+passes, executes the body, and emits the execution terminator. This is a
+bounded structural envelope, not a complete VM or scheduling contract.
 
 ## Exact transition
 
@@ -104,8 +152,14 @@ All ranges are image virtual addresses and use an exclusive end.
 | `NfTrigger` constructor 5 | `0x10034460–0x1003450D` | 2 |
 | `NfTrigger::Refresh` | `0x10034590–0x100349C5` | 2 |
 | `NfTrigger::Event` | `0x10034A20–0x10034EBB` | 2 |
+| AFS token/grammar registration | `0x1005D0A0–0x10060AB7` | 2 |
+| recursive AFS compiler | `0x100612C0–0x10066A15` | 2 |
+| `AfDatabase::NewFunctionType` | `0x10068310–0x10068345` | 2 |
 | `AfFunctionCall::SetupAfFunctions` | `0x100683F0–0x100686C0` | 2 |
 | `AfFunctionCall::SetupAfServerFunctions` | `0x100686C0–0x1006916B` | 2 |
+| native descriptor constructor | `0x100698D0–0x10069929` | 2 |
+| add-parameter helper | `0x100699C0–0x10069A2B` | 2 |
+| AFS interpreter | `0x10069F10–0x1006AC84` | 2 |
 
 All confidence values are capped at `2` because this is static-only evidence.
 Agreement between Ghidra and Rizin does not replace controlled comparison with
@@ -157,10 +211,11 @@ Events `0x6B`, `0x6C`, and `0x92` are a separate exception:
 `NfMission::ProcessEvent` first updates all triggers and then immediately calls
 the AFS function `Spawned`.
 
-This evidence is not yet a live AFS integration contract. The mapping between
-the native function flag and source `action` syntax, compiled-function source
-order, representative outcome bytecode, all additional process owners, and
-global dispatcher/mission/presentation order remain unproven.
+This evidence is not yet a live AFS integration contract. The compiler's
+`action` case and the complete five-word outcome call site are now bounded,
+but the complete representative action condition bytecode, compiled-function
+source order, all additional process owners, and global
+dispatcher/mission/presentation order remain unproven.
 
 Selected scheduler ranges are image virtual addresses with exclusive ends:
 
@@ -226,6 +281,18 @@ only the primary continue/retry choice as data; it executes no command.
 
 ## Portable implementation
 
+`src/airfix/simulation/LegacyAfsMissionOutcomeCall.*` implements only:
+
+- the proven `0x1B, 1, 0x24, 0x26, descriptor-token` recognition;
+- a pointer-free descriptor projection;
+- validation of the exact one-word outcome descriptor shape;
+- typed conversion of identifiers `0x47` and `0x48`; and
+- fail-closed zero-word consumption for every mismatch.
+
+It recognizes but does not execute the immediate argument producer. It owns no
+VM stack, bytecode scheduler, trigger, execution object, native pointer, or
+mission state.
+
 `src/airfix/simulation/LegacyMissionOutcomeState.*` implements only:
 
 - the two independent flags;
@@ -271,9 +338,9 @@ Confirmed selected mode boundaries are:
 
 ## Open questions
 
-- Does the compiled-function `+0x20` flag map directly to source `action`
-  syntax, and does compiled list order equal source declaration order?
-- What is the full bytecode of representative success/failure actions?
+- What is the complete bytecode of representative success/failure actions,
+  including each condition and surrounding control flow?
+- Does compiled list order equal source declaration order?
 - What is the complete dispatcher/process/presentation order when several
   processes and immediate `Spawned` calls interact?
 - What is the safe roster lifecycle, schema, corruption recovery, and atomic

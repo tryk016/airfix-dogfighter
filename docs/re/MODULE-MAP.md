@@ -169,8 +169,13 @@ and
 `MissionFail` and `MissionSuccess` calls set independent bytes, and only the
 first terminal call requests `pause` followed by `menu`; later conflicting
 calls can leave both bytes set. The mode's candidate RVA `0x12D0` is a cheat
-callback, not an outcome override. Trigger/process ordering, campaign
-consumption, persistence, and multiplayer remain open. See
+callback, not an outcome override. `EV-20260731-002` additionally recovers the
+registered descriptor shape, its one ignored argument word, the native
+`0x24, 0x26, descriptor-token` call instruction, the source-`true`
+`0x1B, 1` argument producer, and their interpreter projections. The portable
+recognizer owns only that exact five-word call site; the complete VM, global
+process ordering, campaign consumption, persistence, and multiplayer remain
+open. See
 [`MISSION-OUTCOME.md`](systems/MISSION-OUTCOME.md).
 
 ## Report inventory

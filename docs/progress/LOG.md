@@ -4349,3 +4349,35 @@ superseded evidence.
   `git diff --check` pass. A fresh normal-profile Ghidra exporter run remains
   a follow-up independent-validation gate; the published whole-module result
   is explicitly and narrowly attributed to Rizin.
+
+## 2026-07-31 - AFS mission-outcome bytecode boundary
+
+- `EV-20260731-002` / `EXP-20260731-080` recovers the descriptor and bytecode
+  boundary between owner-private AFS scripts and the existing portable
+  mission-outcome transition.
+- `SetupAfServerFunctions` gives both `MissionFail` and `MissionSuccess` one
+  formal type-`2` argument word. The native handler ignores its value, but the
+  interpreter still removes that word together with the execution-object word.
+- Rizin confirms that source literal `true` is compiler tag `0x137`, which
+  emits `0x1B, 1`; Ghidra and Rizin agree that interpreter opcode `0x1B`
+  pushes that immediate word. Rizin 0.9.1 confirms that a registered native
+  call then emits exactly
+  `0x24, 0x26, descriptor-token`; the distinct script-function sequence is
+  `0x23, 0x25, descriptor-token`.
+- An aggregate-only scan of the verified resource working copy found 67
+  structurally consistent outcome calls across 52 AFS members: 47 fail and 20
+  success. All use literal `true`; no script text, logical path, or content is
+  published.
+- Added an allocation-free, fail-closed C++20 recognizer for the exact
+  five-word call site. It accepts only `[0x1B, 1, 0x24, 0x26, token]`, a
+  matching nonzero descriptor token, an explicit handler, one argument word,
+  and identifier `0x47` or `0x48`, then returns the existing typed outcome
+  call. It owns no VM stack, scheduler, trigger, process, or platform behavior.
+- Complete clean Windows GCC 15.2, WSL2 GCC 13.3, and Windows MSVC
+  19.51/Ninja builds each pass `120/120` CTests. Focused WSL2 Clang 18.1
+  warnings-as-errors and WSL2 ASan/UBSan, both Rizin wrapper suites, the 12
+  exporter tests, synthetic public-boundary tests, the 617-file public scan,
+  the 330-row/14-column unique catalogue with only two known historical
+  missing references, changed-document links, local-path and evidence-ID
+  checks, and `git diff --check` pass. The read-only formatting check and
+  hosted platform builds remain publication gates.
