@@ -409,11 +409,10 @@ non-null replacement, and activates it; primary `+0x490` remains independent.
 the weapon type, sight role, HUD-local texture ID, content revision, and exact
 authenticated-stream identity. It is called separately for primary and
 selected-secondary slots. A forged set, invalid type, or another stream handle
-publishes nothing. Actual live slot ownership, aim/collision production,
-primary/secondary composition policy, and native sprite submission remain
-pending. The complete authenticated set is now staged atomically as separate
-D3D11 and Metal resources with bounded memory accounting, but is deliberately
-not drawn. See
+publishes nothing. Actual live slot ownership and aim/collision production
+remain pending. The complete authenticated set is now staged atomically as
+separate D3D11 and Metal resources with bounded memory accounting, but is
+deliberately not drawn. See
 [EXP-20260731-090](../../experiments/EXP-20260731-090-weapon-type-crosshair-binding.md)
 and
 [EXP-20260731-091](../../experiments/EXP-20260731-091-crosshair-gpu-resource-staging.md).
@@ -428,6 +427,22 @@ requiring the caller to choose draw or suppress explicitly. D3D11 executes a
 validated private capture path; Metal has the equivalent prepared encoder.
 Neither ordinary renderer manufactures live weapon or aim state. See
 [EXP-20260731-092](../../experiments/EXP-20260731-092-crosshair-sprite-submission.md).
+
+`EV-20260731-007` resolves the enclosing `AfVehicle::ProcessEvent` event
+`0x06` branch. After the type byte admits the event, the vehicle first calls
+its independent virtual HUD stage. The crosshair substage then requires an
+active vehicle and attached camera, calls `RenderCrosshair` for selected
+secondary `+0x494`, and only afterward calls it for primary `+0x490`. Null
+slots are skipped independently; there is no sort, deduplication, replacement,
+or batch between the calls.
+
+`composeLegacyWeaponCrosshairRenderEvent` now publishes already-built,
+authenticated packets in that exact order. Type, inactive, and camera gates
+publish no entries; a forged packet rejects the complete composition
+atomically. The caller still owns the earlier HUD stage and the explicit
+per-weapon draw/suppress decision, so ordinary live renderer wiring remains
+off. See
+[EXP-20260731-093](../../experiments/EXP-20260731-093-crosshair-render-event-composition.md).
 
 ## Actor damage and surface reaction
 

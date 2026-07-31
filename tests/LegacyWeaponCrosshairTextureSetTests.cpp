@@ -24,7 +24,10 @@ namespace {
 using airfix::content::ContentRevision;
 using airfix::content::LegacyWeaponCrosshairBindingStatus;
 using airfix::content::LegacyWeaponCrosshairBlendMode;
+using airfix::content::LegacyWeaponCrosshairCompositionStatus;
 using airfix::content::LegacyWeaponCrosshairDepthMode;
+using airfix::content::LegacyWeaponCrosshairRenderEventState;
+using airfix::content::LegacyWeaponCrosshairRenderSlot;
 using airfix::content::LegacyWeaponCrosshairSpriteSubmissionStatus;
 using airfix::content::LegacyWeaponCrosshairTextureLoadIssueKind;
 using airfix::content::LegacyWeaponCrosshairTextureLoadLimits;
@@ -607,6 +610,90 @@ void testSpriteSubmissionPreservesRecoveredContractAndCallerPolicy() {
   require(otherLoaded.success() &&
               !drawn.submission->belongsTo(*otherLoaded.textures),
           "equal revision on another authenticated handle reused a sprite");
+
+  const auto secondaryBinding =
+      airfix::content::bindLegacyWeaponCrosshairTexture(
+          loaded, session, LegacyWeaponTypeId::rocket);
+  require(secondaryBinding.success(),
+          "composition fixture did not bind the secondary rocket");
+  auto secondaryPlan = plan;
+  secondaryPlan.outputRect.x = 300.0F;
+  const auto secondary =
+      airfix::content::buildLegacyWeaponCrosshairSpriteSubmission(
+          secondaryPlan, *secondaryBinding.binding,
+          LegacyWeaponCrosshairVisibilityDecision::draw);
+  require(secondary.ready(),
+          "composition fixture did not build the secondary sprite");
+
+  const LegacyWeaponCrosshairRenderEventState activeRenderEvent{
+      .typeRenderEligible = true,
+      .vehicleInactive = false,
+      .cameraAttached = true,
+  };
+  const auto composition =
+      airfix::content::composeLegacyWeaponCrosshairRenderEvent(
+          activeRenderEvent, loaded, secondary.submission, drawn.submission);
+  require(composition.ready() && composition.count == 2U &&
+              composition.entry(0U) != nullptr &&
+              composition.entry(0U)->slot ==
+                  LegacyWeaponCrosshairRenderSlot::selectedSecondary &&
+              composition.entry(0U)->submission.weaponType ==
+                  LegacyWeaponTypeId::rocket &&
+              composition.entry(1U) != nullptr &&
+              composition.entry(1U)->slot ==
+                  LegacyWeaponCrosshairRenderSlot::primary &&
+              composition.entry(1U)->submission.weaponType ==
+                  LegacyWeaponTypeId::machineGun &&
+              composition.entry(2U) == nullptr,
+          "event-0x06 composition lost secondary-before-primary order");
+
+  const auto primaryOnly =
+      airfix::content::composeLegacyWeaponCrosshairRenderEvent(
+          activeRenderEvent, loaded, std::nullopt, drawn.submission);
+  require(primaryOnly.ready() && primaryOnly.count == 1U &&
+              primaryOnly.entry(0U) != nullptr &&
+              primaryOnly.entry(0U)->slot ==
+                  LegacyWeaponCrosshairRenderSlot::primary,
+          "missing secondary substituted or suppressed the primary slot");
+
+  const auto empty = airfix::content::composeLegacyWeaponCrosshairRenderEvent(
+      activeRenderEvent, loaded, std::nullopt, std::nullopt);
+  require(empty.ready() && empty.count == 0U && empty.entry(0U) == nullptr,
+          "empty native weapon slots did not produce an empty ready plan");
+
+  const auto requireGate = [&](LegacyWeaponCrosshairRenderEventState state,
+                               const auto expected,
+                               const std::string_view message) {
+    const auto gated = airfix::content::composeLegacyWeaponCrosshairRenderEvent(
+        state, loaded, secondary.submission, drawn.submission);
+    require(gated.status == expected && gated.count == 0U &&
+                gated.entry(0U) == nullptr,
+            message);
+  };
+  requireGate({.typeRenderEligible = false,
+               .vehicleInactive = true,
+               .cameraAttached = false},
+              LegacyWeaponCrosshairCompositionStatus::typeNotRenderEligible,
+              "type gate did not retain native first-gate precedence");
+  requireGate({.typeRenderEligible = true,
+               .vehicleInactive = true,
+               .cameraAttached = false},
+              LegacyWeaponCrosshairCompositionStatus::vehicleInactive,
+              "inactive gate did not precede the camera gate");
+  requireGate({.typeRenderEligible = true,
+               .vehicleInactive = false,
+               .cameraAttached = false},
+              LegacyWeaponCrosshairCompositionStatus::cameraNotAttached,
+              "camera gate published crosshairs");
+
+  auto forgedSubmission = *drawn.submission;
+  forgedSubmission.textureId.value = 2U;
+  const auto invalid = airfix::content::composeLegacyWeaponCrosshairRenderEvent(
+      activeRenderEvent, loaded, secondary.submission, forgedSubmission);
+  require(invalid.status ==
+                  LegacyWeaponCrosshairCompositionStatus::invalidSubmission &&
+              invalid.count == 0U && invalid.entry(0U) == nullptr,
+          "forged primary packet caused a partial crosshair publication");
 }
 
 } // namespace

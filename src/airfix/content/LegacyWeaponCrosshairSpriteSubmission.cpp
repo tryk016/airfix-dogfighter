@@ -82,4 +82,60 @@ buildLegacyWeaponCrosshairSpriteSubmission(
   };
 }
 
+const LegacyWeaponCrosshairCompositionEntry *
+LegacyWeaponCrosshairComposition::entry(
+    const std::size_t index) const noexcept {
+  if (index >= count || index >= orderedEntries.size() ||
+      !orderedEntries[index].has_value()) {
+    return nullptr;
+  }
+  return &*orderedEntries[index];
+}
+
+LegacyWeaponCrosshairComposition composeLegacyWeaponCrosshairRenderEvent(
+    const LegacyWeaponCrosshairRenderEventState &state,
+    const LoadedLegacyWeaponCrosshairTextureSet &textures,
+    const std::optional<LegacyWeaponCrosshairSpriteSubmission>
+        &selectedSecondary,
+    const std::optional<LegacyWeaponCrosshairSpriteSubmission>
+        &primary) noexcept {
+  LegacyWeaponCrosshairComposition result;
+  if (!state.typeRenderEligible) {
+    result.status =
+        LegacyWeaponCrosshairCompositionStatus::typeNotRenderEligible;
+    return result;
+  }
+  if (state.vehicleInactive) {
+    result.status = LegacyWeaponCrosshairCompositionStatus::vehicleInactive;
+    return result;
+  }
+  if (!state.cameraAttached) {
+    result.status = LegacyWeaponCrosshairCompositionStatus::cameraNotAttached;
+    return result;
+  }
+
+  if ((selectedSecondary.has_value() &&
+       !selectedSecondary->belongsTo(textures)) ||
+      (primary.has_value() && !primary->belongsTo(textures))) {
+    result.status = LegacyWeaponCrosshairCompositionStatus::invalidSubmission;
+    return result;
+  }
+
+  const auto append = [&](const LegacyWeaponCrosshairRenderSlot slot,
+                          const auto &submission) {
+    if (!submission.has_value()) {
+      return;
+    }
+    result.orderedEntries[result.count++] =
+        LegacyWeaponCrosshairCompositionEntry{
+            .slot = slot,
+            .submission = *submission,
+        };
+  };
+  append(LegacyWeaponCrosshairRenderSlot::selectedSecondary, selectedSecondary);
+  append(LegacyWeaponCrosshairRenderSlot::primary, primary);
+  result.status = LegacyWeaponCrosshairCompositionStatus::ready;
+  return result;
+}
+
 } // namespace airfix::content
