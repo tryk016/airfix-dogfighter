@@ -94,11 +94,16 @@
   verified AFPACK handle. The format-8 `128x128` `armour_meter`/`armour` pair
   loads atomically with archive-aware provenance and separate HUD-local IDs,
   then D3D11 and Metal prepare both resources inside the complete mission
-  transaction and GPU budget. Ordinary frames still issue no manufactured HUD
-  draw. Live
-  slot ownership, changing aim/collision production, explicit visibility
-  policy, evidence-backed gauge submission, the
-  remaining HUD, and screen effects are not yet connected.
+  transaction and GPU budget. The Cc screen-call chain now proves format-8
+  source-alpha texture blending, opaque black mask fill, and ALWAYS/write
+  depth. One authenticated fixed-capacity packet maps the recovered 640x480 UI
+  domain into physical output pixels and scales around its bottom-left anchor;
+  it never changes the native-resolution 3D target. D3D11 consumes it in a
+  real private 1920x1080 half-health capture. Ordinary frames still issue no
+  manufactured HUD draw. Live slot ownership, changing aim/collision
+  production, explicit visibility policy, smoothed-health producer wiring,
+  Metal gauge consumption, the remaining HUD, and screen effects are not yet
+  connected.
 - The recovered CCF material contract now survives end to end from typed
   `0x2140/0x2150/0x2151` metadata and exact native defaults through world,
   aggregate mission, and player texture binding into each backend-neutral draw

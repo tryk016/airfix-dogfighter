@@ -48,6 +48,13 @@ cbuffer OverlayUniforms : register(b2)
     float4 overlayTint;
 };
 
+cbuffer GaugeUniforms : register(b3)
+{
+    float4 gaugeOutputQuad[4];
+    float4 gaugeOutputSize;
+    float4 gaugeTint;
+};
+
 SmokeRasterInput AirfixSmokeVS(SmokeVertexInput input)
 {
     SmokeRasterInput output;
@@ -139,6 +146,28 @@ PresentationRasterInput AirfixOverlayVS(
     return output;
 }
 
+PresentationRasterInput AirfixGaugeVS(uint vertexId : SV_VertexID)
+{
+    static const uint quadIndices[6] = {0U, 1U, 2U, 0U, 2U, 3U};
+    static const float2 quadUv[4] = {
+        float2(0.0f, 0.0f),
+        float2(1.0f, 0.0f),
+        float2(1.0f, 1.0f),
+        float2(0.0f, 1.0f),
+    };
+    const uint quadIndex = quadIndices[vertexId];
+    const float2 pixelPosition = gaugeOutputQuad[quadIndex].xy;
+
+    PresentationRasterInput output;
+    output.position = float4(
+        pixelPosition.x * 2.0f / gaugeOutputSize.x - 1.0f,
+        1.0f - pixelPosition.y * 2.0f / gaugeOutputSize.y,
+        1.0f,
+        1.0f);
+    output.uv = quadUv[quadIndex];
+    return output;
+}
+
 Texture2D colorTexture : register(t0);
 SamplerState colorSampler : register(s0);
 
@@ -161,4 +190,14 @@ float4 AirfixPresentationPS(PresentationRasterInput input) : SV_TARGET
 float4 AirfixOverlayPS(PresentationRasterInput input) : SV_TARGET
 {
     return colorTexture.Sample(colorSampler, input.uv) * overlayTint;
+}
+
+float4 AirfixGaugeTexturePS(PresentationRasterInput input) : SV_TARGET
+{
+    return colorTexture.Sample(colorSampler, input.uv) * gaugeTint;
+}
+
+float4 AirfixGaugeSolidPS(PresentationRasterInput input) : SV_TARGET
+{
+    return gaugeTint;
 }

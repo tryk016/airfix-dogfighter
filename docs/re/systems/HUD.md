@@ -18,6 +18,9 @@ See
 [EXP-20260801-098](../../experiments/EXP-20260801-098-aircraft-health-gauge-plan.md)
 and
 [EXP-20260801-099](../../experiments/EXP-20260801-099-authenticated-health-gauge-textures.md).
+The verified screen-call state, native-output submission, and private Windows
+validation pass are in
+[EXP-20260801-100](../../experiments/EXP-20260801-100-aircraft-health-gauge-submission.md).
 
 ## Enclosing gates
 
@@ -72,9 +75,9 @@ accepts displayed health rather than owning that gameplay update.
 
 `LegacyAircraftHealthGaugePlan` is a bounded, allocation-free C++20 command
 list in legacy UI coordinates. It does not bind private textures, issue GPU
-work, choose a 3D render resolution, or mutate simulation. D3D11 and Metal can
-later consume the same ordered plan after the existing independent UI mapping
-places the logical canvas into native output pixels.
+work, choose a 3D render resolution, or mutate simulation. The source screen
+extent is retained so that later stages can fail closed instead of silently
+reinterpreting geometry recovered for another UI domain.
 
 Non-finite health, non-positive maximum health, values outside `[0,max]`, and
 zero screen extents fail closed. The native x87 trigonometric path is not
@@ -109,9 +112,41 @@ The texture IDs are dense only inside this gauge-owned namespace, so values
 iOS load the set as part of their private mission transaction, allocate every
 D3D11/Metal texture and required mip level before publication, retain the
 authenticated CPU ownership token, and include the resources in existing GPU
-budget accounting. The backends deliberately issue no gauge draw yet: the
-exact generic screen-call blend/depth semantics and native-output UI mapping
-must be joined to the renderer-neutral plan before ordinary frames consume it.
+budget accounting.
+
+## Screen calls and native submission
+
+The two texture calls at AirCraft RVAs `0x00006F8D` and `0x00007196` resolve
+through `GtScreen::Blit` at Cc RVA `0x00044CE0` to the concrete full-colour
+path at `0x00044EA0`. Because both textures are format 8, `GtImage::IsAlpha`
+selects blend mode 3: source alpha / inverse source alpha. The mask calls at
+AirCraft RVAs `0x000070CC` and `0x00007170` resolve through `GtScreen::Fill` at
+Cc RVA `0x000457C0`; selector zero disables blending and uses the supplied
+opaque black. Both paths select screen state 2, already recovered as depth
+compare ALWAYS with writes enabled.
+
+`LegacyAircraftHealthGaugeSubmission` joins the plan to one exact
+authenticated texture-set identity and maps all four-point commands through
+`NativeRenderLayout` into physical output pixels. It accepts only the proven
+640x480 UI design domain. This does not constrain the 3D render target: at
+100% render scale a 3840x2160 output still renders the scene at 3840x2160.
+
+Independent UI scale is applied around the logical bottom-left anchor, while
+the root 640x480 design canvas remains aspect-fitted inside the safe area. The
+submission preserves background -> mask -> foreground order, full UVs, white
+texture tint, opaque-black mask, blend/depth state, and bounded command count.
+Backends revalidate the transaction identity immediately before GPU lookup.
+
+Windows consumes this packet in a dedicated D3D11 shader path. The private
+`--capture-health-gauge-validation-frame` mode has produced a real 1920x1080
+half-health frame using the installed authenticated mission, aircraft,
+textures, mask, and diagnostics overlay. Its fixed 50% input exists only in
+the capture harness. Ordinary gameplay does not fabricate a live health value.
+Metal retains the same authenticated resources and portable packet contract,
+but its visible submission remains a later backend slice.
+
+The bounded dynamic follow-up for producer/consumer order is documented in
+[Controlled aircraft health-gauge capture](../../toolchain/AIRCRAFT-HEALTH-GAUGE-CAPTURE.md).
 
 ## Remaining HUD work
 
@@ -119,6 +154,7 @@ must be joined to the renderer-neutral plan before ordinary frames consume it.
 - Reconstruct four-digit rolling-number state and exact glyph-atlas binding.
 - Complete primary/selected-secondary icon, ammunition, and status-bar plans.
 - Recover aircraft/team indicators and the relationship to mission status.
-- Bind the staged gauge set to its ordered plan and implement evidence-backed
-  D3D11/Metal submission through the modern UI transform.
+- Connect the verified smoothed-health producer to ordinary render-event
+  publication without substituting capture-only values.
+- Implement Metal consumption of the existing authenticated common packet.
 - Validate the composed HUD at the required aspect ratios and safe areas.

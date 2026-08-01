@@ -2,6 +2,7 @@
 
 #include "AirfixEmbeddedShader.hpp"
 
+#include "airfix/content/LegacyAircraftHealthGaugeSubmission.hpp"
 #include "airfix/content/LegacyWeaponCrosshairSpriteSubmission.hpp"
 #include "airfix/content/MissionWorldRoomPublication.hpp"
 #include "airfix/render/DrawSubmissionPlan.hpp"
@@ -177,6 +178,15 @@ struct alignas(16) OverlayUniforms {
 
 static_assert(sizeof(OverlayUniforms) == 48U);
 static_assert(alignof(OverlayUniforms) == 16U);
+
+struct alignas(16) GaugeUniforms {
+  std::array<std::array<float, 4U>, 4U> outputQuad{};
+  std::array<float, 4U> outputSize{};
+  std::array<float, 4U> tint{};
+};
+
+static_assert(sizeof(GaugeUniforms) == 96U);
+static_assert(alignof(GaugeUniforms) == 16U);
 
 [[nodiscard]] constexpr std::array<float, 4U>
 normalizedArgb(const std::uint32_t argb) noexcept {
@@ -837,13 +847,15 @@ public:
     return diagnostics_.latest();
   }
 
-  [[nodiscard]] bool
-  renderFrame(const bool validateGpuOutput,
-              const std::filesystem::path *captureOutput = nullptr,
-              const airfix::render::LegacyGameplayCameraClipPacket
-                  *cameraOverride = nullptr,
-              const airfix::content::LegacyWeaponCrosshairSpriteSubmission
-                  *crosshairSubmission = nullptr) {
+  [[nodiscard]] bool renderFrame(
+      const bool validateGpuOutput,
+      const std::filesystem::path *captureOutput = nullptr,
+      const airfix::render::LegacyGameplayCameraClipPacket *cameraOverride =
+          nullptr,
+      const airfix::content::LegacyWeaponCrosshairSpriteSubmission
+          *crosshairSubmission = nullptr,
+      const airfix::content::LegacyAircraftHealthGaugeSubmission
+          *healthGaugeSubmission = nullptr) {
     const auto frameStarted = std::chrono::steady_clock::now();
     double frameIntervalMilliseconds = 1000.0 / 60.0;
     if (previousFrameStart_.has_value()) {
@@ -1080,6 +1092,10 @@ public:
       presentScaledScene();
     }
 
+    const std::size_t healthGaugeDrawCallCount =
+        healthGaugeSubmission != nullptr
+            ? drawLegacyAircraftHealthGauge(*healthGaugeSubmission)
+            : 0U;
     const bool crosshairDrawn =
         crosshairSubmission != nullptr &&
         drawLegacyWeaponCrosshair(*crosshairSubmission);
@@ -1087,9 +1103,13 @@ public:
     const std::uint64_t sceneDrawCallCount =
         static_cast<std::uint64_t>(submission.commands.size());
     const std::uint64_t auxiliaryDrawCallCount =
-        (usesScaledSceneTarget ? 1U : 0U) + (crosshairDrawn ? 1U : 0U);
+        (usesScaledSceneTarget ? 1U : 0U) +
+        static_cast<std::uint64_t>(healthGaugeDrawCallCount) +
+        (crosshairDrawn ? 1U : 0U);
     const std::uint64_t auxiliaryTriangleCount =
-        (usesScaledSceneTarget ? 1U : 0U) + (crosshairDrawn ? 2U : 0U);
+        (usesScaledSceneTarget ? 1U : 0U) +
+        static_cast<std::uint64_t>(healthGaugeDrawCallCount) * 2U +
+        (crosshairDrawn ? 2U : 0U);
     const auto cpuSampled = std::chrono::steady_clock::now();
     const double cpuFrameMilliseconds =
         std::chrono::duration<double, std::milli>(
@@ -1250,6 +1270,46 @@ public:
         !renderFrame(true, &outputPath, nullptr, &*submission.submission)) {
       throw std::runtime_error(
           "private crosshair validation produced no visible D3D11 output");
+    }
+  }
+
+  void captureMissionHealthGaugeValidationFrameToBmp(
+      const std::filesystem::path &outputPath) {
+    if (!missionWorldRoomInstalled() || !mission_->healthGauge.has_value() ||
+        width_ <= 0 || height_ <= 0) {
+      throw std::runtime_error(
+          "private health-gauge validation requires an installed "
+          "authenticated mission and gauge texture set");
+    }
+    const auto layout =
+        buildLayout(settings_, static_cast<std::uint32_t>(width_),
+                    static_cast<std::uint32_t>(height_));
+    if (!layout.complete()) {
+      throw std::runtime_error(
+          "private health-gauge validation requires a drawable native "
+          "layout");
+    }
+    const auto plan = airfix::render::buildLegacyAircraftHealthGaugePlan({
+        .activeWindowPresent = false,
+        .cameraAttachedAtEntry = true,
+        .typeHudEnabled = true,
+        .cameraAttachedAfterLayout = true,
+        .screenWidth = 640U,
+        .screenHeight = 480U,
+        .displayedHealth = 50.0F,
+        .maximumHealth = 100.0F,
+        .armourMeterTextureAvailable = true,
+        .armourTextureAvailable = true,
+    });
+    const auto submission =
+        airfix::content::buildLegacyAircraftHealthGaugeSubmission(
+            plan, *mission_->healthGauge, *layout.layout,
+            settings_.uiScalePercent);
+    if (!submission.ready() || !renderFrame(true, &outputPath, nullptr, nullptr,
+                                            &*submission.submission)) {
+      throw std::runtime_error(
+          "private health-gauge validation produced no visible D3D11 "
+          "output");
     }
   }
 
@@ -1835,6 +1895,112 @@ private:
     return true;
   }
 
+  [[nodiscard]] std::size_t drawLegacyAircraftHealthGauge(
+      const airfix::content::LegacyAircraftHealthGaugeSubmission &submission) {
+    if (!mission_ || !mission_->healthGauge.has_value() || !renderTarget_ ||
+        !submission.belongsTo(*mission_->healthGauge) ||
+        submission.commandCount == 0U ||
+        submission.commandCount > submission.orderedCommands.size()) {
+      return 0U;
+    }
+
+    const auto validPoint = [&](const airfix::render::OutputPixelPoint point) {
+      return std::isfinite(point.x) && std::isfinite(point.y) &&
+             point.x >= 0.0F && point.y >= 0.0F &&
+             point.x <= static_cast<float>(width_) &&
+             point.y <= static_cast<float>(height_);
+    };
+    for (std::size_t index = 0U; index < submission.commandCount; ++index) {
+      const auto &command = submission.orderedCommands[index];
+      if (command.depthMode !=
+              airfix::content::LegacyAircraftHealthGaugeDepthMode::
+                  alwaysWrite ||
+          command.samplingMode !=
+              airfix::content::LegacyAircraftHealthGaugeSamplingMode::
+                  linearClamp ||
+          !std::all_of(command.outputQuad.begin(), command.outputQuad.end(),
+                       validPoint)) {
+        return 0U;
+      }
+      if (command.textured()) {
+        if (command.blendMode !=
+                airfix::content::LegacyAircraftHealthGaugeBlendMode::
+                    sourceAlphaOneMinusSourceAlpha ||
+            command.colourArgb != 0xFFFFFFFFU ||
+            command.uv != airfix::content::LegacyAircraftHealthGaugeUvRect{}) {
+          return 0U;
+        }
+        const auto textureIndex =
+            static_cast<std::size_t>(command.textureId.value);
+        if (textureIndex >= mission_->healthGaugeTextures.size() ||
+            !mission_->healthGaugeTextures[textureIndex]) {
+          return 0U;
+        }
+      } else if (command.kind !=
+                     airfix::render::LegacyAircraftHealthGaugeCommandKind::
+                         damageMaskQuad ||
+                 command.blendMode !=
+                     airfix::content::LegacyAircraftHealthGaugeBlendMode::
+                         opaque ||
+                 command.colourArgb != 0xFF000000U) {
+        return 0U;
+      }
+    }
+
+    ID3D11RenderTargetView *outputTarget = renderTarget_.Get();
+    context_->OMSetRenderTargets(1U, &outputTarget, depthView_.Get());
+    context_->RSSetViewports(1U, &viewport_);
+    context_->RSSetState(rasterizer_.Get());
+    context_->OMSetDepthStencilState(crosshairDepthState_.Get(), 0U);
+    context_->IASetInputLayout(nullptr);
+    context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context_->VSSetShader(gaugeVertexShader_.Get(), nullptr, 0U);
+    ID3D11Buffer *uniformBuffer = gaugeUniforms_.Get();
+    context_->VSSetConstantBuffers(3U, 1U, &uniformBuffer);
+    context_->PSSetConstantBuffers(3U, 1U, &uniformBuffer);
+    ID3D11SamplerState *sampler = crosshairSampler_.Get();
+    context_->PSSetSamplers(0U, 1U, &sampler);
+    constexpr std::array<float, 4U> blendFactor{};
+
+    for (std::size_t index = 0U; index < submission.commandCount; ++index) {
+      const auto &command = submission.orderedCommands[index];
+      GaugeUniforms uniforms{
+          .outputSize = {static_cast<float>(width_),
+                         static_cast<float>(height_), 0.0F, 0.0F},
+          .tint = normalizedArgb(command.colourArgb),
+      };
+      for (std::size_t pointIndex = 0U; pointIndex < command.outputQuad.size();
+           ++pointIndex) {
+        uniforms.outputQuad[pointIndex] = {
+            command.outputQuad[pointIndex].x,
+            command.outputQuad[pointIndex].y,
+            0.0F,
+            0.0F,
+        };
+      }
+      context_->UpdateSubresource(gaugeUniforms_.Get(), 0U, nullptr, &uniforms,
+                                  0U, 0U);
+
+      ID3D11ShaderResourceView *view = nullptr;
+      if (command.textured()) {
+        context_->OMSetBlendState(overlayBlendState_.Get(), blendFactor.data(),
+                                  0xFFFFFFFFU);
+        context_->PSSetShader(gaugeTexturePixelShader_.Get(), nullptr, 0U);
+        view = mission_->healthGaugeTextures[command.textureId.value].Get();
+      } else {
+        context_->OMSetBlendState(nullptr, blendFactor.data(), 0xFFFFFFFFU);
+        context_->PSSetShader(gaugeSolidPixelShader_.Get(), nullptr, 0U);
+      }
+      context_->PSSetShaderResources(0U, 1U, &view);
+      context_->Draw(6U, 0U);
+    }
+
+    ID3D11ShaderResourceView *nullView = nullptr;
+    context_->PSSetShaderResources(0U, 1U, &nullView);
+    context_->OMSetBlendState(nullptr, blendFactor.data(), 0xFFFFFFFFU);
+    return submission.commandCount;
+  }
+
   void releaseSwapTargets() {
     context_->OMSetRenderTargets(0U, nullptr, nullptr);
     renderTarget_.Reset();
@@ -1953,6 +2119,12 @@ private:
         compileShader("AirfixOverlayVS", "vs_5_0");
     const ComPtr<ID3DBlob> overlayPixelBytecode =
         compileShader("AirfixOverlayPS", "ps_5_0");
+    const ComPtr<ID3DBlob> gaugeVertexBytecode =
+        compileShader("AirfixGaugeVS", "vs_5_0");
+    const ComPtr<ID3DBlob> gaugeTexturePixelBytecode =
+        compileShader("AirfixGaugeTexturePS", "ps_5_0");
+    const ComPtr<ID3DBlob> gaugeSolidPixelBytecode =
+        compileShader("AirfixGaugeSolidPS", "ps_5_0");
 
     requireSuccess(
         device_->CreateVertexShader(smokeVertexBytecode->GetBufferPointer(),
@@ -1989,11 +2161,26 @@ private:
                        overlayVertexBytecode->GetBufferSize(), nullptr,
                        overlayVertexShader_.GetAddressOf()),
                    "ID3D11Device::CreateVertexShader(overlay)");
+    requireSuccess(
+        device_->CreatePixelShader(overlayPixelBytecode->GetBufferPointer(),
+                                   overlayPixelBytecode->GetBufferSize(),
+                                   nullptr, overlayPixelShader_.GetAddressOf()),
+        "ID3D11Device::CreatePixelShader(overlay)");
+    requireSuccess(
+        device_->CreateVertexShader(gaugeVertexBytecode->GetBufferPointer(),
+                                    gaugeVertexBytecode->GetBufferSize(),
+                                    nullptr, gaugeVertexShader_.GetAddressOf()),
+        "ID3D11Device::CreateVertexShader(health gauge)");
     requireSuccess(device_->CreatePixelShader(
-                       overlayPixelBytecode->GetBufferPointer(),
-                       overlayPixelBytecode->GetBufferSize(), nullptr,
-                       overlayPixelShader_.GetAddressOf()),
-                   "ID3D11Device::CreatePixelShader(overlay)");
+                       gaugeTexturePixelBytecode->GetBufferPointer(),
+                       gaugeTexturePixelBytecode->GetBufferSize(), nullptr,
+                       gaugeTexturePixelShader_.GetAddressOf()),
+                   "ID3D11Device::CreatePixelShader(health gauge texture)");
+    requireSuccess(device_->CreatePixelShader(
+                       gaugeSolidPixelBytecode->GetBufferPointer(),
+                       gaugeSolidPixelBytecode->GetBufferSize(), nullptr,
+                       gaugeSolidPixelShader_.GetAddressOf()),
+                   "ID3D11Device::CreatePixelShader(health gauge solid)");
 
     constexpr std::array<D3D11_INPUT_ELEMENT_DESC, 3U> inputElements{{
         {
@@ -2054,6 +2241,14 @@ private:
     requireSuccess(device_->CreateBuffer(&overlayUniformDescription, nullptr,
                                          overlayUniforms_.GetAddressOf()),
                    "ID3D11Device::CreateBuffer(overlay uniforms)");
+
+    D3D11_BUFFER_DESC gaugeUniformDescription{};
+    gaugeUniformDescription.ByteWidth = sizeof(GaugeUniforms);
+    gaugeUniformDescription.Usage = D3D11_USAGE_DEFAULT;
+    gaugeUniformDescription.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    requireSuccess(device_->CreateBuffer(&gaugeUniformDescription, nullptr,
+                                         gaugeUniforms_.GetAddressOf()),
+                   "ID3D11Device::CreateBuffer(health-gauge uniforms)");
 
     D3D11_SAMPLER_DESC samplerDescription{};
     samplerDescription.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
@@ -2729,10 +2924,14 @@ private:
   ComPtr<ID3D11PixelShader> presentationPixelShader_;
   ComPtr<ID3D11VertexShader> overlayVertexShader_;
   ComPtr<ID3D11PixelShader> overlayPixelShader_;
+  ComPtr<ID3D11VertexShader> gaugeVertexShader_;
+  ComPtr<ID3D11PixelShader> gaugeTexturePixelShader_;
+  ComPtr<ID3D11PixelShader> gaugeSolidPixelShader_;
   ComPtr<ID3D11InputLayout> inputLayout_;
   ComPtr<ID3D11Buffer> smokeUniforms_;
   ComPtr<ID3D11Buffer> gameplayUniforms_;
   ComPtr<ID3D11Buffer> overlayUniforms_;
+  ComPtr<ID3D11Buffer> gaugeUniforms_;
   ComPtr<ID3D11SamplerState> classicSceneSampler_;
   ComPtr<ID3D11SamplerState> enhancedSceneSampler_;
   ComPtr<ID3D11SamplerState> uiSampler_;
@@ -2898,6 +3097,11 @@ void AirfixD3D11Renderer::captureMissionOverviewFrameToBmp(
 void AirfixD3D11Renderer::captureMissionCrosshairValidationFrameToBmp(
     const std::filesystem::path &outputPath) {
   implementation_->captureMissionCrosshairValidationFrameToBmp(outputPath);
+}
+
+void AirfixD3D11Renderer::captureMissionHealthGaugeValidationFrameToBmp(
+    const std::filesystem::path &outputPath) {
+  implementation_->captureMissionHealthGaugeValidationFrameToBmp(outputPath);
 }
 
 void AirfixD3D11Renderer::capturePublicDiagnosticFrameToBmp(

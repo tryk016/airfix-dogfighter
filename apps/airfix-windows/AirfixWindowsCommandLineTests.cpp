@@ -55,6 +55,7 @@ void testEmptyAndSmokeModes() {
               !defaultOptions.captureDiagnosticFrameOutput &&
               !defaultOptions.captureOverviewFrameOutput &&
               !defaultOptions.captureCrosshairValidationFrameOutput &&
+              !defaultOptions.captureHealthGaugeValidationFrameOutput &&
               !defaultOptions.captureSettingsPanelOutput &&
               !defaultOptions.captureControllerCalibrationPanelOutput &&
               !defaultOptions.captureControllerBindingsPanelOutput,
@@ -497,6 +498,33 @@ void testPrivateCrosshairValidationCaptureRequest() {
           "private crosshair validation capture request was not retained");
 }
 
+void testPrivateHealthGaugeValidationCaptureRequest() {
+  const std::array arguments{
+      "--content-root"sv,
+      "private-pack"sv,
+      "--setup"sv,
+      "mission.afs"sv,
+      "--level"sv,
+      "mission.level"sv,
+      "--capture-health-gauge-validation-frame"sv,
+      "health-gauge.BMP"sv,
+      "--capture-size"sv,
+      "1920x1080"sv,
+  };
+  const auto options = parse(arguments);
+  require(options.mission.has_value() &&
+              options.captureHealthGaugeValidationFrameOutput ==
+                  std::filesystem::path("health-gauge.BMP") &&
+              options.captureSize ==
+                  airfix::windows::AirfixWindowsCaptureSize{1920U, 1080U} &&
+              options.renderOverrides.diagnosticsOverlayEnabled == true &&
+              !options.captureFrameOutput &&
+              !options.captureOverviewFrameOutput &&
+              !options.captureCrosshairValidationFrameOutput &&
+              !options.validateContentOnly,
+          "private health-gauge validation capture request was not retained");
+}
+
 void testPublicDiagnosticCaptureRequest() {
   const std::array arguments{
       "--capture-diagnostic-frame"sv,
@@ -593,6 +621,7 @@ int main() {
     testPrivateCaptureRequest();
     testPrivateOverviewCaptureRequest();
     testPrivateCrosshairValidationCaptureRequest();
+    testPrivateHealthGaugeValidationCaptureRequest();
     testPublicDiagnosticCaptureRequest();
     testPublicSettingsPanelCaptureRequest();
     testPublicControllerCalibrationPanelCaptureRequest();
