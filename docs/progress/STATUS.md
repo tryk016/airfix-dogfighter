@@ -203,6 +203,13 @@
   exist. The portable
   persistence slice now adds a canonical, checksummed, 4 KiB-bounded AFRS
   record plus strict current/backup/default recovery and atomic durable writes.
+  ADR-0018 now extracts the byte-exact current/backup/partial transaction into
+  one codec-neutral `airfix::io` boundary shared by AFRS and AFIP. Their codecs,
+  semantic defaults, public diagnostics, future-schema policy, and serialized
+  native adapters remain separate. Direct synthetic faults cover both publish
+  stages, exact readback, unsafe partials, future preservation, and
+  commit-unknown without paths in diagnostics. This foundation does not define
+  or persist campaign/save-game state.
   Windows resolves the private `settings/` leaf only through SDL's preference
   API, layers one valid persistent snapshot under sparse launch-only overrides,
   and never touches the real profile during smoke, capture, or validation
@@ -1285,8 +1292,10 @@
    bytecode, a bounded VM, the `Load`/`Start` lifecycle, mutation during
    refresh, and global dispatcher/presentation order are proven. Then recover
    the roster lifecycle, score/stat contract, schema, corruption recovery, and
-   atomic modern save boundary before implementing `THRD`/`AXMI`/`ALMI`/`SCOR`
-   storage. Preserve one already-ordered outcome call per transition; do not
+   semantic save schema and recovery policy before reusing the implemented
+   ADR-0018 atomic document-pair boundary for `THRD`/`AXMI`/`ALMI`/`SCOR`
+   storage. The shared byte transaction alone is not save-game migration.
+   Preserve one already-ordered outcome call per transition; do not
    batch, sort, deduplicate, replay, or let the value-only consumer execute UI
    or disk effects.
 4. Complete ADR-0015 acceptance around the implemented native text pickers.

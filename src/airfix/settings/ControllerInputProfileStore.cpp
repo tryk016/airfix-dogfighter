@@ -1,10 +1,8 @@
 #include "airfix/settings/ControllerInputProfileStore.hpp"
 
-#include "airfix/io/DurableFile.hpp"
+#include "airfix/io/DurableDocumentPair.hpp"
 
-#include <algorithm>
 #include <span>
-#include <system_error>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -18,17 +16,17 @@ constexpr const char *currentPreparedFileName = "controller-input.afip.partial";
 constexpr const char *backupPreparedFileName =
     "controller-input.afip.backup.partial";
 
+constexpr io::DurableDocumentPairNames documentNames{
+    .current = currentFileName,
+    .backup = backupFileName,
+    .currentPrepared = currentPreparedFileName,
+    .backupPrepared = backupPreparedFileName,
+};
+
 struct DocumentRead final {
   ControllerInputProfileFileDiagnostic diagnostic;
   std::optional<input::ResolvedControllerInputProfile> profile;
   std::vector<std::uint8_t> exactBytes;
-};
-
-enum class SettingsDirectoryStatus : std::uint8_t {
-  ready,
-  missing,
-  wrongTypeOrLinked,
-  unavailable,
 };
 
 [[noreturn]] void storeFailure(
@@ -38,19 +36,45 @@ enum class SettingsDirectoryStatus : std::uint8_t {
   throw ControllerInputProfileStoreError(kind, requestedRecord, message);
 }
 
+[[nodiscard]] io::DurableDocumentDisposition
+inspectDocument(const std::span<const std::uint8_t> bytes, void *) noexcept {
+  try {
+    const auto decoded = decodeControllerInputProfileDocument(bytes);
+    if (std::holds_alternative<OpaqueFutureControllerInputProfileRecord>(
+            decoded)) {
+      return io::DurableDocumentDisposition::futurePreserve;
+    }
+    const auto &record = std::get<input::ControllerInputProfileRecord>(decoded);
+    if (input::resolveControllerInputProfile(record).complete()) {
+      return io::DurableDocumentDisposition::valid;
+    }
+  } catch (...) {
+  }
+  return io::DurableDocumentDisposition::replaceableInvalid;
+}
+
+constexpr io::DurableDocumentInspection documentInspection{
+    .maximumBytes = maximumControllerInputProfileDocumentBytes,
+    .inspect = inspectDocument,
+};
+
 [[nodiscard]] ControllerInputProfileFileStatus
-statusForIoError(const io::DurableFileErrorKind kind) noexcept {
-  switch (kind) {
-  case io::DurableFileErrorKind::notFound:
+statusForDocumentRead(const io::DurableDocumentFileStatus status) noexcept {
+  switch (status) {
+  case io::DurableDocumentFileStatus::missing:
     return ControllerInputProfileFileStatus::missing;
-  case io::DurableFileErrorKind::wrongType:
-    return ControllerInputProfileFileStatus::wrongTypeOrLinked;
-  case io::DurableFileErrorKind::sizeLimitExceeded:
+  case io::DurableDocumentFileStatus::oversized:
     return ControllerInputProfileFileStatus::oversized;
-  case io::DurableFileErrorKind::invalidArgument:
-  case io::DurableFileErrorKind::alreadyExists:
-  case io::DurableFileErrorKind::ioFailure:
+  case io::DurableDocumentFileStatus::wrongTypeOrLinked:
+    return ControllerInputProfileFileStatus::wrongTypeOrLinked;
+  case io::DurableDocumentFileStatus::ioUnavailable:
     return ControllerInputProfileFileStatus::ioUnavailable;
+  case io::DurableDocumentFileStatus::valid:
+    return ControllerInputProfileFileStatus::valid;
+  case io::DurableDocumentFileStatus::futurePreserve:
+    return ControllerInputProfileFileStatus::futureSchema;
+  case io::DurableDocumentFileStatus::replaceableInvalid:
+    return ControllerInputProfileFileStatus::malformed;
   }
   return ControllerInputProfileFileStatus::ioUnavailable;
 }
@@ -58,13 +82,15 @@ statusForIoError(const io::DurableFileErrorKind kind) noexcept {
 [[nodiscard]] DocumentRead readDocument(const std::filesystem::path &path) {
   DocumentRead result;
   try {
-    result.exactBytes = io::readBoundedRegularFile(
-        path, maximumControllerInputProfileDocumentBytes);
-  } catch (const io::DurableFileError &error) {
-    result.diagnostic.status = statusForIoError(error.kind());
-    return result;
+    auto read = io::readDurableDocument(path, documentInspection);
+    result.diagnostic.status = statusForDocumentRead(read.status);
+    result.exactBytes = std::move(read.exactBytes);
   } catch (...) {
     result.diagnostic.status = ControllerInputProfileFileStatus::ioUnavailable;
+    return result;
+  }
+  if (result.exactBytes.empty() &&
+      result.diagnostic.status != ControllerInputProfileFileStatus::malformed) {
     return result;
   }
 
@@ -115,201 +141,29 @@ blocksPersistence(const ControllerInputProfileFileStatus status) noexcept {
          status == ControllerInputProfileFileStatus::ioUnavailable;
 }
 
-[[nodiscard]] SettingsDirectoryStatus
-inspectSettingsDirectory(const std::filesystem::path &directory) noexcept {
-  std::error_code error;
-  const auto status = std::filesystem::symlink_status(directory, error);
-  if ((!error && status.type() == std::filesystem::file_type::not_found) ||
-      error == std::errc::no_such_file_or_directory) {
-    return SettingsDirectoryStatus::missing;
-  }
-  if (error) {
-    return SettingsDirectoryStatus::unavailable;
-  }
-  if (!std::filesystem::is_directory(status) ||
-      std::filesystem::is_symlink(status)) {
-    return SettingsDirectoryStatus::wrongTypeOrLinked;
-  }
-  return SettingsDirectoryStatus::ready;
-}
-
-void requireSettingsDirectory(const std::filesystem::path &directory) {
-  if (directory.empty() || !directory.is_absolute()) {
+[[noreturn]] void mapPairFailure(
+    const io::DurableDocumentPairError &error,
+    const std::optional<input::ControllerInputProfileRecord> &requestedRecord) {
+  switch (error.kind()) {
+  case io::DurableDocumentPairErrorKind::invalidDirectory:
     storeFailure(ControllerInputProfileStoreErrorKind::invalidDirectory,
                  std::nullopt, "controller profile directory is invalid");
-  }
-
-  std::error_code error;
-  auto status = std::filesystem::symlink_status(directory, error);
-  if ((!error && status.type() == std::filesystem::file_type::not_found) ||
-      error == std::errc::no_such_file_or_directory) {
-    error.clear();
-    if (!std::filesystem::create_directory(directory, error) && error) {
-      storeFailure(ControllerInputProfileStoreErrorKind::invalidDirectory,
-                   std::nullopt,
-                   "controller profile directory cannot be created");
-    }
-    try {
-      io::syncDirectory(directory.parent_path());
-    } catch (...) {
-      storeFailure(ControllerInputProfileStoreErrorKind::invalidDirectory,
-                   std::nullopt,
-                   "controller profile parent cannot be synchronized");
-    }
-    status = std::filesystem::symlink_status(directory, error);
-  }
-  if (error || !std::filesystem::is_directory(status) ||
-      std::filesystem::is_symlink(status)) {
-    storeFailure(ControllerInputProfileStoreErrorKind::invalidDirectory,
-                 std::nullopt,
-                 "controller profile path is not an exact directory");
-  }
-}
-
-void removeOwnedPreparedIfPresent(const std::filesystem::path &path,
-                                  const std::filesystem::path &directory) {
-  std::error_code error;
-  const auto status = std::filesystem::symlink_status(path, error);
-  if ((!error && status.type() == std::filesystem::file_type::not_found) ||
-      error == std::errc::no_such_file_or_directory) {
-    return;
-  }
-  if (error || !std::filesystem::is_regular_file(status) ||
-      std::filesystem::is_symlink(status)) {
-    storeFailure(ControllerInputProfileStoreErrorKind::saveFailed, std::nullopt,
-                 "controller profile prepared entry has an unsafe type");
-  }
-  const auto links = std::filesystem::hard_link_count(path, error);
-  if (error || links != 1U) {
-    storeFailure(ControllerInputProfileStoreErrorKind::saveFailed, std::nullopt,
-                 "controller profile prepared entry is linked");
-  }
-  if (!std::filesystem::remove(path, error) || error) {
-    storeFailure(ControllerInputProfileStoreErrorKind::saveFailed, std::nullopt,
-                 "controller profile prepared entry cannot be removed");
-  }
-  try {
-    io::syncDirectory(directory);
-  } catch (...) {
-    storeFailure(ControllerInputProfileStoreErrorKind::saveFailed, std::nullopt,
-                 "controller profile prepared cleanup is not durable");
-  }
-}
-
-void cleanupOwnedPreparedNoexcept(const std::filesystem::path &path,
-                                  const bool owned) noexcept {
-  if (!owned) {
-    return;
-  }
-  std::error_code error;
-  const auto status = std::filesystem::symlink_status(path, error);
-  if (error || !std::filesystem::is_regular_file(status) ||
-      std::filesystem::is_symlink(status)) {
-    return;
-  }
-  const auto links = std::filesystem::hard_link_count(path, error);
-  if (error || links != 1U) {
-    return;
-  }
-  (void)std::filesystem::remove(path, error);
-}
-
-[[nodiscard]] bool
-exactTargetBytes(const std::filesystem::path &target,
-                 const std::span<const std::uint8_t> expected) noexcept {
-  try {
-    const auto bytes = io::readBoundedRegularFile(
-        target, maximumControllerInputProfileDocumentBytes);
-    return std::ranges::equal(bytes, expected);
-  } catch (...) {
-    return false;
-  }
-}
-
-struct PublishResult final {
-  bool confirmedAfterFailure{};
-};
-
-[[nodiscard]] PublishResult publishExact(
-    const std::filesystem::path &prepared, const std::filesystem::path &target,
-    const std::filesystem::path &directory,
-    const std::span<const std::uint8_t> expected,
-    const std::span<const std::uint8_t> previous,
-    const testing::ControllerInputProfileStoreHooks *const hooks,
-    const std::optional<input::ControllerInputProfileRecord> &requestedRecord) {
-  bool replaceReturned = false;
-  try {
-    if (hooks != nullptr && hooks->replace != nullptr) {
-      hooks->replace(prepared, target, hooks->context);
-    } else {
-      io::replaceFileDurable(prepared, target);
-    }
-    replaceReturned = true;
-  } catch (...) {
-    if (exactTargetBytes(target, expected)) {
-      try {
-        if (hooks != nullptr && hooks->retryDurability != nullptr) {
-          hooks->retryDurability(target, directory, hooks->context);
-        } else {
-          io::syncFile(target);
-          io::syncDirectory(directory);
-        }
-        return {.confirmedAfterFailure = true};
-      } catch (...) {
-        storeFailure(ControllerInputProfileStoreErrorKind::commitUnknown,
-                     requestedRecord,
-                     "controller profile commit durability is unknown");
-      }
-    }
-    if (!replaceReturned &&
-        ((!previous.empty() && exactTargetBytes(target, previous)) ||
-         (previous.empty() && readDocument(target).diagnostic.status ==
-                                  ControllerInputProfileFileStatus::missing))) {
-      storeFailure(ControllerInputProfileStoreErrorKind::saveFailed,
-                   requestedRecord,
-                   "controller profile replacement failed before publication");
-    }
+  case io::DurableDocumentPairErrorKind::persistenceBlocked:
+    storeFailure(ControllerInputProfileStoreErrorKind::persistenceBlocked,
+                 requestedRecord,
+                 "controller profile persistence is blocked by retained state");
+  case io::DurableDocumentPairErrorKind::commitUnknown:
     storeFailure(ControllerInputProfileStoreErrorKind::commitUnknown,
                  requestedRecord,
-                 "controller profile replacement outcome is unknown");
-  }
-  if (!exactTargetBytes(target, expected)) {
-    storeFailure(ControllerInputProfileStoreErrorKind::commitUnknown,
-                 requestedRecord,
-                 "controller profile committed readback does not match");
-  }
-  return {};
-}
-
-[[nodiscard]] PublishResult writeAndPublish(
-    const std::filesystem::path &prepared, const std::filesystem::path &target,
-    const std::filesystem::path &directory,
-    const std::span<const std::uint8_t> expected,
-    const std::span<const std::uint8_t> previous,
-    const testing::ControllerInputProfileStoreHooks *const hooks,
-    const std::optional<input::ControllerInputProfileRecord> &requestedRecord) {
-  removeOwnedPreparedIfPresent(prepared, directory);
-  bool preparedOwned = false;
-  try {
-    io::writeFileExclusiveDurable(prepared, expected);
-    preparedOwned = true;
-    if (!exactTargetBytes(prepared, expected)) {
-      storeFailure(ControllerInputProfileStoreErrorKind::saveFailed,
-                   requestedRecord,
-                   "controller profile prepared readback failed");
-    }
-    const auto result = publishExact(prepared, target, directory, expected,
-                                     previous, hooks, requestedRecord);
-    preparedOwned = false;
-    return result;
-  } catch (const ControllerInputProfileStoreError &) {
-    cleanupOwnedPreparedNoexcept(prepared, preparedOwned);
-    throw;
-  } catch (...) {
-    cleanupOwnedPreparedNoexcept(prepared, preparedOwned);
+                 "controller profile commit outcome is unknown");
+  case io::DurableDocumentPairErrorKind::invalidArgument:
+  case io::DurableDocumentPairErrorKind::saveFailed:
     storeFailure(ControllerInputProfileStoreErrorKind::saveFailed,
-                 requestedRecord, "controller profile durable I/O failed");
+                 error.candidateRelevant() ? requestedRecord : std::nullopt,
+                 "controller profile durable I/O failed");
   }
+  storeFailure(ControllerInputProfileStoreErrorKind::saveFailed,
+               requestedRecord, "controller profile durable I/O failed");
 }
 
 [[nodiscard]] input::ResolvedControllerInputProfile resolvedDefaultProfile() {
@@ -332,46 +186,38 @@ saveImpl(const std::filesystem::path &settingsDirectory,
   }
   const auto bytes = encodeControllerInputProfileDocument(candidate);
 
-  requireSettingsDirectory(settingsDirectory);
-  const auto currentPath = settingsDirectory / currentFileName;
-  const auto backupPath = settingsDirectory / backupFileName;
-  const auto current = readDocument(currentPath);
-  const auto backup = readDocument(backupPath);
-  if (blocksPersistence(current.diagnostic.status) ||
-      blocksPersistence(backup.diagnostic.status)) {
-    storeFailure(ControllerInputProfileStoreErrorKind::persistenceBlocked,
-                 candidate,
-                 "controller profile persistence is blocked by retained state");
+  try {
+    io::DurableDocumentCommitResult result;
+    if (hooks == nullptr) {
+      result = io::commitDurableDocumentPair(settingsDirectory, documentNames,
+                                             documentInspection, bytes);
+    } else {
+      const io::testing::DurableDocumentPairHooks pairHooks{
+          .replace = hooks->replace,
+          .retryDurability = hooks->retryDurability,
+          .context = hooks->context,
+      };
+      result = io::testing::commitDurableDocumentPairWithHooks(
+          settingsDirectory, documentNames, documentInspection, bytes,
+          pairHooks);
+    }
+    switch (result.status) {
+    case io::DurableDocumentCommitStatus::unchanged:
+      return {.status = ControllerInputProfileSaveStatus::unchanged,
+              .backupRotated = result.backupRotated};
+    case io::DurableDocumentCommitStatus::committed:
+      return {.status = ControllerInputProfileSaveStatus::committed,
+              .backupRotated = result.backupRotated};
+    case io::DurableDocumentCommitStatus::committedAfterReadback:
+      return {.status =
+                  ControllerInputProfileSaveStatus::committedAfterReadback,
+              .backupRotated = result.backupRotated};
+    }
+  } catch (const io::DurableDocumentPairError &error) {
+    mapPairFailure(error, candidate);
   }
-  if (current.diagnostic.status == ControllerInputProfileFileStatus::valid &&
-      current.exactBytes == bytes) {
-    return {
-        .status = ControllerInputProfileSaveStatus::unchanged,
-        .backupRotated = false,
-    };
-  }
-
-  bool backupRotated = false;
-  bool confirmedAfterFailure = false;
-  if (current.diagnostic.status == ControllerInputProfileFileStatus::valid) {
-    const auto backupPrepared = settingsDirectory / backupPreparedFileName;
-    const auto backupPublished = writeAndPublish(
-        backupPrepared, backupPath, settingsDirectory, current.exactBytes,
-        backup.exactBytes, hooks, candidate);
-    backupRotated = true;
-    confirmedAfterFailure = backupPublished.confirmedAfterFailure;
-  }
-
-  const auto currentPrepared = settingsDirectory / currentPreparedFileName;
-  const auto published =
-      writeAndPublish(currentPrepared, currentPath, settingsDirectory, bytes,
-                      current.exactBytes, hooks, candidate);
-  return {
-      .status = (published.confirmedAfterFailure || confirmedAfterFailure)
-                    ? ControllerInputProfileSaveStatus::committedAfterReadback
-                    : ControllerInputProfileSaveStatus::committed,
-      .backupRotated = backupRotated,
-  };
+  storeFailure(ControllerInputProfileStoreErrorKind::saveFailed, candidate,
+               "controller profile durable I/O failed");
 }
 
 } // namespace
@@ -401,18 +247,18 @@ loadControllerInputProfile(const std::filesystem::path &settingsDirectory) {
   // The private leaf has one serialized owner. Reject the leaf itself when
   // it is a symlink or reparse point. Native adapters must also keep its
   // parent tree outside directories writable by untrusted processes.
-  switch (inspectSettingsDirectory(settingsDirectory)) {
-  case SettingsDirectoryStatus::ready:
+  switch (io::inspectDurableDocumentDirectory(settingsDirectory)) {
+  case io::DurableDocumentDirectoryStatus::ready:
     break;
-  case SettingsDirectoryStatus::missing:
+  case io::DurableDocumentDirectoryStatus::missing:
     result.current.status = ControllerInputProfileFileStatus::missing;
     result.backup.status = ControllerInputProfileFileStatus::missing;
     return result;
-  case SettingsDirectoryStatus::wrongTypeOrLinked:
+  case io::DurableDocumentDirectoryStatus::wrongTypeOrLinked:
     result.current.status = ControllerInputProfileFileStatus::wrongTypeOrLinked;
     result.persistenceBlocked = true;
     return result;
-  case SettingsDirectoryStatus::unavailable:
+  case io::DurableDocumentDirectoryStatus::unavailable:
     result.current.status = ControllerInputProfileFileStatus::ioUnavailable;
     result.persistenceBlocked = true;
     return result;
