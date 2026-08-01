@@ -15,7 +15,9 @@ complete armour/health-gauge subsection is implemented here; this is not a
 claim that the whole HUD or mission-status UI is reconstructed.
 
 See
-[EXP-20260801-098](../../experiments/EXP-20260801-098-aircraft-health-gauge-plan.md).
+[EXP-20260801-098](../../experiments/EXP-20260801-098-aircraft-health-gauge-plan.md)
+and
+[EXP-20260801-099](../../experiments/EXP-20260801-099-authenticated-health-gauge-textures.md).
 
 ## Enclosing gates
 
@@ -86,12 +88,37 @@ width anchoring, full/half/empty health, optional texture layers, exact command
 capacity, vertex orientation, invalid values, bounds-safe access, and
 steady-state allocation freedom.
 
+## Authenticated texture ownership
+
+The two recovered texture roles do not come from the same nested archive:
+
+- `Graphics\Ingame\HUD\armour_meter.gti` is resolved from `Resource.up`;
+- `Graphics\Ingame\HUD\armour.gti` is resolved from the AFPACK localization
+  archive selected by its strict manifest.
+
+Recovery and direct session opening now retain both UDSP views over the same
+seekable AFPACK handle and transaction identity. No archive is reopened by a
+host path. `LegacyAircraftHealthGaugeTextureSet` requires both unique entries,
+format 8, `128x128`, matching upload plans, bounded source/decode/upload/
+resident byte totals, and an unchanged content revision. Any missing,
+ambiguous, malformed, oversized, cancelled, or mixed-session input rejects the
+entire two-texture set.
+
+The texture IDs are dense only inside this gauge-owned namespace, so values
+`0` and `1` cannot alias mission textures or weapon-crosshair IDs. Windows and
+iOS load the set as part of their private mission transaction, allocate every
+D3D11/Metal texture and required mip level before publication, retain the
+authenticated CPU ownership token, and include the resources in existing GPU
+budget accounting. The backends deliberately issue no gauge draw yet: the
+exact generic screen-call blend/depth semantics and native-output UI mapping
+must be joined to the renderer-neutral plan before ordinary frames consume it.
+
 ## Remaining HUD work
 
 - Recover and classify the two clock/instrument calls and their live values.
 - Reconstruct four-digit rolling-number state and exact glyph-atlas binding.
 - Complete primary/selected-secondary icon, ammunition, and status-bar plans.
 - Recover aircraft/team indicators and the relationship to mission status.
-- Bind authenticated HUD textures without dense-ID collisions, then consume
-  the common plans in D3D11 and Metal through the modern UI transform.
+- Bind the staged gauge set to its ordered plan and implement evidence-backed
+  D3D11/Metal submission through the modern UI transform.
 - Validate the composed HUD at the required aspect ratios and safe areas.

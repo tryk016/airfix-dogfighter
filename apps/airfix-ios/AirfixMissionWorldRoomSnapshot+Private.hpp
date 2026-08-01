@@ -3,6 +3,7 @@
 #import "AirfixMissionWorldRoomSnapshot.h"
 
 #include "airfix/content/LegacyAircraftAudioClipSet.hpp"
+#include "airfix/content/LegacyAircraftHealthGaugeTextureSet.hpp"
 #include "airfix/content/LegacyWeaponCrosshairTextureSet.hpp"
 #include "airfix/content/MissionWorldRoomLoader.hpp"
 #include "airfix/content/WorldRoomPublicationGate.hpp"
@@ -15,11 +16,12 @@ namespace airfix::ios {
 // Creates the Objective-C envelope by moving the complete portable payload.
 // No private logical path, start pose, provenance, model, texture, or source
 // byte is copied into a public Objective-C property.
-[[nodiscard]] AirfixMissionWorldRoomSnapshot* makeMissionWorldRoomSnapshot(
+[[nodiscard]] AirfixMissionWorldRoomSnapshot *makeMissionWorldRoomSnapshot(
     content::WorldRoomPublicationTicket ticket,
-    content::LoadedMissionWorldRoom&& room,
-    content::LoadedLegacyAircraftAudioClips&& audioClips,
-    content::LoadedLegacyWeaponCrosshairTextureSet&& crosshairs);
+    content::LoadedMissionWorldRoom &&room,
+    content::LoadedLegacyAircraftAudioClips &&audioClips,
+    content::LoadedLegacyWeaponCrosshairTextureSet &&crosshairs,
+    content::LoadedLegacyAircraftHealthGaugeTextureSet &&healthGauge);
 
 // One-shot renderer handoff. A second call fails rather than returning a
 // moved-from payload.
@@ -31,6 +33,9 @@ takeLoadedLegacyAircraftAudioClips(
 [[nodiscard]] content::LoadedLegacyWeaponCrosshairTextureSet
 takeLoadedLegacyWeaponCrosshairTextures(
     AirfixMissionWorldRoomSnapshot* snapshot);
+[[nodiscard]] content::LoadedLegacyAircraftHealthGaugeTextureSet
+takeLoadedLegacyAircraftHealthGaugeTextures(
+    AirfixMissionWorldRoomSnapshot *snapshot);
 
 // Remains available after the payload has been taken so the main-thread
 // coordinator can reject a stale two-phase Metal publication.

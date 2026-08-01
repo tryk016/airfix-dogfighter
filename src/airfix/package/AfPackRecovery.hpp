@@ -72,8 +72,9 @@ struct CandidateDiagnostic {
 };
 
 // Move-only proof that one open AFPACK handle was authenticated against AFAC
-// and that its metadata and nested source archive were parsed from that exact
-// handle. The lease is retained until all runtime reads from the package end.
+// and that its metadata, nested source archive, and selected localization
+// archive were parsed from that exact handle. The lease is retained until all
+// runtime reads from the package end.
 class ActiveContentLease final {
 public:
     ActiveContentLease(const ActiveContentLease&) = delete;
@@ -99,30 +100,36 @@ public:
     [[nodiscard]] std::size_t sourcePackEntryIndex() const noexcept {
         return sourcePackEntryIndex_;
     }
+    [[nodiscard]] const udsp::Archive &localizationArchive() const noexcept {
+      return localizationArchive_;
+    }
+    [[nodiscard]] std::size_t localizationPackEntryIndex() const noexcept {
+      return localizationPackEntryIndex_;
+    }
 
 private:
-    ActiveContentLease(
-        std::unique_ptr<std::ifstream> input,
-        std::uint64_t activeGeneration,
-        ActivePackReference reference,
-        std::filesystem::path path,
-        Pack pack,
-        Manifest manifest,
-        udsp::Archive sourceArchive,
-        std::size_t sourcePackEntryIndex) noexcept;
+  ActiveContentLease(std::unique_ptr<std::ifstream> input,
+                     std::uint64_t activeGeneration,
+                     ActivePackReference reference, std::filesystem::path path,
+                     Pack pack, Manifest manifest, udsp::Archive sourceArchive,
+                     std::size_t sourcePackEntryIndex,
+                     udsp::Archive localizationArchive,
+                     std::size_t localizationPackEntryIndex) noexcept;
 
-    friend struct detail::ActiveContentLeaseFactory;
-    friend class airfix::content::VerifiedContentSession;
-    friend struct airfix::testing::AuthenticatedStreamIdentityProbe;
+  friend struct detail::ActiveContentLeaseFactory;
+  friend class airfix::content::VerifiedContentSession;
+  friend struct airfix::testing::AuthenticatedStreamIdentityProbe;
 
-    std::unique_ptr<std::ifstream> input_;
-    std::uint64_t activeGeneration_{};
-    ActivePackReference reference_;
-    std::filesystem::path path_;
-    Pack pack_;
-    Manifest manifest_;
-    udsp::Archive sourceArchive_;
-    std::size_t sourcePackEntryIndex_{};
+  std::unique_ptr<std::ifstream> input_;
+  std::uint64_t activeGeneration_{};
+  ActivePackReference reference_;
+  std::filesystem::path path_;
+  Pack pack_;
+  Manifest manifest_;
+  udsp::Archive sourceArchive_;
+  std::size_t sourcePackEntryIndex_{};
+  udsp::Archive localizationArchive_;
+  std::size_t localizationPackEntryIndex_{};
 };
 
 enum class RecoveryPhase : std::uint8_t {

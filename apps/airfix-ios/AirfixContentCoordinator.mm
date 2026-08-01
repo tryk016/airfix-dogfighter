@@ -4,6 +4,7 @@
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #include "airfix/content/LegacyAircraftAudioClipSet.hpp"
+#include "airfix/content/LegacyAircraftHealthGaugeTextureSet.hpp"
 #include "airfix/content/MissionLoadManifest.hpp"
 #include "airfix/content/MissionWorldRoomLoader.hpp"
 #include "airfix/content/VerifiedContentSession.hpp"
@@ -1076,13 +1077,29 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
                     return;
                 }
 
+                auto healthGaugeResult =
+                    airfix::content::loadLegacyAircraftHealthGaugeTextures(
+                        *strongSelf->_verifiedSession, {}, stopToken);
+                if (!strongSelf->_verifiedSession.has_value() ||
+                    strongSelf->_verifiedSession->revision() !=
+                        revisionBeforeLoad ||
+                    !healthGaugeResult.success() ||
+                    !healthGaugeResult.textures.has_value() ||
+                    !healthGaugeResult.textures->belongsTo(
+                        *strongSelf->_verifiedSession) ||
+                    healthGaugeResult.textures->revision !=
+                        ticket->expectedRevision) {
+                  publishFailure();
+                  return;
+                }
+
                 const auto resultRevision = result.room->revision;
-                AirfixMissionWorldRoomSnapshot* const snapshot =
+                AirfixMissionWorldRoomSnapshot *const snapshot =
                     airfix::ios::makeMissionWorldRoomSnapshot(
-                        *ticket,
-                        std::move(*result.room),
+                        *ticket, std::move(*result.room),
                         std::move(*audioResult.clips),
-                        std::move(*crosshairResult.textures));
+                        std::move(*crosshairResult.textures),
+                        std::move(*healthGaugeResult.textures));
                 dispatch_async(dispatch_get_main_queue(), ^{
                     AirfixContentCoordinator* coordinator = weakSelf;
                     if (coordinator == nil ||

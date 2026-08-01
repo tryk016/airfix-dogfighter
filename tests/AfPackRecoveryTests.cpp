@@ -333,9 +333,15 @@ void testMoveOnlyReadyLeaseExtraction() {
             lease.sourceArchive().lookup("dir/entry.bin").status ==
                 airfix::udsp::LookupStatus::unique,
         "taking the ready lease lost the nested source archive");
-    requireError<std::logic_error>([&] {
-        (void)std::move(movedInspection).takeReadyLease();
-    });
+    require(
+        lease.localizationPackEntryIndex() < lease.pack().entries().size() &&
+            lease.pack().entries()[lease.localizationPackEntryIndex()].path ==
+                "localization/English.up" &&
+            lease.localizationArchive().lookup("dir/entry.bin").status ==
+                airfix::udsp::LookupStatus::unique,
+        "taking the ready lease lost the nested localization archive");
+    requireError<std::logic_error>(
+        [&] { (void)std::move(movedInspection).takeReadyLease(); });
 
     const auto rollbackContent = fixture.path("lease-rollback-content");
     const auto rotation = installRotation(

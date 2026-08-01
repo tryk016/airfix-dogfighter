@@ -4927,3 +4927,23 @@ superseded evidence.
   synthetic tests and the 680-file scan, function-catalog validation,
   formatting, and `git diff --check` pass. Hosted platform builds remain the
   publication gate.
+
+## 2026-08-01 - authenticated health-gauge texture staging
+
+- `EXP-20260801-099` closes the resource-ownership prerequisite for the
+  recovered gauge without claiming a visible HUD. `armour_meter.gti` resolves
+  only from authenticated `Resource.up`; `armour.gti` resolves only from the
+  manifest-selected localization archive.
+- Recovery and direct verified-session opening retain both nested UDSP views
+  over one unchanged AFPACK stream. The new bounded loader requires the exact
+  format-8 `128x128` pair, preserves archive kind and HUD-local identity,
+  preflights aggregate source/RGBA budgets, and publishes nothing on a single
+  role failure.
+- Windows loads and uploads both resources before its no-fail D3D11 mission
+  swap. iOS carries them in the private snapshot, accounts them in the shared
+  Metal heap/admission plan, uploads/generates all mip levels, and retains them
+  under the published room owner. Neither backend issues a health-gauge draw.
+- The full portable build passes 130/130 CTests. A real MSVC 19.51 HostX64/
+  Ninja build compiles the complete Windows product and passes 142/142 CTests,
+  including both product smokes. Hosted iOS compilation remains the
+  Objective-C++ publication gate.

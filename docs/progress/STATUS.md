@@ -89,9 +89,15 @@
   plan preserves both camera samples, native gate order, the `639/640` anchor
   split, optional background/foreground textures, the smoothed-health annular
   mask with at most 32 black quads, and exact layer order in logical UI
-  coordinates. Ordinary frames still issue no manufactured HUD draw. Live
+  coordinates. The authenticated content session now retains both
+  `Resource.up` and the manifest-selected localization archive on the same
+  verified AFPACK handle. The format-8 `128x128` `armour_meter`/`armour` pair
+  loads atomically with archive-aware provenance and separate HUD-local IDs,
+  then D3D11 and Metal prepare both resources inside the complete mission
+  transaction and GPU budget. Ordinary frames still issue no manufactured HUD
+  draw. Live
   slot ownership, changing aim/collision production, explicit visibility
-  policy, authenticated gauge texture binding, backend submission, the
+  policy, evidence-backed gauge submission, the
   remaining HUD, and screen effects are not yet connected.
 - The recovered CCF material contract now survives end to end from typed
   `0x2140/0x2150/0x2151` metadata and exact native defaults through world,

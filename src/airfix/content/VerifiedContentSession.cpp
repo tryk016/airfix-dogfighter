@@ -150,6 +150,26 @@ void report(
     return result;
 }
 
+[[nodiscard]] const afpack::ManifestEntry &
+requireLocalizationManifestEntry(const afpack::Manifest &manifest) {
+  const afpack::ManifestEntry *result = nullptr;
+  for (const auto &entry : manifest.entries) {
+    if (entry.kind != afpack::EntryKind::localization) {
+      continue;
+    }
+    if (result != nullptr) {
+      throw VerifiedContentError(
+          "verified content requires exactly one localization archive");
+    }
+    result = &entry;
+  }
+  if (result == nullptr) {
+    throw VerifiedContentError(
+        "verified content requires exactly one localization archive");
+  }
+  return *result;
+}
+
 } // namespace
 
 VerifiedContentCancelled::VerifiedContentCancelled()
@@ -157,22 +177,20 @@ VerifiedContentCancelled::VerifiedContentCancelled()
 
 VerifiedContentSession::VerifiedContentSession(
     std::unique_ptr<std::ifstream> input,
-    std::shared_ptr<
-        const VerifiedContentTransactionIdentity::Marker> transactionMarker,
-    std::string sourceLabel,
-    ContentRevision revision,
-    afpack::Pack pack,
-    afpack::Manifest manifest,
-    udsp::Archive sourceArchive,
-    const std::size_t sourcePackEntryIndex) noexcept
+    std::shared_ptr<const VerifiedContentTransactionIdentity::Marker>
+        transactionMarker,
+    std::string sourceLabel, ContentRevision revision, afpack::Pack pack,
+    afpack::Manifest manifest, udsp::Archive sourceArchive,
+    const std::size_t sourcePackEntryIndex, udsp::Archive localizationArchive,
+    const std::size_t localizationPackEntryIndex) noexcept
     : input_(std::move(input)),
       transactionMarker_(std::move(transactionMarker)),
-      sourceLabel_(std::move(sourceLabel)),
-      revision_(std::move(revision)),
-      pack_(std::move(pack)),
-      manifest_(std::move(manifest)),
+      sourceLabel_(std::move(sourceLabel)), revision_(std::move(revision)),
+      pack_(std::move(pack)), manifest_(std::move(manifest)),
       sourceArchive_(std::move(sourceArchive)),
-      sourcePackEntryIndex_(sourcePackEntryIndex) {}
+      sourcePackEntryIndex_(sourcePackEntryIndex),
+      localizationArchive_(std::move(localizationArchive)),
+      localizationPackEntryIndex_(localizationPackEntryIndex) {}
 
 VerifiedContentSession VerifiedContentSession::open(
     std::unique_ptr<std::ifstream> input,
@@ -257,14 +275,26 @@ VerifiedContentSession VerifiedContentSession::open(
         "source/Resource.up source-archive entry");
     const auto& sourceEntry = entries[sourceIndex];
 
-    report(progress, stopToken, VerifiedContentPhase::openingSourceArchive,
-        sizeBeforeHash, sizeBeforeHash);
+    report(progress, stopToken, VerifiedContentPhase::openingArchives,
+           sizeBeforeHash, sizeBeforeHash);
     auto sourceArchive = udsp::Archive::openRegion(
         *input,
         pack.archiveSize(),
         std::string_view(sourceLabel),
         sourceEntry.dataOffset,
         sourceEntry.storedSize,
+        limits.udsp);
+    checkCancellation(stopToken);
+
+    const auto &localizationManifestEntry =
+        requireLocalizationManifestEntry(manifest);
+    const auto localizationIndex = requireEntry(
+        entries, localizationManifestEntry.path,
+        afpack::EntryKind::localization, "locale-matched localization archive");
+    const auto &localizationEntry = entries[localizationIndex];
+    auto localizationArchive = udsp::Archive::openRegion(
+        *input, pack.archiveSize(), std::string_view(sourceLabel),
+        localizationEntry.dataOffset, localizationEntry.storedSize,
         limits.udsp);
     checkCancellation(stopToken);
 
@@ -281,14 +311,10 @@ VerifiedContentSession VerifiedContentSession::open(
         sizeBeforeHash, sizeBeforeHash);
 
     return VerifiedContentSession(
-        std::move(input),
-        std::move(transactionMarker),
-        std::move(sourceLabel),
-        std::move(trustedRevision),
-        std::move(pack),
-        std::move(manifest),
-        std::move(sourceArchive),
-        sourceIndex);
+        std::move(input), std::move(transactionMarker), std::move(sourceLabel),
+        std::move(trustedRevision), std::move(pack), std::move(manifest),
+        std::move(sourceArchive), sourceIndex, std::move(localizationArchive),
+        localizationIndex);
 }
 
 VerifiedContentSession VerifiedContentSession::adopt(
@@ -318,6 +344,22 @@ VerifiedContentSession VerifiedContentSession::adopt(
         throw VerifiedContentError(
             "authenticated active content lease source archive is inconsistent");
     }
+    if (lease.localizationPackEntryIndex_ >= entries.size()) {
+      throw VerifiedContentError("authenticated active content lease has no "
+                                 "localization archive entry");
+    }
+    const auto &localizationEntry = entries[lease.localizationPackEntryIndex_];
+    const auto &expectedLocalization =
+        requireLocalizationManifestEntry(lease.manifest_);
+    if (localizationEntry.path != expectedLocalization.path ||
+        localizationEntry.kind != afpack::EntryKind::localization ||
+        lease.localizationArchive_.backingOffset() !=
+            localizationEntry.dataOffset ||
+        lease.localizationArchive_.archiveSize() !=
+            localizationEntry.storedSize) {
+      throw VerifiedContentError("authenticated active content lease "
+                                 "localization archive is inconsistent");
+    }
 
     ContentRevision revision{
         .generation = lease.activeGeneration_,
@@ -326,14 +368,11 @@ VerifiedContentSession VerifiedContentSession::adopt(
     auto transactionMarker =
         std::make_shared<const VerifiedContentTransactionIdentity::Marker>();
     return VerifiedContentSession(
-        std::move(lease.input_),
-        std::move(transactionMarker),
-        "active private package",
-        std::move(revision),
-        std::move(lease.pack_),
-        std::move(lease.manifest_),
-        std::move(lease.sourceArchive_),
-        lease.sourcePackEntryIndex_);
+        std::move(lease.input_), std::move(transactionMarker),
+        "active private package", std::move(revision), std::move(lease.pack_),
+        std::move(lease.manifest_), std::move(lease.sourceArchive_),
+        lease.sourcePackEntryIndex_, std::move(lease.localizationArchive_),
+        lease.localizationPackEntryIndex_);
 }
 
 std::vector<std::uint8_t> VerifiedContentSession::readSourceFilePrefix(
@@ -366,6 +405,29 @@ std::vector<std::uint8_t> VerifiedContentSession::readSourceFile(
         sourceArchive_,
         fileIndex,
         outputLimit);
+}
+
+std::vector<std::uint8_t> VerifiedContentSession::readLocalizationFilePrefix(
+    const std::size_t fileIndex, const std::size_t maximumBytes) {
+  if (!input_) {
+    throw VerifiedContentError(
+        "verified content session has no authenticated stream handle");
+  }
+  return udsp::readFilePrefix(*input_, revision_.pack.size,
+                              std::string_view(sourceLabel_),
+                              localizationArchive_, fileIndex, maximumBytes);
+}
+
+std::vector<std::uint8_t>
+VerifiedContentSession::readLocalizationFile(const std::size_t fileIndex,
+                                             const std::size_t outputLimit) {
+  if (!input_) {
+    throw VerifiedContentError(
+        "verified content session has no authenticated stream handle");
+  }
+  return udsp::readFile(*input_, revision_.pack.size,
+                        std::string_view(sourceLabel_), localizationArchive_,
+                        fileIndex, outputLimit);
 }
 
 } // namespace airfix::content

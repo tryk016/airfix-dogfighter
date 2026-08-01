@@ -104,6 +104,11 @@ resolved.
   preflights the recovered MG/RO/BO archive entries, exact format/dimensions and
   aggregate budgets before decoding, then publishes all three only against one
   unchanged verified content transaction;
+- authenticated aircraft-health consumer:
+  `content/LegacyAircraftHealthGaugeTextureSet` atomically combines the
+  `Resource.up` meter background with the selected localization archive's
+  foreground through the same authenticated stream, exact role provenance,
+  format/dimension contract, and aggregate budgets;
 - bounded corpus tool: `udsp-list --inventory`;
 - private diagnostic preview tool: `gti-preview` (PPM output under ignored paths);
 - synthetic format and materialization cases: `tests/LegacyFormatsTests.cpp`
@@ -165,3 +170,11 @@ the subsequent owned decode must reproduce the same plan byte-for-byte. Dense
 IDs are local to the HUD set rather than aliases into a mission's scene texture
 namespace. See
 [EXP-20260731-089](../experiments/EXP-20260731-089-authenticated-crosshair-texture-set.md).
+
+The aircraft health-gauge consumer applies the same plan/materialize parity
+check to two format-8 `128x128` entries drawn from different authenticated
+nested archives. Archive kind is part of each role's contract, and equal file
+indices in the two independent UDSP tables remain distinct. Both resources
+are prepared in the D3D11/Metal mission transaction but are not drawn until
+the native screen-call composition contract is complete. See
+[EXP-20260801-099](../experiments/EXP-20260801-099-authenticated-health-gauge-textures.md).
