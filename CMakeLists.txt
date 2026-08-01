@@ -230,6 +230,7 @@ add_library(airfix_render
     src/airfix/render/DrawMesh.cpp
     src/airfix/render/DrawSubmissionPlan.cpp
     src/airfix/render/LegacyCameraTransform.cpp
+    src/airfix/render/LegacyAircraftHudElapsedClock.cpp
     src/airfix/render/LegacyAircraftHudIdentityStatus.cpp
     src/airfix/render/LegacyAircraftHudRollingDigits.cpp
     src/airfix/render/LegacyAircraftHudWeaponPanels.cpp
@@ -1040,6 +1041,14 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_legacy_aircraft_health_gauge_plan_tests
         COMMAND airfix_legacy_aircraft_health_gauge_plan_tests)
+
+    add_executable(airfix_legacy_aircraft_hud_elapsed_clock_tests
+        tests/LegacyAircraftHudElapsedClockTests.cpp)
+    target_link_libraries(
+        airfix_legacy_aircraft_hud_elapsed_clock_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_legacy_aircraft_hud_elapsed_clock_tests
+        COMMAND airfix_legacy_aircraft_hud_elapsed_clock_tests)
 
     add_executable(airfix_legacy_aircraft_hud_rolling_digits_tests
         tests/LegacyAircraftHudRollingDigitsTests.cpp)

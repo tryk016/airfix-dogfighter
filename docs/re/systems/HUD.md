@@ -7,6 +7,8 @@ aircraft HUD, `EV-20260801-002` covers its reusable four-digit rolling-number
 helper, `EV-20260801-003` covers the complete pair of analog instruments, and
 `EV-20260801-004` covers both weapon panels. `EV-20260801-005` covers the final
 aircraft-icon, health-number, team-badge, and technology-number cluster.
+`EV-20260801-006` covers the constructor, refresh producer, shared snapshot,
+four reset-skipping gates, and one-time reset of the HUD elapsed clock.
 Ghidra 12.1.2 is the primary decompiler; Rizin 0.9.1
 independently confirms the function boundaries, calls, and instruction order
 in the hash-verified `AirCraft.type` copy with SHA-256
@@ -36,6 +38,8 @@ The weapon-panel reconstruction is in
 [EXP-20260801-105](../../experiments/EXP-20260801-105-aircraft-hud-weapon-panels.md).
 The final identity/status cluster is in
 [EXP-20260801-106](../../experiments/EXP-20260801-106-aircraft-hud-identity-status.md).
+The shared elapsed-clock lifecycle is in
+[EXP-20260801-107](../../experiments/EXP-20260801-107-aircraft-hud-elapsed-clock.md).
 
 ## Enclosing gates
 
@@ -222,8 +226,29 @@ fail-closed invalid inputs, bounds-safe command access, and steady-state
 allocation freedom.
 
 The PC53-compatible double staging is a documented presentation policy, not a
-claim of live x87 bit identity. The six live value producers and enclosing HUD
-clock remain explicit later slices.
+claim of live x87 bit identity. The six live value producers remain explicit
+later slices; the enclosing clock lifecycle is now isolated but intentionally
+not wired to a live scheduler or ordinary render event.
+
+## Recovered shared elapsed clock
+
+The constructor stores exact positive zero at `AirCraft+0x54C`. Every completed
+post-collision refresh performs `FLD delta`, `FADD +0x54C`, and `FSTP +0x54C`.
+Five static HUD call sites load the field; the weapon-panel site executes for
+two slots, so six rolling-number states consume one accumulated snapshot. The
+full eligible HUD stage stores positive zero once at VA `0x1000730F`.
+
+All four enclosing early exits occur before that reset. A rejected active-
+window, entry-camera, type-HUD, or repeated-camera gate retains elapsed time.
+After all gates pass, missing optional elements do not suppress the final
+reset.
+
+`LegacyAircraftHudElapsedClockState` models this as an allocation-free,
+single-thread-confined `advance -> begin -> commit/abort` lifecycle. A begin
+publishes one immutable snapshot for the six consumers. Commit clears once;
+abort, invalid input, stale token, or rejected gate leaves accumulated time
+unchanged. It remains dormant: no application, renderer, scheduler, or live
+counter producer calls it.
 
 ## Recovered analog instruments
 
@@ -322,8 +347,9 @@ team, technology, clock, or visibility.
 
 - Connect the verified two-instrument fields and tint through ordinary HUD
   render-event publication without substituting validation values.
-- Recover and connect the six verified live digit producers and shared HUD
-  clock to the already authenticated native-output submission.
+- Recover and connect the six verified live digit producers and the isolated
+  shared-clock lifecycle to the already authenticated native-output
+  submission, preserving zero/one/many refreshes per render event.
 - Connect primary/selected-secondary ownership, ammunition, and status
   producers to the verified weapon-panel submission without fabricated state.
 - Connect the verified aircraft identity, team, health-number, and technology-
