@@ -99,11 +99,13 @@
   depth. One authenticated fixed-capacity packet maps the recovered 640x480 UI
   domain into physical output pixels and scales around its bottom-left anchor;
   it never changes the native-resolution 3D target. D3D11 consumes it in a
-  real private 1920x1080 half-health capture. Ordinary frames still issue no
-  manufactured HUD draw. Live slot ownership, changing aim/collision
+  real private 1920x1080 half-health capture. Metal now owns the matching
+  fail-closed four-point encoder, alpha/opaque pipelines, linear-clamp sampler,
+  and ALWAYS/write depth state over the same packet. Ordinary frames still
+  issue no manufactured HUD draw. Live slot ownership, changing aim/collision
   production, explicit visibility policy, smoothed-health producer wiring,
-  Metal gauge consumption, the remaining HUD, and screen effects are not yet
-  connected.
+  physical iPhone visual acceptance, the remaining HUD, and screen effects are
+  not yet connected.
 - The recovered CCF material contract now survives end to end from typed
   `0x2140/0x2150/0x2151` metadata and exact native defaults through world,
   aggregate mission, and player texture binding into each backend-neutral draw

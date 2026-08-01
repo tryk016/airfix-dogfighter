@@ -1,7 +1,7 @@
 # EXP-20260801-100: aircraft health-gauge submission
 
 **Status:** backend-neutral submission and private D3D11 validation implemented;
-ordinary-frame and Metal consumption remain gated
+the dormant Metal encoder follows in EXP-20260801-101
 
 **Evidence ID:** `EV-20260801-001`
 **Decision:** GO for authenticated native-output submission and the private
@@ -139,5 +139,5 @@ and private D3D11 validation renderer.
 **NO-GO** for ordinary gameplay publication until a live aircraft health
 producer supplies the already-smoothed field under the correct refresh/render
 ordering. Metal has the same authenticated textures and can consume the common
-packet in a later bounded backend slice; this experiment makes no claim that it
-draws the gauge yet.
+packet through the dormant encoder in EXP-20260801-101; neither experiment
+claims an ordinary live gauge draw.
