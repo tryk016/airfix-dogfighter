@@ -5000,3 +5000,32 @@ superseded evidence.
   suites, `actionlint`, and both staged and working-tree `diff --check` pass.
   Hosted `iphoneos`/`iphonesimulator` shader compilation remains the
   publication gate.
+
+## 2026-08-01 - AirCraft HUD rolling-number helper
+
+- `EV-20260801-002` / `EXP-20260801-102` use Ghidra 12.1.2 as the primary
+  source and Rizin 0.9.1 as an independent check for exact AirCraft ranges
+  `[0x10009210,0x10009268)`, `[0x10009280,0x1000939F)`, and
+  `[0x100093A0,0x1000943E)`. Cc RVA `0x00044D90` independently closes the
+  source-rectangle blit wrapper. All inspected copies were hash verified and
+  read only.
+- The helper preserves native `%04d` first-four-character formatting, four
+  retained binary32 positions, cached `float(pow(0.0005,elapsed))`, strict
+  distance-greater-than-five cyclic routing, one-step wrap, and invalid-value
+  reset to positive zero. The portable boundary accepts an already-quantized
+  signed integer and does not manufacture a live `_ftol` rounding policy.
+- The exact draw plan uses destination pitch 8 and four independently gated
+  7x9 source windows with vertical pitch 11. Read-only owner-local inventory
+  confirms the `digits` GTI is 16x128 with one mip; no archive payload or image
+  enters Git.
+- `LegacyAircraftHudRollingDigitsState` and its fixed four-command plan are
+  allocation-free and independent of assets and native APIs. A fresh GCC
+  15.2/Ninja build compiles the complete portable graph and all 131/131 CTests
+  pass. A fresh MSVC 19.51 HostX64/Ninja build compiles the complete Windows
+  product and all 143/143 tests pass, including D3D11 and both product smokes;
+  the Python validator is rerun outside the default command sandbox after its
+  sole `operation not permitted` launch rejection. Public-boundary synthetic
+  tests and the 693-file scan, 12 Rizin exporter tests, both RE wrapper suites,
+  formatting, and `git diff --check` pass. Authenticated digit ownership,
+  D3D11/Metal submission, live value meanings, elapsed-clock ownership, and
+  runtime x87 acceptance remain later gates.

@@ -3,16 +3,18 @@
 ## Scope and evidence
 
 `EV-20260801-001` covers the first complete renderer-neutral subsection of the
-aircraft HUD. Ghidra 12.1.2 is the primary decompiler; Rizin 0.9.1 independently
-confirms the function boundary, calls, and instruction order in the
-hash-verified `AirCraft.type` copy with SHA-256
+aircraft HUD, while `EV-20260801-002` covers its reusable four-digit rolling
+number helper. Ghidra 12.1.2 is the primary decompiler; Rizin 0.9.1
+independently confirms the function boundaries, calls, and instruction order
+in the hash-verified `AirCraft.type` copy with SHA-256
 `9745842bde40406390b46f935e9f12d6626675f89a8fbb303cb135d76cf7dd1e`.
 
 The AirCraft vtable slot `+0xBC` resolves to RVA `0x00006B00`, exact range
 `[0x10006B00,0x10007321)`, 2,081 bytes. The complete function also draws
-instrument, weapon, aircraft, team, and numeric elements. Only the internally
-complete armour/health-gauge subsection is implemented here; this is not a
-claim that the whole HUD or mission-status UI is reconstructed.
+instrument, weapon, aircraft, team, and numeric elements. The internally
+complete armour/health-gauge subsection and the separate rolling-number
+state/plan are implemented here; this is not a claim that the whole HUD or
+mission-status UI is reconstructed.
 
 See
 [EXP-20260801-098](../../experiments/EXP-20260801-098-aircraft-health-gauge-plan.md)
@@ -23,6 +25,8 @@ validation pass are in
 [EXP-20260801-100](../../experiments/EXP-20260801-100-aircraft-health-gauge-submission.md).
 The matching fail-closed Metal encoder is in
 [EXP-20260801-101](../../experiments/EXP-20260801-101-metal-aircraft-health-gauge-encoder.md).
+The rolling-number reconstruction is in
+[EXP-20260801-102](../../experiments/EXP-20260801-102-aircraft-hud-rolling-digits.md).
 
 ## Enclosing gates
 
@@ -154,13 +158,62 @@ acceptance remains pending.
 The bounded dynamic follow-up for producer/consumer order is documented in
 [Controlled aircraft health-gauge capture](../../toolchain/AIRCRAFT-HEALTH-GAUGE-CAPTURE.md).
 
+## Recovered four-digit rolling numbers
+
+The HUD owns six independent helper states, initialized from decimal values
+`0`, `100`, `0`, `0`, `100`, and `0`. The initializer at AirCraft RVA
+`0x00009210` formats the signed value with native `%04d`, consumes exactly the
+first four characters, and stores `character - '0'` as four binary32
+positions. Consequently values wider than four characters are truncated and a
+leading minus sign becomes position `-3`; the portable state deliberately
+preserves both behaviours instead of silently normalizing them.
+
+The update helper at RVA `0x00009280` receives a float that the original first
+converts through MSVC `_ftol`. The portable boundary accepts the resulting
+signed 32-bit integer because the live process-wide x87 rounding policy is not
+yet dynamically accepted. For each digit it then:
+
+1. selects the cyclic alternate target only when the absolute distance is
+   strictly greater than `5`;
+2. caches `float(pow(0.0005, elapsedSeconds))` when the shared accumulated HUD
+   elapsed value changes;
+3. applies `factor * current + (1 - factor) * target` in the recovered order;
+4. wraps once into `[0,10)`; and
+5. resets any still-invalid or non-finite position to exact positive zero.
+
+This retained fractional position is the animation. The draw helper at RVA
+`0x000093A0` emits one call per valid slot through `GtScreen::Blit` at Cc RVA
+`0x00044D90`. Destination slot `i` is `(originX + i*8, originY + 1, 7, 9)`;
+its source window is `(0, position*11 + 1, 7, position*11 + 10)`. A fractional
+position therefore slides a 7x9 window vertically between glyphs. Invalid
+slots are skipped independently and the supplied ARGB tint is unchanged.
+
+The type-level HUD loader registers the `digits` role below the in-game HUD
+texture root. Read-only owner-local archive inventory confirms that this GTI is
+format 4/8 capable, exactly `16x128`, and has one mip. Those dimensions and
+the recovered screen rectangles authenticate a vertical ten-digit atlas
+contract without publishing or copying the private image.
+
+`LegacyAircraftHudRollingDigitsState` and
+`LegacyAircraftHudRollingDigitsPlan` are bounded, allocation-free C++20 value
+types. They own no private content, GPU resource, clock, or live gameplay
+value. Synthetic tests cover native formatting edge cases, factor caching,
+shortest cyclic motion, the exact-distance-five branch, wrap/reset behaviour,
+fractional atlas coordinates, per-slot suppression, fail-closed invalid
+inputs, bounds-safe command access, and steady-state allocation freedom.
+
+The PC53-compatible double staging is a documented presentation policy, not a
+claim of live x87 bit identity. Authenticated `digits` texture ownership,
+native-output submission, D3D11/Metal consumption, the six live value
+producers, and the enclosing HUD clock remain explicit later slices.
+
 ## Remaining HUD work
 
 - Recover and classify the two clock/instrument calls and their live values.
-- Reconstruct four-digit rolling-number state and exact glyph-atlas binding.
+- Authenticate and stage the recovered `digits` GTI, then bind rolling-number
+  plans to native-output D3D11/Metal submissions and verified live producers.
 - Complete primary/selected-secondary icon, ammunition, and status-bar plans.
 - Recover aircraft/team indicators and the relationship to mission status.
 - Connect the verified smoothed-health producer to ordinary render-event
   publication without substituting capture-only values.
-- Implement Metal consumption of the existing authenticated common packet.
 - Validate the composed HUD at the required aspect ratios and safe areas.
