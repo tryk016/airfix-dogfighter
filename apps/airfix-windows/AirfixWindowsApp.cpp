@@ -13,6 +13,7 @@
 #include "airfix/audio/AudioCommand.hpp"
 #include "airfix/content/LegacyAircraftAudioClipSet.hpp"
 #include "airfix/content/LegacyAircraftHealthGaugeTextureSet.hpp"
+#include "airfix/content/LegacyAircraftHudRollingDigitsTextureSet.hpp"
 #include "airfix/content/LegacyWeaponCrosshairTextureSet.hpp"
 #include "airfix/content/MissionLoadManifest.hpp"
 #include "airfix/content/MissionWorldRoomLoader.hpp"
@@ -424,6 +425,8 @@ struct LoadedPrivateContent final {
       weaponCrosshairTextures;
   std::optional<airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet>
       aircraftHealthGaugeTextures;
+  std::optional<airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet>
+      aircraftHudRollingDigitTextures;
 };
 
 [[nodiscard]] std::filesystem::path resolveInstalledContentRoot() {
@@ -460,6 +463,8 @@ struct LoadedPrivateContent final {
       weaponCrosshairTextures;
   std::optional<airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet>
       aircraftHealthGaugeTextures;
+  std::optional<airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet>
+      aircraftHudRollingDigitTextures;
   if (mission.has_value()) {
     const airfix::content::MissionLoadManifestRequest manifestRequest{
         .levelLogicalPath = mission->levelLogicalPath,
@@ -513,6 +518,18 @@ struct LoadedPrivateContent final {
           "authenticated aircraft health gauge textures could not be loaded");
     }
     aircraftHealthGaugeTextures = std::move(*loadedHealthGauge.textures);
+
+    auto loadedRollingDigits =
+        airfix::content::loadLegacyAircraftHudRollingDigitsTexture(session);
+    if (!loadedRollingDigits.success() ||
+        !loadedRollingDigits.textures.has_value() ||
+        !loadedRollingDigits.textures->belongsTo(session) ||
+        loadedRollingDigits.textures->revision != revision ||
+        session.revision() != revision) {
+      throw std::runtime_error(
+          "authenticated aircraft rolling digit atlas could not be loaded");
+    }
+    aircraftHudRollingDigitTextures = std::move(*loadedRollingDigits.textures);
   }
 
   for (const auto &clip : audioResult.clips->clipViews()) {
@@ -541,6 +558,8 @@ struct LoadedPrivateContent final {
       .missionRoom = std::move(missionRoom),
       .weaponCrosshairTextures = std::move(weaponCrosshairTextures),
       .aircraftHealthGaugeTextures = std::move(aircraftHealthGaugeTextures),
+      .aircraftHudRollingDigitTextures =
+          std::move(aircraftHudRollingDigitTextures),
   };
 }
 
@@ -956,15 +975,21 @@ int run(const int argumentCount, char *arguments[]) {
       throw std::runtime_error("authenticated Windows mission has no aircraft "
                                "health gauge textures");
     }
+    if (!privateContent->aircraftHudRollingDigitTextures.has_value()) {
+      throw std::runtime_error("authenticated Windows mission has no aircraft "
+                               "rolling digit atlas");
+    }
     playerSpawnPose = privateContent->missionRoom->playerSpawnPose;
     renderer.installLoadedMissionRoom(
         std::move(*privateContent->missionRoom),
         std::move(*privateContent->weaponCrosshairTextures),
         std::move(*privateContent->aircraftHealthGaugeTextures),
+        std::move(*privateContent->aircraftHudRollingDigitTextures),
         privateContent->revision);
     privateContent->missionRoom.reset();
     privateContent->weaponCrosshairTextures.reset();
     privateContent->aircraftHealthGaugeTextures.reset();
+    privateContent->aircraftHudRollingDigitTextures.reset();
     if (!renderer.missionWorldRoomInstalled()) {
       throw std::runtime_error(
           "authenticated Windows mission was not published");

@@ -5,6 +5,7 @@
 
 #include "airfix/content/LegacyAircraftAudioClipSet.hpp"
 #include "airfix/content/LegacyAircraftHealthGaugeTextureSet.hpp"
+#include "airfix/content/LegacyAircraftHudRollingDigitsTextureSet.hpp"
 #include "airfix/content/MissionLoadManifest.hpp"
 #include "airfix/content/MissionWorldRoomLoader.hpp"
 #include "airfix/content/VerifiedContentSession.hpp"
@@ -1093,13 +1094,31 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
                   return;
                 }
 
+                auto rollingDigitsResult =
+                    airfix::content::
+                        loadLegacyAircraftHudRollingDigitsTexture(
+                            *strongSelf->_verifiedSession, {}, stopToken);
+                if (!strongSelf->_verifiedSession.has_value() ||
+                    strongSelf->_verifiedSession->revision() !=
+                        revisionBeforeLoad ||
+                    !rollingDigitsResult.success() ||
+                    !rollingDigitsResult.textures.has_value() ||
+                    !rollingDigitsResult.textures->belongsTo(
+                        *strongSelf->_verifiedSession) ||
+                    rollingDigitsResult.textures->revision !=
+                        ticket->expectedRevision) {
+                  publishFailure();
+                  return;
+                }
+
                 const auto resultRevision = result.room->revision;
                 AirfixMissionWorldRoomSnapshot *const snapshot =
                     airfix::ios::makeMissionWorldRoomSnapshot(
                         *ticket, std::move(*result.room),
                         std::move(*audioResult.clips),
                         std::move(*crosshairResult.textures),
-                        std::move(*healthGaugeResult.textures));
+                        std::move(*healthGaugeResult.textures),
+                        std::move(*rollingDigitsResult.textures));
                 dispatch_async(dispatch_get_main_queue(), ^{
                     AirfixContentCoordinator* coordinator = weakSelf;
                     if (coordinator == nil ||

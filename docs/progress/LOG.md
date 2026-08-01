@@ -5029,3 +5029,27 @@ superseded evidence.
   formatting, and `git diff --check` pass. Authenticated digit ownership,
   D3D11/Metal submission, live value meanings, elapsed-clock ownership, and
   runtime x87 acceptance remain later gates.
+
+## 2026-08-01 - authenticated rolling-digit atlas and native submission
+
+- `EXP-20260801-103` closes authenticated ownership of the exact `digits` GTI.
+  A read-only owner-local parser check selects format 8 at `16x128`; the
+  preview remains ignored and no original or derived payload enters Git.
+- A bounded session loader publishes one dedicated HUD-local texture only
+  after exact lookup, source/decoded/upload/resident budgets, GTI decode,
+  format/dimension checks and unchanged opaque transaction identity pass.
+  Synthetic failure paths remain atomic.
+- The fixed four-command native-output packet maps recovered legacy UI
+  rectangles and fractional source windows into physical output pixels,
+  applies independent UI scale around the widget origin and retains tint,
+  source-alpha blending, linear clamp and ALWAYS/write depth. Provenance,
+  order, UV and geometry are revalidated before backend access.
+- D3D11 and Metal now include the atlas in their all-or-nothing mission
+  resource transactions and contain dormant fail-closed consumers. The shared
+  overlay shader ABI accepts an explicit UV rectangle while every prior caller
+  supplies full UVs. No ordinary frame fabricates a rolling-number value.
+- A clean GCC/Ninja build passes all 132 portable tests. A clean MSVC 19.51
+  HostX64/Ninja build compiles the complete Windows product and passes all 144
+  tests, including the digit contract and D3D11 renderer/runtime-HLSL paths.
+  The public-boundary scanner accepts all 699 tracked files. Hosted iOS
+  compilation remains the Objective-C++/Metal publication gate.

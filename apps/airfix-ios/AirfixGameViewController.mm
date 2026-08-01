@@ -1144,6 +1144,10 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
                 auto healthGauge =
                     airfix::ios::takeLoadedLegacyAircraftHealthGaugeTextures(
                         snapshot);
+                auto rollingDigits =
+                    airfix::ios::
+                        takeLoadedLegacyAircraftHudRollingDigitTextures(
+                            snapshot);
                 preparedAudioClips = std::make_shared<
                     airfix::content::LoadedLegacyAircraftAudioClips>(
                     std::move(audioClips));
@@ -1151,6 +1155,8 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
                     [renderer prepareLoadedMissionRoom:std::move(room)
                                       weaponCrosshairs:std::move(crosshairs)
                                    aircraftHealthGauge:std::move(healthGauge)
+                              aircraftHudRollingDigits:
+                                  std::move(rollingDigits)
                                                  error:&preparationError];
             }
             catch (...) {

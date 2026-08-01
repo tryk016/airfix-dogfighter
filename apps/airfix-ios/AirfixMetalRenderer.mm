@@ -1,11 +1,13 @@
 #import "AirfixMetalRenderer.h"
 
 #include "airfix/content/LegacyAircraftHealthGaugeSubmission.hpp"
+#include "airfix/content/LegacyAircraftHudRollingDigitsSubmission.hpp"
 #include "airfix/content/LegacyWeaponCrosshairSpriteSubmission.hpp"
 #import <Metal/Metal.h>
 #import <simd/simd.h>
 
 #include "airfix/content/LegacyAircraftHealthGaugeTextureSet.hpp"
+#include "airfix/content/LegacyAircraftHudRollingDigitsTextureSet.hpp"
 #include "airfix/content/LegacyWeaponCrosshairTextureSet.hpp"
 #include "airfix/content/MissionWorldRoomLoader.hpp"
 #include "airfix/content/MissionWorldRoomPublication.hpp"
@@ -113,6 +115,7 @@ struct alignas(16) GpuOverlayUniforms {
     simd_float4 outputAndPanelSize;
     simd_float4 panelOrigin;
     simd_float4 tint;
+    simd_float4 uvRect;
 };
 
 struct alignas(16) GpuGaugeUniforms {
@@ -126,7 +129,7 @@ static_assert(alignof(GpuVertex) == 16U);
 static_assert(sizeof(GpuUniforms) == 64U);
 static_assert(sizeof(GpuGameplayUniforms) == 160U);
 static_assert(alignof(GpuGameplayUniforms) == 16U);
-static_assert(sizeof(GpuOverlayUniforms) == 48U);
+static_assert(sizeof(GpuOverlayUniforms) == 64U);
 static_assert(alignof(GpuOverlayUniforms) == 16U);
 static_assert(sizeof(GpuGaugeUniforms) == 96U);
 static_assert(alignof(GpuGaugeUniforms) == 16U);
@@ -547,6 +550,9 @@ gameplayCameraInitializeInput(
         _crosshairs;
     std::optional<airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet>
         _healthGauge;
+    std::optional<
+        airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet>
+        _rollingDigits;
     std::vector<NSUInteger> _indexOffsets;
     std::shared_ptr<airfix::render::PlayerActorPoseRuntime>
         _scenePoseRuntime;
@@ -558,6 +564,7 @@ gameplayCameraInitializeInput(
 @property(nonatomic, strong) NSArray<id<MTLTexture>>* textures;
 @property(nonatomic, strong) NSArray<id<MTLTexture>>* crosshairTextures;
 @property(nonatomic, strong) NSArray<id<MTLTexture>> *healthGaugeTextures;
+@property(nonatomic, strong) NSArray<id<MTLTexture>> *rollingDigitTextures;
 @property(nonatomic, strong) id<MTLHeap> bufferHeap;
 @property(nonatomic, strong) id<MTLHeap> textureHeap;
 @end
@@ -573,6 +580,7 @@ gameplayCameraInitializeInput(
     _textures = nil;
     _crosshairTextures = nil;
     _healthGaugeTextures = nil;
+    _rollingDigitTextures = nil;
     _bufferHeap = nil;
     _textureHeap = nil;
 }
@@ -1087,6 +1095,12 @@ textureAssetId(const airfix::content::LoadedLegacyAircraftHealthGaugeTexture
   return texture.textureId;
 }
 
+[[nodiscard]] airfix::render::TextureAssetId textureAssetId(
+    const airfix::content::LoadedLegacyAircraftHudRollingDigitsTexture&
+        texture) noexcept {
+    return texture.textureId;
+}
+
 template <typename LoadedTexture>
 bool validateTextureAsset(
     const LoadedTexture& texture,
@@ -1412,6 +1426,24 @@ bool preflightPrivateRoom(
                                            outputExtent
                            drawableDepthTexture:
                                (id<MTLTexture>)drawableDepthTexture;
+- (NSUInteger)encodeLegacyAircraftHudRollingDigits:
+                  (const airfix::content::
+                       LegacyAircraftHudRollingDigitsSubmission&)submission
+                                             resources:
+                                                 (AirfixMetalRoomResources*)
+                                                     resources
+                                          commandBuffer:
+                                              (id<MTLCommandBuffer>)
+                                                  commandBuffer
+                                             renderPass:
+                                                 (MTLRenderPassDescriptor*)
+                                                     renderPass
+                                           outputExtent:
+                                               (airfix::render::
+                                                    OutputPixelExtent)
+                                                   outputExtent
+                                   drawableDepthTexture:
+                                       (id<MTLTexture>)drawableDepthTexture;
 @end
 
 @implementation AirfixMetalRenderer
@@ -2898,6 +2930,7 @@ bool preflightPrivateRoom(
         .panelOrigin =
             {rectangle.x, rectangle.y, 0.0F, 0.0F},
         .tint = normalizedArgb(submission.tintArgb),
+        .uvRect = {0.0F, 0.0F, 1.0F, 1.0F},
     };
     [encoder setRenderPipelineState:self.crosshairPipelineState];
     [encoder setDepthStencilState:self.crosshairDepthState];
@@ -3086,6 +3119,162 @@ bool preflightPrivateRoom(
     return static_cast<NSUInteger>(submission.commandCount);
 }
 
+- (NSUInteger)encodeLegacyAircraftHudRollingDigits:
+                  (const airfix::content::
+                       LegacyAircraftHudRollingDigitsSubmission&)submission
+                                             resources:
+                                                 (AirfixMetalRoomResources*)
+                                                     resources
+                                          commandBuffer:
+                                              (id<MTLCommandBuffer>)
+                                                  commandBuffer
+                                             renderPass:
+                                                 (MTLRenderPassDescriptor*)
+                                                     renderPass
+                                           outputExtent:
+                                               (airfix::render::
+                                                    OutputPixelExtent)
+                                                   outputExtent
+                                   drawableDepthTexture:
+                                       (id<MTLTexture>)drawableDepthTexture {
+    if (resources == nil || commandBuffer == nil || renderPass == nil ||
+        drawableDepthTexture == nil ||
+        !resources->_rollingDigits.has_value() ||
+        resources.rollingDigitTextures == nil ||
+        resources.rollingDigitTextures.count !=
+            airfix::content::legacyAircraftHudRollingDigitsTextureCount ||
+        self.crosshairPipelineState == nil ||
+        self.crosshairDepthState == nil ||
+        self.crosshairSamplerState == nil || outputExtent.width == 0U ||
+        outputExtent.height == 0U ||
+        !submission.belongsTo(*resources->_rollingDigits) ||
+        submission.commandCount == 0U ||
+        submission.commandCount > submission.orderedCommands.size() ||
+        !fitsNSUInteger(submission.commandCount)) {
+        return 0U;
+    }
+
+    for (std::size_t index = 0U; index < submission.commandCount; ++index) {
+        const auto& command = submission.orderedCommands[index];
+        const auto& rectangle = command.outputRect;
+        const auto& uv = command.uv;
+        const auto textureIndex =
+            static_cast<NSUInteger>(command.textureId.value);
+        if (command.textureRole !=
+                airfix::content::LegacyAircraftHudRollingDigitsTextureRole::
+                    digits ||
+            command.blendMode !=
+                airfix::content::LegacyAircraftHudRollingDigitsBlendMode::
+                    sourceAlphaOneMinusSourceAlpha ||
+            command.depthMode !=
+                airfix::content::LegacyAircraftHudRollingDigitsDepthMode::
+                    alwaysWrite ||
+            command.samplingMode !=
+                airfix::content::LegacyAircraftHudRollingDigitsSamplingMode::
+                    linearClamp ||
+            !std::isfinite(rectangle.x) || !std::isfinite(rectangle.y) ||
+            !std::isfinite(rectangle.width) ||
+            !std::isfinite(rectangle.height) || rectangle.x < 0.0F ||
+            rectangle.y < 0.0F || rectangle.width <= 0.0F ||
+            rectangle.height <= 0.0F ||
+            rectangle.x + rectangle.width >
+                static_cast<float>(outputExtent.width) ||
+            rectangle.y + rectangle.height >
+                static_cast<float>(outputExtent.height) ||
+            !std::isfinite(uv.minimumU) || !std::isfinite(uv.minimumV) ||
+            !std::isfinite(uv.maximumU) || !std::isfinite(uv.maximumV) ||
+            uv.minimumU < 0.0F || uv.minimumV < 0.0F ||
+            uv.maximumU > 1.0F || uv.maximumV > 1.0F ||
+            uv.minimumU >= uv.maximumU || uv.minimumV >= uv.maximumV ||
+            textureIndex >= resources.rollingDigitTextures.count ||
+            resources.rollingDigitTextures[textureIndex] == nil) {
+            return 0U;
+        }
+    }
+
+    id<MTLTexture> outputTexture =
+        renderPass.colorAttachments[0].texture;
+    if (outputTexture == nil ||
+        outputTexture.pixelFormat != MTLPixelFormatBGRA8Unorm ||
+        drawableDepthTexture.pixelFormat != MTLPixelFormatDepth32Float ||
+        outputTexture.width != static_cast<NSUInteger>(outputExtent.width) ||
+        outputTexture.height != static_cast<NSUInteger>(outputExtent.height) ||
+        drawableDepthTexture.width !=
+            static_cast<NSUInteger>(outputExtent.width) ||
+        drawableDepthTexture.height !=
+            static_cast<NSUInteger>(outputExtent.height)) {
+        return 0U;
+    }
+
+    MTLRenderPassDescriptor* digitPass =
+        [MTLRenderPassDescriptor renderPassDescriptor];
+    digitPass.colorAttachments[0].texture = outputTexture;
+    digitPass.colorAttachments[0].loadAction = MTLLoadActionLoad;
+    digitPass.colorAttachments[0].storeAction = MTLStoreActionStore;
+    digitPass.depthAttachment.texture = drawableDepthTexture;
+    digitPass.depthAttachment.loadAction = MTLLoadActionDontCare;
+    digitPass.depthAttachment.storeAction = MTLStoreActionDontCare;
+
+    id<MTLRenderCommandEncoder> encoder =
+        [commandBuffer renderCommandEncoderWithDescriptor:digitPass];
+    if (encoder == nil) {
+        return 0U;
+    }
+    [encoder setRenderPipelineState:self.crosshairPipelineState];
+    [encoder setDepthStencilState:self.crosshairDepthState];
+    [encoder setCullMode:MTLCullModeNone];
+    [encoder
+        setViewport:MTLViewport{
+            0.0,
+            0.0,
+            static_cast<double>(outputExtent.width),
+            static_cast<double>(outputExtent.height),
+            0.0,
+            1.0,
+        }];
+    [encoder setFragmentSamplerState:self.crosshairSamplerState
+                              atIndex:0U];
+
+    for (std::size_t index = 0U; index < submission.commandCount; ++index) {
+        const auto& command = submission.orderedCommands[index];
+        const auto& rectangle = command.outputRect;
+        const GpuOverlayUniforms uniforms{
+            .outputAndPanelSize =
+                {
+                    static_cast<float>(outputExtent.width),
+                    static_cast<float>(outputExtent.height),
+                    rectangle.width,
+                    rectangle.height,
+                },
+            .panelOrigin = {rectangle.x, rectangle.y, 0.0F, 0.0F},
+            .tint = normalizedArgb(command.tintArgb),
+            .uvRect =
+                {
+                    command.uv.minimumU,
+                    command.uv.minimumV,
+                    command.uv.maximumU,
+                    command.uv.maximumV,
+                },
+        };
+        [encoder setVertexBytes:&uniforms
+                         length:sizeof(uniforms)
+                        atIndex:2U];
+        [encoder setFragmentBytes:&uniforms
+                           length:sizeof(uniforms)
+                          atIndex:2U];
+        [encoder
+            setFragmentTexture:resources.rollingDigitTextures[
+                                   static_cast<NSUInteger>(
+                                       command.textureId.value)]
+                         atIndex:0U];
+        [encoder drawPrimitives:MTLPrimitiveTypeTriangle
+                    vertexStart:0U
+                    vertexCount:6U];
+    }
+    [encoder endEncoding];
+    return static_cast<NSUInteger>(submission.commandCount);
+}
+
 - (BOOL)updateDiagnosticsOverlayTextureWithDevice:(id<MTLDevice>)device {
     AirfixMetalDiagnosticsState* state = self.diagnosticsState;
     if (device == nil || state == nil ||
@@ -3158,6 +3347,9 @@ bool preflightPrivateRoom(
          aircraftHealthGauge:
              (airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet &&)
                  healthGauge
+    aircraftHudRollingDigits:
+        (airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet &&)
+            rollingDigits
                        error:(NSError *_Nullable *_Nullable)error {
   if (error != nullptr) {
     *error = nil;
@@ -3193,7 +3385,8 @@ bool preflightPrivateRoom(
     PrivateRoomPreflight preflight;
     if (!preflightPrivateRoom(device, room, preflight) || !crosshairs.valid() ||
         crosshairs.revision != room.revision || !healthGauge.valid() ||
-        healthGauge.revision != room.revision) {
+        healthGauge.revision != room.revision || !rollingDigits.valid() ||
+        rollingDigits.revision != room.revision) {
       if (error != nullptr) {
         *error = makeError(
             RendererError::invalidPayload,
@@ -3221,6 +3414,19 @@ bool preflightPrivateRoom(
           *error = makeError(RendererError::invalidPayload,
                              @"The private health gauge set failed the bounded "
                              @"Metal snapshot contract.");
+        }
+        return nil;
+      }
+    }
+    for (std::size_t textureIndex = 0U;
+         textureIndex < rollingDigits.textures.size(); ++textureIndex) {
+      if (!validateTextureAsset(rollingDigits.textures[textureIndex],
+                                textureIndex, preflight.aggregateGpuBytes)) {
+        if (error != nullptr) {
+          *error = makeError(
+              RendererError::invalidPayload,
+              @"The private rolling-digit atlas failed the bounded Metal "
+               "snapshot contract.");
         }
         return nil;
       }
@@ -3462,6 +3668,23 @@ bool preflightPrivateRoom(
         }
       }
     }
+    if (heapPlanValid) {
+      for (const auto &source : rollingDigits.textures) {
+        MTLTextureDescriptor *descriptor = [[MTLTextureDescriptor alloc] init];
+        if (descriptor == nil) {
+          heapPlanValid = false;
+          break;
+        }
+        configurePrivateTextureDescriptor(descriptor, source);
+        if (!accountHeapResourcePlacement(
+                [device heapTextureSizeAndAlignWithDescriptor:descriptor],
+                textureHeapBytes, textureHeapAlignment,
+                kMaximumPrivateRoomGpuHeapPlanBytes)) {
+          heapPlanValid = false;
+          break;
+        }
+      }
+    }
     if (!heapPlanValid ||
         !finalizeHeapPlan(bufferHeapBytes, bufferHeapAlignment,
                           kMaximumPrivateRoomGpuHeapPlanBytes) ||
@@ -3611,10 +3834,14 @@ bool preflightPrivateRoom(
       NSMutableArray<id<MTLTexture>> *healthGaugeTextures =
           [NSMutableArray arrayWithCapacity:static_cast<NSUInteger>(
                                                 healthGauge.textures.size())];
+      NSMutableArray<id<MTLTexture>> *rollingDigitTextures =
+          [NSMutableArray arrayWithCapacity:static_cast<NSUInteger>(
+                                                rollingDigits.textures.size())];
       NSMutableArray<id<MTLTexture>> *generatedMipTextures =
           [NSMutableArray array];
       if (textures == nil || crosshairTextures == nil ||
-          healthGaugeTextures == nil || generatedMipTextures == nil) {
+          healthGaugeTextures == nil || rollingDigitTextures == nil ||
+          generatedMipTextures == nil) {
         if (error != nullptr) {
           *error =
               makeError(RendererError::textureCreation,
@@ -3760,6 +3987,52 @@ bool preflightPrivateRoom(
         [healthGaugeTextures addObject:texture];
       }
 
+      for (const auto &source : rollingDigits.textures) {
+        const auto &upload = source.upload;
+        MTLTextureDescriptor *descriptor = [[MTLTextureDescriptor alloc] init];
+        if (descriptor == nil) {
+          if (error != nullptr) {
+            *error = makeError(
+                RendererError::textureCreation,
+                @"Private rolling-digit metadata could not be allocated.");
+          }
+          return nil;
+        }
+        configurePrivateTextureDescriptor(descriptor, source);
+
+        id<MTLTexture> texture =
+            [textureHeap newTextureWithDescriptor:descriptor];
+        if (texture == nil || texture.width != descriptor.width ||
+            texture.height != descriptor.height ||
+            texture.mipmapLevelCount != descriptor.mipmapLevelCount ||
+            texture.allocatedSize == 0U) {
+          if (error != nullptr) {
+            *error = makeError(
+                RendererError::textureCreation,
+                @"Metal could not create the private rolling-digit atlas.");
+          }
+          return nil;
+        }
+
+        for (std::size_t levelIndex = 0U;
+             levelIndex < source.uploadLevels.size(); ++levelIndex) {
+          const auto &level = upload.uploadLevels[levelIndex];
+          const auto &image = source.uploadLevels[levelIndex];
+          [texture
+              replaceRegion:MTLRegionMake2D(
+                                0U, 0U, static_cast<NSUInteger>(image.width),
+                                static_cast<NSUInteger>(image.height))
+                mipmapLevel:static_cast<NSUInteger>(level.level)
+                  withBytes:image.pixels.data()
+                bytesPerRow:static_cast<NSUInteger>(level.bytesPerRow)];
+        }
+        if (upload.mipPolicy ==
+            airfix::render::GtiMipPolicy::generateFromBase) {
+          [generatedMipTextures addObject:texture];
+        }
+        [rollingDigitTextures addObject:texture];
+      }
+
       if (generatedMipTextures.count != 0U) {
         id<MTLCommandBuffer> mipCommandBuffer = [commandQueue commandBuffer];
         if (mipCommandBuffer == nil) {
@@ -3854,13 +4127,17 @@ bool preflightPrivateRoom(
           [crosshairTextures copy];
       NSArray<id<MTLTexture>> *healthGaugeTextureSnapshot =
           [healthGaugeTextures copy];
+      NSArray<id<MTLTexture>> *rollingDigitTextureSnapshot =
+          [rollingDigitTextures copy];
       if (meshBufferSnapshot == nil || textureSnapshot == nil ||
           crosshairTextureSnapshot == nil ||
           healthGaugeTextureSnapshot == nil ||
+          rollingDigitTextureSnapshot == nil ||
           meshBufferSnapshot.count != room.model.meshes.size() ||
           textureSnapshot.count != room.textures.size() ||
           crosshairTextureSnapshot.count != crosshairs.textures.size() ||
-          healthGaugeTextureSnapshot.count != healthGauge.textures.size()) {
+          healthGaugeTextureSnapshot.count != healthGauge.textures.size() ||
+          rollingDigitTextureSnapshot.count != rollingDigits.textures.size()) {
         if (error != nullptr) {
           *error =
               makeError(RendererError::unexpectedFailure,
@@ -3872,6 +4149,7 @@ bool preflightPrivateRoom(
       candidateResources.textures = textureSnapshot;
       candidateResources.crosshairTextures = crosshairTextureSnapshot;
       candidateResources.healthGaugeTextures = healthGaugeTextureSnapshot;
+      candidateResources.rollingDigitTextures = rollingDigitTextureSnapshot;
       candidateResources.bufferHeap = bufferHeap;
       candidateResources.textureHeap = textureHeap;
       preparedRoom->_ownerToken = ownerToken;
@@ -3893,6 +4171,7 @@ bool preflightPrivateRoom(
       candidateResources->_missionRoom.emplace(std::move(room));
       candidateResources->_crosshairs.emplace(std::move(crosshairs));
       candidateResources->_healthGauge.emplace(std::move(healthGauge));
+      candidateResources->_rollingDigits.emplace(std::move(rollingDigits));
 
       reservationHolder->_reservation.emplace(
           std::move(*privatePlanReservation));
@@ -4598,6 +4877,7 @@ bool preflightPrivateRoom(
                 .panelOrigin =
                     {originX, originY, 0.0F, 0.0F},
                 .tint = {1.0F, 1.0F, 1.0F, 1.0F},
+                .uvRect = {0.0F, 0.0F, 1.0F, 1.0F},
             };
             [overlayEncoder
                 setRenderPipelineState:
