@@ -232,6 +232,7 @@ add_library(airfix_render
     src/airfix/render/LegacyCameraTransform.cpp
     src/airfix/render/LegacyAircraftHudElapsedClock.cpp
     src/airfix/render/LegacyAircraftHudIdentityStatus.cpp
+    src/airfix/render/LegacyAircraftHudInstrumentReadouts.cpp
     src/airfix/render/LegacyAircraftHudRollingDigits.cpp
     src/airfix/render/LegacyAircraftHudWeaponPanels.cpp
     src/airfix/render/LegacyAircraftHudInstruments.cpp
@@ -362,6 +363,7 @@ add_library(airfix_content
     src/airfix/content/LegacyAircraftHealthGaugeTextureSet.cpp
     src/airfix/content/LegacyAircraftHudIdentityStatusSubmission.cpp
     src/airfix/content/LegacyAircraftHudIdentityStatusTextureSet.cpp
+    src/airfix/content/LegacyAircraftHudInstrumentReadoutsSubmission.cpp
     src/airfix/content/LegacyAircraftHudInstrumentsSubmission.cpp
     src/airfix/content/LegacyAircraftHudInstrumentsTextureSet.cpp
     src/airfix/content/LegacyAircraftHudRollingDigitsSubmission.cpp
@@ -1069,6 +1071,14 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_legacy_aircraft_hud_instruments_tests
         COMMAND airfix_legacy_aircraft_hud_instruments_tests)
+
+    add_executable(airfix_legacy_aircraft_hud_instrument_readouts_tests
+        tests/LegacyAircraftHudInstrumentReadoutsTests.cpp)
+    target_link_libraries(
+        airfix_legacy_aircraft_hud_instrument_readouts_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_legacy_aircraft_hud_instrument_readouts_tests
+        COMMAND airfix_legacy_aircraft_hud_instrument_readouts_tests)
 
     add_executable(airfix_legacy_aircraft_hud_identity_status_tests
         tests/LegacyAircraftHudIdentityStatusTests.cpp)

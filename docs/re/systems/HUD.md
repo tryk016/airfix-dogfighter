@@ -9,6 +9,9 @@ helper, `EV-20260801-003` covers the complete pair of analog instruments, and
 aircraft-icon, health-number, team-badge, and technology-number cluster.
 `EV-20260801-006` covers the constructor, refresh producer, shared snapshot,
 four reset-skipping gates, and one-time reset of the HUD elapsed clock.
+`EV-20260801-007` covers the two four-digit readouts beneath the analog
+instruments, including their input arithmetic, order, anchors, tint, and use
+of that shared snapshot.
 Ghidra 12.1.2 is the primary decompiler; Rizin 0.9.1
 independently confirms the function boundaries, calls, and instruction order
 in the hash-verified `AirCraft.type` copy with SHA-256
@@ -40,6 +43,8 @@ The final identity/status cluster is in
 [EXP-20260801-106](../../experiments/EXP-20260801-106-aircraft-hud-identity-status.md).
 The shared elapsed-clock lifecycle is in
 [EXP-20260801-107](../../experiments/EXP-20260801-107-aircraft-hud-elapsed-clock.md).
+The two instrument readouts are in
+[EXP-20260801-108](../../experiments/EXP-20260801-108-aircraft-hud-instrument-readouts.md).
 
 ## Enclosing gates
 
@@ -273,6 +278,42 @@ The portable planner accepts the already-produced presentation values and is
 allocation-free. It does not update smoothing, label the ratio as fuel,
 manufacture live values, or constrain native 3D resolution. Ordinary frames
 remain disconnected until a verified runtime producer publishes the packet.
+
+## Recovered instrument readouts
+
+Two rolling-number states immediately follow the analog-instrument calls.
+The right state at `AirCraft+0x528` consumes the length of a three-component
+binary32 vector returned through virtual slot `+0x54`, multiplied by exact
+binary32 `100`. The left state at `AirCraft+0x52C` consumes
+`(+0x400/+0x3F8)*100+0.5`. The second expression is bounded as a
+remaining/initial percentage; the first vector receives no stronger gameplay
+label until its producer is independently established.
+
+Both values cross the external MSVC `_ftol` boundary before the rolling helper
+formats them. The portable plan therefore accepts already-quantized signed
+int32 values and does not guess live x87 halfway behaviour. Right update/draw
+finishes before left update/draw starts, and both receive the exact same
+elapsed-clock snapshot.
+
+Their rolling-number origins are relative to the analog centres:
+
+```text
+right = (screenWidth/2 + 138 - 15, screenHeight - 40 + 10)
+left  = (screenWidth/2 - 138 - 15, screenHeight - 40 + 10)
+```
+
+At the recovered `640x480` logical extent, the draw helper's one-pixel inset
+places the first glyphs at `(443,451)` and `(167,451)`. Right tint is white;
+left tint comes from `AirCraft+0x550`. Missing state pointers suppress only
+their own update/draw.
+
+`LegacyAircraftHudInstrumentReadoutsPlan` advances both retained states
+atomically, preserves all enclosing gates and advances state even when an
+optional atlas cannot draw. Its paired authenticated submission reuses the
+existing digit-atlas packet, native-output/UI-scale mapping, and dormant
+D3D11/Metal digit consumers. No backend shader or resource is duplicated, and
+ordinary frames still publish no fabricated vector, ratio, tint, clock, or
+quantized value.
 
 ## Recovered weapon panels
 

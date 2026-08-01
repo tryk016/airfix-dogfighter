@@ -5203,3 +5203,31 @@ superseded evidence.
   exporter tests, Python bytecode compilation, the synthetic and 732-file
   public-boundary scans, the 375-row/14-column unique function catalogue, and
   `git diff --check` pass.
+
+## 2026-08-01 - AirCraft HUD instrument readouts
+
+- `EV-20260801-007` / `EXP-20260801-108` close the two four-digit readout
+  blocks at AirCraft VA ranges `[0x10006C7E,0x10006CF9)` and
+  `[0x10006CF9,0x10006D52)`. Ghidra 12.1.2 remains primary; the existing
+  Rizin 0.9.1 report independently confirms the bytes, fields, constants,
+  branches, and update/draw helper calls.
+- Right consumes the already-quantized `100*length(slot-0x54 vector)` route;
+  left consumes the already-quantized `100*(+0x400/+0x3F8)+0.5` route. Both
+  retain one shared HUD elapsed snapshot, exact right-before-left execution,
+  instrument-relative anchors, white right tint, and `AirCraft+0x550` left
+  tint. No stronger vector meaning or live `_ftol` policy is asserted.
+- `LegacyAircraftHudInstrumentReadoutsPlan` advances both optional retained
+  states atomically and preserves advancement when the atlas cannot draw. Its
+  paired authenticated submission reuses the existing digit-atlas packet and
+  native-output/UI-scale mapping, so no texture, shader, or backend resource
+  is duplicated. Ordinary frames remain disconnected from fabricated values.
+- Three clean host toolchains pass: Clang 22.1.8/Ninja builds the complete
+  portable graph and passes 141/141 CTests; Visual Studio 2026 MSVC 19.51
+  builds the full 744-step Windows product, including SDL3, D3D11/DXGI,
+  XAudio2, runtime HLSL, and both product smokes, and passes 153/153 CTests;
+  the isolated `Airfix-Dev` WSL distro builds with GCC 13.3/Ninja and passes
+  141/141 CTests. The dedicated distro was terminated afterward.
+- The Ghidra and Rizin wrapper suites, 12/12 Rizin exporter tests, synthetic
+  public-boundary tests, the 738-file repository scan, the 375-row/14-column
+  unique function catalogue, changed-source formatting, changed-scope local
+  path review, and `git diff --check` pass.
