@@ -26,11 +26,16 @@ The enclosing function is AirCraft RVA `0x00006B00`, exact VA range
 independently confirm the final basic blocks, calls, field accesses, constants,
 and instruction order after the exact entry and boundary are supplied.
 
-The controlled x32dbg attempt did not reach this code: the original renderer
-stalled before loading `AirCraft.type`. It produced zero protocol hits, no
-memory or trace artifacts, and no dynamic claim. Raw disassembly,
-decompilation, archive payloads, decoded images, analysis databases, and host
-paths remain ignored local evidence.
+The final controlled x32dbg attempt reached one session in which the module was
+mapped and four hardware execution breakpoints were correctly armed at RVAs
+`0x00003BDC`, `0x00003BE2`, `0x00006F90`, and `0x00006FA8`. All recorded hit
+counts remained zero. Restarting invalidated that session, and pause/resume
+made the game stop accepting input before a controlled damage cycle could be
+completed. The attempt therefore contributes no accepted value, owner,
+thread, x87 control/status, or behavioural claim. It produced no dump, trace,
+or debugger database. Raw disassembly, decompilation, archive payloads,
+decoded images, analysis databases, and host paths remain ignored local
+evidence.
 
 ## Recovered draw contract
 

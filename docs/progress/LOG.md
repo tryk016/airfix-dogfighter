@@ -5117,8 +5117,10 @@ superseded evidence.
 - `EV-20260801-005` / `EXP-20260801-106` close the final contiguous cluster in
   the hash-verified AirCraft HUD range `[0x10006B00,0x10007321)`. Ghidra 12.1.2
   remains primary and Rizin 0.9.1 independently confirms exact block order,
-  calls, fields, and constants. The unsuccessful controlled x32dbg attempt
-  reached none of this code and contributes no dynamic claim.
+  calls, fields, and constants. The final controlled x32dbg attempt correctly
+  armed four relevant hardware execution breakpoints in one mapped session but
+  recorded zero accepted hits before pause/resume input loss ended the trial;
+  it contributes no dynamic claim.
 - An allocation-free ten-command plan preserves optional full-name `Ac*.gti`
   icon lookup, four rolling health-percentage digits, exact team-one star/
   other-team cross selection, four rolling technology-level digits, native
