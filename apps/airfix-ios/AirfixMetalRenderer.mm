@@ -1,6 +1,7 @@
 #import "AirfixMetalRenderer.h"
 
 #include "airfix/content/LegacyAircraftHealthGaugeSubmission.hpp"
+#include "airfix/content/LegacyAircraftHudIdentityStatusSubmission.hpp"
 #include "airfix/content/LegacyAircraftHudInstrumentsSubmission.hpp"
 #include "airfix/content/LegacyAircraftHudRollingDigitsSubmission.hpp"
 #include "airfix/content/LegacyAircraftHudWeaponPanelsSubmission.hpp"
@@ -9,6 +10,7 @@
 #import <simd/simd.h>
 
 #include "airfix/content/LegacyAircraftHealthGaugeTextureSet.hpp"
+#include "airfix/content/LegacyAircraftHudIdentityStatusTextureSet.hpp"
 #include "airfix/content/LegacyAircraftHudInstrumentsTextureSet.hpp"
 #include "airfix/content/LegacyAircraftHudRollingDigitsTextureSet.hpp"
 #include "airfix/content/LegacyAircraftHudWeaponPanelTextureSet.hpp"
@@ -472,6 +474,9 @@ gameplayUniforms(const simd_float4x4 modelFromLocal,
       _hudInstruments;
   std::optional<airfix::content::LoadedLegacyAircraftHudWeaponPanelTextureSet>
       _weaponPanels;
+  std::optional<
+      airfix::content::LoadedLegacyAircraftHudIdentityStatusTextureSet>
+      _identityStatus;
   std::vector<NSUInteger> _indexOffsets;
   std::shared_ptr<airfix::render::PlayerActorPoseRuntime> _scenePoseRuntime;
   std::shared_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>
@@ -484,6 +489,7 @@ gameplayUniforms(const simd_float4x4 modelFromLocal,
 @property(nonatomic, strong) NSArray<id<MTLTexture>> *rollingDigitTextures;
 @property(nonatomic, strong) NSArray<id<MTLTexture>> *hudInstrumentTextures;
 @property(nonatomic, strong) NSArray<id<MTLTexture>> *weaponPanelTextures;
+@property(nonatomic, strong) NSArray<id<MTLTexture>> *identityStatusTextures;
 @property(nonatomic, strong) id<MTLHeap> bufferHeap;
 @property(nonatomic, strong) id<MTLHeap> textureHeap;
 @end
@@ -502,6 +508,7 @@ gameplayUniforms(const simd_float4x4 modelFromLocal,
   _rollingDigitTextures = nil;
   _hudInstrumentTextures = nil;
   _weaponPanelTextures = nil;
+  _identityStatusTextures = nil;
   _bufferHeap = nil;
   _textureHeap = nil;
 }
@@ -975,6 +982,12 @@ textureAssetId(const airfix::content::LoadedLegacyAircraftHudWeaponPanelTexture
   return texture.textureId;
 }
 
+[[nodiscard]] airfix::render::TextureAssetId textureAssetId(
+    const airfix::content::LoadedLegacyAircraftHudIdentityStatusTexture
+        &texture) noexcept {
+  return texture.textureId;
+}
+
 template <typename LoadedTexture>
 bool validateTextureAsset(const LoadedTexture &texture,
                           const std::size_t textureIndex,
@@ -1275,6 +1288,16 @@ bool preflightPrivateRoom(id<MTLDevice> device,
                            outputExtent:
                                (airfix::render::OutputPixelExtent)outputExtent
                    drawableDepthTexture:(id<MTLTexture>)drawableDepthTexture;
+- (NSUInteger)
+    encodeLegacyAircraftHudIdentityStatus:
+        (const airfix::content::LegacyAircraftHudIdentityStatusSubmission &)
+            submission
+                                resources:(AirfixMetalRoomResources *)resources
+                            commandBuffer:(id<MTLCommandBuffer>)commandBuffer
+                               renderPass:(MTLRenderPassDescriptor *)renderPass
+                             outputExtent:
+                                 (airfix::render::OutputPixelExtent)outputExtent
+                     drawableDepthTexture:(id<MTLTexture>)drawableDepthTexture;
 @end
 
 @implementation AirfixMetalRenderer
@@ -3250,6 +3273,158 @@ bool preflightPrivateRoom(id<MTLDevice> device,
   return static_cast<NSUInteger>(submission.commandCount);
 }
 
+- (NSUInteger)
+    encodeLegacyAircraftHudIdentityStatus:
+        (const airfix::content::LegacyAircraftHudIdentityStatusSubmission &)
+            submission
+                                resources:(AirfixMetalRoomResources *)resources
+                            commandBuffer:(id<MTLCommandBuffer>)commandBuffer
+                               renderPass:(MTLRenderPassDescriptor *)renderPass
+                             outputExtent:
+                                 (airfix::render::OutputPixelExtent)outputExtent
+                     drawableDepthTexture:(id<MTLTexture>)drawableDepthTexture {
+  if (resources == nil || commandBuffer == nil || renderPass == nil ||
+      drawableDepthTexture == nil || !resources->_identityStatus.has_value() ||
+      !resources->_rollingDigits.has_value() ||
+      resources.identityStatusTextures == nil ||
+      resources.rollingDigitTextures == nil ||
+      resources.identityStatusTextures.count !=
+          resources->_identityStatus->textures.size() ||
+      resources.rollingDigitTextures.count !=
+          resources->_rollingDigits->textures.size() ||
+      self.crosshairPipelineState == nil || self.crosshairDepthState == nil ||
+      self.crosshairSamplerState == nil || outputExtent.width == 0U ||
+      outputExtent.height == 0U ||
+      !submission.belongsTo(*resources->_identityStatus,
+                            *resources->_rollingDigits) ||
+      submission.commandCount == 0U ||
+      submission.commandCount > submission.orderedCommands.size() ||
+      !fitsNSUInteger(submission.commandCount)) {
+    return 0U;
+  }
+
+  using TextureNamespace =
+      airfix::content::LegacyAircraftHudIdentityStatusTextureNamespace;
+  using BlendMode = airfix::content::LegacyAircraftHudIdentityStatusBlendMode;
+  using DepthMode = airfix::content::LegacyAircraftHudIdentityStatusDepthMode;
+  using SamplingMode =
+      airfix::content::LegacyAircraftHudIdentityStatusSamplingMode;
+  for (std::size_t index = 0U; index < submission.commandCount; ++index) {
+    const auto &command = submission.orderedCommands[index];
+    const auto &rectangle = command.outputRect;
+    const auto &uv = command.uv;
+    if (command.blendMode != BlendMode::sourceAlphaOneMinusSourceAlpha ||
+        command.depthMode != DepthMode::alwaysWrite ||
+        command.samplingMode != SamplingMode::linearClamp ||
+        !std::isfinite(rectangle.x) || !std::isfinite(rectangle.y) ||
+        !std::isfinite(rectangle.width) || !std::isfinite(rectangle.height) ||
+        rectangle.x < 0.0F || rectangle.y < 0.0F || rectangle.width <= 0.0F ||
+        rectangle.height <= 0.0F ||
+        rectangle.x + rectangle.width >
+            static_cast<float>(outputExtent.width) ||
+        rectangle.y + rectangle.height >
+            static_cast<float>(outputExtent.height) ||
+        !std::isfinite(uv.minimumU) || !std::isfinite(uv.minimumV) ||
+        !std::isfinite(uv.maximumU) || !std::isfinite(uv.maximumV) ||
+        uv.minimumU < 0.0F || uv.minimumV < 0.0F || uv.maximumU > 1.0F ||
+        uv.maximumV > 1.0F || uv.minimumU >= uv.maximumU ||
+        uv.minimumV >= uv.maximumV) {
+      return 0U;
+    }
+    const auto textureIndex = static_cast<NSUInteger>(command.textureId.value);
+    if (command.textureNamespace == TextureNamespace::identityStatus) {
+      if (textureIndex >= resources.identityStatusTextures.count ||
+          resources.identityStatusTextures[textureIndex] == nil) {
+        return 0U;
+      }
+    } else if (command.textureNamespace == TextureNamespace::rollingDigits) {
+      if (textureIndex >= resources.rollingDigitTextures.count ||
+          resources.rollingDigitTextures[textureIndex] == nil) {
+        return 0U;
+      }
+    } else {
+      return 0U;
+    }
+  }
+
+  id<MTLTexture> outputTexture = renderPass.colorAttachments[0].texture;
+  if (outputTexture == nil ||
+      outputTexture.pixelFormat != MTLPixelFormatBGRA8Unorm ||
+      drawableDepthTexture.pixelFormat != MTLPixelFormatDepth32Float ||
+      outputTexture.width != static_cast<NSUInteger>(outputExtent.width) ||
+      outputTexture.height != static_cast<NSUInteger>(outputExtent.height) ||
+      drawableDepthTexture.width !=
+          static_cast<NSUInteger>(outputExtent.width) ||
+      drawableDepthTexture.height !=
+          static_cast<NSUInteger>(outputExtent.height)) {
+    return 0U;
+  }
+
+  MTLRenderPassDescriptor *identityStatusPass =
+      [MTLRenderPassDescriptor renderPassDescriptor];
+  identityStatusPass.colorAttachments[0].texture = outputTexture;
+  identityStatusPass.colorAttachments[0].loadAction = MTLLoadActionLoad;
+  identityStatusPass.colorAttachments[0].storeAction = MTLStoreActionStore;
+  identityStatusPass.depthAttachment.texture = drawableDepthTexture;
+  identityStatusPass.depthAttachment.loadAction = MTLLoadActionDontCare;
+  identityStatusPass.depthAttachment.storeAction = MTLStoreActionDontCare;
+
+  id<MTLRenderCommandEncoder> encoder =
+      [commandBuffer renderCommandEncoderWithDescriptor:identityStatusPass];
+  if (encoder == nil) {
+    return 0U;
+  }
+  [encoder setRenderPipelineState:self.crosshairPipelineState];
+  [encoder setDepthStencilState:self.crosshairDepthState];
+  [encoder setCullMode:MTLCullModeNone];
+  [encoder setViewport:MTLViewport{
+                           0.0,
+                           0.0,
+                           static_cast<double>(outputExtent.width),
+                           static_cast<double>(outputExtent.height),
+                           0.0,
+                           1.0,
+                       }];
+  [encoder setFragmentSamplerState:self.crosshairSamplerState atIndex:0U];
+
+  for (std::size_t index = 0U; index < submission.commandCount; ++index) {
+    const auto &command = submission.orderedCommands[index];
+    const auto &rectangle = command.outputRect;
+    const GpuOverlayUniforms uniforms{
+        .outputAndPanelSize =
+            {
+                static_cast<float>(outputExtent.width),
+                static_cast<float>(outputExtent.height),
+                rectangle.width,
+                rectangle.height,
+            },
+        .panelOrigin = {rectangle.x, rectangle.y, 0.0F, 0.0F},
+        .tint = normalizedArgb(command.colourArgb),
+        .uvRect =
+            {
+                command.uv.minimumU,
+                command.uv.minimumV,
+                command.uv.maximumU,
+                command.uv.maximumV,
+            },
+    };
+    [encoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:2U];
+    [encoder setFragmentBytes:&uniforms length:sizeof(uniforms) atIndex:2U];
+    id<MTLTexture> texture =
+        command.textureNamespace == TextureNamespace::identityStatus
+            ? resources.identityStatusTextures[static_cast<NSUInteger>(
+                  command.textureId.value)]
+            : resources.rollingDigitTextures[static_cast<NSUInteger>(
+                  command.textureId.value)];
+    [encoder setFragmentTexture:texture atIndex:0U];
+    [encoder drawPrimitives:MTLPrimitiveTypeTriangle
+                vertexStart:0U
+                vertexCount:6U];
+  }
+  [encoder endEncoding];
+  return static_cast<NSUInteger>(submission.commandCount);
+}
+
 - (BOOL)updateDiagnosticsOverlayTextureWithDevice:(id<MTLDevice>)device {
   AirfixMetalDiagnosticsState *state = self.diagnosticsState;
   if (device == nil || state == nil ||
@@ -3303,23 +3478,26 @@ bool preflightPrivateRoom(id<MTLDevice> device,
 }
 
 - (nullable AirfixPreparedMetalRoom *)
-    prepareLoadedMissionRoom:(airfix::content::LoadedMissionWorldRoom &&)room
-            weaponCrosshairs:
-                (airfix::content::LoadedLegacyWeaponCrosshairTextureSet &&)
-                    crosshairs
-         aircraftHealthGauge:
-             (airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet &&)
-                 healthGauge
-    aircraftHudRollingDigits:
-        (airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet &&)
-            rollingDigits
-      aircraftHudInstruments:
-          (airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet &&)
-              hudInstruments
-     aircraftHudWeaponPanels:
-         (airfix::content::LoadedLegacyAircraftHudWeaponPanelTextureSet &&)
-             weaponPanels
-                       error:(NSError *_Nullable *_Nullable)error {
+     prepareLoadedMissionRoom:(airfix::content::LoadedMissionWorldRoom &&)room
+             weaponCrosshairs:
+                 (airfix::content::LoadedLegacyWeaponCrosshairTextureSet &&)
+                     crosshairs
+          aircraftHealthGauge:
+              (airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet &&)
+                  healthGauge
+     aircraftHudRollingDigits:
+         (airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet &&)
+             rollingDigits
+       aircraftHudInstruments:
+           (airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet &&)
+               hudInstruments
+      aircraftHudWeaponPanels:
+          (airfix::content::LoadedLegacyAircraftHudWeaponPanelTextureSet &&)
+              weaponPanels
+    aircraftHudIdentityStatus:
+        (airfix::content::LoadedLegacyAircraftHudIdentityStatusTextureSet &&)
+            identityStatus
+                        error:(NSError *_Nullable *_Nullable)error {
   if (error != nullptr) {
     *error = nil;
   }
@@ -3357,7 +3535,8 @@ bool preflightPrivateRoom(id<MTLDevice> device,
         healthGauge.revision != room.revision || !rollingDigits.valid() ||
         rollingDigits.revision != room.revision || !hudInstruments.valid() ||
         hudInstruments.revision != room.revision || !weaponPanels.valid() ||
-        weaponPanels.revision != room.revision) {
+        weaponPanels.revision != room.revision || !identityStatus.valid() ||
+        identityStatus.revision != room.revision) {
       if (error != nullptr) {
         *error = makeError(
             RendererError::invalidPayload,
@@ -3423,6 +3602,19 @@ bool preflightPrivateRoom(id<MTLDevice> device,
           *error = makeError(
               RendererError::invalidPayload,
               @"The private HUD weapon-panel set failed the bounded Metal "
+               "snapshot contract.");
+        }
+        return nil;
+      }
+    }
+    for (std::size_t textureIndex = 0U;
+         textureIndex < identityStatus.textures.size(); ++textureIndex) {
+      if (!validateTextureAsset(identityStatus.textures[textureIndex],
+                                textureIndex, preflight.aggregateGpuBytes)) {
+        if (error != nullptr) {
+          *error = makeError(
+              RendererError::invalidPayload,
+              @"The private HUD identity/status set failed the bounded Metal "
                "snapshot contract.");
         }
         return nil;
@@ -3716,6 +3908,23 @@ bool preflightPrivateRoom(id<MTLDevice> device,
         }
       }
     }
+    if (heapPlanValid) {
+      for (const auto &source : identityStatus.textures) {
+        MTLTextureDescriptor *descriptor = [[MTLTextureDescriptor alloc] init];
+        if (descriptor == nil) {
+          heapPlanValid = false;
+          break;
+        }
+        configurePrivateTextureDescriptor(descriptor, source);
+        if (!accountHeapResourcePlacement(
+                [device heapTextureSizeAndAlignWithDescriptor:descriptor],
+                textureHeapBytes, textureHeapAlignment,
+                kMaximumPrivateRoomGpuHeapPlanBytes)) {
+          heapPlanValid = false;
+          break;
+        }
+      }
+    }
     if (!heapPlanValid ||
         !finalizeHeapPlan(bufferHeapBytes, bufferHeapAlignment,
                           kMaximumPrivateRoomGpuHeapPlanBytes) ||
@@ -3874,12 +4083,15 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       NSMutableArray<id<MTLTexture>> *weaponPanelTextures =
           [NSMutableArray arrayWithCapacity:static_cast<NSUInteger>(
                                                 weaponPanels.textures.size())];
+      NSMutableArray<id<MTLTexture>> *identityStatusTextures = [NSMutableArray
+          arrayWithCapacity:static_cast<NSUInteger>(
+                                identityStatus.textures.size())];
       NSMutableArray<id<MTLTexture>> *generatedMipTextures =
           [NSMutableArray array];
       if (textures == nil || crosshairTextures == nil ||
           healthGaugeTextures == nil || rollingDigitTextures == nil ||
           hudInstrumentTextures == nil || weaponPanelTextures == nil ||
-          generatedMipTextures == nil) {
+          identityStatusTextures == nil || generatedMipTextures == nil) {
         if (error != nullptr) {
           *error =
               makeError(RendererError::textureCreation,
@@ -4163,6 +4375,52 @@ bool preflightPrivateRoom(id<MTLDevice> device,
         [weaponPanelTextures addObject:texture];
       }
 
+      for (const auto &source : identityStatus.textures) {
+        const auto &upload = source.upload;
+        MTLTextureDescriptor *descriptor = [[MTLTextureDescriptor alloc] init];
+        if (descriptor == nil) {
+          if (error != nullptr) {
+            *error = makeError(RendererError::textureCreation,
+                               @"Private HUD identity/status metadata could "
+                               @"not be allocated.");
+          }
+          return nil;
+        }
+        configurePrivateTextureDescriptor(descriptor, source);
+
+        id<MTLTexture> texture =
+            [textureHeap newTextureWithDescriptor:descriptor];
+        if (texture == nil || texture.width != descriptor.width ||
+            texture.height != descriptor.height ||
+            texture.mipmapLevelCount != descriptor.mipmapLevelCount ||
+            texture.allocatedSize == 0U) {
+          if (error != nullptr) {
+            *error = makeError(RendererError::textureCreation,
+                               @"Metal could not create every private HUD "
+                                "identity/status texture.");
+          }
+          return nil;
+        }
+
+        for (std::size_t levelIndex = 0U;
+             levelIndex < source.uploadLevels.size(); ++levelIndex) {
+          const auto &level = upload.uploadLevels[levelIndex];
+          const auto &image = source.uploadLevels[levelIndex];
+          [texture
+              replaceRegion:MTLRegionMake2D(
+                                0U, 0U, static_cast<NSUInteger>(image.width),
+                                static_cast<NSUInteger>(image.height))
+                mipmapLevel:static_cast<NSUInteger>(level.level)
+                  withBytes:image.pixels.data()
+                bytesPerRow:static_cast<NSUInteger>(level.bytesPerRow)];
+        }
+        if (upload.mipPolicy ==
+            airfix::render::GtiMipPolicy::generateFromBase) {
+          [generatedMipTextures addObject:texture];
+        }
+        [identityStatusTextures addObject:texture];
+      }
+
       if (generatedMipTextures.count != 0U) {
         id<MTLCommandBuffer> mipCommandBuffer = [commandQueue commandBuffer];
         if (mipCommandBuffer == nil) {
@@ -4263,12 +4521,15 @@ bool preflightPrivateRoom(id<MTLDevice> device,
           [hudInstrumentTextures copy];
       NSArray<id<MTLTexture>> *weaponPanelTextureSnapshot =
           [weaponPanelTextures copy];
+      NSArray<id<MTLTexture>> *identityStatusTextureSnapshot =
+          [identityStatusTextures copy];
       if (meshBufferSnapshot == nil || textureSnapshot == nil ||
           crosshairTextureSnapshot == nil ||
           healthGaugeTextureSnapshot == nil ||
           rollingDigitTextureSnapshot == nil ||
           hudInstrumentTextureSnapshot == nil ||
           weaponPanelTextureSnapshot == nil ||
+          identityStatusTextureSnapshot == nil ||
           meshBufferSnapshot.count != room.model.meshes.size() ||
           textureSnapshot.count != room.textures.size() ||
           crosshairTextureSnapshot.count != crosshairs.textures.size() ||
@@ -4276,7 +4537,9 @@ bool preflightPrivateRoom(id<MTLDevice> device,
           rollingDigitTextureSnapshot.count != rollingDigits.textures.size() ||
           hudInstrumentTextureSnapshot.count !=
               hudInstruments.textures.size() ||
-          weaponPanelTextureSnapshot.count != weaponPanels.textures.size()) {
+          weaponPanelTextureSnapshot.count != weaponPanels.textures.size() ||
+          identityStatusTextureSnapshot.count !=
+              identityStatus.textures.size()) {
         if (error != nullptr) {
           *error =
               makeError(RendererError::unexpectedFailure,
@@ -4291,6 +4554,7 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       candidateResources.rollingDigitTextures = rollingDigitTextureSnapshot;
       candidateResources.hudInstrumentTextures = hudInstrumentTextureSnapshot;
       candidateResources.weaponPanelTextures = weaponPanelTextureSnapshot;
+      candidateResources.identityStatusTextures = identityStatusTextureSnapshot;
       candidateResources.bufferHeap = bufferHeap;
       candidateResources.textureHeap = textureHeap;
       preparedRoom->_ownerToken = ownerToken;
@@ -4315,6 +4579,7 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       candidateResources->_rollingDigits.emplace(std::move(rollingDigits));
       candidateResources->_hudInstruments.emplace(std::move(hudInstruments));
       candidateResources->_weaponPanels.emplace(std::move(weaponPanels));
+      candidateResources->_identityStatus.emplace(std::move(identityStatus));
 
       reservationHolder->_reservation.emplace(
           std::move(*privatePlanReservation));

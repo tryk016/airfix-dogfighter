@@ -5,6 +5,7 @@
 
 #include "airfix/content/LegacyAircraftAudioClipSet.hpp"
 #include "airfix/content/LegacyAircraftHealthGaugeTextureSet.hpp"
+#include "airfix/content/LegacyAircraftHudIdentityStatusTextureSet.hpp"
 #include "airfix/content/LegacyAircraftHudInstrumentsTextureSet.hpp"
 #include "airfix/content/LegacyAircraftHudRollingDigitsTextureSet.hpp"
 #include "airfix/content/LegacyAircraftHudWeaponPanelTextureSet.hpp"
@@ -1102,6 +1103,21 @@ NSString *canonicalTransactionIdentifier(void) {
           return;
         }
 
+        auto hudIdentityStatusResult =
+            airfix::content::loadLegacyAircraftHudIdentityStatusTextures(
+                *strongSelf->_verifiedSession, {}, stopToken);
+        if (!strongSelf->_verifiedSession.has_value() ||
+            strongSelf->_verifiedSession->revision() != revisionBeforeLoad ||
+            !hudIdentityStatusResult.success() ||
+            !hudIdentityStatusResult.textures.has_value() ||
+            !hudIdentityStatusResult.textures->belongsTo(
+                *strongSelf->_verifiedSession) ||
+            hudIdentityStatusResult.textures->revision !=
+                ticket->expectedRevision) {
+          publishFailure();
+          return;
+        }
+
         const auto resultRevision = result.room->revision;
         AirfixMissionWorldRoomSnapshot *const snapshot =
             airfix::ios::makeMissionWorldRoomSnapshot(
@@ -1110,7 +1126,8 @@ NSString *canonicalTransactionIdentifier(void) {
                 std::move(*healthGaugeResult.textures),
                 std::move(*rollingDigitsResult.textures),
                 std::move(*hudInstrumentsResult.textures),
-                std::move(*hudWeaponPanelsResult.textures));
+                std::move(*hudWeaponPanelsResult.textures),
+                std::move(*hudIdentityStatusResult.textures));
         dispatch_async(dispatch_get_main_queue(), ^{
           AirfixContentCoordinator *coordinator = weakSelf;
           if (coordinator == nil || !coordinator->_roomPublicationGate.accepts(

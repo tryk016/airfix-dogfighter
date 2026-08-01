@@ -8,6 +8,7 @@
 
 namespace airfix::content {
 struct LoadedLegacyAircraftHealthGaugeTextureSet;
+struct LoadedLegacyAircraftHudIdentityStatusTextureSet;
 struct LoadedLegacyAircraftHudInstrumentTextureSet;
 struct LoadedLegacyAircraftHudRollingDigitsTextureSet;
 struct LoadedLegacyAircraftHudWeaponPanelTextureSet;
@@ -71,23 +72,26 @@ NS_ASSUME_NONNULL_BEGIN
 // This synchronous boundary must run on a serialized preparation queue, never
 // the main thread. On failure the old render snapshot and room stay unchanged.
 - (nullable AirfixPreparedMetalRoom *)
-    prepareLoadedMissionRoom:(airfix::content::LoadedMissionWorldRoom &&)room
-            weaponCrosshairs:
-                (airfix::content::LoadedLegacyWeaponCrosshairTextureSet &&)
-                    crosshairs
-         aircraftHealthGauge:
-             (airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet &&)
-                 healthGauge
-    aircraftHudRollingDigits:
-        (airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet &&)
-            rollingDigits
-      aircraftHudInstruments:
-          (airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet &&)
-              hudInstruments
-     aircraftHudWeaponPanels:
-         (airfix::content::LoadedLegacyAircraftHudWeaponPanelTextureSet &&)
-             weaponPanels
-                       error:(NSError *_Nullable *_Nullable)error;
+     prepareLoadedMissionRoom:(airfix::content::LoadedMissionWorldRoom &&)room
+             weaponCrosshairs:
+                 (airfix::content::LoadedLegacyWeaponCrosshairTextureSet &&)
+                     crosshairs
+          aircraftHealthGauge:
+              (airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet &&)
+                  healthGauge
+     aircraftHudRollingDigits:
+         (airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet &&)
+             rollingDigits
+       aircraftHudInstruments:
+           (airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet &&)
+               hudInstruments
+      aircraftHudWeaponPanels:
+          (airfix::content::LoadedLegacyAircraftHudWeaponPanelTextureSet &&)
+              weaponPanels
+    aircraftHudIdentityStatus:
+        (airfix::content::LoadedLegacyAircraftHudIdentityStatusTextureSet &&)
+            identityStatus
+                        error:(NSError *_Nullable *_Nullable)error;
 
 // Read-only candidate identity. An empty optional is the authenticated
 // no-player path. An engaged weak pointer names only this prepared candidate;

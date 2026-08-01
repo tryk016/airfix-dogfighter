@@ -5,8 +5,9 @@
 `EV-20260801-001` covers the first complete renderer-neutral subsection of the
 aircraft HUD, `EV-20260801-002` covers its reusable four-digit rolling-number
 helper, `EV-20260801-003` covers the complete pair of analog instruments, and
-`EV-20260801-004` covers both weapon panels. Ghidra 12.1.2 is the primary
-decompiler; Rizin 0.9.1
+`EV-20260801-004` covers both weapon panels. `EV-20260801-005` covers the final
+aircraft-icon, health-number, team-badge, and technology-number cluster.
+Ghidra 12.1.2 is the primary decompiler; Rizin 0.9.1
 independently confirms the function boundaries, calls, and instruction order
 in the hash-verified `AirCraft.type` copy with SHA-256
 `9745842bde40406390b46f935e9f12d6626675f89a8fbb303cb135d76cf7dd1e`.
@@ -33,6 +34,8 @@ The analog instruments are in
 [EXP-20260801-104](../../experiments/EXP-20260801-104-aircraft-hud-analog-instruments.md).
 The weapon-panel reconstruction is in
 [EXP-20260801-105](../../experiments/EXP-20260801-105-aircraft-hud-weapon-panels.md).
+The final identity/status cluster is in
+[EXP-20260801-106](../../experiments/EXP-20260801-106-aircraft-hud-identity-status.md).
 
 ## Enclosing gates
 
@@ -280,6 +283,41 @@ dynamic resources in the mission transaction and own dormant fail-closed
 consumers. Ordinary frames do not fabricate selected weapons, ammunition,
 status, or visibility.
 
+## Recovered aircraft identity and status cluster
+
+The final contiguous cluster of AirCraft RVA `0x00006B00` follows both weapon
+panels. It first performs a full, case-insensitive lookup of the aircraft type
+name against the archive-derived stems of `Ac*.gti`; no prefix is removed. A
+match draws the complete `64x64` icon at `(50, top+11)`. It then advances the
+health rolling-number state at `AirCraft+0x538` from the already-quantized
+result of `(displayedHealth*100/maximumHealth)+0.5` and draws at
+`(57, top+78)`.
+
+`NfActor::GetTeamId` selects `techstar` only for team ID exactly `1`; every
+other returned ID selects `techcross`. The complete `64x64` badge is drawn at
+`(width/2-32,height-72)`. Finally, the signed field at `AirCraft+0x418`
+advances rolling state `+0x53C` and draws at `(width/2-16,height-32)`. Console
+event `0xDA` writes that field through `give_techlevel 0..4`, and event `0xDB`
+increments it, confirming the technology-level interpretation. Both numeric
+paths cross the unresolved native `_ftol` policy, so the portable plan accepts
+already-quantized signed values.
+
+One bounded authenticated owner loads the fixed format-8 `64x64` badges from
+the selected localization archive and dynamically discovers format-8 `64x64`
+aircraft icons in the source archive. Current read-only owner-local inventory
+contains fourteen icons, but neither names nor count are hard-coded. Catalog,
+key, source/decode/upload/resident, dimension, mip, cancellation, callback,
+revision, and transaction limits are enforced before atomic publication.
+
+The allocation-free ten-command plan advances both number states atomically
+and retains optional icon/digit behavior, team selection, and exact native
+order. Its cross-owner native-output submission preserves full/fractional UVs,
+source-alpha blending, linear clamp, ALWAYS/write depth, independent UI scale,
+and separation from the native-resolution 3D target. D3D11 and Metal stage all
+resources inside the complete mission transaction and own dormant fail-closed
+consumers. Ordinary frames do not manufacture aircraft identity, health,
+team, technology, clock, or visibility.
+
 ## Remaining HUD work
 
 - Connect the verified two-instrument fields and tint through ordinary HUD
@@ -288,7 +326,9 @@ status, or visibility.
   clock to the already authenticated native-output submission.
 - Connect primary/selected-secondary ownership, ammunition, and status
   producers to the verified weapon-panel submission without fabricated state.
-- Recover aircraft/team indicators and the relationship to mission status.
+- Connect the verified aircraft identity, team, health-number, and technology-
+  level producers plus the one-time enclosing HUD clock reset without
+  substituting validation values.
 - Connect the verified smoothed-health producer to ordinary render-event
   publication without substituting capture-only values.
 - Validate the composed HUD at the required aspect ratios and safe areas.

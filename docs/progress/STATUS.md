@@ -127,11 +127,20 @@
   hard-coded, while the status palette and destination-multiply blend preserve
   the recovered native contract. An allocation-free 14-command plan,
   cross-owner native-output submission, and D3D11/Metal consumers are staged
-  but deliberately dormant. Live slot ownership, changing aim/collision
-  production, explicit visibility policy, ammunition/status values,
-  smoothed-health, digit and instrument producer wiring, physical iPhone
-  visual acceptance, the remaining aircraft/team/mission-status HUD, and
-  screen effects are not yet connected.
+  but deliberately dormant. The final contiguous AirCraft identity/status
+  cluster is now a fifth complete primitive: dynamic full-name `Ac*.gti`
+  lookup, rolling health percentage, exact team-star/cross selection, and
+  rolling technology level preserve native order and anchors. A bounded
+  cross-archive owner discovers all aircraft icons without hard-coded names,
+  while a ten-command allocation-free plan and identity-bound packet retain
+  the shared digit atlas, UI/native-resolution separation, source-alpha blend,
+  linear clamp, and ALWAYS/write depth. Both native products stage the entire
+  set and own dormant fail-closed consumers. Live slot ownership, changing
+  aim/collision production, explicit visibility policy, ammunition/status
+  values, smoothed-health, digit, instrument, aircraft identity, team,
+  technology and shared-clock producer wiring, physical iPhone visual
+  acceptance, mission status outside this AirCraft cluster, and screen effects
+  are not yet connected.
 - The recovered CCF material contract now survives end to end from typed
   `0x2140/0x2150/0x2151` metadata and exact native defaults through world,
   aggregate mission, and player texture binding into each backend-neutral draw
