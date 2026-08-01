@@ -8,6 +8,7 @@
 
 namespace airfix::content {
 struct LoadedLegacyAircraftHealthGaugeTextureSet;
+struct LoadedLegacyAircraftHudInstrumentTextureSet;
 struct LoadedLegacyAircraftHudRollingDigitsTextureSet;
 struct LoadedLegacyWeaponCrosshairTextureSet;
 struct LoadedMissionWorldRoom;
@@ -80,6 +81,9 @@ NS_ASSUME_NONNULL_BEGIN
     aircraftHudRollingDigits:
         (airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet &&)
             rollingDigits
+    aircraftHudInstruments:
+        (airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet &&)
+            hudInstruments
                        error:(NSError *_Nullable *_Nullable)error;
 
 // Read-only candidate identity. An empty optional is the authenticated

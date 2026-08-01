@@ -4,6 +4,7 @@
 
 #include "airfix/content/LegacyAircraftAudioClipSet.hpp"
 #include "airfix/content/LegacyAircraftHealthGaugeTextureSet.hpp"
+#include "airfix/content/LegacyAircraftHudInstrumentsTextureSet.hpp"
 #include "airfix/content/LegacyAircraftHudRollingDigitsTextureSet.hpp"
 #include "airfix/content/LegacyWeaponCrosshairTextureSet.hpp"
 #include "airfix/content/MissionWorldRoomLoader.hpp"
@@ -23,7 +24,8 @@ namespace airfix::ios {
     content::LoadedLegacyAircraftAudioClips &&audioClips,
     content::LoadedLegacyWeaponCrosshairTextureSet &&crosshairs,
     content::LoadedLegacyAircraftHealthGaugeTextureSet &&healthGauge,
-    content::LoadedLegacyAircraftHudRollingDigitsTextureSet &&rollingDigits);
+    content::LoadedLegacyAircraftHudRollingDigitsTextureSet &&rollingDigits,
+    content::LoadedLegacyAircraftHudInstrumentTextureSet &&hudInstruments);
 
 // One-shot renderer handoff. A second call fails rather than returning a
 // moved-from payload.
@@ -40,6 +42,9 @@ takeLoadedLegacyAircraftHealthGaugeTextures(
     AirfixMissionWorldRoomSnapshot *snapshot);
 [[nodiscard]] content::LoadedLegacyAircraftHudRollingDigitsTextureSet
 takeLoadedLegacyAircraftHudRollingDigitTextures(
+    AirfixMissionWorldRoomSnapshot *snapshot);
+[[nodiscard]] content::LoadedLegacyAircraftHudInstrumentTextureSet
+takeLoadedLegacyAircraftHudInstrumentTextures(
     AirfixMissionWorldRoomSnapshot *snapshot);
 
 // Remains available after the payload has been taken so the main-thread

@@ -54,6 +54,7 @@ cbuffer GaugeUniforms : register(b3)
     float4 gaugeOutputQuad[4];
     float4 gaugeOutputSize;
     float4 gaugeTint;
+    float4 gaugeUvRect;
 };
 
 SmokeRasterInput AirfixSmokeVS(SmokeVertexInput input)
@@ -165,7 +166,7 @@ PresentationRasterInput AirfixGaugeVS(uint vertexId : SV_VertexID)
         1.0f - pixelPosition.y * 2.0f / gaugeOutputSize.y,
         1.0f,
         1.0f);
-    output.uv = quadUv[quadIndex];
+    output.uv = lerp(gaugeUvRect.xy, gaugeUvRect.zw, quadUv[quadIndex]);
     return output;
 }
 

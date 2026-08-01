@@ -34,6 +34,7 @@ struct GpuGaugeUniforms {
     float4 outputQuad[4];
     float4 outputSize;
     float4 tint;
+    float4 uvRect;
 };
 
 struct DiagnosticRasterVertex {
@@ -169,7 +170,7 @@ vertex DiagnosticRasterVertex airfixGaugeVertexMain(
         1.0f - pixelPosition.y * 2.0f / uniforms.outputSize.y,
         1.0f,
         1.0f);
-    output.uv = quadUv[quadIndex];
+    output.uv = mix(uniforms.uvRect.xy, uniforms.uvRect.zw, quadUv[quadIndex]);
     return output;
 }
 
