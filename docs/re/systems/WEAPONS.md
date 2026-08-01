@@ -444,6 +444,12 @@ per-weapon draw/suppress decision, so ordinary live renderer wiring remains
 off. See
 [EXP-20260731-093](../../experiments/EXP-20260731-093-crosshair-render-event-composition.md).
 
+The earlier HUD stage is now partially closed independently: its complete
+armour/health-gauge subsection has a bounded renderer-neutral plan, but it does
+not manufacture either weapon slot or change the later crosshair order. See
+[HUD](HUD.md) and
+[EXP-20260801-098](../../experiments/EXP-20260801-098-aircraft-health-gauge-plan.md).
+
 ## Actor damage and surface reaction
 
 The actor-hit override at RVA `0x0000B2C0` emits damage event `0x7D` only when
