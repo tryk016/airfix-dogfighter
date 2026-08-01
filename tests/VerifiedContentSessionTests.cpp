@@ -82,16 +82,23 @@ void requireError(const std::function<void()>& action) {
 }
 
 [[nodiscard]] SyntheticAfPack representativePack() {
-    return airfix::testing::makeSyntheticAfPack({
-        UdspInputEntry{
-            .logicalPath = "Data/Probe.bin",
-            .bytes = {0x10U, 0x20U, 0x30U, 0x40U},
-        },
-        UdspInputEntry{
-            .logicalPath = "Game/Worlds/Test.world",
-            .bytes = {'W', 'O', 'R', 'L', 'D'},
-        },
-    });
+  return airfix::testing::makeSyntheticAfPack(
+      {
+          UdspInputEntry{
+              .logicalPath = "Data/Probe.bin",
+              .bytes = {0x10U, 0x20U, 0x30U, 0x40U},
+          },
+          UdspInputEntry{
+              .logicalPath = "Game/Worlds/Test.world",
+              .bytes = {'W', 'O', 'R', 'L', 'D'},
+          },
+      },
+      {
+          UdspInputEntry{
+              .logicalPath = "Graphics/Ingame/HUD/armour.gti",
+              .bytes = {0x50U, 0x60U, 0x70U},
+          },
+      });
 }
 
 [[nodiscard]] ContentRevision revisionFor(
@@ -246,6 +253,12 @@ void testValidSourceArchiveAndRevision() {
         session.pack().entries()[session.sourcePackEntryIndex()].path ==
             "source/Resource.up",
         "wrong source AFPACK entry was selected");
+    require(session.localizationPackEntryIndex() <
+                    session.pack().entries().size() &&
+                session.pack()
+                        .entries()[session.localizationPackEntryIndex()]
+                        .path == "localization/English.up",
+            "wrong localization AFPACK entry was selected");
 
     const auto lookup = session.sourceArchive().lookup("Data/Probe.bin");
     require(
@@ -255,6 +268,15 @@ void testValidSourceArchiveAndRevision() {
         session.readSourceFile(lookup.fileIndex, 4U) ==
             Bytes({0x10U, 0x20U, 0x30U, 0x40U}),
         "nested source file was not read from the authenticated stream");
+    const auto localizationLookup =
+        session.localizationArchive().lookup("Graphics/Ingame/HUD/armour.gti");
+    require(
+        localizationLookup.status == airfix::udsp::LookupStatus::unique &&
+            session.readLocalizationFilePrefix(localizationLookup.fileIndex,
+                                               2U) == Bytes({0x50U, 0x60U}) &&
+            session.readLocalizationFile(localizationLookup.fileIndex, 3U) ==
+                Bytes({0x50U, 0x60U, 0x70U}),
+        "nested localization file was not read from the authenticated stream");
 
     VerifiedContentSession moved = std::move(session);
     require(
@@ -294,6 +316,19 @@ void testAdoptsReadyRecoveryLease() {
                     .entries()[inspection.current()->sourcePackEntryIndex()]
                     .path == "source/Resource.up",
         "recovery lease omitted the authenticated nested source archive");
+    const auto leaseLocalizationLookup =
+        inspection.current()->localizationArchive().lookup(
+            "Graphics/Ingame/HUD/armour.gti");
+    require(leaseLocalizationLookup.status ==
+                    airfix::udsp::LookupStatus::unique &&
+                inspection.current()->localizationPackEntryIndex() <
+                    inspection.current()->pack().entries().size() &&
+                inspection.current()
+                        ->pack()
+                        .entries()[inspection.current()
+                                       ->localizationPackEntryIndex()]
+                        .path == "localization/English.up",
+            "recovery lease omitted the authenticated localization archive");
 
     auto lease = std::move(inspection).takeReadyLease();
     const void* const authenticatedStream =
@@ -317,23 +352,34 @@ void testAdoptsReadyRecoveryLease() {
     require(
         session.revision() == expectedRevision,
         "adoption changed the active content revision");
-    require(
-        session.pack().archiveSize() == pack.size &&
-            session.manifest().converterVersion == "synthetic-test" &&
-            session.sourcePackEntryIndex() <
-                session.pack().entries().size() &&
-            session.pack().entries()[session.sourcePackEntryIndex()].path ==
-                "source/Resource.up",
-        "adoption lost AFPACK, manifest, or source entry metadata");
-    const auto sessionLookup =
-        session.sourceArchive().lookup("Data/Probe.bin");
-    require(
-        sessionLookup.status == airfix::udsp::LookupStatus::unique,
-        "adoption lost the nested source archive");
+    require(session.pack().archiveSize() == pack.size &&
+                session.manifest().converterVersion == "synthetic-test" &&
+                session.sourcePackEntryIndex() <
+                    session.pack().entries().size() &&
+                session.pack().entries()[session.sourcePackEntryIndex()].path ==
+                    "source/Resource.up" &&
+                session.localizationPackEntryIndex() <
+                    session.pack().entries().size() &&
+                session.pack()
+                        .entries()[session.localizationPackEntryIndex()]
+                        .path == "localization/English.up",
+            "adoption lost AFPACK, manifest, or archive entry metadata");
+    const auto sessionLookup = session.sourceArchive().lookup("Data/Probe.bin");
+    require(sessionLookup.status == airfix::udsp::LookupStatus::unique,
+            "adoption lost the nested source archive");
     require(
         session.readSourceFile(sessionLookup.fileIndex, 4U) ==
             Bytes({0x10U, 0x20U, 0x30U, 0x40U}),
         "adopted session could not read from the authenticated source handle");
+    const auto sessionLocalizationLookup =
+        session.localizationArchive().lookup("Graphics/Ingame/HUD/armour.gti");
+    require(
+        sessionLocalizationLookup.status ==
+                airfix::udsp::LookupStatus::unique &&
+            session.readLocalizationFile(sessionLocalizationLookup.fileIndex,
+                                         3U) == Bytes({0x50U, 0x60U, 0x70U}),
+        "adopted session could not read the authenticated localization "
+        "archive");
 }
 
 void testTransactionIdentitySurvivesMovesWithoutReplacementAba() {
@@ -537,6 +583,23 @@ void testMalformedSourceArchiveFailsAtomically() {
         "malformed source archive published a partial session");
 }
 
+void testMalformedLocalizationArchiveFailsAtomically() {
+  const auto pack = airfix::testing::makeSyntheticAfPackFromArchives(
+      airfix::testing::makeUdspArchive({
+          UdspInputEntry{
+              .logicalPath = "Data/Probe.bin",
+              .bytes = {0x10U},
+          },
+      }),
+      Bytes{'N', 'O', 'T', '-', 'U', 'D', 'S', 'P'});
+
+  std::optional<VerifiedContentSession> result;
+  requireError<airfix::udsp::ParseError>(
+      [&] { result.emplace(open(pack, revisionFor(pack))); });
+  require(!result.has_value(),
+          "malformed localization archive published a partial session");
+}
+
 void testExactPackAndHashBufferLimits() {
     const auto pack = representativePack();
     const auto trusted = revisionFor(pack);
@@ -600,6 +663,7 @@ int main() {
         testCancellationFromHashProgressFailsAtomically();
         testDiagnosticLabelIsNeverReopened();
         testMalformedSourceArchiveFailsAtomically();
+        testMalformedLocalizationArchiveFailsAtomically();
         testExactPackAndHashBufferLimits();
     }
     catch (const std::exception& error) {

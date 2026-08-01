@@ -1141,14 +1141,17 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
                 auto crosshairs =
                     airfix::ios::takeLoadedLegacyWeaponCrosshairTextures(
                         snapshot);
+                auto healthGauge =
+                    airfix::ios::takeLoadedLegacyAircraftHealthGaugeTextures(
+                        snapshot);
                 preparedAudioClips = std::make_shared<
                     airfix::content::LoadedLegacyAircraftAudioClips>(
-                        std::move(audioClips));
+                    std::move(audioClips));
                 preparedRoom =
-                    [renderer
-                        prepareLoadedMissionRoom:std::move(room)
-                               weaponCrosshairs:std::move(crosshairs)
-                                          error:&preparationError];
+                    [renderer prepareLoadedMissionRoom:std::move(room)
+                                      weaponCrosshairs:std::move(crosshairs)
+                                   aircraftHealthGauge:std::move(healthGauge)
+                                                 error:&preparationError];
             }
             catch (...) {
                 preparationError = [NSError

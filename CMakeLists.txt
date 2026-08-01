@@ -353,6 +353,7 @@ endif()
 
 add_library(airfix_content
     src/airfix/content/LegacyAircraftAudioClipSet.cpp
+    src/airfix/content/LegacyAircraftHealthGaugeTextureSet.cpp
     src/airfix/content/LegacyProjectileRuntimeQueryAdapter.cpp
     src/airfix/content/LegacyWeaponCrosshairTextureSet.cpp
     src/airfix/content/LegacyWeaponCrosshairBinding.cpp
@@ -473,6 +474,14 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::content)
     add_test(NAME airfix_legacy_aircraft_audio_clip_set_tests
         COMMAND airfix_legacy_aircraft_audio_clip_set_tests)
+
+    add_executable(airfix_legacy_aircraft_health_gauge_texture_set_tests
+        tests/LegacyAircraftHealthGaugeTextureSetTests.cpp)
+    target_link_libraries(
+        airfix_legacy_aircraft_health_gauge_texture_set_tests
+        PRIVATE airfix::content)
+    add_test(NAME airfix_legacy_aircraft_health_gauge_texture_set_tests
+        COMMAND airfix_legacy_aircraft_health_gauge_texture_set_tests)
 
     add_executable(airfix_legacy_weapon_crosshair_texture_set_tests
         tests/LegacyWeaponCrosshairTextureSetTests.cpp)

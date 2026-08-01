@@ -4,6 +4,7 @@
 #import <Metal/Metal.h>
 #import <simd/simd.h>
 
+#include "airfix/content/LegacyAircraftHealthGaugeTextureSet.hpp"
 #include "airfix/content/LegacyWeaponCrosshairTextureSet.hpp"
 #include "airfix/content/MissionWorldRoomLoader.hpp"
 #include "airfix/content/MissionWorldRoomPublication.hpp"
@@ -532,6 +533,8 @@ gameplayCameraInitializeInput(
     std::optional<airfix::content::LoadedMissionWorldRoom> _missionRoom;
     std::optional<airfix::content::LoadedLegacyWeaponCrosshairTextureSet>
         _crosshairs;
+    std::optional<airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet>
+        _healthGauge;
     std::vector<NSUInteger> _indexOffsets;
     std::shared_ptr<airfix::render::PlayerActorPoseRuntime>
         _scenePoseRuntime;
@@ -542,6 +545,7 @@ gameplayCameraInitializeInput(
 @property(nonatomic, strong) NSArray<AirfixMetalMeshBuffers*>* meshBuffers;
 @property(nonatomic, strong) NSArray<id<MTLTexture>>* textures;
 @property(nonatomic, strong) NSArray<id<MTLTexture>>* crosshairTextures;
+@property(nonatomic, strong) NSArray<id<MTLTexture>> *healthGaugeTextures;
 @property(nonatomic, strong) id<MTLHeap> bufferHeap;
 @property(nonatomic, strong) id<MTLHeap> textureHeap;
 @end
@@ -556,6 +560,7 @@ gameplayCameraInitializeInput(
     _meshBuffers = nil;
     _textures = nil;
     _crosshairTextures = nil;
+    _healthGaugeTextures = nil;
     _bufferHeap = nil;
     _textureHeap = nil;
 }
@@ -1062,6 +1067,12 @@ bool uint64ToSize(
     const airfix::content::LoadedLegacyWeaponCrosshairTexture&
         texture) noexcept {
     return texture.textureId;
+}
+
+[[nodiscard]] airfix::render::TextureAssetId
+textureAssetId(const airfix::content::LoadedLegacyAircraftHealthGaugeTexture
+                   &texture) noexcept {
+  return texture.textureId;
 }
 
 template <typename LoadedTexture>
@@ -2886,784 +2897,764 @@ bool preflightPrivateRoom(
     }
 }
 
-- (nullable AirfixPreparedMetalRoom*)prepareLoadedMissionRoom:
-    (airfix::content::LoadedMissionWorldRoom&&)room
-    weaponCrosshairs:
-        (airfix::content::LoadedLegacyWeaponCrosshairTextureSet&&)crosshairs
-    error:(NSError* _Nullable* _Nullable)error {
+- (nullable AirfixPreparedMetalRoom *)
+    prepareLoadedMissionRoom:(airfix::content::LoadedMissionWorldRoom &&)room
+            weaponCrosshairs:
+                (airfix::content::LoadedLegacyWeaponCrosshairTextureSet &&)
+                    crosshairs
+         aircraftHealthGauge:
+             (airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet &&)
+                 healthGauge
+                       error:(NSError *_Nullable *_Nullable)error {
+  if (error != nullptr) {
+    *error = nil;
+  }
+  if (NSThread.isMainThread) {
     if (error != nullptr) {
-        *error = nil;
+      *error = makeError(
+          RendererError::wrongThread,
+          @"Private room resources must be prepared off the main thread.");
     }
-    if (NSThread.isMainThread) {
-        if (error != nullptr) {
-            *error = makeError(
-                RendererError::wrongThread,
-                @"Private room resources must be prepared off the main thread.");
-        }
-        return nil;
+    return nil;
+  }
+
+  // The old atomic snapshot remains untouched until this entire candidate,
+  // including generated mips, is complete.
+  try {
+    id<MTLCommandQueue> commandQueue = self.commandQueue;
+    id<MTLDevice> device = commandQueue.device;
+    dispatch_queue_t resourceReleaseQueue = self.resourceReleaseQueue;
+    AirfixSnapshotGpuBudgetLedgerHolder *gpuBudgetHolder = self.gpuBudgetHolder;
+    if (commandQueue == nil || device == nil || resourceReleaseQueue == nil ||
+        gpuBudgetHolder == nil || gpuBudgetHolder->_ledger == nullptr) {
+      if (error != nullptr) {
+        *error = makeError(
+            RendererError::missingDevice,
+            @"Metal is unavailable while preparing the private room.");
+      }
+      return nil;
     }
 
-    // The old atomic snapshot remains untouched until this entire candidate,
-    // including generated mips, is complete.
+    const auto cameraInitializeInput = gameplayCameraInitializeInput(room);
+
+    PrivateRoomPreflight preflight;
+    if (!preflightPrivateRoom(device, room, preflight) || !crosshairs.valid() ||
+        crosshairs.revision != room.revision || !healthGauge.valid() ||
+        healthGauge.revision != room.revision) {
+      if (error != nullptr) {
+        *error = makeError(
+            RendererError::invalidPayload,
+            @"The private room failed the bounded Metal snapshot contract.");
+      }
+      return nil;
+    }
+    for (std::size_t textureIndex = 0U;
+         textureIndex < crosshairs.textures.size(); ++textureIndex) {
+      if (!validateTextureAsset(crosshairs.textures[textureIndex], textureIndex,
+                                preflight.aggregateGpuBytes)) {
+        if (error != nullptr) {
+          *error = makeError(RendererError::invalidPayload,
+                             @"The private crosshair set failed the bounded "
+                             @"Metal snapshot contract.");
+        }
+        return nil;
+      }
+    }
+    for (std::size_t textureIndex = 0U;
+         textureIndex < healthGauge.textures.size(); ++textureIndex) {
+      if (!validateTextureAsset(healthGauge.textures[textureIndex],
+                                textureIndex, preflight.aggregateGpuBytes)) {
+        if (error != nullptr) {
+          *error = makeError(RendererError::invalidPayload,
+                             @"The private health gauge set failed the bounded "
+                             @"Metal snapshot contract.");
+        }
+        return nil;
+      }
+    }
+    const auto scenePosePlan = airfix::render::planPlayerActorPoseRuntime(
+        room.playerActorBinding, room.playerActorInstanceProvenance,
+        room.model.instances);
+    if (scenePosePlan.status ==
+        airfix::render::PlayerActorPoseRuntimePreparationStatus::
+            resourceLimit) {
+      if (error != nullptr) {
+        *error = makeError(
+            RendererError::resourceLimit,
+            @"The private room pose runtime exceeds its bounded resources.");
+      }
+      return nil;
+    }
+    if (!accountCpuPackedBytes(scenePosePlan.retainedPoseBytes,
+                               preflight.aggregateCpuPackedBytes,
+                               kMaximumPrivateRoomCpuPackedBytes)) {
+      if (error != nullptr) {
+        *error = makeError(
+            RendererError::resourceLimit,
+            @"The private room pose runtime exceeds the retained CPU budget.");
+      }
+      return nil;
+    }
+
+    auto scenePosePreparation = airfix::render::preparePlayerActorPoseRuntime(
+        room.playerActorBinding, room.playerActorInstanceProvenance,
+        room.model.instances, actorWorldFrom(room.playerSpawnPose),
+        scenePosePlan);
+    if (scenePosePreparation.status ==
+        airfix::render::PlayerActorPoseRuntimePreparationStatus::
+            resourceLimit) {
+      if (error != nullptr) {
+        *error = makeError(RendererError::resourceLimit,
+                           @"The private room pose runtime could not reserve "
+                           @"its bounded storage.");
+      }
+      return nil;
+    }
+    if (scenePosePreparation.status ==
+            airfix::render::PlayerActorPoseRuntimePreparationStatus::
+                invalidPayload ||
+        (scenePosePreparation.status ==
+             airfix::render::PlayerActorPoseRuntimePreparationStatus::ready &&
+         scenePosePreparation.runtime == nullptr) ||
+        (scenePosePreparation.status ==
+             airfix::render::PlayerActorPoseRuntimePreparationStatus::
+                 noPlayer &&
+         scenePosePreparation.runtime != nullptr)) {
+      if (error != nullptr) {
+        *error = makeError(RendererError::invalidPayload,
+                           @"The private room pose runtime is inconsistent.");
+      }
+      return nil;
+    }
+    airfix::render::LegacyGameplayCameraMissionRuntimeLimits
+        cameraRuntimeLimits;
+    cameraRuntimeLimits.maximumAdditionalRetainedBytes =
+        kMaximumPrivateRoomCpuPackedBytes - preflight.aggregateCpuPackedBytes;
+    auto cameraRuntimeBuild =
+        airfix::render::LegacyGameplayCameraMissionRuntime::create(
+            std::move(room.spatialArena),
+            std::move(room.placedDynamicCollision),
+            std::move(room.playerActorCollision), room.runtimeBasis,
+            cameraInitializeInput, cameraRuntimeLimits);
+    if (!cameraRuntimeBuild.complete()) {
+      bool resourceLimit = false;
+      if (cameraRuntimeBuild.issue.has_value()) {
+        using Issue =
+            airfix::render::LegacyGameplayCameraMissionRuntimeBuildIssueKind;
+        switch (cameraRuntimeBuild.issue->kind) {
+        case Issue::candidateRecordLimitExceeded:
+        case Issue::constraintPlaneLimitExceeded:
+        case Issue::dynamicMeshCountOverflow:
+        case Issue::dynamicObjectCountOverflow:
+        case Issue::dynamicObjectLimitExceeded:
+        case Issue::dynamicRoomRangeLimitExceeded:
+        case Issue::retainedByteSizeOverflow:
+        case Issue::retainedByteLimitExceeded:
+        case Issue::allocationFailure:
+          resourceLimit = true;
+          break;
+        case Issue::incompleteArena:
+        case Issue::invalidBasis:
+        case Issue::initialWorldRoomOutOfRange:
+        case Issue::invalidPlacedCollision:
+        case Issue::placedCollisionRoomCountMismatch:
+        case Issue::invalidPlayerCollision:
+        case Issue::coordinatorInitializationFailed:
+        case Issue::exchangeInitializationFailed:
+          break;
+        }
+      }
+      if (error != nullptr) {
+        *error = makeError(
+            resourceLimit ? RendererError::resourceLimit
+                          : RendererError::invalidPayload,
+            resourceLimit
+                ? @"The private room gameplay camera runtime exceeds its "
+                  @"bounded resources."
+                : @"The private room gameplay camera runtime is invalid.");
+      }
+      return nil;
+    }
+    if (!accountCpuPackedBytes(cameraRuntimeBuild.additionalRetainedBytes,
+                               preflight.aggregateCpuPackedBytes,
+                               kMaximumPrivateRoomCpuPackedBytes)) {
+      if (error != nullptr) {
+        *error = makeError(RendererError::resourceLimit,
+                           @"The private room gameplay camera runtime exceeds "
+                           @"the retained CPU budget.");
+      }
+      return nil;
+    }
+    std::shared_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>
+        cameraMissionRuntime;
     try {
-        id<MTLCommandQueue> commandQueue = self.commandQueue;
-        id<MTLDevice> device = commandQueue.device;
-        dispatch_queue_t resourceReleaseQueue =
-            self.resourceReleaseQueue;
-        AirfixSnapshotGpuBudgetLedgerHolder* gpuBudgetHolder =
-            self.gpuBudgetHolder;
-        if (commandQueue == nil || device == nil ||
-            resourceReleaseQueue == nil ||
-            gpuBudgetHolder == nil ||
-            gpuBudgetHolder->_ledger == nullptr) {
-            if (error != nullptr) {
-                *error = makeError(
-                    RendererError::missingDevice,
-                    @"Metal is unavailable while preparing the private room.");
-            }
-            return nil;
-        }
-
-        const auto cameraInitializeInput =
-            gameplayCameraInitializeInput(room);
-
-        PrivateRoomPreflight preflight;
-        if (!preflightPrivateRoom(device, room, preflight) ||
-            !crosshairs.valid() ||
-            crosshairs.revision != room.revision) {
-            if (error != nullptr) {
-                *error = makeError(
-                    RendererError::invalidPayload,
-                    @"The private room failed the bounded Metal snapshot contract.");
-            }
-            return nil;
-        }
-        for (std::size_t textureIndex = 0U;
-             textureIndex < crosshairs.textures.size();
-             ++textureIndex) {
-            if (!validateTextureAsset(
-                    crosshairs.textures[textureIndex],
-                    textureIndex,
-                    preflight.aggregateGpuBytes)) {
-                if (error != nullptr) {
-                    *error = makeError(
-                        RendererError::invalidPayload,
-                        @"The private crosshair set failed the bounded Metal snapshot contract.");
-                }
-                return nil;
-            }
-        }
-        const auto scenePosePlan =
-            airfix::render::planPlayerActorPoseRuntime(
-                room.playerActorBinding,
-                room.playerActorInstanceProvenance,
-                room.model.instances);
-        if (scenePosePlan.status ==
-            airfix::render::
-                PlayerActorPoseRuntimePreparationStatus::
-                    resourceLimit) {
-            if (error != nullptr) {
-                *error = makeError(
-                    RendererError::resourceLimit,
-                    @"The private room pose runtime exceeds its bounded resources.");
-            }
-            return nil;
-        }
-        if (!accountCpuPackedBytes(
-                scenePosePlan.retainedPoseBytes,
-                preflight.aggregateCpuPackedBytes,
-                kMaximumPrivateRoomCpuPackedBytes)) {
-            if (error != nullptr) {
-                *error = makeError(
-                    RendererError::resourceLimit,
-                    @"The private room pose runtime exceeds the retained CPU budget.");
-            }
-            return nil;
-        }
-
-        auto scenePosePreparation =
-            airfix::render::preparePlayerActorPoseRuntime(
-                room.playerActorBinding,
-                room.playerActorInstanceProvenance,
-                room.model.instances,
-                actorWorldFrom(room.playerSpawnPose),
-                scenePosePlan);
-        if (scenePosePreparation.status ==
-            airfix::render::
-                PlayerActorPoseRuntimePreparationStatus::
-                    resourceLimit) {
-            if (error != nullptr) {
-                *error = makeError(
-                    RendererError::resourceLimit,
-                    @"The private room pose runtime could not reserve its bounded storage.");
-            }
-            return nil;
-        }
-        if (scenePosePreparation.status ==
-                airfix::render::
-                    PlayerActorPoseRuntimePreparationStatus::
-                        invalidPayload ||
-            (scenePosePreparation.status ==
-                 airfix::render::
-                     PlayerActorPoseRuntimePreparationStatus::ready &&
-             scenePosePreparation.runtime == nullptr) ||
-            (scenePosePreparation.status ==
-                 airfix::render::
-                     PlayerActorPoseRuntimePreparationStatus::
-                         noPlayer &&
-             scenePosePreparation.runtime != nullptr)) {
-            if (error != nullptr) {
-                *error = makeError(
-                    RendererError::invalidPayload,
-                    @"The private room pose runtime is inconsistent.");
-            }
-            return nil;
-        }
-        airfix::render::LegacyGameplayCameraMissionRuntimeLimits
-            cameraRuntimeLimits;
-        cameraRuntimeLimits.maximumAdditionalRetainedBytes =
-            kMaximumPrivateRoomCpuPackedBytes -
-            preflight.aggregateCpuPackedBytes;
-        auto cameraRuntimeBuild =
-            airfix::render::LegacyGameplayCameraMissionRuntime::create(
-                std::move(room.spatialArena),
-                std::move(room.placedDynamicCollision),
-                std::move(room.playerActorCollision),
-                room.runtimeBasis,
-                cameraInitializeInput,
-                cameraRuntimeLimits);
-        if (!cameraRuntimeBuild.complete()) {
-            bool resourceLimit = false;
-            if (cameraRuntimeBuild.issue.has_value()) {
-                using Issue = airfix::render::
-                    LegacyGameplayCameraMissionRuntimeBuildIssueKind;
-                switch (cameraRuntimeBuild.issue->kind) {
-                case Issue::candidateRecordLimitExceeded:
-                case Issue::constraintPlaneLimitExceeded:
-                case Issue::dynamicMeshCountOverflow:
-                case Issue::dynamicObjectCountOverflow:
-                case Issue::dynamicObjectLimitExceeded:
-                case Issue::dynamicRoomRangeLimitExceeded:
-                case Issue::retainedByteSizeOverflow:
-                case Issue::retainedByteLimitExceeded:
-                case Issue::allocationFailure:
-                    resourceLimit = true;
-                    break;
-                case Issue::incompleteArena:
-                case Issue::invalidBasis:
-                case Issue::initialWorldRoomOutOfRange:
-                case Issue::invalidPlacedCollision:
-                case Issue::placedCollisionRoomCountMismatch:
-                case Issue::invalidPlayerCollision:
-                case Issue::coordinatorInitializationFailed:
-                case Issue::exchangeInitializationFailed:
-                    break;
-                }
-            }
-            if (error != nullptr) {
-                *error = makeError(
-                    resourceLimit
-                        ? RendererError::resourceLimit
-                        : RendererError::invalidPayload,
-                    resourceLimit
-                        ? @"The private room gameplay camera runtime exceeds its bounded resources."
-                        : @"The private room gameplay camera runtime is invalid.");
-            }
-            return nil;
-        }
-        if (!accountCpuPackedBytes(
-                cameraRuntimeBuild.additionalRetainedBytes,
-                preflight.aggregateCpuPackedBytes,
-                kMaximumPrivateRoomCpuPackedBytes)) {
-            if (error != nullptr) {
-                *error = makeError(
-                    RendererError::resourceLimit,
-                    @"The private room gameplay camera runtime exceeds the retained CPU budget.");
-            }
-            return nil;
-        }
-        std::shared_ptr<
-            airfix::render::LegacyGameplayCameraMissionRuntime>
-            cameraMissionRuntime;
-        try {
-            cameraMissionRuntime = std::shared_ptr<
-                airfix::render::LegacyGameplayCameraMissionRuntime>(
-                std::move(cameraRuntimeBuild.runtime));
-        } catch (const std::bad_alloc&) {
-            if (error != nullptr) {
-                *error = makeError(
-                    RendererError::resourceLimit,
-                    @"The private room camera endpoint could not reserve its ownership token.");
-            }
-            return nil;
-        }
-        {
-            const auto initialCamera =
-                cameraMissionRuntime->tryAcquire();
-            if (!initialCamera.has_value() ||
-                !initialCamera->valid() ||
-                initialCamera->packet() == nullptr ||
-                initialCamera->simulationStep() != 0U ||
-                initialCamera->cameraPublicationGeneration() != 1U) {
-                if (error != nullptr) {
-                    *error = makeError(
-                        RendererError::invalidPayload,
-                        @"The private room gameplay camera bootstrap is invalid.");
-                }
-                return nil;
-            }
-        }
-
-        // Keep the cheap logical-byte rejection before building allocator
-        // descriptors. It is best-effort; the aligned CAS reservation below
-        // is the authoritative admission decision.
-        std::size_t logicalAggregateGpuBytes =
-            gpuBudgetHolder->_ledger->reservedBytes();
-        if (!accountGpuBytes(
-                preflight.aggregateGpuBytes,
-                logicalAggregateGpuBytes,
-                gpuBudgetHolder->_ledger->maximumBytes())) {
-            if (error != nullptr) {
-                *error = makeError(
-                    RendererError::resourceLimit,
-                    @"The live snapshots and candidate exceed the logical Metal aggregate budget.");
-            }
-            return nil;
-        }
-
-        std::size_t bufferHeapBytes = 0U;
-        std::size_t bufferHeapAlignment = 0U;
-        bool heapPlanValid = true;
-        for (std::size_t meshSlot = 0U;
-             meshSlot < preflight.vertexByteCounts.size();
-             ++meshSlot) {
-            if ((preflight.vertexByteCounts[meshSlot] != 0U &&
-                    !accountHeapResourcePlacement(
-                        [device
-                            heapBufferSizeAndAlignWithLength:
-                                preflight.vertexByteCounts[meshSlot]
-                            options:kSharedTrackedResourceOptions],
-                        bufferHeapBytes,
-                        bufferHeapAlignment,
-                        kMaximumPrivateRoomGpuHeapPlanBytes)) ||
-                (preflight.indexByteCounts[meshSlot] != 0U &&
-                    !accountHeapResourcePlacement(
-                        [device
-                            heapBufferSizeAndAlignWithLength:
-                                preflight.indexByteCounts[meshSlot]
-                            options:kSharedTrackedResourceOptions],
-                        bufferHeapBytes,
-                        bufferHeapAlignment,
-                        kMaximumPrivateRoomGpuHeapPlanBytes))) {
-                heapPlanValid = false;
-                break;
-            }
-        }
-        std::size_t textureHeapBytes = 0U;
-        std::size_t textureHeapAlignment = 0U;
-        if (heapPlanValid) {
-            for (const auto& source : room.textures) {
-                MTLTextureDescriptor* descriptor =
-                    [[MTLTextureDescriptor alloc] init];
-                if (descriptor == nil) {
-                    heapPlanValid = false;
-                    break;
-                }
-                configurePrivateTextureDescriptor(
-                    descriptor, source);
-                if (!accountHeapResourcePlacement(
-                        [device
-                            heapTextureSizeAndAlignWithDescriptor:
-                                descriptor],
-                        textureHeapBytes,
-                        textureHeapAlignment,
-                        kMaximumPrivateRoomGpuHeapPlanBytes)) {
-                    heapPlanValid = false;
-                    break;
-                }
-            }
-        }
-        if (heapPlanValid) {
-            for (const auto& source : crosshairs.textures) {
-                MTLTextureDescriptor* descriptor =
-                    [[MTLTextureDescriptor alloc] init];
-                if (descriptor == nil) {
-                    heapPlanValid = false;
-                    break;
-                }
-                configurePrivateTextureDescriptor(
-                    descriptor, source);
-                if (!accountHeapResourcePlacement(
-                        [device
-                            heapTextureSizeAndAlignWithDescriptor:
-                                descriptor],
-                        textureHeapBytes,
-                        textureHeapAlignment,
-                        kMaximumPrivateRoomGpuHeapPlanBytes)) {
-                    heapPlanValid = false;
-                    break;
-                }
-            }
-        }
-        if (!heapPlanValid ||
-            !finalizeHeapPlan(
-                bufferHeapBytes,
-                bufferHeapAlignment,
-                kMaximumPrivateRoomGpuHeapPlanBytes) ||
-            !finalizeHeapPlan(
-                textureHeapBytes,
-                textureHeapAlignment,
-                kMaximumPrivateRoomGpuHeapPlanBytes)) {
-            if (error != nullptr) {
-                *error = makeError(
-                    RendererError::resourceLimit,
-                    @"The private Metal heap plan exceeds its budget.");
-            }
-            return nil;
-        }
-        std::size_t admittedHeapPlanBytes = 0U;
-        if (!accountGpuBytes(
-                bufferHeapBytes,
-                admittedHeapPlanBytes,
-                kMaximumPrivateRoomGpuHeapPlanBytes) ||
-            !accountGpuBytes(
-                textureHeapBytes,
-                admittedHeapPlanBytes,
-                kMaximumPrivateRoomGpuHeapPlanBytes)) {
-            if (error != nullptr) {
-                *error = makeError(
-                    RendererError::resourceLimit,
-                    @"The aggregate private Metal heap plan exceeds its budget.");
-            }
-            return nil;
-        }
-
-        // Admit the checked descriptor plan before the first heap exists.
-        // Any Metal page-rounding delta is measured and admitted separately
-        // before this candidate can leave preparation.
-        auto privatePlanReservation =
-            gpuBudgetHolder->_ledger->tryReserve(
-                admittedHeapPlanBytes);
-        if (!privatePlanReservation.has_value()) {
-            if (error != nullptr) {
-                *error = makeError(
-                    RendererError::resourceLimit,
-                    @"The private heap plan is unavailable in the aggregate heap-admission budget.");
-            }
-            return nil;
-        }
-
-        // The pool owns all autoreleased staging wrappers and Metal command
-        // objects. It drains before the outer plan reservation on every
-        // failure.
-        @autoreleasepool {
-        id<MTLHeap> bufferHeap =
-            bufferHeapBytes != 0U
-            ? newSharedTrackedHeap(
-                  device,
-                  bufferHeapBytes,
-                  @"Airfix private snapshot buffer heap")
-            : nil;
-        id<MTLHeap> textureHeap =
-            textureHeapBytes != 0U
-            ? newSharedTrackedHeap(
-                  device,
-                  textureHeapBytes,
-                  @"Airfix private snapshot texture heap")
-            : nil;
-        if ((bufferHeapBytes != 0U && bufferHeap == nil) ||
-            (textureHeapBytes != 0U && textureHeap == nil)) {
-            if (error != nullptr) {
-                *error = makeError(
-                    RendererError::resourceLimit,
-                    @"Metal could not create the complete private heap plan.");
-            }
-            return nil;
-        }
-
-        NSMutableArray<AirfixMetalMeshBuffers*>* meshBuffers =
-            [NSMutableArray
-                arrayWithCapacity:
-                    static_cast<NSUInteger>(room.model.meshes.size())];
-        if (meshBuffers == nil) {
-            if (error != nullptr) {
-                *error = makeError(
-                    RendererError::bufferCreation,
-                    @"Private room mesh ownership could not be allocated.");
-            }
-            return nil;
-        }
-        for (std::size_t meshSlot = 0U;
-             meshSlot < room.model.meshes.size();
-             ++meshSlot) {
-            const auto& mesh = room.model.meshes[meshSlot];
-            auto packedVertices = repackVertices(mesh.vertices);
-            std::size_t packedBytes = 0U;
-            if (!checkedMultiply(
-                    packedVertices.size(),
-                    sizeof(GpuVertex),
-                    packedBytes) ||
-                packedBytes != preflight.vertexByteCounts[meshSlot]) {
-                if (error != nullptr) {
-                    *error = makeError(
-                        RendererError::resourceLimit,
-                        @"Private room vertex packing changed after preflight.");
-                }
-                return nil;
-            }
-
-            id<MTLBuffer> vertexBuffer = nil;
-            if (packedBytes != 0U) {
-                vertexBuffer =
-                    [bufferHeap
-                        newBufferWithLength:packedBytes
-                        options:kSharedTrackedResourceOptions];
-                if (vertexBuffer != nil &&
-                    vertexBuffer.contents != nullptr) {
-                    std::memcpy(
-                        vertexBuffer.contents,
-                        packedVertices.data(),
-                        packedBytes);
-                }
-            }
-            id<MTLBuffer> indexBuffer = nil;
-            const auto indexBytes = preflight.indexByteCounts[meshSlot];
-            if (indexBytes != 0U) {
-                indexBuffer =
-                    [bufferHeap
-                        newBufferWithLength:indexBytes
-                        options:kSharedTrackedResourceOptions];
-                if (indexBuffer != nil &&
-                    indexBuffer.contents != nullptr) {
-                    std::memcpy(
-                        indexBuffer.contents,
-                        mesh.indices.data(),
-                        indexBytes);
-                }
-            }
-            if ((packedBytes != 0U &&
-                    (vertexBuffer == nil ||
-                     vertexBuffer.contents == nullptr)) ||
-                (indexBytes != 0U &&
-                    (indexBuffer == nil ||
-                     indexBuffer.contents == nullptr))) {
-                if (error != nullptr) {
-                    *error = makeError(
-                        RendererError::bufferCreation,
-                        @"Metal could not create every private room mesh buffer.");
-                }
-                return nil;
-            }
-            if ((vertexBuffer != nil &&
-                    vertexBuffer.allocatedSize == 0U) ||
-                (indexBuffer != nil &&
-                    indexBuffer.allocatedSize == 0U)) {
-                if (error != nullptr) {
-                    *error = makeError(
-                        RendererError::resourceLimit,
-                        @"A private heap buffer has no allocation.");
-                }
-                return nil;
-            }
-            AirfixMetalMeshBuffers* buffers =
-                [[AirfixMetalMeshBuffers alloc] init];
-            if (buffers == nil) {
-                if (error != nullptr) {
-                    *error = makeError(
-                        RendererError::bufferCreation,
-                        @"Private room mesh ownership could not be created.");
-                }
-                return nil;
-            }
-            buffers.vertexBuffer = vertexBuffer;
-            buffers.indexBuffer = indexBuffer;
-            [meshBuffers addObject:buffers];
-        }
-
-        NSMutableArray<id<MTLTexture>>* textures =
-            [NSMutableArray
-                arrayWithCapacity:
-                    static_cast<NSUInteger>(room.textures.size())];
-        NSMutableArray<id<MTLTexture>>* crosshairTextures =
-            [NSMutableArray
-                arrayWithCapacity:static_cast<NSUInteger>(
-                    crosshairs.textures.size())];
-        NSMutableArray<id<MTLTexture>>* generatedMipTextures =
-            [NSMutableArray array];
-        if (textures == nil || crosshairTextures == nil ||
-            generatedMipTextures == nil) {
-            if (error != nullptr) {
-                *error = makeError(
-                    RendererError::textureCreation,
-                    @"Private texture ownership could not be allocated.");
-            }
-            return nil;
-        }
-        for (const auto& source : room.textures) {
-            const auto& upload = source.upload;
-            MTLTextureDescriptor* descriptor =
-                [[MTLTextureDescriptor alloc] init];
-            if (descriptor == nil) {
-                if (error != nullptr) {
-                    *error = makeError(
-                        RendererError::textureCreation,
-                        @"Private texture metadata could not be allocated.");
-                }
-                return nil;
-            }
-            configurePrivateTextureDescriptor(descriptor, source);
-
-            id<MTLTexture> texture =
-                [textureHeap
-                    newTextureWithDescriptor:descriptor];
-            if (texture == nil ||
-                texture.width != descriptor.width ||
-                texture.height != descriptor.height ||
-                texture.mipmapLevelCount !=
-                    descriptor.mipmapLevelCount ||
-                texture.allocatedSize == 0U) {
-                if (error != nullptr) {
-                    *error = makeError(
-                        RendererError::textureCreation,
-                        @"Metal could not create the complete private texture.");
-                }
-                return nil;
-            }
-
-            for (std::size_t levelIndex = 0U;
-                 levelIndex < source.uploadLevels.size();
-                 ++levelIndex) {
-                const auto& level = upload.uploadLevels[levelIndex];
-                const auto& image = source.uploadLevels[levelIndex];
-                [texture
-                    replaceRegion:MTLRegionMake2D(
-                        0U,
-                        0U,
-                        static_cast<NSUInteger>(image.width),
-                        static_cast<NSUInteger>(image.height))
-                    mipmapLevel:static_cast<NSUInteger>(level.level)
-                    withBytes:image.pixels.data()
-                    bytesPerRow:
-                        static_cast<NSUInteger>(level.bytesPerRow)];
-            }
-            if (upload.mipPolicy ==
-                airfix::render::GtiMipPolicy::generateFromBase) {
-                [generatedMipTextures addObject:texture];
-            }
-            [textures addObject:texture];
-        }
-
-        for (const auto& source : crosshairs.textures) {
-            const auto& upload = source.upload;
-            MTLTextureDescriptor* descriptor =
-                [[MTLTextureDescriptor alloc] init];
-            if (descriptor == nil) {
-                if (error != nullptr) {
-                    *error = makeError(
-                        RendererError::textureCreation,
-                        @"Private crosshair metadata could not be allocated.");
-                }
-                return nil;
-            }
-            configurePrivateTextureDescriptor(descriptor, source);
-
-            id<MTLTexture> texture =
-                [textureHeap
-                    newTextureWithDescriptor:descriptor];
-            if (texture == nil ||
-                texture.width != descriptor.width ||
-                texture.height != descriptor.height ||
-                texture.mipmapLevelCount !=
-                    descriptor.mipmapLevelCount ||
-                texture.allocatedSize == 0U) {
-                if (error != nullptr) {
-                    *error = makeError(
-                        RendererError::textureCreation,
-                        @"Metal could not create every private crosshair texture.");
-                }
-                return nil;
-            }
-
-            for (std::size_t levelIndex = 0U;
-                 levelIndex < source.uploadLevels.size();
-                 ++levelIndex) {
-                const auto& level = upload.uploadLevels[levelIndex];
-                const auto& image = source.uploadLevels[levelIndex];
-                [texture
-                    replaceRegion:MTLRegionMake2D(
-                        0U,
-                        0U,
-                        static_cast<NSUInteger>(image.width),
-                        static_cast<NSUInteger>(image.height))
-                    mipmapLevel:static_cast<NSUInteger>(level.level)
-                    withBytes:image.pixels.data()
-                    bytesPerRow:
-                        static_cast<NSUInteger>(level.bytesPerRow)];
-            }
-            if (upload.mipPolicy ==
-                airfix::render::GtiMipPolicy::generateFromBase) {
-                [generatedMipTextures addObject:texture];
-            }
-            [crosshairTextures addObject:texture];
-        }
-
-        if (generatedMipTextures.count != 0U) {
-            id<MTLCommandBuffer> mipCommandBuffer =
-                [commandQueue commandBuffer];
-            if (mipCommandBuffer == nil) {
-                if (error != nullptr) {
-                    *error = makeError(
-                        RendererError::blitCreation,
-                        @"Metal could not create the private mip command buffer.");
-                }
-                return nil;
-            }
-            mipCommandBuffer.label = @"Airfix private texture mip generation";
-            id<MTLBlitCommandEncoder> blit =
-                [mipCommandBuffer blitCommandEncoder];
-            if (blit == nil) {
-                if (error != nullptr) {
-                    *error = makeError(
-                        RendererError::blitCreation,
-                        @"Metal could not create the private mip encoder.");
-                }
-                return nil;
-            }
-            for (id<MTLTexture> texture in generatedMipTextures) {
-                [blit generateMipmapsForTexture:texture];
-            }
-            [blit endEncoding];
-            [mipCommandBuffer commit];
-            [mipCommandBuffer waitUntilCompleted];
-            if (mipCommandBuffer.status !=
-                MTLCommandBufferStatusCompleted) {
-                if (error != nullptr) {
-                    NSString* reason =
-                        mipCommandBuffer.error.localizedDescription;
-                    if (reason == nil) {
-                        reason = @"unknown Metal mip-generation failure";
-                    }
-                    *error = makeError(
-                        RendererError::mipGeneration,
-                        [@"Private texture mip generation failed: "
-                            stringByAppendingString:reason]);
-                }
-                return nil;
-            }
-        }
-
-        std::size_t currentAllocatedHeapBytes = 0U;
-        if ((bufferHeap != nil &&
-                !accountCurrentHeapAllocation(
-                    bufferHeap,
-                    currentAllocatedHeapBytes)) ||
-            (textureHeap != nil &&
-                !accountCurrentHeapAllocation(
-                    textureHeap,
-                    currentAllocatedHeapBytes))) {
-            if (error != nullptr) {
-                *error = makeError(
-                    RendererError::resourceLimit,
-                    @"The created private heaps have invalid current allocations.");
-            }
-            return nil;
-        }
-
-        // Admission before newHeap covers the descriptor plan. If Metal page
-        // rounding makes the measured current allocation larger, obtain the
-        // exact supplement now; otherwise this unpublished candidate is
-        // destroyed before the plan reservation is consumed.
-        if (!finalizeHeapAllocationReservation(
-                *gpuBudgetHolder->_ledger,
-                *privatePlanReservation,
-                currentAllocatedHeapBytes)) {
-            if (error != nullptr) {
-                *error = makeError(
-                    RendererError::resourceLimit,
-                    @"The private heaps' current allocation is unavailable in the aggregate admission budget.");
-            }
-            return nil;
-        }
-
-        AirfixMetalRoomResources* candidateResources =
-            [[AirfixMetalRoomResources alloc] init];
-        AirfixMetalRoomSnapshot* candidate =
-            [[AirfixMetalRoomSnapshot alloc] init];
-        AirfixPreparedMetalRoom* preparedRoom =
-            [[AirfixPreparedMetalRoom alloc] init];
-        AirfixGpuBudgetReservationHolder* reservationHolder =
-            [[AirfixGpuBudgetReservationHolder alloc] init];
-        NSObject* ownerToken = self.preparationOwnerToken;
-        if (candidateResources == nil || candidate == nil ||
-            preparedRoom == nil ||
-            reservationHolder == nil ||
-            ownerToken == nil) {
-            if (error != nullptr) {
-                *error = makeError(
-                    RendererError::unexpectedFailure,
-                    @"Private Metal room ownership could not be created.");
-            }
-            return nil;
-        }
-        NSArray<AirfixMetalMeshBuffers*>* meshBufferSnapshot =
-            [meshBuffers copy];
-        NSArray<id<MTLTexture>>* textureSnapshot = [textures copy];
-        NSArray<id<MTLTexture>>* crosshairTextureSnapshot =
-            [crosshairTextures copy];
-        if (meshBufferSnapshot == nil || textureSnapshot == nil ||
-            crosshairTextureSnapshot == nil ||
-            meshBufferSnapshot.count != room.model.meshes.size() ||
-            textureSnapshot.count != room.textures.size() ||
-            crosshairTextureSnapshot.count != crosshairs.textures.size()) {
-            if (error != nullptr) {
-                *error = makeError(
-                    RendererError::unexpectedFailure,
-                    @"Private Metal resource ownership is incomplete.");
-            }
-            return nil;
-        }
-        candidateResources.meshBuffers = meshBufferSnapshot;
-        candidateResources.textures = textureSnapshot;
-        candidateResources.crosshairTextures = crosshairTextureSnapshot;
-        candidateResources.bufferHeap = bufferHeap;
-        candidateResources.textureHeap = textureHeap;
-        preparedRoom->_ownerToken = ownerToken;
-        preparedRoom->_device = device;
-        preparedRoom->_published = NO;
-        candidateResources->_indexOffsets =
-            std::move(preflight.indexOffsets);
-        candidateResources->_revision = room.revision;
-        candidateResources->_scenePoseRuntime =
-            std::move(scenePosePreparation.runtime);
-        candidateResources->_cameraMissionRuntime =
-            std::move(cameraMissionRuntime);
-        candidate->_resources = candidateResources;
-        candidate->_releaseQueue = resourceReleaseQueue;
-        candidate->_worldRoomInstalled = YES;
-
-        // Texture upload bytes are intentionally not retained by the native
-        // snapshot after Metal owns the complete resource set.
-        std::vector<airfix::content::LoadedTextureAsset>().swap(
-            room.textures);
-        candidateResources->_missionRoom.emplace(std::move(room));
-        candidateResources->_crosshairs.emplace(std::move(crosshairs));
-
-        reservationHolder->_reservation.emplace(
-            std::move(*privatePlanReservation));
-        candidate->_gpuBudgetReservationHolder =
-            reservationHolder;
-        preparedRoom->_snapshot = candidate;
-        return preparedRoom;
-        }
+      cameraMissionRuntime =
+          std::shared_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>(
+              std::move(cameraRuntimeBuild.runtime));
+    } catch (const std::bad_alloc &) {
+      if (error != nullptr) {
+        *error = makeError(RendererError::resourceLimit,
+                           @"The private room camera endpoint could not "
+                           @"reserve its ownership token.");
+      }
+      return nil;
     }
-    catch (...) {
+    {
+      const auto initialCamera = cameraMissionRuntime->tryAcquire();
+      if (!initialCamera.has_value() || !initialCamera->valid() ||
+          initialCamera->packet() == nullptr ||
+          initialCamera->simulationStep() != 0U ||
+          initialCamera->cameraPublicationGeneration() != 1U) {
         if (error != nullptr) {
-            *error = makeError(
-                RendererError::unexpectedFailure,
-                @"The private Metal room snapshot could not be prepared.");
+          *error = makeError(
+              RendererError::invalidPayload,
+              @"The private room gameplay camera bootstrap is invalid.");
         }
         return nil;
+      }
     }
+
+    // Keep the cheap logical-byte rejection before building allocator
+    // descriptors. It is best-effort; the aligned CAS reservation below
+    // is the authoritative admission decision.
+    std::size_t logicalAggregateGpuBytes =
+        gpuBudgetHolder->_ledger->reservedBytes();
+    if (!accountGpuBytes(preflight.aggregateGpuBytes, logicalAggregateGpuBytes,
+                         gpuBudgetHolder->_ledger->maximumBytes())) {
+      if (error != nullptr) {
+        *error = makeError(RendererError::resourceLimit,
+                           @"The live snapshots and candidate exceed the "
+                           @"logical Metal aggregate budget.");
+      }
+      return nil;
+    }
+
+    std::size_t bufferHeapBytes = 0U;
+    std::size_t bufferHeapAlignment = 0U;
+    bool heapPlanValid = true;
+    for (std::size_t meshSlot = 0U;
+         meshSlot < preflight.vertexByteCounts.size(); ++meshSlot) {
+      if ((preflight.vertexByteCounts[meshSlot] != 0U &&
+           !accountHeapResourcePlacement(
+               [device
+                   heapBufferSizeAndAlignWithLength:preflight.vertexByteCounts
+                                                        [meshSlot]
+                                            options:
+                                                kSharedTrackedResourceOptions],
+               bufferHeapBytes, bufferHeapAlignment,
+               kMaximumPrivateRoomGpuHeapPlanBytes)) ||
+          (preflight.indexByteCounts[meshSlot] != 0U &&
+           !accountHeapResourcePlacement(
+               [device
+                   heapBufferSizeAndAlignWithLength:preflight.indexByteCounts
+                                                        [meshSlot]
+                                            options:
+                                                kSharedTrackedResourceOptions],
+               bufferHeapBytes, bufferHeapAlignment,
+               kMaximumPrivateRoomGpuHeapPlanBytes))) {
+        heapPlanValid = false;
+        break;
+      }
+    }
+    std::size_t textureHeapBytes = 0U;
+    std::size_t textureHeapAlignment = 0U;
+    if (heapPlanValid) {
+      for (const auto &source : room.textures) {
+        MTLTextureDescriptor *descriptor = [[MTLTextureDescriptor alloc] init];
+        if (descriptor == nil) {
+          heapPlanValid = false;
+          break;
+        }
+        configurePrivateTextureDescriptor(descriptor, source);
+        if (!accountHeapResourcePlacement(
+                [device heapTextureSizeAndAlignWithDescriptor:descriptor],
+                textureHeapBytes, textureHeapAlignment,
+                kMaximumPrivateRoomGpuHeapPlanBytes)) {
+          heapPlanValid = false;
+          break;
+        }
+      }
+    }
+    if (heapPlanValid) {
+      for (const auto &source : crosshairs.textures) {
+        MTLTextureDescriptor *descriptor = [[MTLTextureDescriptor alloc] init];
+        if (descriptor == nil) {
+          heapPlanValid = false;
+          break;
+        }
+        configurePrivateTextureDescriptor(descriptor, source);
+        if (!accountHeapResourcePlacement(
+                [device heapTextureSizeAndAlignWithDescriptor:descriptor],
+                textureHeapBytes, textureHeapAlignment,
+                kMaximumPrivateRoomGpuHeapPlanBytes)) {
+          heapPlanValid = false;
+          break;
+        }
+      }
+    }
+    if (heapPlanValid) {
+      for (const auto &source : healthGauge.textures) {
+        MTLTextureDescriptor *descriptor = [[MTLTextureDescriptor alloc] init];
+        if (descriptor == nil) {
+          heapPlanValid = false;
+          break;
+        }
+        configurePrivateTextureDescriptor(descriptor, source);
+        if (!accountHeapResourcePlacement(
+                [device heapTextureSizeAndAlignWithDescriptor:descriptor],
+                textureHeapBytes, textureHeapAlignment,
+                kMaximumPrivateRoomGpuHeapPlanBytes)) {
+          heapPlanValid = false;
+          break;
+        }
+      }
+    }
+    if (!heapPlanValid ||
+        !finalizeHeapPlan(bufferHeapBytes, bufferHeapAlignment,
+                          kMaximumPrivateRoomGpuHeapPlanBytes) ||
+        !finalizeHeapPlan(textureHeapBytes, textureHeapAlignment,
+                          kMaximumPrivateRoomGpuHeapPlanBytes)) {
+      if (error != nullptr) {
+        *error = makeError(RendererError::resourceLimit,
+                           @"The private Metal heap plan exceeds its budget.");
+      }
+      return nil;
+    }
+    std::size_t admittedHeapPlanBytes = 0U;
+    if (!accountGpuBytes(bufferHeapBytes, admittedHeapPlanBytes,
+                         kMaximumPrivateRoomGpuHeapPlanBytes) ||
+        !accountGpuBytes(textureHeapBytes, admittedHeapPlanBytes,
+                         kMaximumPrivateRoomGpuHeapPlanBytes)) {
+      if (error != nullptr) {
+        *error = makeError(
+            RendererError::resourceLimit,
+            @"The aggregate private Metal heap plan exceeds its budget.");
+      }
+      return nil;
+    }
+
+    // Admit the checked descriptor plan before the first heap exists.
+    // Any Metal page-rounding delta is measured and admitted separately
+    // before this candidate can leave preparation.
+    auto privatePlanReservation =
+        gpuBudgetHolder->_ledger->tryReserve(admittedHeapPlanBytes);
+    if (!privatePlanReservation.has_value()) {
+      if (error != nullptr) {
+        *error = makeError(RendererError::resourceLimit,
+                           @"The private heap plan is unavailable in the "
+                           @"aggregate heap-admission budget.");
+      }
+      return nil;
+    }
+
+    // The pool owns all autoreleased staging wrappers and Metal command
+    // objects. It drains before the outer plan reservation on every
+    // failure.
+    @autoreleasepool {
+      id<MTLHeap> bufferHeap =
+          bufferHeapBytes != 0U
+              ? newSharedTrackedHeap(device, bufferHeapBytes,
+                                     @"Airfix private snapshot buffer heap")
+              : nil;
+      id<MTLHeap> textureHeap =
+          textureHeapBytes != 0U
+              ? newSharedTrackedHeap(device, textureHeapBytes,
+                                     @"Airfix private snapshot texture heap")
+              : nil;
+      if ((bufferHeapBytes != 0U && bufferHeap == nil) ||
+          (textureHeapBytes != 0U && textureHeap == nil)) {
+        if (error != nullptr) {
+          *error = makeError(
+              RendererError::resourceLimit,
+              @"Metal could not create the complete private heap plan.");
+        }
+        return nil;
+      }
+
+      NSMutableArray<AirfixMetalMeshBuffers *> *meshBuffers = [NSMutableArray
+          arrayWithCapacity:static_cast<NSUInteger>(room.model.meshes.size())];
+      if (meshBuffers == nil) {
+        if (error != nullptr) {
+          *error =
+              makeError(RendererError::bufferCreation,
+                        @"Private room mesh ownership could not be allocated.");
+        }
+        return nil;
+      }
+      for (std::size_t meshSlot = 0U; meshSlot < room.model.meshes.size();
+           ++meshSlot) {
+        const auto &mesh = room.model.meshes[meshSlot];
+        auto packedVertices = repackVertices(mesh.vertices);
+        std::size_t packedBytes = 0U;
+        if (!checkedMultiply(packedVertices.size(), sizeof(GpuVertex),
+                             packedBytes) ||
+            packedBytes != preflight.vertexByteCounts[meshSlot]) {
+          if (error != nullptr) {
+            *error = makeError(
+                RendererError::resourceLimit,
+                @"Private room vertex packing changed after preflight.");
+          }
+          return nil;
+        }
+
+        id<MTLBuffer> vertexBuffer = nil;
+        if (packedBytes != 0U) {
+          vertexBuffer =
+              [bufferHeap newBufferWithLength:packedBytes
+                                      options:kSharedTrackedResourceOptions];
+          if (vertexBuffer != nil && vertexBuffer.contents != nullptr) {
+            std::memcpy(vertexBuffer.contents, packedVertices.data(),
+                        packedBytes);
+          }
+        }
+        id<MTLBuffer> indexBuffer = nil;
+        const auto indexBytes = preflight.indexByteCounts[meshSlot];
+        if (indexBytes != 0U) {
+          indexBuffer =
+              [bufferHeap newBufferWithLength:indexBytes
+                                      options:kSharedTrackedResourceOptions];
+          if (indexBuffer != nil && indexBuffer.contents != nullptr) {
+            std::memcpy(indexBuffer.contents, mesh.indices.data(), indexBytes);
+          }
+        }
+        if ((packedBytes != 0U &&
+             (vertexBuffer == nil || vertexBuffer.contents == nullptr)) ||
+            (indexBytes != 0U &&
+             (indexBuffer == nil || indexBuffer.contents == nullptr))) {
+          if (error != nullptr) {
+            *error = makeError(
+                RendererError::bufferCreation,
+                @"Metal could not create every private room mesh buffer.");
+          }
+          return nil;
+        }
+        if ((vertexBuffer != nil && vertexBuffer.allocatedSize == 0U) ||
+            (indexBuffer != nil && indexBuffer.allocatedSize == 0U)) {
+          if (error != nullptr) {
+            *error = makeError(RendererError::resourceLimit,
+                               @"A private heap buffer has no allocation.");
+          }
+          return nil;
+        }
+        AirfixMetalMeshBuffers *buffers = [[AirfixMetalMeshBuffers alloc] init];
+        if (buffers == nil) {
+          if (error != nullptr) {
+            *error =
+                makeError(RendererError::bufferCreation,
+                          @"Private room mesh ownership could not be created.");
+          }
+          return nil;
+        }
+        buffers.vertexBuffer = vertexBuffer;
+        buffers.indexBuffer = indexBuffer;
+        [meshBuffers addObject:buffers];
+      }
+
+      NSMutableArray<id<MTLTexture>> *textures = [NSMutableArray
+          arrayWithCapacity:static_cast<NSUInteger>(room.textures.size())];
+      NSMutableArray<id<MTLTexture>> *crosshairTextures =
+          [NSMutableArray arrayWithCapacity:static_cast<NSUInteger>(
+                                                crosshairs.textures.size())];
+      NSMutableArray<id<MTLTexture>> *healthGaugeTextures =
+          [NSMutableArray arrayWithCapacity:static_cast<NSUInteger>(
+                                                healthGauge.textures.size())];
+      NSMutableArray<id<MTLTexture>> *generatedMipTextures =
+          [NSMutableArray array];
+      if (textures == nil || crosshairTextures == nil ||
+          healthGaugeTextures == nil || generatedMipTextures == nil) {
+        if (error != nullptr) {
+          *error =
+              makeError(RendererError::textureCreation,
+                        @"Private texture ownership could not be allocated.");
+        }
+        return nil;
+      }
+      for (const auto &source : room.textures) {
+        const auto &upload = source.upload;
+        MTLTextureDescriptor *descriptor = [[MTLTextureDescriptor alloc] init];
+        if (descriptor == nil) {
+          if (error != nullptr) {
+            *error =
+                makeError(RendererError::textureCreation,
+                          @"Private texture metadata could not be allocated.");
+          }
+          return nil;
+        }
+        configurePrivateTextureDescriptor(descriptor, source);
+
+        id<MTLTexture> texture =
+            [textureHeap newTextureWithDescriptor:descriptor];
+        if (texture == nil || texture.width != descriptor.width ||
+            texture.height != descriptor.height ||
+            texture.mipmapLevelCount != descriptor.mipmapLevelCount ||
+            texture.allocatedSize == 0U) {
+          if (error != nullptr) {
+            *error = makeError(
+                RendererError::textureCreation,
+                @"Metal could not create the complete private texture.");
+          }
+          return nil;
+        }
+
+        for (std::size_t levelIndex = 0U;
+             levelIndex < source.uploadLevels.size(); ++levelIndex) {
+          const auto &level = upload.uploadLevels[levelIndex];
+          const auto &image = source.uploadLevels[levelIndex];
+          [texture
+              replaceRegion:MTLRegionMake2D(
+                                0U, 0U, static_cast<NSUInteger>(image.width),
+                                static_cast<NSUInteger>(image.height))
+                mipmapLevel:static_cast<NSUInteger>(level.level)
+                  withBytes:image.pixels.data()
+                bytesPerRow:static_cast<NSUInteger>(level.bytesPerRow)];
+        }
+        if (upload.mipPolicy ==
+            airfix::render::GtiMipPolicy::generateFromBase) {
+          [generatedMipTextures addObject:texture];
+        }
+        [textures addObject:texture];
+      }
+
+      for (const auto &source : crosshairs.textures) {
+        const auto &upload = source.upload;
+        MTLTextureDescriptor *descriptor = [[MTLTextureDescriptor alloc] init];
+        if (descriptor == nil) {
+          if (error != nullptr) {
+            *error = makeError(
+                RendererError::textureCreation,
+                @"Private crosshair metadata could not be allocated.");
+          }
+          return nil;
+        }
+        configurePrivateTextureDescriptor(descriptor, source);
+
+        id<MTLTexture> texture =
+            [textureHeap newTextureWithDescriptor:descriptor];
+        if (texture == nil || texture.width != descriptor.width ||
+            texture.height != descriptor.height ||
+            texture.mipmapLevelCount != descriptor.mipmapLevelCount ||
+            texture.allocatedSize == 0U) {
+          if (error != nullptr) {
+            *error = makeError(
+                RendererError::textureCreation,
+                @"Metal could not create every private crosshair texture.");
+          }
+          return nil;
+        }
+
+        for (std::size_t levelIndex = 0U;
+             levelIndex < source.uploadLevels.size(); ++levelIndex) {
+          const auto &level = upload.uploadLevels[levelIndex];
+          const auto &image = source.uploadLevels[levelIndex];
+          [texture
+              replaceRegion:MTLRegionMake2D(
+                                0U, 0U, static_cast<NSUInteger>(image.width),
+                                static_cast<NSUInteger>(image.height))
+                mipmapLevel:static_cast<NSUInteger>(level.level)
+                  withBytes:image.pixels.data()
+                bytesPerRow:static_cast<NSUInteger>(level.bytesPerRow)];
+        }
+        if (upload.mipPolicy ==
+            airfix::render::GtiMipPolicy::generateFromBase) {
+          [generatedMipTextures addObject:texture];
+        }
+        [crosshairTextures addObject:texture];
+      }
+
+      for (const auto &source : healthGauge.textures) {
+        const auto &upload = source.upload;
+        MTLTextureDescriptor *descriptor = [[MTLTextureDescriptor alloc] init];
+        if (descriptor == nil) {
+          if (error != nullptr) {
+            *error = makeError(
+                RendererError::textureCreation,
+                @"Private health gauge metadata could not be allocated.");
+          }
+          return nil;
+        }
+        configurePrivateTextureDescriptor(descriptor, source);
+
+        id<MTLTexture> texture =
+            [textureHeap newTextureWithDescriptor:descriptor];
+        if (texture == nil || texture.width != descriptor.width ||
+            texture.height != descriptor.height ||
+            texture.mipmapLevelCount != descriptor.mipmapLevelCount ||
+            texture.allocatedSize == 0U) {
+          if (error != nullptr) {
+            *error = makeError(
+                RendererError::textureCreation,
+                @"Metal could not create every private health gauge texture.");
+          }
+          return nil;
+        }
+
+        for (std::size_t levelIndex = 0U;
+             levelIndex < source.uploadLevels.size(); ++levelIndex) {
+          const auto &level = upload.uploadLevels[levelIndex];
+          const auto &image = source.uploadLevels[levelIndex];
+          [texture
+              replaceRegion:MTLRegionMake2D(
+                                0U, 0U, static_cast<NSUInteger>(image.width),
+                                static_cast<NSUInteger>(image.height))
+                mipmapLevel:static_cast<NSUInteger>(level.level)
+                  withBytes:image.pixels.data()
+                bytesPerRow:static_cast<NSUInteger>(level.bytesPerRow)];
+        }
+        if (upload.mipPolicy ==
+            airfix::render::GtiMipPolicy::generateFromBase) {
+          [generatedMipTextures addObject:texture];
+        }
+        [healthGaugeTextures addObject:texture];
+      }
+
+      if (generatedMipTextures.count != 0U) {
+        id<MTLCommandBuffer> mipCommandBuffer = [commandQueue commandBuffer];
+        if (mipCommandBuffer == nil) {
+          if (error != nullptr) {
+            *error = makeError(
+                RendererError::blitCreation,
+                @"Metal could not create the private mip command buffer.");
+          }
+          return nil;
+        }
+        mipCommandBuffer.label = @"Airfix private texture mip generation";
+        id<MTLBlitCommandEncoder> blit = [mipCommandBuffer blitCommandEncoder];
+        if (blit == nil) {
+          if (error != nullptr) {
+            *error =
+                makeError(RendererError::blitCreation,
+                          @"Metal could not create the private mip encoder.");
+          }
+          return nil;
+        }
+        for (id<MTLTexture> texture in generatedMipTextures) {
+          [blit generateMipmapsForTexture:texture];
+        }
+        [blit endEncoding];
+        [mipCommandBuffer commit];
+        [mipCommandBuffer waitUntilCompleted];
+        if (mipCommandBuffer.status != MTLCommandBufferStatusCompleted) {
+          if (error != nullptr) {
+            NSString *reason = mipCommandBuffer.error.localizedDescription;
+            if (reason == nil) {
+              reason = @"unknown Metal mip-generation failure";
+            }
+            *error = makeError(RendererError::mipGeneration,
+                               [@"Private texture mip generation failed: "
+                                   stringByAppendingString:reason]);
+          }
+          return nil;
+        }
+      }
+
+      std::size_t currentAllocatedHeapBytes = 0U;
+      if ((bufferHeap != nil && !accountCurrentHeapAllocation(
+                                    bufferHeap, currentAllocatedHeapBytes)) ||
+          (textureHeap != nil && !accountCurrentHeapAllocation(
+                                     textureHeap, currentAllocatedHeapBytes))) {
+        if (error != nullptr) {
+          *error = makeError(
+              RendererError::resourceLimit,
+              @"The created private heaps have invalid current allocations.");
+        }
+        return nil;
+      }
+
+      // Admission before newHeap covers the descriptor plan. If Metal page
+      // rounding makes the measured current allocation larger, obtain the
+      // exact supplement now; otherwise this unpublished candidate is
+      // destroyed before the plan reservation is consumed.
+      if (!finalizeHeapAllocationReservation(*gpuBudgetHolder->_ledger,
+                                             *privatePlanReservation,
+                                             currentAllocatedHeapBytes)) {
+        if (error != nullptr) {
+          *error = makeError(RendererError::resourceLimit,
+                             @"The private heaps' current allocation is "
+                             @"unavailable in the aggregate admission budget.");
+        }
+        return nil;
+      }
+
+      AirfixMetalRoomResources *candidateResources =
+          [[AirfixMetalRoomResources alloc] init];
+      AirfixMetalRoomSnapshot *candidate =
+          [[AirfixMetalRoomSnapshot alloc] init];
+      AirfixPreparedMetalRoom *preparedRoom =
+          [[AirfixPreparedMetalRoom alloc] init];
+      AirfixGpuBudgetReservationHolder *reservationHolder =
+          [[AirfixGpuBudgetReservationHolder alloc] init];
+      NSObject *ownerToken = self.preparationOwnerToken;
+      if (candidateResources == nil || candidate == nil ||
+          preparedRoom == nil || reservationHolder == nil ||
+          ownerToken == nil) {
+        if (error != nullptr) {
+          *error =
+              makeError(RendererError::unexpectedFailure,
+                        @"Private Metal room ownership could not be created.");
+        }
+        return nil;
+      }
+      NSArray<AirfixMetalMeshBuffers *> *meshBufferSnapshot =
+          [meshBuffers copy];
+      NSArray<id<MTLTexture>> *textureSnapshot = [textures copy];
+      NSArray<id<MTLTexture>> *crosshairTextureSnapshot =
+          [crosshairTextures copy];
+      NSArray<id<MTLTexture>> *healthGaugeTextureSnapshot =
+          [healthGaugeTextures copy];
+      if (meshBufferSnapshot == nil || textureSnapshot == nil ||
+          crosshairTextureSnapshot == nil ||
+          healthGaugeTextureSnapshot == nil ||
+          meshBufferSnapshot.count != room.model.meshes.size() ||
+          textureSnapshot.count != room.textures.size() ||
+          crosshairTextureSnapshot.count != crosshairs.textures.size() ||
+          healthGaugeTextureSnapshot.count != healthGauge.textures.size()) {
+        if (error != nullptr) {
+          *error =
+              makeError(RendererError::unexpectedFailure,
+                        @"Private Metal resource ownership is incomplete.");
+        }
+        return nil;
+      }
+      candidateResources.meshBuffers = meshBufferSnapshot;
+      candidateResources.textures = textureSnapshot;
+      candidateResources.crosshairTextures = crosshairTextureSnapshot;
+      candidateResources.healthGaugeTextures = healthGaugeTextureSnapshot;
+      candidateResources.bufferHeap = bufferHeap;
+      candidateResources.textureHeap = textureHeap;
+      preparedRoom->_ownerToken = ownerToken;
+      preparedRoom->_device = device;
+      preparedRoom->_published = NO;
+      candidateResources->_indexOffsets = std::move(preflight.indexOffsets);
+      candidateResources->_revision = room.revision;
+      candidateResources->_scenePoseRuntime =
+          std::move(scenePosePreparation.runtime);
+      candidateResources->_cameraMissionRuntime =
+          std::move(cameraMissionRuntime);
+      candidate->_resources = candidateResources;
+      candidate->_releaseQueue = resourceReleaseQueue;
+      candidate->_worldRoomInstalled = YES;
+
+      // Texture upload bytes are intentionally not retained by the native
+      // snapshot after Metal owns the complete resource set.
+      std::vector<airfix::content::LoadedTextureAsset>().swap(room.textures);
+      candidateResources->_missionRoom.emplace(std::move(room));
+      candidateResources->_crosshairs.emplace(std::move(crosshairs));
+      candidateResources->_healthGauge.emplace(std::move(healthGauge));
+
+      reservationHolder->_reservation.emplace(
+          std::move(*privatePlanReservation));
+      candidate->_gpuBudgetReservationHolder = reservationHolder;
+      preparedRoom->_snapshot = candidate;
+      return preparedRoom;
+    }
+  } catch (...) {
+    if (error != nullptr) {
+      *error =
+          makeError(RendererError::unexpectedFailure,
+                    @"The private Metal room snapshot could not be prepared.");
+    }
+    return nil;
+  }
 }
 
 - (AirfixPlayerActorPoseRuntimeEndpoint)

@@ -15,25 +15,19 @@
 namespace airfix::afpack::detail {
 
 struct ActiveContentLeaseFactory final {
-    [[nodiscard]] static ActiveContentLease create(
-        std::unique_ptr<std::ifstream> input,
-        const std::uint64_t activeGeneration,
-        ActivePackReference reference,
-        std::filesystem::path path,
-        Pack pack,
-        Manifest manifest,
-        udsp::Archive sourceArchive,
-        const std::size_t sourcePackEntryIndex) {
-        return ActiveContentLease(
-            std::move(input),
-            activeGeneration,
-            std::move(reference),
-            std::move(path),
-            std::move(pack),
-            std::move(manifest),
-            std::move(sourceArchive),
-            sourcePackEntryIndex);
-    }
+  [[nodiscard]] static ActiveContentLease
+  create(std::unique_ptr<std::ifstream> input,
+         const std::uint64_t activeGeneration, ActivePackReference reference,
+         std::filesystem::path path, Pack pack, Manifest manifest,
+         udsp::Archive sourceArchive, const std::size_t sourcePackEntryIndex,
+         udsp::Archive localizationArchive,
+         const std::size_t localizationPackEntryIndex) {
+    return ActiveContentLease(
+        std::move(input), activeGeneration, std::move(reference),
+        std::move(path), std::move(pack), std::move(manifest),
+        std::move(sourceArchive), sourcePackEntryIndex,
+        std::move(localizationArchive), localizationPackEntryIndex);
+  }
 };
 
 } // namespace airfix::afpack::detail
@@ -410,6 +404,8 @@ struct CandidateResult {
             manifestBytes, entries, limits.validation.manifest);
         std::optional<udsp::Archive> sourceArchive;
         std::optional<std::size_t> sourcePackEntryIndex;
+        std::optional<udsp::Archive> localizationArchive;
+        std::optional<std::size_t> localizationPackEntryIndex;
         for (const auto& manifestEntry : manifest.entries) {
             checkCancellation(stopToken);
             const auto entryIndex = findEntryIndex(entries, manifestEntry);
@@ -425,23 +421,29 @@ struct CandidateResult {
                 manifestEntry.kind == EntryKind::sourceArchive) {
                 sourceArchive.emplace(std::move(archive));
                 sourcePackEntryIndex = entryIndex;
+            } else if (manifestEntry.kind == EntryKind::localization) {
+              if (localizationArchive.has_value() ||
+                  localizationPackEntryIndex.has_value()) {
+                throw ManifestError(
+                    "recovery manifest has multiple localization archives");
+              }
+              localizationArchive.emplace(std::move(archive));
+              localizationPackEntryIndex = entryIndex;
             }
         }
         checkCancellation(stopToken);
-        if (!sourceArchive.has_value() || !sourcePackEntryIndex.has_value()) {
-            throw ManifestError(
-                "recovery manifest has no exact source/Resource.up archive");
+        if (!sourceArchive.has_value() || !sourcePackEntryIndex.has_value() ||
+            !localizationArchive.has_value() ||
+            !localizationPackEntryIndex.has_value()) {
+          throw ManifestError(
+              "recovery manifest lacks a required authenticated archive");
         }
         return {
             .content = detail::ActiveContentLeaseFactory::create(
-                std::move(input),
-                activeGeneration,
-                reference,
-                path,
-                std::move(pack),
-                std::move(manifest),
-                std::move(*sourceArchive),
-                *sourcePackEntryIndex),
+                std::move(input), activeGeneration, reference, path,
+                std::move(pack), std::move(manifest), std::move(*sourceArchive),
+                *sourcePackEntryIndex, std::move(*localizationArchive),
+                *localizationPackEntryIndex),
             .diagnostic = {CandidateStatus::valid, {}},
         };
     }
@@ -669,22 +671,18 @@ void removeOwnedFile(const std::filesystem::path& path) noexcept {
 } // namespace
 
 ActiveContentLease::ActiveContentLease(
-    std::unique_ptr<std::ifstream> input,
-    const std::uint64_t activeGeneration,
-    ActivePackReference reference,
-    std::filesystem::path path,
-    Pack pack,
-    Manifest manifest,
-    udsp::Archive sourceArchive,
-    const std::size_t sourcePackEntryIndex) noexcept
-    : input_(std::move(input)),
-      activeGeneration_(activeGeneration),
-      reference_(std::move(reference)),
-      path_(std::move(path)),
-      pack_(std::move(pack)),
-      manifest_(std::move(manifest)),
+    std::unique_ptr<std::ifstream> input, const std::uint64_t activeGeneration,
+    ActivePackReference reference, std::filesystem::path path, Pack pack,
+    Manifest manifest, udsp::Archive sourceArchive,
+    const std::size_t sourcePackEntryIndex, udsp::Archive localizationArchive,
+    const std::size_t localizationPackEntryIndex) noexcept
+    : input_(std::move(input)), activeGeneration_(activeGeneration),
+      reference_(std::move(reference)), path_(std::move(path)),
+      pack_(std::move(pack)), manifest_(std::move(manifest)),
       sourceArchive_(std::move(sourceArchive)),
-      sourcePackEntryIndex_(sourcePackEntryIndex) {}
+      sourcePackEntryIndex_(sourcePackEntryIndex),
+      localizationArchive_(std::move(localizationArchive)),
+      localizationPackEntryIndex_(localizationPackEntryIndex) {}
 
 RecoveryCancelled::RecoveryCancelled()
     : std::runtime_error("AFPACK recovery cancelled") {}

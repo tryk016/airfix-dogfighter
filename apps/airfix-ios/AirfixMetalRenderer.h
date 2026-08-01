@@ -7,6 +7,7 @@
 #include <optional>
 
 namespace airfix::content {
+struct LoadedLegacyAircraftHealthGaugeTextureSet;
 struct LoadedLegacyWeaponCrosshairTextureSet;
 struct LoadedMissionWorldRoom;
 }
@@ -67,11 +68,15 @@ NS_ASSUME_NONNULL_BEGIN
 // Builds every Metal resource without changing the renderer's published room.
 // This synchronous boundary must run on a serialized preparation queue, never
 // the main thread. On failure the old render snapshot and room stay unchanged.
-- (nullable AirfixPreparedMetalRoom*)prepareLoadedMissionRoom:
-    (airfix::content::LoadedMissionWorldRoom&&)room
-    weaponCrosshairs:
-        (airfix::content::LoadedLegacyWeaponCrosshairTextureSet&&)crosshairs
-    error:(NSError* _Nullable* _Nullable)error;
+- (nullable AirfixPreparedMetalRoom *)
+    prepareLoadedMissionRoom:(airfix::content::LoadedMissionWorldRoom &&)room
+            weaponCrosshairs:
+                (airfix::content::LoadedLegacyWeaponCrosshairTextureSet &&)
+                    crosshairs
+         aircraftHealthGauge:
+             (airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet &&)
+                 healthGauge
+                       error:(NSError *_Nullable *_Nullable)error;
 
 // Read-only candidate identity. An empty optional is the authenticated
 // no-player path. An engaged weak pointer names only this prepared candidate;

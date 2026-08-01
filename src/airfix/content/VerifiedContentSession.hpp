@@ -46,12 +46,12 @@ struct VerifiedContentLimits {
 };
 
 enum class VerifiedContentPhase : std::uint8_t {
-    inspectingStream,
-    hashingPack,
-    parsingPack,
-    parsingManifest,
-    openingSourceArchive,
-    complete,
+  inspectingStream,
+  hashingPack,
+  parsingPack,
+  parsingManifest,
+  openingArchives,
+  complete,
 };
 
 struct VerifiedContentProgress {
@@ -105,10 +105,12 @@ private:
 };
 
 // Owns the one seekable stream that was authenticated against an active
-// content revision. Every AFPACK and nested Resource.up operation remains
-// bound to this handle; sourceLabel is diagnostic text and is never opened.
-// The handle must come from app-private immutable content storage. Installation,
-// activation and cleanup must serialize writers for its entire lifetime.
+// content revision. Every AFPACK, Resource.up, and selected localization
+// archive operation remains bound to this handle; sourceLabel is diagnostic
+// text and is never opened.
+// The handle must come from app-private immutable content storage.
+// Installation, activation and cleanup must serialize writers for its entire
+// lifetime.
 class VerifiedContentSession final {
 public:
     VerifiedContentSession(const VerifiedContentSession&) = delete;
@@ -143,6 +145,12 @@ public:
     [[nodiscard]] std::size_t sourcePackEntryIndex() const noexcept {
         return sourcePackEntryIndex_;
     }
+    [[nodiscard]] const udsp::Archive &localizationArchive() const noexcept {
+      return localizationArchive_;
+    }
+    [[nodiscard]] std::size_t localizationPackEntryIndex() const noexcept {
+      return localizationPackEntryIndex_;
+    }
     [[nodiscard]] const std::string& sourceLabel() const noexcept {
         return sourceLabel_;
     }
@@ -156,26 +164,26 @@ public:
 
     // These operations share one seekable handle and are intentionally
     // serialized by the caller; concurrent reads on a session are unsupported.
-    [[nodiscard]] std::vector<std::uint8_t> readSourceFilePrefix(
-        std::size_t fileIndex,
-        std::size_t maximumBytes);
-    [[nodiscard]] std::vector<std::uint8_t> readSourceFile(
-        std::size_t fileIndex,
-        std::size_t outputLimit);
+    [[nodiscard]] std::vector<std::uint8_t>
+    readSourceFilePrefix(std::size_t fileIndex, std::size_t maximumBytes);
+    [[nodiscard]] std::vector<std::uint8_t>
+    readSourceFile(std::size_t fileIndex, std::size_t outputLimit);
+    [[nodiscard]] std::vector<std::uint8_t>
+    readLocalizationFilePrefix(std::size_t fileIndex, std::size_t maximumBytes);
+    [[nodiscard]] std::vector<std::uint8_t>
+    readLocalizationFile(std::size_t fileIndex, std::size_t outputLimit);
 
-private:
+  private:
     friend struct airfix::testing::AuthenticatedStreamIdentityProbe;
 
     VerifiedContentSession(
         std::unique_ptr<std::ifstream> input,
-        std::shared_ptr<
-            const VerifiedContentTransactionIdentity::Marker> transactionMarker,
-        std::string sourceLabel,
-        ContentRevision revision,
-        afpack::Pack pack,
-        afpack::Manifest manifest,
-        udsp::Archive sourceArchive,
-        std::size_t sourcePackEntryIndex) noexcept;
+        std::shared_ptr<const VerifiedContentTransactionIdentity::Marker>
+            transactionMarker,
+        std::string sourceLabel, ContentRevision revision, afpack::Pack pack,
+        afpack::Manifest manifest, udsp::Archive sourceArchive,
+        std::size_t sourcePackEntryIndex, udsp::Archive localizationArchive,
+        std::size_t localizationPackEntryIndex) noexcept;
 
     std::unique_ptr<std::ifstream> input_;
     std::shared_ptr<
@@ -186,6 +194,8 @@ private:
     afpack::Manifest manifest_;
     udsp::Archive sourceArchive_;
     std::size_t sourcePackEntryIndex_{};
+    udsp::Archive localizationArchive_;
+    std::size_t localizationPackEntryIndex_{};
 };
 
 } // namespace airfix::content
