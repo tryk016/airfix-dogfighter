@@ -189,6 +189,11 @@ fragment float4 airfixOverlayFragmentMain(
     return colorTexture.sample(colorSampler, input.uv) * uniforms.tint;
 }
 
+fragment float4 airfixOverlaySolidFragmentMain(
+    constant GpuOverlayUniforms& uniforms [[buffer(2)]]) {
+    return uniforms.tint;
+}
+
 fragment float4 airfixGaugeTextureFragmentMain(
     RasterFragmentInput input [[stage_in]],
     constant GpuGaugeUniforms& uniforms [[buffer(3)]],

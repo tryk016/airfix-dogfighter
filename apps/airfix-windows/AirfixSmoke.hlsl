@@ -194,6 +194,11 @@ float4 AirfixOverlayPS(PresentationRasterInput input) : SV_TARGET
     return colorTexture.Sample(colorSampler, input.uv) * overlayTint;
 }
 
+float4 AirfixOverlaySolidPS(PresentationRasterInput input) : SV_TARGET
+{
+    return overlayTint;
+}
+
 float4 AirfixGaugeTexturePS(PresentationRasterInput input) : SV_TARGET
 {
     return colorTexture.Sample(colorSampler, input.uv) * gaugeTint;

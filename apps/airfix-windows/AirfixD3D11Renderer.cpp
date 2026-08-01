@@ -5,6 +5,7 @@
 #include "airfix/content/LegacyAircraftHealthGaugeSubmission.hpp"
 #include "airfix/content/LegacyAircraftHudInstrumentsSubmission.hpp"
 #include "airfix/content/LegacyAircraftHudRollingDigitsSubmission.hpp"
+#include "airfix/content/LegacyAircraftHudWeaponPanelsSubmission.hpp"
 #include "airfix/content/LegacyWeaponCrosshairSpriteSubmission.hpp"
 #include "airfix/content/MissionWorldRoomPublication.hpp"
 #include "airfix/render/DrawSubmissionPlan.hpp"
@@ -267,8 +268,7 @@ makeSmokeUniforms(const airfix::render::DrawMeshInstance &instance) {
       {projection.centre().x, projection.centre().y});
   const auto logicalExtent = layout.cameraLogicalExtent();
   return {
-      .modelFromLocal =
-          modelFromLocal(pose.modelLinear, pose.modelTranslation),
+      .modelFromLocal = modelFromLocal(pose.modelLinear, pose.modelTranslation),
       .cameraAxisX = {linear.columns[0].x, linear.columns[0].y,
                       linear.columns[0].z, 0.0F},
       .cameraAxisY = {linear.columns[1].x, linear.columns[1].y,
@@ -285,8 +285,8 @@ makeSmokeUniforms(const airfix::render::DrawMeshInstance &instance) {
   };
 }
 
-[[nodiscard]] airfix::render::ConvertedNodeTransform actorWorldFrom(
-    const airfix::simulation::PlayerSpawnPose &pose) noexcept {
+[[nodiscard]] airfix::render::ConvertedNodeTransform
+actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   const auto vectorAt = [](const std::array<float, 3U> &value) {
     return airfix::render::Vec3{value[0], value[1], value[2]};
   };
@@ -365,9 +365,8 @@ class AirfixD3D11Renderer::Implementation final {
     airfix::render::RenderTargetPixelExtent extent{};
 
     [[nodiscard]] bool complete() const noexcept {
-      return colorTexture && renderTarget && shaderResource &&
-             depthTexture && depthView && extent.width != 0U &&
-             extent.height != 0U;
+      return colorTexture && renderTarget && shaderResource && depthTexture &&
+             depthView && extent.width != 0U && extent.height != 0U;
     }
 
     void swap(ScaledSceneTargets &other) noexcept {
@@ -378,7 +377,6 @@ class AirfixD3D11Renderer::Implementation final {
       depthView.Swap(other.depthView);
       std::swap(extent, other.extent);
     }
-
   };
 
   struct MissionResources {
@@ -390,9 +388,10 @@ class AirfixD3D11Renderer::Implementation final {
     std::optional<
         airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet>
         rollingDigits;
-    std::optional<
-        airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet>
+    std::optional<airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet>
         hudInstruments;
+    std::optional<airfix::content::LoadedLegacyAircraftHudWeaponPanelTextureSet>
+        weaponPanels;
     std::shared_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>
         cameraMissionRuntime;
     std::shared_ptr<airfix::render::PlayerActorPoseRuntime> poseRuntime;
@@ -402,6 +401,7 @@ class AirfixD3D11Renderer::Implementation final {
     std::vector<ComPtr<ID3D11ShaderResourceView>> healthGaugeTextures;
     std::vector<ComPtr<ID3D11ShaderResourceView>> rollingDigitTextures;
     std::vector<ComPtr<ID3D11ShaderResourceView>> hudInstrumentTextures;
+    std::vector<ComPtr<ID3D11ShaderResourceView>> weaponPanelTextures;
     airfix::render::CameraLogicalExtent referenceCameraCanvas{};
     float referenceHorizontalFovDegrees{};
 
@@ -418,6 +418,9 @@ class AirfixD3D11Renderer::Implementation final {
         std::optional<
             airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet>
             &&loadedHudInstruments,
+        std::optional<
+            airfix::content::LoadedLegacyAircraftHudWeaponPanelTextureSet>
+            &&loadedWeaponPanels,
         std::shared_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>
             gameplayCameraRuntime,
         std::shared_ptr<airfix::render::PlayerActorPoseRuntime>
@@ -432,12 +435,15 @@ class AirfixD3D11Renderer::Implementation final {
             &&rollingDigitTextureResources,
         std::vector<ComPtr<ID3D11ShaderResourceView>>
             &&hudInstrumentTextureResources,
+        std::vector<ComPtr<ID3D11ShaderResourceView>>
+            &&weaponPanelTextureResources,
         const airfix::render::CameraLogicalExtent cameraCanvas,
         const float horizontalFovDegrees)
         : room(std::move(loadedRoom)), crosshairs(std::move(loadedCrosshairs)),
           healthGauge(std::move(loadedHealthGauge)),
           rollingDigits(std::move(loadedRollingDigits)),
           hudInstruments(std::move(loadedHudInstruments)),
+          weaponPanels(std::move(loadedWeaponPanels)),
           cameraMissionRuntime(std::move(gameplayCameraRuntime)),
           poseRuntime(std::move(playerPoseRuntime)),
           meshes(std::move(meshResources)),
@@ -446,6 +452,7 @@ class AirfixD3D11Renderer::Implementation final {
           healthGaugeTextures(std::move(healthGaugeTextureResources)),
           rollingDigitTextures(std::move(rollingDigitTextureResources)),
           hudInstrumentTextures(std::move(hudInstrumentTextureResources)),
+          weaponPanelTextures(std::move(weaponPanelTextureResources)),
           referenceCameraCanvas(cameraCanvas),
           referenceHorizontalFovDegrees(horizontalFovDegrees) {}
   };
@@ -476,13 +483,13 @@ public:
 
   void resize() {
     const auto [newWidth, newHeight] = pixelSize(*window_);
-    (void)resizeToPixelExtent(
-        newWidth, newHeight, ResizeAttemptKind::explicitSignal);
+    (void)resizeToPixelExtent(newWidth, newHeight,
+                              ResizeAttemptKind::explicitSignal);
   }
 
-  [[nodiscard]] bool resizeToPixelExtent(
-      const int newWidth, const int newHeight,
-      const ResizeAttemptKind attemptKind) {
+  [[nodiscard]] bool resizeToPixelExtent(const int newWidth,
+                                         const int newHeight,
+                                         const ResizeAttemptKind attemptKind) {
     if (attemptKind == ResizeAttemptKind::explicitSignal) {
       resetPendingResizeBackoff();
     }
@@ -495,9 +502,9 @@ public:
       return true;
     }
 
-    const auto layout = buildLayout(
-        settings_, static_cast<std::uint32_t>(newWidth),
-        static_cast<std::uint32_t>(newHeight));
+    const auto layout =
+        buildLayout(settings_, static_cast<std::uint32_t>(newWidth),
+                    static_cast<std::uint32_t>(newHeight));
     if (!layout.complete()) {
       throw std::runtime_error(
           "native render layout is invalid after swap-chain resize");
@@ -548,8 +555,7 @@ public:
     if (!delta.complete()) {
       return {
           .changed = false,
-          .issue =
-              RenderPresentationSettingsApplyIssueKind::invalidSettings,
+          .issue = RenderPresentationSettingsApplyIssueKind::invalidSettings,
       };
     }
     if (!delta.delta->anyChanged()) {
@@ -561,23 +567,21 @@ public:
 
     const bool reportUnavailable =
         std::exchange(reportSurfaceUnavailableForNextApply_, false);
-    if (reportUnavailable || width_ <= 0 || height_ <= 0 ||
-        !renderTarget_ || !depthView_) {
+    if (reportUnavailable || width_ <= 0 || height_ <= 0 || !renderTarget_ ||
+        !depthView_) {
       return {
           .changed = false,
-          .issue =
-              RenderPresentationSettingsApplyIssueKind::surfaceUnavailable,
+          .issue = RenderPresentationSettingsApplyIssueKind::surfaceUnavailable,
       };
     }
 
-    const auto layout = buildLayout(
-        candidate, static_cast<std::uint32_t>(width_),
-        static_cast<std::uint32_t>(height_));
+    const auto layout =
+        buildLayout(candidate, static_cast<std::uint32_t>(width_),
+                    static_cast<std::uint32_t>(height_));
     if (!layout.complete()) {
       return {
           .changed = false,
-          .issue =
-              RenderPresentationSettingsApplyIssueKind::invalidLayout,
+          .issue = RenderPresentationSettingsApplyIssueKind::invalidLayout,
       };
     }
     const auto renderExtent = layout.layout->renderTargetExtent();
@@ -585,32 +589,27 @@ public:
       return {
           .changed = false,
           .issue =
-              RenderPresentationSettingsApplyIssueKind::
-                  unsupportedTargetExtent,
+              RenderPresentationSettingsApplyIssueKind::unsupportedTargetExtent,
       };
     }
 
     ScaledSceneTargets preparedTargets;
-    if (delta.delta->scaleTargetsChanged &&
-        usesScaledSceneTarget(candidate) &&
+    if (delta.delta->scaleTargetsChanged && usesScaledSceneTarget(candidate) &&
         !prepareScaledSceneTargets(renderExtent, preparedTargets)) {
       return {
           .changed = false,
           .issue =
-              RenderPresentationSettingsApplyIssueKind::
-                  targetPreparationFailed,
+              RenderPresentationSettingsApplyIssueKind::targetPreparationFailed,
       };
     }
 
-    if (!delta.delta->scaleTargetsChanged &&
-        usesScaledSceneTarget(candidate) &&
+    if (!delta.delta->scaleTargetsChanged && usesScaledSceneTarget(candidate) &&
         (!scaledSceneTargets_.complete() ||
          scaledSceneTargets_.extent != renderExtent)) {
       return {
           .changed = false,
           .issue =
-              RenderPresentationSettingsApplyIssueKind::
-                  targetPreparationFailed,
+              RenderPresentationSettingsApplyIssueKind::targetPreparationFailed,
       };
     }
 
@@ -618,8 +617,7 @@ public:
       return {
           .changed = false,
           .issue =
-              RenderPresentationSettingsApplyIssueKind::
-                  publicationGateRejected,
+              RenderPresentationSettingsApplyIssueKind::publicationGateRejected,
       };
     }
 
@@ -647,18 +645,17 @@ public:
 
   void failNextScaledTargetPreparationsAfterColorForTesting(
       const std::uint32_t failureCount) noexcept {
-    remainingScaledTargetPreparationFailuresAfterColor_ =
-        failureCount;
+    remainingScaledTargetPreparationFailuresAfterColor_ = failureCount;
   }
 
   void reportSurfaceUnavailableForNextApplyForTesting() noexcept {
     reportSurfaceUnavailableForNextApply_ = true;
   }
 
-  [[nodiscard]] bool resizeToPixelExtentForTesting(
-      const int width, const int height) {
-    return resizeToPixelExtent(
-        width, height, ResizeAttemptKind::explicitSignal);
+  [[nodiscard]] bool resizeToPixelExtentForTesting(const int width,
+                                                   const int height) {
+    return resizeToPixelExtent(width, height,
+                               ResizeAttemptKind::explicitSignal);
   }
 
   [[nodiscard]] std::array<const void *, 5U>
@@ -682,14 +679,12 @@ public:
     return lastRenderedScenePresentation_;
   }
 
-  [[nodiscard]] std::optional<
-      airfix::render::SceneTextureSamplingPolicy>
+  [[nodiscard]] std::optional<airfix::render::SceneTextureSamplingPolicy>
   lastSceneTextureSamplingPolicyForTesting() const noexcept {
     return lastRenderedSceneTextureSamplingPolicy_;
   }
 
-  [[nodiscard]] bool
-  hasDiagnosticsOverlayResourcesForTesting() const noexcept {
+  [[nodiscard]] bool hasDiagnosticsOverlayResourcesForTesting() const noexcept {
     return overlayTexture_ && overlayShaderResource_ &&
            overlayExtent_.width != 0U && overlayExtent_.height != 0U;
   }
@@ -702,10 +697,9 @@ public:
   void installLoadedMissionRoom(
       airfix::content::LoadedMissionWorldRoom &&room,
       const airfix::content::ContentRevision &expectedRevision) {
-    installLoadedMissionRoomTransaction(std::move(room), std::nullopt,
-                                        std::nullopt, std::nullopt,
-                                        std::nullopt,
-                                        expectedRevision);
+    installLoadedMissionRoomTransaction(
+        std::move(room), std::nullopt, std::nullopt, std::nullopt, std::nullopt,
+        std::nullopt, expectedRevision);
   }
 
   void installLoadedMissionRoom(
@@ -716,6 +710,8 @@ public:
           &&rollingDigits,
       airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet
           &&hudInstruments,
+      airfix::content::LoadedLegacyAircraftHudWeaponPanelTextureSet
+          &&weaponPanels,
       const airfix::content::ContentRevision &expectedRevision) {
     installLoadedMissionRoomTransaction(
         std::move(room),
@@ -730,6 +726,9 @@ public:
         std::optional<
             airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet>{
             std::move(hudInstruments)},
+        std::optional<
+            airfix::content::LoadedLegacyAircraftHudWeaponPanelTextureSet>{
+            std::move(weaponPanels)},
         expectedRevision);
   }
 
@@ -745,6 +744,9 @@ public:
       std::optional<
           airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet>
           &&hudInstruments,
+      std::optional<
+          airfix::content::LoadedLegacyAircraftHudWeaponPanelTextureSet>
+          &&weaponPanels,
       const airfix::content::ContentRevision &expectedRevision) {
     if (airfix::content::validateMissionWorldRoomPublication(room,
                                                              expectedRevision)
@@ -783,24 +785,27 @@ public:
       throw std::runtime_error("authenticated aircraft HUD instrument set "
                                "failed its publication contract");
     }
+    if (weaponPanels.has_value() &&
+        (!weaponPanels->valid() ||
+         weaponPanels->revision != expectedRevision)) {
+      throw std::runtime_error("authenticated aircraft HUD weapon panel set "
+                               "failed its publication contract");
+    }
 
     const auto cameraInitializeInput = gameplayCameraInitializeInput(room);
 
-    const auto posePlan =
-        airfix::render::planPlayerActorPoseRuntime(
-            room.playerActorBinding, room.playerActorInstanceProvenance,
-            room.model.instances);
+    const auto posePlan = airfix::render::planPlayerActorPoseRuntime(
+        room.playerActorBinding, room.playerActorInstanceProvenance,
+        room.model.instances);
     if (posePlan.status ==
         airfix::render::PlayerActorPoseRuntimePreparationStatus::
             resourceLimit) {
       throw std::runtime_error(
           "authenticated mission pose runtime exceeds its bounded resources");
     }
-    auto posePreparation =
-        airfix::render::preparePlayerActorPoseRuntime(
-            room.playerActorBinding, room.playerActorInstanceProvenance,
-            room.model.instances, actorWorldFrom(room.playerSpawnPose),
-            posePlan);
+    auto posePreparation = airfix::render::preparePlayerActorPoseRuntime(
+        room.playerActorBinding, room.playerActorInstanceProvenance,
+        room.model.instances, actorWorldFrom(room.playerSpawnPose), posePlan);
     if (posePreparation.status ==
         airfix::render::PlayerActorPoseRuntimePreparationStatus::
             resourceLimit) {
@@ -811,8 +816,7 @@ public:
             airfix::render::PlayerActorPoseRuntimePreparationStatus::
                 invalidPayload ||
         (posePreparation.status ==
-             airfix::render::PlayerActorPoseRuntimePreparationStatus::
-                 ready &&
+             airfix::render::PlayerActorPoseRuntimePreparationStatus::ready &&
          posePreparation.runtime == nullptr) ||
         (posePreparation.status ==
              airfix::render::PlayerActorPoseRuntimePreparationStatus::
@@ -840,6 +844,10 @@ public:
         hudInstruments.has_value()
             ? createAircraftHudInstrumentTextures(*hudInstruments)
             : std::vector<ComPtr<ID3D11ShaderResourceView>>{};
+    auto weaponPanelTextures =
+        weaponPanels.has_value()
+            ? createAircraftHudWeaponPanelTextures(*weaponPanels)
+            : std::vector<ComPtr<ID3D11ShaderResourceView>>{};
 
     // Full validation and GPU preparation must complete before mission-owned
     // collision storage is moved. The active mission remains untouched on
@@ -854,9 +862,9 @@ public:
       throw std::runtime_error(
           "authenticated mission gameplay camera runtime is invalid");
     }
-    auto cameraMissionRuntime = std::shared_ptr<
-        airfix::render::LegacyGameplayCameraMissionRuntime>(
-        std::move(cameraRuntimeBuild.runtime));
+    auto cameraMissionRuntime =
+        std::shared_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>(
+            std::move(cameraRuntimeBuild.runtime));
     const auto initialCamera = cameraMissionRuntime->tryAcquire();
     if (!initialCamera.has_value() || !initialCamera->valid() ||
         initialCamera->packet() == nullptr ||
@@ -877,12 +885,12 @@ public:
     auto candidate = std::make_unique<MissionResources>(
         std::move(room), std::move(crosshairs), std::move(healthGauge),
         std::move(rollingDigits), std::move(hudInstruments),
-        std::move(cameraMissionRuntime), std::move(posePreparation.runtime),
-        std::move(meshes), std::move(textures), std::move(crosshairTextures),
+        std::move(weaponPanels), std::move(cameraMissionRuntime),
+        std::move(posePreparation.runtime), std::move(meshes),
+        std::move(textures), std::move(crosshairTextures),
         std::move(healthGaugeTextures), std::move(rollingDigitTextures),
-        std::move(hudInstrumentTextures),
-        referenceCameraCanvas,
-        referenceHorizontalFovDegrees);
+        std::move(hudInstrumentTextures), std::move(weaponPanelTextures),
+        referenceCameraCanvas, referenceHorizontalFovDegrees);
     mission_ = std::move(candidate);
   }
 
@@ -924,14 +932,15 @@ public:
       const airfix::content::LegacyAircraftHealthGaugeSubmission
           *healthGaugeSubmission = nullptr,
       const airfix::content::LegacyAircraftHudInstrumentsSubmission
-          *hudInstrumentsSubmission = nullptr) {
+          *hudInstrumentsSubmission = nullptr,
+      const airfix::content::LegacyAircraftHudWeaponPanelsSubmission
+          *weaponPanelsSubmission = nullptr) {
     const auto frameStarted = std::chrono::steady_clock::now();
     double frameIntervalMilliseconds = 1000.0 / 60.0;
     if (previousFrameStart_.has_value()) {
-      frameIntervalMilliseconds =
-          std::chrono::duration<double, std::milli>(
-              frameStarted - *previousFrameStart_)
-              .count();
+      frameIntervalMilliseconds = std::chrono::duration<double, std::milli>(
+                                      frameStarted - *previousFrameStart_)
+                                      .count();
       if (!std::isfinite(frameIntervalMilliseconds) ||
           frameIntervalMilliseconds <= 0.0) {
         frameIntervalMilliseconds = 1000.0 / 60.0;
@@ -945,10 +954,9 @@ public:
         --pendingResizeRetryDelayFrames_;
       } else {
         const auto pending = *pendingResizeExtent_;
-        (void)resizeToPixelExtent(
-            static_cast<int>(pending.width),
-            static_cast<int>(pending.height),
-            ResizeAttemptKind::pendingRetry);
+        (void)resizeToPixelExtent(static_cast<int>(pending.width),
+                                  static_cast<int>(pending.height),
+                                  ResizeAttemptKind::pendingRetry);
       }
     }
     if (!renderTarget_) {
@@ -973,21 +981,19 @@ public:
       // A bounded acquisition miss drops this frame; private gameplay never
       // falls back to the immutable bootstrap camera.
       gameplayCameraLease = mission_->cameraMissionRuntime->tryAcquire();
-      if (!gameplayCameraLease.has_value() ||
-          !gameplayCameraLease->valid() ||
+      if (!gameplayCameraLease.has_value() || !gameplayCameraLease->valid() ||
           gameplayCameraLease->packet() == nullptr) {
         return false;
       }
     }
     const auto *const gameplayCamera =
         cameraOverride != nullptr
-        ? cameraOverride
-        : (gameplayCameraLease.has_value()
-               ? gameplayCameraLease->packet()
-               : nullptr);
-    const auto layout = buildLayout(
-        settings_, static_cast<std::uint32_t>(width_),
-        static_cast<std::uint32_t>(height_), gameplayCamera);
+            ? cameraOverride
+            : (gameplayCameraLease.has_value() ? gameplayCameraLease->packet()
+                                               : nullptr);
+    const auto layout =
+        buildLayout(settings_, static_cast<std::uint32_t>(width_),
+                    static_cast<std::uint32_t>(height_), gameplayCamera);
     if (!layout.complete()) {
       throw std::runtime_error("native render layout is invalid");
     }
@@ -998,47 +1004,38 @@ public:
     }
     const bool usesScaledSceneTarget =
         Implementation::usesScaledSceneTarget(settings_);
-    if (usesScaledSceneTarget &&
-        (!scaledSceneTargets_.complete() ||
-         scaledSceneTargets_.extent != renderExtent)) {
+    if (usesScaledSceneTarget && (!scaledSceneTargets_.complete() ||
+                                  scaledSceneTargets_.extent != renderExtent)) {
       throw std::runtime_error(
           "published render settings have no prepared scaled targets");
     }
-    GpuTimestampQueries *const gpuTimestamp =
-        beginGpuTimestamp();
+    GpuTimestampQueries *const gpuTimestamp = beginGpuTimestamp();
 
     context_->ClearRenderTargetView(renderTarget_.Get(), clearColor.data());
     ID3D11RenderTargetView *sceneRenderTarget =
-        usesScaledSceneTarget
-        ? scaledSceneTargets_.renderTarget.Get()
-        : renderTarget_.Get();
+        usesScaledSceneTarget ? scaledSceneTargets_.renderTarget.Get()
+                              : renderTarget_.Get();
     ID3D11DepthStencilView *sceneDepthView =
-        usesScaledSceneTarget
-        ? scaledSceneTargets_.depthView.Get()
-        : depthView_.Get();
+        usesScaledSceneTarget ? scaledSceneTargets_.depthView.Get()
+                              : depthView_.Get();
     if (usesScaledSceneTarget) {
-      context_->ClearRenderTargetView(
-          sceneRenderTarget, clearColor.data());
+      context_->ClearRenderTargetView(sceneRenderTarget, clearColor.data());
     }
     context_->ClearDepthStencilView(
         sceneDepthView, D3D11_CLEAR_DEPTH,
         gameplay ? airfix::render::legacyReverseDepthClearValue : 1.0F, 0U);
 
-    context_->OMSetRenderTargets(
-        1U, &sceneRenderTarget, sceneDepthView);
-    const auto fitted =
-        layout.layout->sceneViewportInRenderTarget();
+    context_->OMSetRenderTargets(1U, &sceneRenderTarget, sceneDepthView);
+    const auto fitted = layout.layout->sceneViewportInRenderTarget();
     lastRenderedSceneViewport_ = fitted;
-    lastRenderedScenePresentation_ =
-        layout.layout->scenePresentation();
+    lastRenderedScenePresentation_ = layout.layout->scenePresentation();
     const D3D11_VIEWPORT activeViewport{
         fitted.x, fitted.y, fitted.width, fitted.height, 0.0F, 1.0F,
     };
     context_->RSSetViewports(1U, &activeViewport);
     context_->RSSetState(rasterizer_.Get());
     constexpr std::array<float, 4U> blendFactor{};
-    context_->OMSetBlendState(
-        nullptr, blendFactor.data(), 0xFFFFFFFFU);
+    context_->OMSetBlendState(nullptr, blendFactor.data(), 0xFFFFFFFFU);
     context_->OMSetDepthStencilState(
         gameplay ? gameplayDepthState_.Get() : smokeDepthState_.Get(), 0U);
     context_->IASetInputLayout(inputLayout_.Get());
@@ -1059,8 +1056,7 @@ public:
     }
     ID3D11SamplerState *sampler =
         sceneTextureSampling->mode ==
-                airfix::render::SceneTextureSamplingMode::
-                    anisotropicMipLinear
+                airfix::render::SceneTextureSamplingMode::anisotropicMipLinear
             ? enhancedSceneSampler_.Get()
             : classicSceneSampler_.Get();
     if (sampler == nullptr) {
@@ -1100,8 +1096,8 @@ public:
             instanceIndex < mission_->room.instanceProvenance.size() &&
             mission_->room.instanceProvenance[instanceIndex]
                 .physicalRoomIndex.has_value();
-        context_->RSSetState(
-            roomShell ? overviewRasterizer_.Get() : rasterizer_.Get());
+        context_->RSSetState(roomShell ? overviewRasterizer_.Get()
+                                       : rasterizer_.Get());
       }
       constexpr UINT stride = sizeof(GpuVertex);
       constexpr UINT offset = 0U;
@@ -1110,21 +1106,19 @@ public:
       context_->IASetIndexBuffer(mesh.indices.Get(), DXGI_FORMAT_R32_UINT, 0U);
 
       if (gameplay) {
-        const auto &authoredInstance =
-            model.instances[command.instanceIndex];
+        const auto &authoredInstance = model.instances[command.instanceIndex];
         const auto resolvedPose =
             poseLease.has_value()
-            ? poseLease->resolve(
-                  static_cast<std::uint32_t>(command.instanceIndex),
-                  authoredInstance.modelLinear,
-                  authoredInstance.modelTranslation)
-            : airfix::render::ResolvedInstancePose{
-                  .modelLinear = authoredInstance.modelLinear,
-                  .modelTranslation =
-                      authoredInstance.modelTranslation,
-              };
-        const GameplayUniforms uniforms = makeGameplayUniforms(
-            resolvedPose, *gameplayCamera, *layout.layout);
+                ? poseLease->resolve(
+                      static_cast<std::uint32_t>(command.instanceIndex),
+                      authoredInstance.modelLinear,
+                      authoredInstance.modelTranslation)
+                : airfix::render::ResolvedInstancePose{
+                      .modelLinear = authoredInstance.modelLinear,
+                      .modelTranslation = authoredInstance.modelTranslation,
+                  };
+        const GameplayUniforms uniforms =
+            makeGameplayUniforms(resolvedPose, *gameplayCamera, *layout.layout);
         context_->UpdateSubresource(gameplayUniforms_.Get(), 0U, nullptr,
                                     &uniforms, 0U, 0U);
         ID3D11Buffer *constantBuffer = gameplayUniforms_.Get();
@@ -1161,6 +1155,10 @@ public:
       presentScaledScene();
     }
 
+    const std::size_t weaponPanelDrawCallCount =
+        weaponPanelsSubmission != nullptr
+            ? drawLegacyAircraftHudWeaponPanels(*weaponPanelsSubmission)
+            : 0U;
     const std::size_t healthGaugeDrawCallCount =
         healthGaugeSubmission != nullptr
             ? drawLegacyAircraftHealthGauge(*healthGaugeSubmission)
@@ -1169,26 +1167,26 @@ public:
         hudInstrumentsSubmission != nullptr
             ? drawLegacyAircraftHudInstruments(*hudInstrumentsSubmission)
             : 0U;
-    const bool crosshairDrawn =
-        crosshairSubmission != nullptr &&
-        drawLegacyWeaponCrosshair(*crosshairSubmission);
+    const bool crosshairDrawn = crosshairSubmission != nullptr &&
+                                drawLegacyWeaponCrosshair(*crosshairSubmission);
 
     const std::uint64_t sceneDrawCallCount =
         static_cast<std::uint64_t>(submission.commands.size());
     const std::uint64_t auxiliaryDrawCallCount =
         (usesScaledSceneTarget ? 1U : 0U) +
+        static_cast<std::uint64_t>(weaponPanelDrawCallCount) +
         static_cast<std::uint64_t>(healthGaugeDrawCallCount) +
         static_cast<std::uint64_t>(hudInstrumentDrawCallCount) +
         (crosshairDrawn ? 1U : 0U);
     const std::uint64_t auxiliaryTriangleCount =
         (usesScaledSceneTarget ? 1U : 0U) +
+        static_cast<std::uint64_t>(weaponPanelDrawCallCount) * 2U +
         static_cast<std::uint64_t>(healthGaugeDrawCallCount) * 2U +
         static_cast<std::uint64_t>(hudInstrumentDrawCallCount) * 2U +
         (crosshairDrawn ? 2U : 0U);
     const auto cpuSampled = std::chrono::steady_clock::now();
     const double cpuFrameMilliseconds =
-        std::chrono::duration<double, std::milli>(
-            cpuSampled - frameStarted)
+        std::chrono::duration<double, std::milli>(cpuSampled - frameStarted)
             .count();
     const auto memoryBytes = estimateGpuMemoryBytes(
         model, meshes, gameplay, renderExtent, usesScaledSceneTarget);
@@ -1205,16 +1203,13 @@ public:
         .frameIntervalMilliseconds = frameIntervalMilliseconds,
         .cpuFrameMilliseconds = cpuFrameMilliseconds,
         .gpuFrameMilliseconds = latestGpuFrameMilliseconds_,
-        .drawCallCount =
-            sceneDrawCallCount + auxiliaryDrawCallCount,
+        .drawCallCount = sceneDrawCallCount + auxiliaryDrawCallCount,
         .sceneDrawCallCount = sceneDrawCallCount,
-        .triangleCount =
-            sceneTriangleCount + auxiliaryTriangleCount,
+        .triangleCount = sceneTriangleCount + auxiliaryTriangleCount,
         .sceneTriangleCount = sceneTriangleCount,
         .activeLightCount = 0U,
         .gpuMemoryBytes = memoryBytes,
-        .gpuMemoryMeasurement =
-            airfix::render::GpuMemoryMeasurement::estimated,
+        .gpuMemoryMeasurement = airfix::render::GpuMemoryMeasurement::estimated,
     });
     if (diagnosticAccepted && settings_.diagnosticsOverlayEnabled &&
         !overlaySuppressed_) {
@@ -1257,8 +1252,8 @@ public:
     }
   }
 
-  void captureMissionOverviewFrameToBmp(
-      const std::filesystem::path &outputPath) {
+  void
+  captureMissionOverviewFrameToBmp(const std::filesystem::path &outputPath) {
     if (!missionWorldRoomInstalled()) {
       throw std::runtime_error(
           "private overview capture requires an installed mission");
@@ -1287,9 +1282,7 @@ public:
       throw std::runtime_error(
           "private mission did not produce a valid overview camera");
     }
-    if (!renderFrame(
-            true, &outputPath,
-            &overview.snapshot->clipPacket)) {
+    if (!renderFrame(true, &outputPath, &overview.snapshot->clipPacket)) {
       throw std::runtime_error(
           "private overview capture produced no visible D3D11 output");
     }
@@ -1303,9 +1296,9 @@ public:
           "private crosshair validation requires an installed authenticated "
           "mission and sight set");
     }
-    const auto layout = buildLayout(
-        settings_, static_cast<std::uint32_t>(width_),
-        static_cast<std::uint32_t>(height_));
+    const auto layout =
+        buildLayout(settings_, static_cast<std::uint32_t>(width_),
+                    static_cast<std::uint32_t>(height_));
     if (!layout.complete()) {
       throw std::runtime_error(
           "private crosshair validation requires a drawable native layout");
@@ -1313,8 +1306,7 @@ public:
     const auto &textures = *mission_->crosshairs;
     const auto &texture = textures.textures.front();
     const float outputSize =
-        static_cast<float>(
-            airfix::content::legacyWeaponCrosshairTextureWidth) *
+        static_cast<float>(airfix::content::legacyWeaponCrosshairTextureWidth) *
         layout.layout->uiScale() * settings_.uiScalePercent / 100.0F;
     const airfix::render::LegacyWeaponCrosshairSpritePlan plan{
         .projectedTarget = {},
@@ -1330,8 +1322,7 @@ public:
         .withinRecoveredDepthRange = true,
     };
     const airfix::content::LegacyWeaponCrosshairBinding binding{
-        .weaponType =
-            airfix::simulation::LegacyWeaponTypeId::machineGun,
+        .weaponType = airfix::simulation::LegacyWeaponTypeId::machineGun,
         .role = texture.role,
         .textureId = texture.textureId,
         .revision = textures.revision,
@@ -1388,8 +1379,8 @@ public:
     }
   }
 
-  void capturePublicDiagnosticFrameToBmp(
-      const std::filesystem::path &outputPath) {
+  void
+  capturePublicDiagnosticFrameToBmp(const std::filesystem::path &outputPath) {
     if (missionWorldRoomInstalled()) {
       throw std::runtime_error(
           "public diagnostic capture rejects installed private content");
@@ -1501,8 +1492,7 @@ private:
   [[nodiscard]] static bool usesScaledSceneTarget(
       const airfix::render::RenderPresentationSettings &settings) noexcept {
     return settings.renderScalePercent !=
-           airfix::render::native_render_policy::
-               defaultRenderScalePercent;
+           airfix::render::native_render_policy::defaultRenderScalePercent;
   }
 
   [[nodiscard]] static bool targetExtentSupported(
@@ -1512,21 +1502,19 @@ private:
   }
 
   [[nodiscard]] airfix::render::NativeRenderLayoutBuildResult
-  buildLayout(
-      const airfix::render::RenderPresentationSettings &settings,
-      const std::uint32_t outputWidth,
-      const std::uint32_t outputHeight,
-      const airfix::render::LegacyGameplayCameraClipPacket
-          *const gameplayCamera = nullptr) const noexcept {
+  buildLayout(const airfix::render::RenderPresentationSettings &settings,
+              const std::uint32_t outputWidth, const std::uint32_t outputHeight,
+              const airfix::render::LegacyGameplayCameraClipPacket *const
+                  gameplayCamera = nullptr) const noexcept {
     auto config = airfix::render::NativeRenderLayoutConfig{
-        .outputExtent = {
-            outputWidth,
-            outputHeight,
-        },
+        .outputExtent =
+            {
+                outputWidth,
+                outputHeight,
+            },
         .renderScalePercent = settings.renderScalePercent,
         .scenePresentation = settings.scenePresentation,
-        .verticalFovAdjustmentDegrees =
-            settings.verticalFovAdjustmentDegrees,
+        .verticalFovAdjustmentDegrees = settings.verticalFovAdjustmentDegrees,
     };
     if (gameplayCamera != nullptr) {
       config.referenceCameraCanvas = {
@@ -1569,9 +1557,9 @@ private:
         continue;
       }
       D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjoint{};
-      const HRESULT disjointResult = context_->GetData(
-          queries.disjoint.Get(), &disjoint, sizeof(disjoint),
-          D3D11_ASYNC_GETDATA_DONOTFLUSH);
+      const HRESULT disjointResult =
+          context_->GetData(queries.disjoint.Get(), &disjoint, sizeof(disjoint),
+                            D3D11_ASYNC_GETDATA_DONOTFLUSH);
       if (disjointResult == S_FALSE) {
         continue;
       }
@@ -1581,40 +1569,34 @@ private:
       }
       UINT64 start = 0U;
       UINT64 end = 0U;
-      const HRESULT startResult = context_->GetData(
-          queries.start.Get(), &start, sizeof(start),
-          D3D11_ASYNC_GETDATA_DONOTFLUSH);
+      const HRESULT startResult =
+          context_->GetData(queries.start.Get(), &start, sizeof(start),
+                            D3D11_ASYNC_GETDATA_DONOTFLUSH);
       const HRESULT endResult = context_->GetData(
-          queries.end.Get(), &end, sizeof(end),
-          D3D11_ASYNC_GETDATA_DONOTFLUSH);
+          queries.end.Get(), &end, sizeof(end), D3D11_ASYNC_GETDATA_DONOTFLUSH);
       if (startResult == S_FALSE || endResult == S_FALSE) {
         continue;
       }
       queries.issued = false;
-      if (FAILED(startResult) || FAILED(endResult) ||
-          disjoint.Disjoint || disjoint.Frequency == 0U ||
-          end < start) {
+      if (FAILED(startResult) || FAILED(endResult) || disjoint.Disjoint ||
+          disjoint.Frequency == 0U || end < start) {
         continue;
       }
-      latestGpuFrameMilliseconds_ =
-          static_cast<double>(end - start) * 1000.0 /
-          static_cast<double>(disjoint.Frequency);
+      latestGpuFrameMilliseconds_ = static_cast<double>(end - start) * 1000.0 /
+                                    static_cast<double>(disjoint.Frequency);
     }
   }
 
   [[nodiscard]] GpuTimestampQueries *beginGpuTimestamp() noexcept {
-    for (std::size_t offset = 0U;
-         offset < gpuTimestampQueries_.size();
+    for (std::size_t offset = 0U; offset < gpuTimestampQueries_.size();
          ++offset) {
       const auto index =
-          (nextGpuTimestampQuery_ + offset) %
-          gpuTimestampQueries_.size();
+          (nextGpuTimestampQuery_ + offset) % gpuTimestampQueries_.size();
       auto &queries = gpuTimestampQueries_[index];
       if (queries.issued) {
         continue;
       }
-      nextGpuTimestampQuery_ =
-          (index + 1U) % gpuTimestampQueries_.size();
+      nextGpuTimestampQuery_ = (index + 1U) % gpuTimestampQueries_.size();
       context_->Begin(queries.disjoint.Get());
       context_->End(queries.start.Get());
       return &queries;
@@ -1631,17 +1613,16 @@ private:
     queries->issued = true;
   }
 
-  [[nodiscard]] static std::uint64_t saturatingAdd(
-      const std::uint64_t left,
-      const std::uint64_t right) noexcept {
+  [[nodiscard]] static std::uint64_t
+  saturatingAdd(const std::uint64_t left, const std::uint64_t right) noexcept {
     if (right > std::numeric_limits<std::uint64_t>::max() - left) {
       return std::numeric_limits<std::uint64_t>::max();
     }
     return left + right;
   }
 
-  [[nodiscard]] static std::uint64_t textureBytes(
-      ID3D11ShaderResourceView *const view) noexcept {
+  [[nodiscard]] static std::uint64_t
+  textureBytes(ID3D11ShaderResourceView *const view) noexcept {
     if (view == nullptr) {
       return 0U;
     }
@@ -1658,10 +1639,8 @@ private:
     UINT height = description.Height;
     const UINT levels = std::max(1U, description.MipLevels);
     for (UINT level = 0U; level < levels; ++level) {
-      const auto pixels =
-          static_cast<std::uint64_t>(width) * height;
-      total = saturatingAdd(
-          total, pixels * 4U * description.ArraySize);
+      const auto pixels = static_cast<std::uint64_t>(width) * height;
+      total = saturatingAdd(total, pixels * 4U * description.ArraySize);
       width = std::max(1U, width / 2U);
       height = std::max(1U, height / 2U);
     }
@@ -1670,24 +1649,20 @@ private:
 
   [[nodiscard]] std::uint64_t estimateGpuMemoryBytes(
       const airfix::render::DrawModelPayload &,
-      const std::vector<MeshResources> &meshes,
-      const bool gameplay,
+      const std::vector<MeshResources> &meshes, const bool gameplay,
       const airfix::render::RenderTargetPixelExtent renderExtent,
       const bool usesScaledSceneTarget) const noexcept {
-    const auto outputPixels =
-        static_cast<std::uint64_t>(width_) *
-        static_cast<std::uint64_t>(height_);
+    const auto outputPixels = static_cast<std::uint64_t>(width_) *
+                              static_cast<std::uint64_t>(height_);
     // Two BGRA8 swap-chain buffers plus one 32-bit depth target.
     std::uint64_t total = outputPixels * 12U;
     if (usesScaledSceneTarget) {
       const auto scaledPixels =
-          static_cast<std::uint64_t>(renderExtent.width) *
-          renderExtent.height;
+          static_cast<std::uint64_t>(renderExtent.width) * renderExtent.height;
       total = saturatingAdd(total, scaledPixels * 8U);
     }
     for (const auto &mesh : meshes) {
-      for (ID3D11Buffer *buffer :
-           {mesh.vertices.Get(), mesh.indices.Get()}) {
+      for (ID3D11Buffer *buffer : {mesh.vertices.Get(), mesh.indices.Get()}) {
         if (buffer == nullptr) {
           continue;
         }
@@ -1713,18 +1688,19 @@ private:
       for (const auto &texture : mission_->hudInstrumentTextures) {
         total = saturatingAdd(total, textureBytes(texture.Get()));
       }
+      for (const auto &texture : mission_->weaponPanelTextures) {
+        total = saturatingAdd(total, textureBytes(texture.Get()));
+      }
     } else {
       total = saturatingAdd(total, textureBytes(texture_.Get()));
     }
-    total = saturatingAdd(
-        total, sizeof(SmokeUniforms) + sizeof(GameplayUniforms) +
-                   sizeof(OverlayUniforms));
-    if (overlayExtent_.width != 0U &&
-        overlayExtent_.height != 0U) {
-      total = saturatingAdd(
-          total,
-          static_cast<std::uint64_t>(overlayExtent_.width) *
-              overlayExtent_.height * 4U);
+    total =
+        saturatingAdd(total, sizeof(SmokeUniforms) + sizeof(GameplayUniforms) +
+                                 sizeof(OverlayUniforms));
+    if (overlayExtent_.width != 0U && overlayExtent_.height != 0U) {
+      total = saturatingAdd(total,
+                            static_cast<std::uint64_t>(overlayExtent_.width) *
+                                overlayExtent_.height * 4U);
     }
     if (productUiExtent_.width != 0U && productUiExtent_.height != 0U) {
       total = saturatingAdd(total,
@@ -1740,8 +1716,7 @@ private:
       throw std::runtime_error(
           "portable render diagnostics image is incomplete");
     }
-    if (!overlayTexture_ ||
-        overlayExtent_.width != image.width ||
+    if (!overlayTexture_ || overlayExtent_.width != image.width ||
         overlayExtent_.height != image.height) {
       D3D11_TEXTURE2D_DESC description{};
       description.Width = image.width;
@@ -1756,13 +1731,12 @@ private:
 
       ComPtr<ID3D11Texture2D> texture;
       ComPtr<ID3D11ShaderResourceView> view;
+      requireSuccess(device_->CreateTexture2D(&description, nullptr,
+                                              texture.GetAddressOf()),
+                     "ID3D11Device::CreateTexture2D(diagnostics overlay)");
       requireSuccess(
-          device_->CreateTexture2D(
-              &description, nullptr, texture.GetAddressOf()),
-          "ID3D11Device::CreateTexture2D(diagnostics overlay)");
-      requireSuccess(
-          device_->CreateShaderResourceView(
-              texture.Get(), nullptr, view.GetAddressOf()),
+          device_->CreateShaderResourceView(texture.Get(), nullptr,
+                                            view.GetAddressOf()),
           "ID3D11Device::CreateShaderResourceView(diagnostics overlay)");
       overlayTexture_ = std::move(texture);
       overlayShaderResource_ = std::move(view);
@@ -1770,23 +1744,19 @@ private:
     }
 
     D3D11_MAPPED_SUBRESOURCE mapped{};
-    requireSuccess(
-        context_->Map(
-            overlayTexture_.Get(), 0U, D3D11_MAP_WRITE_DISCARD, 0U,
-            &mapped),
-        "ID3D11DeviceContext::Map(diagnostics overlay)");
+    requireSuccess(context_->Map(overlayTexture_.Get(), 0U,
+                                 D3D11_MAP_WRITE_DISCARD, 0U, &mapped),
+                   "ID3D11DeviceContext::Map(diagnostics overlay)");
     if (mapped.RowPitch < image.bytesPerRow) {
       context_->Unmap(overlayTexture_.Get(), 0U);
       throw std::runtime_error(
           "D3D11 diagnostics overlay row pitch is invalid");
     }
     for (std::uint32_t row = 0U; row < image.height; ++row) {
-      auto *destination =
-          static_cast<std::uint8_t *>(mapped.pData) +
-          static_cast<std::size_t>(row) * mapped.RowPitch;
-      const auto *source =
-          image.rgba8.data() +
-          static_cast<std::size_t>(row) * image.bytesPerRow;
+      auto *destination = static_cast<std::uint8_t *>(mapped.pData) +
+                          static_cast<std::size_t>(row) * mapped.RowPitch;
+      const auto *source = image.rgba8.data() +
+                           static_cast<std::size_t>(row) * image.bytesPerRow;
       std::copy_n(source, image.bytesPerRow, destination);
     }
     context_->Unmap(overlayTexture_.Get(), 0U);
@@ -1798,14 +1768,12 @@ private:
     if (!diagnostics_.latest().has_value()) {
       return;
     }
-    constexpr auto refreshInterval =
-        std::chrono::milliseconds(250);
+    constexpr auto refreshInterval = std::chrono::milliseconds(250);
     if (!lastOverlayRefresh_.has_value() ||
         frameStarted - *lastOverlayRefresh_ >= refreshInterval ||
         !overlayShaderResource_) {
-      const auto image =
-          airfix::render::rasterizeRenderFrameDiagnostics(
-              *diagnostics_.latest(), settings_.uiScalePercent);
+      const auto image = airfix::render::rasterizeRenderFrameDiagnostics(
+          *diagnostics_.latest(), settings_.uiScalePercent);
       updateDiagnosticsOverlayTexture(image);
       lastOverlayRefresh_ = frameStarted;
     }
@@ -1814,8 +1782,7 @@ private:
       return;
     }
 
-    const float margin =
-        static_cast<float>(overlayPixelScale_ * 8U);
+    const float margin = static_cast<float>(overlayPixelScale_ * 8U);
     const OverlayUniforms uniforms{
         .outputAndPanelSize =
             {
@@ -1828,8 +1795,8 @@ private:
         .tint = {1.0F, 1.0F, 1.0F, 1.0F},
         .uvRect = {0.0F, 0.0F, 1.0F, 1.0F},
     };
-    context_->UpdateSubresource(
-        overlayUniforms_.Get(), 0U, nullptr, &uniforms, 0U, 0U);
+    context_->UpdateSubresource(overlayUniforms_.Get(), 0U, nullptr, &uniforms,
+                                0U, 0U);
 
     ID3D11RenderTargetView *outputTarget = renderTarget_.Get();
     context_->OMSetRenderTargets(1U, &outputTarget, nullptr);
@@ -1837,11 +1804,10 @@ private:
     context_->RSSetState(rasterizer_.Get());
     context_->OMSetDepthStencilState(presentationDepthState_.Get(), 0U);
     constexpr std::array<float, 4U> blendFactor{};
-    context_->OMSetBlendState(
-        overlayBlendState_.Get(), blendFactor.data(), 0xFFFFFFFFU);
+    context_->OMSetBlendState(overlayBlendState_.Get(), blendFactor.data(),
+                              0xFFFFFFFFU);
     context_->IASetInputLayout(nullptr);
-    context_->IASetPrimitiveTopology(
-        D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     context_->VSSetShader(overlayVertexShader_.Get(), nullptr, 0U);
     ID3D11Buffer *uniformBuffer = overlayUniforms_.Get();
     context_->VSSetConstantBuffers(2U, 1U, &uniformBuffer);
@@ -1849,15 +1815,13 @@ private:
     context_->PSSetShader(overlayPixelShader_.Get(), nullptr, 0U);
     ID3D11SamplerState *sampler = uiSampler_.Get();
     context_->PSSetSamplers(0U, 1U, &sampler);
-    ID3D11ShaderResourceView *view =
-        overlayShaderResource_.Get();
+    ID3D11ShaderResourceView *view = overlayShaderResource_.Get();
     context_->PSSetShaderResources(0U, 1U, &view);
     context_->Draw(6U, 0U);
 
     ID3D11ShaderResourceView *nullView = nullptr;
     context_->PSSetShaderResources(0U, 1U, &nullView);
-    context_->OMSetBlendState(
-        nullptr, blendFactor.data(), 0xFFFFFFFFU);
+    context_->OMSetBlendState(nullptr, blendFactor.data(), 0xFFFFFFFFU);
   }
 
   void drawProductUiOverlay() {
@@ -1916,8 +1880,7 @@ private:
                 sourceAlphaOneMinusSourceAlpha ||
         submission.depthMode !=
             airfix::content::LegacyWeaponCrosshairDepthMode::alwaysWrite ||
-        submission.tintArgb !=
-            airfix::content::legacyWeaponCrosshairTintArgb ||
+        submission.tintArgb != airfix::content::legacyWeaponCrosshairTintArgb ||
         submission.uv != airfix::content::LegacyWeaponCrosshairUvRect{} ||
         !submission.belongsTo(*mission_->crosshairs)) {
       return false;
@@ -1931,9 +1894,8 @@ private:
 
     const auto &rectangle = submission.outputRect;
     if (!std::isfinite(rectangle.x) || !std::isfinite(rectangle.y) ||
-        !std::isfinite(rectangle.width) ||
-        !std::isfinite(rectangle.height) || rectangle.width <= 0.0F ||
-        rectangle.height <= 0.0F) {
+        !std::isfinite(rectangle.width) || !std::isfinite(rectangle.height) ||
+        rectangle.width <= 0.0F || rectangle.height <= 0.0F) {
       return false;
     }
     const OverlayUniforms uniforms{
@@ -2201,17 +2163,16 @@ private:
               airfix::content::LegacyAircraftHudRollingDigitsSamplingMode::
                   linearClamp ||
           !std::isfinite(rectangle.x) || !std::isfinite(rectangle.y) ||
-          !std::isfinite(rectangle.width) ||
-          !std::isfinite(rectangle.height) || rectangle.x < 0.0F ||
-          rectangle.y < 0.0F || rectangle.width <= 0.0F ||
+          !std::isfinite(rectangle.width) || !std::isfinite(rectangle.height) ||
+          rectangle.x < 0.0F || rectangle.y < 0.0F || rectangle.width <= 0.0F ||
           rectangle.height <= 0.0F ||
           rectangle.x + rectangle.width > static_cast<float>(width_) ||
           rectangle.y + rectangle.height > static_cast<float>(height_) ||
           !std::isfinite(uv.minimumU) || !std::isfinite(uv.minimumV) ||
           !std::isfinite(uv.maximumU) || !std::isfinite(uv.maximumV) ||
-          uv.minimumU < 0.0F || uv.minimumV < 0.0F ||
-          uv.maximumU > 1.0F || uv.maximumV > 1.0F ||
-          uv.minimumU >= uv.maximumU || uv.minimumV >= uv.maximumV ||
+          uv.minimumU < 0.0F || uv.minimumV < 0.0F || uv.maximumU > 1.0F ||
+          uv.maximumV > 1.0F || uv.minimumU >= uv.maximumU ||
+          uv.minimumV >= uv.maximumV ||
           textureIndex >= mission_->rollingDigitTextures.size() ||
           !mission_->rollingDigitTextures[textureIndex]) {
         return 0U;
@@ -2262,6 +2223,116 @@ private:
     return submission.commandCount;
   }
 
+  [[nodiscard]] std::size_t drawLegacyAircraftHudWeaponPanels(
+      const airfix::content::LegacyAircraftHudWeaponPanelsSubmission
+          &submission) {
+    if (!mission_ || !mission_->weaponPanels.has_value() ||
+        !mission_->rollingDigits.has_value() || !renderTarget_ ||
+        !submission.belongsTo(*mission_->weaponPanels,
+                              *mission_->rollingDigits) ||
+        submission.commandCount == 0U ||
+        submission.commandCount > submission.orderedCommands.size()) {
+      return 0U;
+    }
+
+    using TextureNamespace =
+        airfix::content::LegacyAircraftHudWeaponPanelTextureNamespace;
+    using BlendMode = airfix::content::LegacyAircraftHudWeaponPanelBlendMode;
+    using SamplingMode =
+        airfix::content::LegacyAircraftHudWeaponPanelSamplingMode;
+    for (std::size_t index = 0U; index < submission.commandCount; ++index) {
+      const auto &command = submission.orderedCommands[index];
+      const auto &rectangle = command.outputRect;
+      if (!std::isfinite(rectangle.x) || !std::isfinite(rectangle.y) ||
+          !std::isfinite(rectangle.width) || !std::isfinite(rectangle.height) ||
+          rectangle.x < 0.0F || rectangle.y < 0.0F || rectangle.width <= 0.0F ||
+          rectangle.height <= 0.0F ||
+          rectangle.x + rectangle.width > static_cast<float>(width_) ||
+          rectangle.y + rectangle.height > static_cast<float>(height_)) {
+        return 0U;
+      }
+      const auto textureIndex =
+          static_cast<std::size_t>(command.textureId.value);
+      if (command.textureNamespace == TextureNamespace::weaponPanels) {
+        if (command.blendMode != BlendMode::sourceAlphaOneMinusSourceAlpha ||
+            command.samplingMode != SamplingMode::linearClamp ||
+            textureIndex >= mission_->weaponPanelTextures.size() ||
+            !mission_->weaponPanelTextures[textureIndex]) {
+          return 0U;
+        }
+      } else if (command.textureNamespace == TextureNamespace::rollingDigits) {
+        if (command.blendMode != BlendMode::sourceAlphaOneMinusSourceAlpha ||
+            command.samplingMode != SamplingMode::linearClamp ||
+            textureIndex >= mission_->rollingDigitTextures.size() ||
+            !mission_->rollingDigitTextures[textureIndex]) {
+          return 0U;
+        }
+      } else if (command.textureNamespace == TextureNamespace::none) {
+        if (command.blendMode != BlendMode::destinationMultiplySourceColour ||
+            command.samplingMode != SamplingMode::notApplicable) {
+          return 0U;
+        }
+      } else {
+        return 0U;
+      }
+    }
+
+    ID3D11RenderTargetView *outputTarget = renderTarget_.Get();
+    context_->OMSetRenderTargets(1U, &outputTarget, depthView_.Get());
+    context_->RSSetViewports(1U, &viewport_);
+    context_->RSSetState(rasterizer_.Get());
+    context_->OMSetDepthStencilState(crosshairDepthState_.Get(), 0U);
+    context_->IASetInputLayout(nullptr);
+    context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context_->VSSetShader(overlayVertexShader_.Get(), nullptr, 0U);
+    ID3D11Buffer *uniformBuffer = overlayUniforms_.Get();
+    context_->VSSetConstantBuffers(2U, 1U, &uniformBuffer);
+    context_->PSSetConstantBuffers(2U, 1U, &uniformBuffer);
+    ID3D11SamplerState *sampler = crosshairSampler_.Get();
+    context_->PSSetSamplers(0U, 1U, &sampler);
+    constexpr std::array<float, 4U> blendFactor{};
+
+    for (std::size_t index = 0U; index < submission.commandCount; ++index) {
+      const auto &command = submission.orderedCommands[index];
+      const auto &rectangle = command.outputRect;
+      const OverlayUniforms uniforms{
+          .outputAndPanelSize = {static_cast<float>(width_),
+                                 static_cast<float>(height_), rectangle.width,
+                                 rectangle.height},
+          .panelOrigin = {rectangle.x, rectangle.y, 0.0F, 0.0F},
+          .tint = normalizedArgb(command.colourArgb),
+          .uvRect = {command.uv.minimumU, command.uv.minimumV,
+                     command.uv.maximumU, command.uv.maximumV},
+      };
+      context_->UpdateSubresource(overlayUniforms_.Get(), 0U, nullptr,
+                                  &uniforms, 0U, 0U);
+
+      ID3D11ShaderResourceView *view = nullptr;
+      if (command.textureNamespace == TextureNamespace::weaponPanels) {
+        context_->OMSetBlendState(overlayBlendState_.Get(), blendFactor.data(),
+                                  0xFFFFFFFFU);
+        context_->PSSetShader(overlayPixelShader_.Get(), nullptr, 0U);
+        view = mission_->weaponPanelTextures[command.textureId.value].Get();
+      } else if (command.textureNamespace == TextureNamespace::rollingDigits) {
+        context_->OMSetBlendState(overlayBlendState_.Get(), blendFactor.data(),
+                                  0xFFFFFFFFU);
+        context_->PSSetShader(overlayPixelShader_.Get(), nullptr, 0U);
+        view = mission_->rollingDigitTextures[command.textureId.value].Get();
+      } else {
+        context_->OMSetBlendState(destinationMultiplyBlendState_.Get(),
+                                  blendFactor.data(), 0xFFFFFFFFU);
+        context_->PSSetShader(overlaySolidPixelShader_.Get(), nullptr, 0U);
+      }
+      context_->PSSetShaderResources(0U, 1U, &view);
+      context_->Draw(6U, 0U);
+    }
+
+    ID3D11ShaderResourceView *nullView = nullptr;
+    context_->PSSetShaderResources(0U, 1U, &nullView);
+    context_->OMSetBlendState(nullptr, blendFactor.data(), 0xFFFFFFFFU);
+    return submission.commandCount;
+  }
+
   void releaseSwapTargets() {
     context_->OMSetRenderTargets(0U, nullptr, nullptr);
     renderTarget_.Reset();
@@ -2281,9 +2352,9 @@ private:
     resetPendingResizeBackoff();
   }
 
-  void recordPendingResizeFailure(
-      const airfix::render::OutputPixelExtent extent,
-      const ResizeAttemptKind attemptKind) noexcept {
+  void
+  recordPendingResizeFailure(const airfix::render::OutputPixelExtent extent,
+                             const ResizeAttemptKind attemptKind) noexcept {
     pendingResizeExtent_ = extent;
     if (attemptKind == ResizeAttemptKind::explicitSignal) {
       resetPendingResizeBackoff();
@@ -2292,10 +2363,8 @@ private:
 
     constexpr std::uint32_t maximumDelayFrames = 120U;
     constexpr std::uint32_t maximumShift = 7U;
-    const auto shift =
-        std::min(pendingResizeRetryFailureCount_, maximumShift);
-    pendingResizeRetryDelayFrames_ =
-        std::min(1U << shift, maximumDelayFrames);
+    const auto shift = std::min(pendingResizeRetryFailureCount_, maximumShift);
+    pendingResizeRetryDelayFrames_ = std::min(1U << shift, maximumDelayFrames);
     if (pendingResizeRetryFailureCount_ < maximumShift) {
       ++pendingResizeRetryFailureCount_;
     }
@@ -2380,6 +2449,8 @@ private:
         compileShader("AirfixOverlayVS", "vs_5_0");
     const ComPtr<ID3DBlob> overlayPixelBytecode =
         compileShader("AirfixOverlayPS", "ps_5_0");
+    const ComPtr<ID3DBlob> overlaySolidPixelBytecode =
+        compileShader("AirfixOverlaySolidPS", "ps_5_0");
     const ComPtr<ID3DBlob> gaugeVertexBytecode =
         compileShader("AirfixGaugeVS", "vs_5_0");
     const ComPtr<ID3DBlob> gaugeTexturePixelBytecode =
@@ -2427,6 +2498,11 @@ private:
                                    overlayPixelBytecode->GetBufferSize(),
                                    nullptr, overlayPixelShader_.GetAddressOf()),
         "ID3D11Device::CreatePixelShader(overlay)");
+    requireSuccess(device_->CreatePixelShader(
+                       overlaySolidPixelBytecode->GetBufferPointer(),
+                       overlaySolidPixelBytecode->GetBufferSize(), nullptr,
+                       overlaySolidPixelShader_.GetAddressOf()),
+                   "ID3D11Device::CreatePixelShader(overlay solid)");
     requireSuccess(
         device_->CreateVertexShader(gaugeVertexBytecode->GetBufferPointer(),
                                     gaugeVertexBytecode->GetBufferSize(),
@@ -2536,9 +2612,10 @@ private:
     samplerDescription.Filter = *classicFilter;
     samplerDescription.MaxAnisotropy =
         static_cast<UINT>(classicSampling->maximumAnisotropy);
-    requireSuccess(device_->CreateSamplerState(&samplerDescription,
-                                               classicSceneSampler_.GetAddressOf()),
-                   "ID3D11Device::CreateSamplerState(classic scene)");
+    requireSuccess(
+        device_->CreateSamplerState(&samplerDescription,
+                                    classicSceneSampler_.GetAddressOf()),
+        "ID3D11Device::CreateSamplerState(classic scene)");
     samplerDescription.Filter = *enhancedFilter;
     samplerDescription.MaxAnisotropy =
         static_cast<UINT>(enhancedSampling->maximumAnisotropy);
@@ -2552,16 +2629,14 @@ private:
                                                uiSampler_.GetAddressOf()),
                    "ID3D11Device::CreateSamplerState(UI)");
     samplerDescription.Filter = D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT;
+    requireSuccess(device_->CreateSamplerState(
+                       &samplerDescription, crosshairSampler_.GetAddressOf()),
+                   "ID3D11Device::CreateSamplerState(weapon crosshair)");
+    samplerDescription.Filter = D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT;
     requireSuccess(
         device_->CreateSamplerState(&samplerDescription,
-                                    crosshairSampler_.GetAddressOf()),
-        "ID3D11Device::CreateSamplerState(weapon crosshair)");
-    samplerDescription.Filter =
-        D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT;
-    requireSuccess(device_->CreateSamplerState(
-                       &samplerDescription,
-                       presentationSampler_.GetAddressOf()),
-                   "ID3D11Device::CreateSamplerState(presentation)");
+                                    presentationSampler_.GetAddressOf()),
+        "ID3D11Device::CreateSamplerState(presentation)");
 
     D3D11_RASTERIZER_DESC rasterizerDescription{};
     rasterizerDescription.FillMode = D3D11_FILL_SOLID;
@@ -2610,8 +2685,7 @@ private:
         "ID3D11Device::CreateDepthStencilState(weapon crosshair)");
 
     D3D11_BLEND_DESC overlayBlendDescription{};
-    auto &overlayTarget =
-        overlayBlendDescription.RenderTarget[0];
+    auto &overlayTarget = overlayBlendDescription.RenderTarget[0];
     overlayTarget.BlendEnable = TRUE;
     overlayTarget.SrcBlend = D3D11_BLEND_SRC_ALPHA;
     overlayTarget.DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
@@ -2619,13 +2693,27 @@ private:
     overlayTarget.SrcBlendAlpha = D3D11_BLEND_ONE;
     overlayTarget.DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
     overlayTarget.BlendOpAlpha = D3D11_BLEND_OP_ADD;
-    overlayTarget.RenderTargetWriteMask =
+    overlayTarget.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    requireSuccess(device_->CreateBlendState(&overlayBlendDescription,
+                                             overlayBlendState_.GetAddressOf()),
+                   "ID3D11Device::CreateBlendState(overlay)");
+
+    D3D11_BLEND_DESC destinationMultiplyBlendDescription{};
+    auto &destinationMultiplyTarget =
+        destinationMultiplyBlendDescription.RenderTarget[0];
+    destinationMultiplyTarget.BlendEnable = TRUE;
+    destinationMultiplyTarget.SrcBlend = D3D11_BLEND_ZERO;
+    destinationMultiplyTarget.DestBlend = D3D11_BLEND_SRC_COLOR;
+    destinationMultiplyTarget.BlendOp = D3D11_BLEND_OP_ADD;
+    destinationMultiplyTarget.SrcBlendAlpha = D3D11_BLEND_ZERO;
+    destinationMultiplyTarget.DestBlendAlpha = D3D11_BLEND_SRC_ALPHA;
+    destinationMultiplyTarget.BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    destinationMultiplyTarget.RenderTargetWriteMask =
         D3D11_COLOR_WRITE_ENABLE_ALL;
-    requireSuccess(
-        device_->CreateBlendState(
-            &overlayBlendDescription,
-            overlayBlendState_.GetAddressOf()),
-        "ID3D11Device::CreateBlendState(overlay)");
+    requireSuccess(device_->CreateBlendState(
+                       &destinationMultiplyBlendDescription,
+                       destinationMultiplyBlendState_.GetAddressOf()),
+                   "ID3D11Device::CreateBlendState(destination multiply)");
 
     auto productUiBlendDescription = overlayBlendDescription;
     auto &productUiTarget = productUiBlendDescription.RenderTarget[0];
@@ -2647,18 +2735,15 @@ private:
         .MiscFlags = 0U,
     };
     for (auto &queries : gpuTimestampQueries_) {
-      requireSuccess(
-          device_->CreateQuery(
-              &disjointDescription, queries.disjoint.GetAddressOf()),
-          "ID3D11Device::CreateQuery(timestamp disjoint)");
-      requireSuccess(
-          device_->CreateQuery(
-              &timestampDescription, queries.start.GetAddressOf()),
-          "ID3D11Device::CreateQuery(timestamp start)");
-      requireSuccess(
-          device_->CreateQuery(
-              &timestampDescription, queries.end.GetAddressOf()),
-          "ID3D11Device::CreateQuery(timestamp end)");
+      requireSuccess(device_->CreateQuery(&disjointDescription,
+                                          queries.disjoint.GetAddressOf()),
+                     "ID3D11Device::CreateQuery(timestamp disjoint)");
+      requireSuccess(device_->CreateQuery(&timestampDescription,
+                                          queries.start.GetAddressOf()),
+                     "ID3D11Device::CreateQuery(timestamp start)");
+      requireSuccess(device_->CreateQuery(&timestampDescription,
+                                          queries.end.GetAddressOf()),
+                     "ID3D11Device::CreateQuery(timestamp end)");
     }
   }
 
@@ -2740,8 +2825,8 @@ private:
   }
 
   template <typename LoadedTexture>
-  [[nodiscard]] ComPtr<ID3D11ShaderResourceView> createUploadedTexture(
-      const LoadedTexture &source) const {
+  [[nodiscard]] ComPtr<ID3D11ShaderResourceView>
+  createUploadedTexture(const LoadedTexture &source) const {
     const auto &upload = source.upload;
     if (upload.allocatedMipCount == 0U || upload.uploadedMipCount == 0U ||
         upload.uploadLevels.size() != upload.uploadedMipCount ||
@@ -2937,6 +3022,27 @@ private:
     return result;
   }
 
+  [[nodiscard]] std::vector<ComPtr<ID3D11ShaderResourceView>>
+  createAircraftHudWeaponPanelTextures(
+      const airfix::content::LoadedLegacyAircraftHudWeaponPanelTextureSet
+          &sources) const {
+    if (!sources.valid()) {
+      throw std::runtime_error(
+          "aircraft HUD weapon panel textures failed their upload contract");
+    }
+    std::vector<ComPtr<ID3D11ShaderResourceView>> result;
+    result.reserve(sources.textures.size());
+    for (std::size_t index = 0U; index < sources.textures.size(); ++index) {
+      const auto &source = sources.textures[index];
+      if (source.textureId.value != index) {
+        throw std::runtime_error(
+            "aircraft HUD weapon panels do not use dense HUD-local IDs");
+      }
+      result.push_back(createUploadedTexture(source));
+    }
+    return result;
+  }
+
   void createTextures() {
     texture_ =
         createTexture(airfix::render::PublicRenderSmokeScene::textureWidth,
@@ -2965,9 +3071,9 @@ private:
         D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
 
     ScaledSceneTargets candidate;
-    if (FAILED(device_->CreateTexture2D(
-            &colorDescription, nullptr,
-            candidate.colorTexture.GetAddressOf())) ||
+    if (FAILED(
+            device_->CreateTexture2D(&colorDescription, nullptr,
+                                     candidate.colorTexture.GetAddressOf())) ||
         FAILED(device_->CreateRenderTargetView(
             candidate.colorTexture.Get(), nullptr,
             candidate.renderTarget.GetAddressOf())) ||
@@ -2988,9 +3094,9 @@ private:
     depthDescription.Usage = D3D11_USAGE_DEFAULT;
     depthDescription.BindFlags = D3D11_BIND_DEPTH_STENCIL;
 
-    if (FAILED(device_->CreateTexture2D(
-            &depthDescription, nullptr,
-            candidate.depthTexture.GetAddressOf())) ||
+    if (FAILED(
+            device_->CreateTexture2D(&depthDescription, nullptr,
+                                     candidate.depthTexture.GetAddressOf())) ||
         FAILED(device_->CreateDepthStencilView(
             candidate.depthTexture.Get(), nullptr,
             candidate.depthView.GetAddressOf()))) {
@@ -3018,8 +3124,7 @@ private:
     context_->RSSetState(rasterizer_.Get());
     context_->OMSetDepthStencilState(presentationDepthState_.Get(), 0U);
     context_->IASetInputLayout(nullptr);
-    context_->IASetPrimitiveTopology(
-        D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     context_->VSSetShader(presentationVertexShader_.Get(), nullptr, 0U);
     context_->PSSetShader(presentationPixelShader_.Get(), nullptr, 0U);
 
@@ -3034,8 +3139,7 @@ private:
     context_->PSSetShaderResources(0U, 1U, &nullView);
   }
 
-  void createSwapTargets(
-      const int currentWidth, const int currentHeight) {
+  void createSwapTargets(const int currentWidth, const int currentHeight) {
     if (currentWidth <= 0 || currentHeight <= 0) {
       width_ = 0;
       height_ = 0;
@@ -3047,8 +3151,8 @@ private:
         swapChain_->GetBuffer(0U, IID_PPV_ARGS(backBuffer.GetAddressOf())),
         "IDXGISwapChain::GetBuffer");
     ComPtr<ID3D11RenderTargetView> renderTarget;
-    requireSuccess(device_->CreateRenderTargetView(
-                       backBuffer.Get(), nullptr, renderTarget.GetAddressOf()),
+    requireSuccess(device_->CreateRenderTargetView(backBuffer.Get(), nullptr,
+                                                   renderTarget.GetAddressOf()),
                    "ID3D11Device::CreateRenderTargetView");
 
     D3D11_TEXTURE2D_DESC depthDescription{};
@@ -3227,6 +3331,7 @@ private:
   ComPtr<ID3D11PixelShader> presentationPixelShader_;
   ComPtr<ID3D11VertexShader> overlayVertexShader_;
   ComPtr<ID3D11PixelShader> overlayPixelShader_;
+  ComPtr<ID3D11PixelShader> overlaySolidPixelShader_;
   ComPtr<ID3D11VertexShader> gaugeVertexShader_;
   ComPtr<ID3D11PixelShader> gaugeTexturePixelShader_;
   ComPtr<ID3D11PixelShader> gaugeSolidPixelShader_;
@@ -3247,6 +3352,7 @@ private:
   ComPtr<ID3D11DepthStencilState> presentationDepthState_;
   ComPtr<ID3D11DepthStencilState> crosshairDepthState_;
   ComPtr<ID3D11BlendState> overlayBlendState_;
+  ComPtr<ID3D11BlendState> destinationMultiplyBlendState_;
   ComPtr<ID3D11BlendState> productUiBlendState_;
   ComPtr<ID3D11ShaderResourceView> texture_;
   ComPtr<ID3D11ShaderResourceView> fallbackTexture_;
@@ -3262,18 +3368,15 @@ private:
   airfix::render::RenderFrameDiagnosticsAccumulator diagnostics_;
   airfix::render::RenderTargetPixelExtent overlayExtent_{};
   airfix::render::RenderTargetPixelExtent productUiExtent_{};
-  std::optional<std::chrono::steady_clock::time_point>
-      previousFrameStart_;
-  std::optional<std::chrono::steady_clock::time_point>
-      lastOverlayRefresh_;
+  std::optional<std::chrono::steady_clock::time_point> previousFrameStart_;
+  std::optional<std::chrono::steady_clock::time_point> lastOverlayRefresh_;
   std::optional<airfix::render::RenderTargetPixelRect>
       lastRenderedSceneViewport_;
   std::optional<airfix::render::ScenePresentationMode>
       lastRenderedScenePresentation_;
   std::optional<airfix::render::SceneTextureSamplingPolicy>
       lastRenderedSceneTextureSamplingPolicy_;
-  std::optional<airfix::render::OutputPixelExtent>
-      pendingResizeExtent_;
+  std::optional<airfix::render::OutputPixelExtent> pendingResizeExtent_;
   std::uint32_t pendingResizeRetryDelayFrames_{};
   std::uint32_t pendingResizeRetryFailureCount_{};
   std::uint32_t overlayPixelScale_{1U};
@@ -3296,10 +3399,9 @@ void AirfixD3D11Renderer::resize() { implementation_->resize(); }
 RenderPresentationSettingsApplyResult
 AirfixD3D11Renderer::applyRenderPresentationSettings(
     const airfix::render::RenderPresentationSettings &candidate,
-    const RenderPresentationSettingsPublicationGate
-        publicationGate) noexcept {
-  return implementation_->applyRenderPresentationSettings(
-      candidate, publicationGate);
+    const RenderPresentationSettingsPublicationGate publicationGate) noexcept {
+  return implementation_->applyRenderPresentationSettings(candidate,
+                                                          publicationGate);
 }
 
 airfix::render::RenderPresentationSettings
@@ -3307,33 +3409,29 @@ AirfixD3D11Renderer::renderPresentationSettings() const noexcept {
   return implementation_->renderPresentationSettings();
 }
 
-void AirfixD3D11Renderer::
-failNextScaledTargetPreparationsAfterColorForTesting(
+void AirfixD3D11Renderer::failNextScaledTargetPreparationsAfterColorForTesting(
     const std::uint32_t failureCount) noexcept {
-  implementation_->
-      failNextScaledTargetPreparationsAfterColorForTesting(
-          failureCount);
+  implementation_->failNextScaledTargetPreparationsAfterColorForTesting(
+      failureCount);
 }
 
 void AirfixD3D11Renderer::
-reportSurfaceUnavailableForNextApplyForTesting() noexcept {
+    reportSurfaceUnavailableForNextApplyForTesting() noexcept {
   implementation_->reportSurfaceUnavailableForNextApplyForTesting();
 }
 
-bool AirfixD3D11Renderer::resizeToPixelExtentForTesting(
-    const int width, const int height) {
+bool AirfixD3D11Renderer::resizeToPixelExtentForTesting(const int width,
+                                                        const int height) {
   return implementation_->resizeToPixelExtentForTesting(width, height);
 }
 
 std::optional<airfix::render::SceneTextureSamplingPolicy>
-AirfixD3D11Renderer::lastSceneTextureSamplingPolicyForTesting()
-    const noexcept {
+AirfixD3D11Renderer::lastSceneTextureSamplingPolicyForTesting() const noexcept {
   return implementation_->lastSceneTextureSamplingPolicyForTesting();
 }
 
 std::array<const void *, 5U>
-AirfixD3D11Renderer::
-scaledSceneTargetIdentityForTesting() const noexcept {
+AirfixD3D11Renderer::scaledSceneTargetIdentityForTesting() const noexcept {
   return implementation_->scaledSceneTargetIdentityForTesting();
 }
 
@@ -3347,8 +3445,8 @@ AirfixD3D11Renderer::lastScenePresentationForTesting() const noexcept {
   return implementation_->lastScenePresentationForTesting();
 }
 
-bool AirfixD3D11Renderer::
-hasDiagnosticsOverlayResourcesForTesting() const noexcept {
+bool AirfixD3D11Renderer::hasDiagnosticsOverlayResourcesForTesting()
+    const noexcept {
   return implementation_->hasDiagnosticsOverlayResourcesForTesting();
 }
 
@@ -3371,10 +3469,13 @@ void AirfixD3D11Renderer::installLoadedMissionRoom(
         &&rollingDigits,
     airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet
         &&hudInstruments,
+    airfix::content::LoadedLegacyAircraftHudWeaponPanelTextureSet
+        &&weaponPanels,
     const airfix::content::ContentRevision &expectedRevision) {
   implementation_->installLoadedMissionRoom(
       std::move(room), std::move(crosshairs), std::move(healthGauge),
-      std::move(rollingDigits), std::move(hudInstruments), expectedRevision);
+      std::move(rollingDigits), std::move(hudInstruments),
+      std::move(weaponPanels), expectedRevision);
 }
 
 bool AirfixD3D11Renderer::missionWorldRoomInstalled() const noexcept {

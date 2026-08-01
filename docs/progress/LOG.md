@@ -5081,3 +5081,33 @@ superseded evidence.
   smokes. The synthetic public-boundary suite and 708-file repository scan
   pass. Hosted iPhoneOS/iPhoneSimulator compilation remains the publication
   gate for the Objective-C++ and Metal changes.
+
+## 2026-08-01 - AirCraft HUD weapon panels
+
+- `EV-20260801-004` / `EXP-20260801-105` close the primary and selected-
+  secondary weapon-panel subsection inside the hash-verified AirCraft HUD
+  range `[0x10006B00,0x10007321)`. Ghidra 12.1.2 remains primary and Rizin
+  0.9.1 independently confirms the relevant blocks, calls, constants, and
+  instruction order.
+- An allocation-free fixed 14-command plan preserves both backgrounds before
+  primary then secondary content, exact 640x480 anchors, rolling ammunition
+  digits, icon/status geometry, the five-colour clamped palette, and atomic
+  digit-state publication. It accepts already-quantized ammo/status values and
+  does not invent a live `_ftol` policy.
+- A bounded authenticated owner loads the fixed format-8 64x64 backgrounds
+  from the selected localization archive and dynamically enumerates format-8
+  64x32 `weapon_*.gti` icons in the source archive. No individual weapon name
+  is hard-coded. Exact provenance, dimensions, mip/source/decode/upload/
+  resident budgets, cancellation, callbacks, and immutable transaction
+  identity are enforced atomically.
+- The cross-owner native-output packet binds that catalog to the authenticated
+  rolling-digit atlas, maps logical UI independently of the native 3D target,
+  and preserves source-alpha textures, ALWAYS/write depth, and the recovered
+  destination-multiply status fill. D3D11 and Metal stage all resources in the
+  complete mission transaction and own dormant fail-closed consumers; ordinary
+  frames publish no fabricated weapon state.
+- A clean portable CMake/Ninja build passes all 136 CTests. The complete
+  Windows x64 clang-cl/Ninja product and runtime HLSL build succeeds and all
+  148 native CTests pass, including the renderer and both product smokes.
+  Hosted iPhoneOS/iPhoneSimulator compilation remains the Objective-C++/Metal
+  publication gate.
