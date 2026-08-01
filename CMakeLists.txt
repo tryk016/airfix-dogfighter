@@ -230,6 +230,7 @@ add_library(airfix_render
     src/airfix/render/DrawMesh.cpp
     src/airfix/render/DrawSubmissionPlan.cpp
     src/airfix/render/LegacyCameraTransform.cpp
+    src/airfix/render/LegacyAircraftHudIdentityStatus.cpp
     src/airfix/render/LegacyAircraftHudRollingDigits.cpp
     src/airfix/render/LegacyAircraftHudWeaponPanels.cpp
     src/airfix/render/LegacyAircraftHudInstruments.cpp
@@ -358,6 +359,8 @@ add_library(airfix_content
     src/airfix/content/LegacyAircraftAudioClipSet.cpp
     src/airfix/content/LegacyAircraftHealthGaugeSubmission.cpp
     src/airfix/content/LegacyAircraftHealthGaugeTextureSet.cpp
+    src/airfix/content/LegacyAircraftHudIdentityStatusSubmission.cpp
+    src/airfix/content/LegacyAircraftHudIdentityStatusTextureSet.cpp
     src/airfix/content/LegacyAircraftHudInstrumentsSubmission.cpp
     src/airfix/content/LegacyAircraftHudInstrumentsTextureSet.cpp
     src/airfix/content/LegacyAircraftHudRollingDigitsSubmission.cpp
@@ -508,6 +511,16 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::content)
     add_test(NAME airfix_legacy_aircraft_hud_instruments_texture_set_tests
         COMMAND airfix_legacy_aircraft_hud_instruments_texture_set_tests)
+
+    add_executable(
+        airfix_legacy_aircraft_hud_identity_status_texture_set_tests
+        tests/LegacyAircraftHudIdentityStatusTextureSetTests.cpp)
+    target_link_libraries(
+        airfix_legacy_aircraft_hud_identity_status_texture_set_tests
+        PRIVATE airfix::content)
+    add_test(
+        NAME airfix_legacy_aircraft_hud_identity_status_texture_set_tests
+        COMMAND airfix_legacy_aircraft_hud_identity_status_texture_set_tests)
 
     add_executable(airfix_legacy_aircraft_hud_weapon_panel_texture_set_tests
         tests/LegacyAircraftHudWeaponPanelTextureSetTests.cpp)
@@ -1043,6 +1056,14 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_legacy_aircraft_hud_instruments_tests
         COMMAND airfix_legacy_aircraft_hud_instruments_tests)
+
+    add_executable(airfix_legacy_aircraft_hud_identity_status_tests
+        tests/LegacyAircraftHudIdentityStatusTests.cpp)
+    target_link_libraries(
+        airfix_legacy_aircraft_hud_identity_status_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_legacy_aircraft_hud_identity_status_tests
+        COMMAND airfix_legacy_aircraft_hud_identity_status_tests)
 
     add_executable(airfix_legacy_aircraft_hud_weapon_panels_tests
         tests/LegacyAircraftHudWeaponPanelsTests.cpp)

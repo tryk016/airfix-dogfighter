@@ -3,6 +3,7 @@
 #include "AirfixWindowsUiRasterizer.hpp"
 
 #include "airfix/content/LegacyAircraftHealthGaugeTextureSet.hpp"
+#include "airfix/content/LegacyAircraftHudIdentityStatusTextureSet.hpp"
 #include "airfix/content/LegacyAircraftHudInstrumentsTextureSet.hpp"
 #include "airfix/content/LegacyAircraftHudRollingDigitsTextureSet.hpp"
 #include "airfix/content/LegacyAircraftHudWeaponPanelTextureSet.hpp"
@@ -108,6 +109,8 @@ public:
           &&hudInstruments,
       airfix::content::LoadedLegacyAircraftHudWeaponPanelTextureSet
           &&weaponPanels,
+      airfix::content::LoadedLegacyAircraftHudIdentityStatusTextureSet
+          &&identityStatus,
       const airfix::content::ContentRevision &expectedRevision);
 
   [[nodiscard]] bool missionWorldRoomInstalled() const noexcept;

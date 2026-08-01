@@ -5111,3 +5111,34 @@ superseded evidence.
   148 native CTests pass, including the renderer and both product smokes.
   Hosted iPhoneOS/iPhoneSimulator compilation remains the Objective-C++/Metal
   publication gate.
+
+## 2026-08-01 - AirCraft HUD identity and status cluster
+
+- `EV-20260801-005` / `EXP-20260801-106` close the final contiguous cluster in
+  the hash-verified AirCraft HUD range `[0x10006B00,0x10007321)`. Ghidra 12.1.2
+  remains primary and Rizin 0.9.1 independently confirms exact block order,
+  calls, fields, and constants. The final controlled x32dbg attempt correctly
+  armed four relevant hardware execution breakpoints in one mapped session but
+  recorded zero accepted hits before pause/resume input loss ended the trial;
+  it contributes no dynamic claim.
+- An allocation-free ten-command plan preserves optional full-name `Ac*.gti`
+  icon lookup, four rolling health-percentage digits, exact team-one star/
+  other-team cross selection, four rolling technology-level digits, native
+  anchors, gates, and atomic state advancement. Both `_ftol` results enter as
+  already-quantized signed values.
+- A bounded authenticated owner loads the two fixed format-8 `64x64` badges
+  from the localization archive and dynamically enumerates all format-8
+  `64x64` `Ac*.gti` icons in the source archive. No aircraft name is
+  hard-coded; provenance, dimensions, mip/source/decode/upload/resident
+  budgets, cancellation, callbacks, and immutable transaction identity are
+  enforced atomically.
+- The identity-bound native-output packet composes that owner with the shared
+  rolling-digit atlas and retains full/fractional UVs, independent UI scale,
+  source-alpha blending, linear clamp, ALWAYS/write depth, and separation from
+  the physical 3D target. D3D11 and Metal stage the set in the all-or-nothing
+  mission transaction and own dormant fail-closed consumers. Ordinary frames
+  publish no fabricated identity, health, team, technology, or clock state.
+- A clean MSVC 19.51 HostX64/Ninja build compiles all 737 Windows product
+  steps and all 150 native CTests pass, including D3D11 and both product
+  smokes. A clean portable build passes all 138 CTests. Hosted
+  iPhoneOS/iPhoneSimulator compilation remains the publication gate.

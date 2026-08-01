@@ -21,7 +21,9 @@ struct SnapshotStorage final {
       airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet
           &&loadedHudInstruments,
       airfix::content::LoadedLegacyAircraftHudWeaponPanelTextureSet
-          &&loadedWeaponPanels)
+          &&loadedWeaponPanels,
+      airfix::content::LoadedLegacyAircraftHudIdentityStatusTextureSet
+          &&loadedIdentityStatus)
       : ticket(std::move(publicationTicket)),
         resultRevision(loadedRoom.revision),
         playerSpawnPose(loadedRoom.playerSpawnPose),
@@ -30,7 +32,8 @@ struct SnapshotStorage final {
         healthGauge(std::move(loadedHealthGauge)),
         rollingDigits(std::move(loadedRollingDigits)),
         hudInstruments(std::move(loadedHudInstruments)),
-        weaponPanels(std::move(loadedWeaponPanels)) {}
+        weaponPanels(std::move(loadedWeaponPanels)),
+        identityStatus(std::move(loadedIdentityStatus)) {}
 
   airfix::content::WorldRoomPublicationTicket ticket;
   airfix::content::ContentRevision resultRevision;
@@ -47,6 +50,9 @@ struct SnapshotStorage final {
       hudInstruments;
   std::optional<airfix::content::LoadedLegacyAircraftHudWeaponPanelTextureSet>
       weaponPanels;
+  std::optional<
+      airfix::content::LoadedLegacyAircraftHudIdentityStatusTextureSet>
+      identityStatus;
 };
 
 dispatch_queue_t snapshotTeardownQueue() {
@@ -90,7 +96,8 @@ dispatch_queue_t snapshotTeardownQueue() {
       !storage->healthGauge.has_value() ||
       !storage->rollingDigits.has_value() ||
       !storage->hudInstruments.has_value() ||
-      !storage->weaponPanels.has_value()) {
+      !storage->weaponPanels.has_value() ||
+      !storage->identityStatus.has_value()) {
     delete storage;
     return nil;
   }
@@ -104,7 +111,8 @@ dispatch_queue_t snapshotTeardownQueue() {
                   storage->healthGauge->textures.size() +
                   storage->rollingDigits->textures.size() +
                   storage->hudInstruments->textures.size() +
-                  storage->weaponPanels->textures.size();
+                  storage->weaponPanels->textures.size() +
+                  storage->identityStatus->textures.size();
   _meshCount = storage->room->submission.meshUploads.size();
   _drawCommandCount = storage->room->submission.commands.size();
   _audioClipCount = storage->audioClips->clips.size();
@@ -140,7 +148,8 @@ AirfixMissionWorldRoomSnapshot *makeMissionWorldRoomSnapshot(
     content::LoadedLegacyAircraftHealthGaugeTextureSet &&healthGauge,
     content::LoadedLegacyAircraftHudRollingDigitsTextureSet &&rollingDigits,
     content::LoadedLegacyAircraftHudInstrumentTextureSet &&hudInstruments,
-    content::LoadedLegacyAircraftHudWeaponPanelTextureSet &&weaponPanels) {
+    content::LoadedLegacyAircraftHudWeaponPanelTextureSet &&weaponPanels,
+    content::LoadedLegacyAircraftHudIdentityStatusTextureSet &&identityStatus) {
   if (content::validateMissionWorldRoomPublication(room,
                                                    ticket.expectedRevision)
           .has_value()) {
@@ -180,6 +189,12 @@ AirfixMissionWorldRoomSnapshot *makeMissionWorldRoomSnapshot(
     throw std::invalid_argument(
         "mission HUD weapon panel snapshot failed its publication contract");
   }
+  if (!identityStatus.valid() ||
+      identityStatus.revision != ticket.expectedRevision ||
+      identityStatus.revision != room.revision) {
+    throw std::invalid_argument(
+        "mission HUD identity/status snapshot failed its publication contract");
+  }
   // Initialize the long-lived teardown queue on the content worker so the
   // first stale release never has to create it from a main-thread dealloc.
   (void)snapshotTeardownQueue();
@@ -187,7 +202,8 @@ AirfixMissionWorldRoomSnapshot *makeMissionWorldRoomSnapshot(
   auto *const storage = new SnapshotStorage(
       std::move(ticket), std::move(room), std::move(audioClips),
       std::move(crosshairs), std::move(healthGauge), std::move(rollingDigits),
-      std::move(hudInstruments), std::move(weaponPanels));
+      std::move(hudInstruments), std::move(weaponPanels),
+      std::move(identityStatus));
   AirfixMissionWorldRoomSnapshot *const snapshot =
       [[AirfixMissionWorldRoomSnapshot alloc]
           initWithRequestSerial:requestSerial
@@ -320,6 +336,24 @@ takeLoadedLegacyAircraftHudWeaponPanelTextures(
   auto weaponPanels = std::move(*storage->weaponPanels);
   storage->weaponPanels.reset();
   return weaponPanels;
+}
+
+content::LoadedLegacyAircraftHudIdentityStatusTextureSet
+takeLoadedLegacyAircraftHudIdentityStatusTextures(
+    AirfixMissionWorldRoomSnapshot *const snapshot) {
+  if (snapshot == nil) {
+    throw std::invalid_argument("mission room snapshot is null");
+  }
+  auto *const storage =
+      static_cast<SnapshotStorage *>([snapshot airfix_privateStorage]);
+  if (storage == nullptr || !storage->identityStatus.has_value()) {
+    throw std::logic_error(
+        "mission HUD identity/status snapshot payload was already consumed");
+  }
+
+  auto identityStatus = std::move(*storage->identityStatus);
+  storage->identityStatus.reset();
+  return identityStatus;
 }
 
 content::WorldRoomPublicationTicket missionWorldRoomPublicationTicket(

@@ -1041,6 +1041,9 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
         auto hudWeaponPanels =
             airfix::ios::takeLoadedLegacyAircraftHudWeaponPanelTextures(
                 snapshot);
+        auto hudIdentityStatus =
+            airfix::ios::takeLoadedLegacyAircraftHudIdentityStatusTextures(
+                snapshot);
         preparedAudioClips =
             std::make_shared<airfix::content::LoadedLegacyAircraftAudioClips>(
                 std::move(audioClips));
@@ -1051,6 +1054,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
                       aircraftHudRollingDigits:std::move(rollingDigits)
                         aircraftHudInstruments:std::move(hudInstruments)
                        aircraftHudWeaponPanels:std::move(hudWeaponPanels)
+                     aircraftHudIdentityStatus:std::move(hudIdentityStatus)
                                          error:&preparationError];
       } catch (...) {
         preparationError =
