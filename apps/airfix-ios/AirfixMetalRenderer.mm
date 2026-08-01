@@ -969,6 +969,12 @@ textureAssetId(const airfix::content::LoadedLegacyAircraftHudInstrumentTexture
   return texture.textureId;
 }
 
+[[nodiscard]] airfix::render::TextureAssetId
+textureAssetId(const airfix::content::LoadedLegacyAircraftHudWeaponPanelTexture
+                   &texture) noexcept {
+  return texture.textureId;
+}
+
 template <typename LoadedTexture>
 bool validateTextureAsset(const LoadedTexture &texture,
                           const std::size_t textureIndex,
