@@ -27,6 +27,7 @@ struct GpuOverlayUniforms {
     float4 outputAndPanelSize;
     float4 panelOrigin;
     float4 tint;
+    float4 uvRect;
 };
 
 struct GpuGaugeUniforms {
@@ -145,7 +146,7 @@ vertex DiagnosticRasterVertex airfixOverlayVertexMain(
         1.0f - pixelPosition.y * 2.0f / outputSize.y,
         0.0f,
         1.0f);
-    output.uv = uv;
+    output.uv = mix(uniforms.uvRect.xy, uniforms.uvRect.zw, uv);
     return output;
 }
 

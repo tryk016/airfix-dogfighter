@@ -196,22 +196,31 @@ contract without publishing or copying the private image.
 
 `LegacyAircraftHudRollingDigitsState` and
 `LegacyAircraftHudRollingDigitsPlan` are bounded, allocation-free C++20 value
-types. They own no private content, GPU resource, clock, or live gameplay
-value. Synthetic tests cover native formatting edge cases, factor caching,
-shortest cyclic motion, the exact-distance-five branch, wrap/reset behaviour,
-fractional atlas coordinates, per-slot suppression, fail-closed invalid
-inputs, bounds-safe command access, and steady-state allocation freedom.
+types. The exact atlas now loads through the authenticated session as a
+dedicated one-texture HUD-local set. A fixed-capacity, identity-bound
+submission maps the recovered rectangles and fractional atlas windows into
+native output pixels, retaining caller tint, source-alpha blending,
+linear-clamp sampling and ALWAYS/write depth. D3D11 and Metal stage the atlas
+inside their atomic mission transactions and own dormant fail-closed
+consumers. Ordinary frames do not call those consumers until the live values,
+clock and enclosing HUD gates are verified.
+
+Synthetic tests cover native formatting edge cases, factor caching, shortest
+cyclic motion, the exact-distance-five branch, wrap/reset behaviour,
+authenticated format/dimension enforcement, fractional atlas coordinates,
+native-output/UI-scale mapping, provenance rejection, per-slot suppression,
+fail-closed invalid inputs, bounds-safe command access, and steady-state
+allocation freedom.
 
 The PC53-compatible double staging is a documented presentation policy, not a
-claim of live x87 bit identity. Authenticated `digits` texture ownership,
-native-output submission, D3D11/Metal consumption, the six live value
-producers, and the enclosing HUD clock remain explicit later slices.
+claim of live x87 bit identity. The six live value producers and enclosing HUD
+clock remain explicit later slices.
 
 ## Remaining HUD work
 
 - Recover and classify the two clock/instrument calls and their live values.
-- Authenticate and stage the recovered `digits` GTI, then bind rolling-number
-  plans to native-output D3D11/Metal submissions and verified live producers.
+- Recover and connect the six verified live digit producers and shared HUD
+  clock to the already authenticated native-output submission.
 - Complete primary/selected-secondary icon, ammunition, and status-bar plans.
 - Recover aircraft/team indicators and the relationship to mission status.
 - Connect the verified smoothed-health producer to ordinary render-event

@@ -46,6 +46,7 @@ cbuffer OverlayUniforms : register(b2)
     float4 outputAndPanelSize;
     float4 panelOrigin;
     float4 overlayTint;
+    float4 overlayUvRect;
 };
 
 cbuffer GaugeUniforms : register(b3)
@@ -142,7 +143,7 @@ PresentationRasterInput AirfixOverlayVS(
         1.0f - pixelPosition.y * 2.0f / outputSize.y,
         0.0f,
         1.0f);
-    output.uv = uv;
+    output.uv = lerp(overlayUvRect.xy, overlayUvRect.zw, uv);
     return output;
 }
 

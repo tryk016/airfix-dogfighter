@@ -15,13 +15,16 @@ struct SnapshotStorage final {
       airfix::content::LoadedLegacyAircraftAudioClips &&loadedAudioClips,
       airfix::content::LoadedLegacyWeaponCrosshairTextureSet &&loadedCrosshairs,
       airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet
-          &&loadedHealthGauge)
+          &&loadedHealthGauge,
+      airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet
+          &&loadedRollingDigits)
       : ticket(std::move(publicationTicket)),
         resultRevision(loadedRoom.revision),
         playerSpawnPose(loadedRoom.playerSpawnPose),
         room(std::move(loadedRoom)), audioClips(std::move(loadedAudioClips)),
         crosshairs(std::move(loadedCrosshairs)),
-        healthGauge(std::move(loadedHealthGauge)) {}
+        healthGauge(std::move(loadedHealthGauge)),
+        rollingDigits(std::move(loadedRollingDigits)) {}
 
   airfix::content::WorldRoomPublicationTicket ticket;
   airfix::content::ContentRevision resultRevision;
@@ -32,6 +35,9 @@ struct SnapshotStorage final {
       crosshairs;
   std::optional<airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet>
       healthGauge;
+  std::optional<
+      airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet>
+      rollingDigits;
 };
 
 dispatch_queue_t snapshotTeardownQueue() {
@@ -72,7 +78,8 @@ dispatch_queue_t snapshotTeardownQueue() {
     auto* const storage = static_cast<SnapshotStorage*>(loadedRoomStore);
     if (storage == nullptr || !storage->room.has_value() ||
         !storage->audioClips.has_value() || !storage->crosshairs.has_value() ||
-        !storage->healthGauge.has_value()) {
+        !storage->healthGauge.has_value() ||
+        !storage->rollingDigits.has_value()) {
       delete storage;
       return nil;
     }
@@ -83,7 +90,8 @@ dispatch_queue_t snapshotTeardownQueue() {
     _packSize = storage->room->revision.pack.size;
     _textureCount = storage->room->textures.size() +
                     storage->crosshairs->textures.size() +
-                    storage->healthGauge->textures.size();
+                    storage->healthGauge->textures.size() +
+                    storage->rollingDigits->textures.size();
     _meshCount = storage->room->submission.meshUploads.size();
     _drawCommandCount = storage->room->submission.commands.size();
     _audioClipCount = storage->audioClips->clips.size();
@@ -117,7 +125,8 @@ AirfixMissionWorldRoomSnapshot *makeMissionWorldRoomSnapshot(
     content::LoadedMissionWorldRoom &&room,
     content::LoadedLegacyAircraftAudioClips &&audioClips,
     content::LoadedLegacyWeaponCrosshairTextureSet &&crosshairs,
-    content::LoadedLegacyAircraftHealthGaugeTextureSet &&healthGauge) {
+    content::LoadedLegacyAircraftHealthGaugeTextureSet &&healthGauge,
+    content::LoadedLegacyAircraftHudRollingDigitsTextureSet &&rollingDigits) {
   if (content::validateMissionWorldRoomPublication(room,
                                                    ticket.expectedRevision)
           .has_value()) {
@@ -139,13 +148,20 @@ AirfixMissionWorldRoomSnapshot *makeMissionWorldRoomSnapshot(
     throw std::invalid_argument(
         "mission health gauge snapshot failed its publication contract");
   }
+  if (!rollingDigits.valid() ||
+      rollingDigits.revision != ticket.expectedRevision ||
+      rollingDigits.revision != room.revision) {
+    throw std::invalid_argument(
+        "mission rolling digit snapshot failed its publication contract");
+  }
   // Initialize the long-lived teardown queue on the content worker so the
   // first stale release never has to create it from a main-thread dealloc.
   (void)snapshotTeardownQueue();
   const auto requestSerial = ticket.serial;
   auto *const storage = new SnapshotStorage(
       std::move(ticket), std::move(room), std::move(audioClips),
-      std::move(crosshairs), std::move(healthGauge));
+      std::move(crosshairs), std::move(healthGauge),
+      std::move(rollingDigits));
   AirfixMissionWorldRoomSnapshot *const snapshot =
       [[AirfixMissionWorldRoomSnapshot alloc]
           initWithRequestSerial:requestSerial
@@ -225,6 +241,24 @@ takeLoadedLegacyAircraftHealthGaugeTextures(
   auto healthGauge = std::move(*storage->healthGauge);
   storage->healthGauge.reset();
   return healthGauge;
+}
+
+content::LoadedLegacyAircraftHudRollingDigitsTextureSet
+takeLoadedLegacyAircraftHudRollingDigitTextures(
+    AirfixMissionWorldRoomSnapshot *const snapshot) {
+  if (snapshot == nil) {
+    throw std::invalid_argument("mission room snapshot is null");
+  }
+  auto *const storage =
+      static_cast<SnapshotStorage *>([snapshot airfix_privateStorage]);
+  if (storage == nullptr || !storage->rollingDigits.has_value()) {
+    throw std::logic_error(
+        "mission rolling digit snapshot payload was already consumed");
+  }
+
+  auto rollingDigits = std::move(*storage->rollingDigits);
+  storage->rollingDigits.reset();
+  return rollingDigits;
 }
 
 content::WorldRoomPublicationTicket missionWorldRoomPublicationTicket(

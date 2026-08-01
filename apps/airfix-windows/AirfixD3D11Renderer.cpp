@@ -3,6 +3,7 @@
 #include "AirfixEmbeddedShader.hpp"
 
 #include "airfix/content/LegacyAircraftHealthGaugeSubmission.hpp"
+#include "airfix/content/LegacyAircraftHudRollingDigitsSubmission.hpp"
 #include "airfix/content/LegacyWeaponCrosshairSpriteSubmission.hpp"
 #include "airfix/content/MissionWorldRoomPublication.hpp"
 #include "airfix/render/DrawSubmissionPlan.hpp"
@@ -174,9 +175,10 @@ struct alignas(16) OverlayUniforms {
   std::array<float, 4U> outputAndPanelSize{};
   std::array<float, 4U> panelOrigin{};
   std::array<float, 4U> tint{};
+  std::array<float, 4U> uvRect{};
 };
 
-static_assert(sizeof(OverlayUniforms) == 48U);
+static_assert(sizeof(OverlayUniforms) == 64U);
 static_assert(alignof(OverlayUniforms) == 16U);
 
 struct alignas(16) GaugeUniforms {
@@ -383,6 +385,9 @@ class AirfixD3D11Renderer::Implementation final {
         crosshairs;
     std::optional<airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet>
         healthGauge;
+    std::optional<
+        airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet>
+        rollingDigits;
     std::shared_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>
         cameraMissionRuntime;
     std::shared_ptr<airfix::render::PlayerActorPoseRuntime> poseRuntime;
@@ -390,6 +395,7 @@ class AirfixD3D11Renderer::Implementation final {
     std::vector<ComPtr<ID3D11ShaderResourceView>> textures;
     std::vector<ComPtr<ID3D11ShaderResourceView>> crosshairTextures;
     std::vector<ComPtr<ID3D11ShaderResourceView>> healthGaugeTextures;
+    std::vector<ComPtr<ID3D11ShaderResourceView>> rollingDigitTextures;
     airfix::render::CameraLogicalExtent referenceCameraCanvas{};
     float referenceHorizontalFovDegrees{};
 
@@ -400,6 +406,9 @@ class AirfixD3D11Renderer::Implementation final {
         std::optional<
             airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet>
             &&loadedHealthGauge,
+        std::optional<
+            airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet>
+            &&loadedRollingDigits,
         std::shared_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>
             gameplayCameraRuntime,
         std::shared_ptr<airfix::render::PlayerActorPoseRuntime>
@@ -410,16 +419,20 @@ class AirfixD3D11Renderer::Implementation final {
             &&crosshairTextureResources,
         std::vector<ComPtr<ID3D11ShaderResourceView>>
             &&healthGaugeTextureResources,
+        std::vector<ComPtr<ID3D11ShaderResourceView>>
+            &&rollingDigitTextureResources,
         const airfix::render::CameraLogicalExtent cameraCanvas,
         const float horizontalFovDegrees)
         : room(std::move(loadedRoom)), crosshairs(std::move(loadedCrosshairs)),
           healthGauge(std::move(loadedHealthGauge)),
+          rollingDigits(std::move(loadedRollingDigits)),
           cameraMissionRuntime(std::move(gameplayCameraRuntime)),
           poseRuntime(std::move(playerPoseRuntime)),
           meshes(std::move(meshResources)),
           textures(std::move(textureResources)),
           crosshairTextures(std::move(crosshairTextureResources)),
           healthGaugeTextures(std::move(healthGaugeTextureResources)),
+          rollingDigitTextures(std::move(rollingDigitTextureResources)),
           referenceCameraCanvas(cameraCanvas),
           referenceHorizontalFovDegrees(horizontalFovDegrees) {}
   };
@@ -677,13 +690,16 @@ public:
       airfix::content::LoadedMissionWorldRoom &&room,
       const airfix::content::ContentRevision &expectedRevision) {
     installLoadedMissionRoomTransaction(std::move(room), std::nullopt,
-                                        std::nullopt, expectedRevision);
+                                        std::nullopt, std::nullopt,
+                                        expectedRevision);
   }
 
   void installLoadedMissionRoom(
       airfix::content::LoadedMissionWorldRoom &&room,
       airfix::content::LoadedLegacyWeaponCrosshairTextureSet &&crosshairs,
       airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet &&healthGauge,
+      airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet
+          &&rollingDigits,
       const airfix::content::ContentRevision &expectedRevision) {
     installLoadedMissionRoomTransaction(
         std::move(room),
@@ -692,6 +708,9 @@ public:
         std::optional<
             airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet>{
             std::move(healthGauge)},
+        std::optional<
+            airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet>{
+            std::move(rollingDigits)},
         expectedRevision);
   }
 
@@ -701,6 +720,9 @@ public:
           &&crosshairs,
       std::optional<airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet>
           &&healthGauge,
+      std::optional<
+          airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet>
+          &&rollingDigits,
       const airfix::content::ContentRevision &expectedRevision) {
     if (airfix::content::validateMissionWorldRoomPublication(room,
                                                              expectedRevision)
@@ -726,6 +748,12 @@ public:
         (!healthGauge->valid() || healthGauge->revision != expectedRevision)) {
       throw std::runtime_error("authenticated aircraft health gauge set failed "
                                "its publication contract");
+    }
+    if (rollingDigits.has_value() &&
+        (!rollingDigits->valid() ||
+         rollingDigits->revision != expectedRevision)) {
+      throw std::runtime_error("authenticated aircraft rolling digit atlas "
+                               "failed its publication contract");
     }
 
     const auto cameraInitializeInput = gameplayCameraInitializeInput(room);
@@ -776,6 +804,10 @@ public:
         healthGauge.has_value()
             ? createAircraftHealthGaugeTextures(*healthGauge)
             : std::vector<ComPtr<ID3D11ShaderResourceView>>{};
+    auto rollingDigitTextures =
+        rollingDigits.has_value()
+            ? createAircraftHudRollingDigitTextures(*rollingDigits)
+            : std::vector<ComPtr<ID3D11ShaderResourceView>>{};
 
     // Full validation and GPU preparation must complete before mission-owned
     // collision storage is moved. The active mission remains untouched on
@@ -812,9 +844,11 @@ public:
     std::vector<airfix::content::LoadedTextureAsset>().swap(room.textures);
     auto candidate = std::make_unique<MissionResources>(
         std::move(room), std::move(crosshairs), std::move(healthGauge),
+        std::move(rollingDigits),
         std::move(cameraMissionRuntime), std::move(posePreparation.runtime),
         std::move(meshes), std::move(textures), std::move(crosshairTextures),
-        std::move(healthGaugeTextures), referenceCameraCanvas,
+        std::move(healthGaugeTextures), std::move(rollingDigitTextures),
+        referenceCameraCanvas,
         referenceHorizontalFovDegrees);
     mission_ = std::move(candidate);
   }
@@ -1745,6 +1779,7 @@ private:
             },
         .panelOrigin = {margin, margin, 0.0F, 0.0F},
         .tint = {1.0F, 1.0F, 1.0F, 1.0F},
+        .uvRect = {0.0F, 0.0F, 1.0F, 1.0F},
     };
     context_->UpdateSubresource(
         overlayUniforms_.Get(), 0U, nullptr, &uniforms, 0U, 0U);
@@ -1794,6 +1829,7 @@ private:
             },
         .panelOrigin = {0.0F, 0.0F, 0.0F, 0.0F},
         .tint = {1.0F, 1.0F, 1.0F, 1.0F},
+        .uvRect = {0.0F, 0.0F, 1.0F, 1.0F},
     };
     context_->UpdateSubresource(overlayUniforms_.Get(), 0U, nullptr, &uniforms,
                                 0U, 0U);
@@ -1863,6 +1899,7 @@ private:
             },
         .panelOrigin = {rectangle.x, rectangle.y, 0.0F, 0.0F},
         .tint = normalizedArgb(submission.tintArgb),
+        .uvRect = {0.0F, 0.0F, 1.0F, 1.0F},
     };
     context_->UpdateSubresource(overlayUniforms_.Get(), 0U, nullptr, &uniforms,
                                 0U, 0U);
@@ -1991,6 +2028,95 @@ private:
         context_->OMSetBlendState(nullptr, blendFactor.data(), 0xFFFFFFFFU);
         context_->PSSetShader(gaugeSolidPixelShader_.Get(), nullptr, 0U);
       }
+      context_->PSSetShaderResources(0U, 1U, &view);
+      context_->Draw(6U, 0U);
+    }
+
+    ID3D11ShaderResourceView *nullView = nullptr;
+    context_->PSSetShaderResources(0U, 1U, &nullView);
+    context_->OMSetBlendState(nullptr, blendFactor.data(), 0xFFFFFFFFU);
+    return submission.commandCount;
+  }
+
+  [[nodiscard]] std::size_t drawLegacyAircraftHudRollingDigits(
+      const airfix::content::LegacyAircraftHudRollingDigitsSubmission
+          &submission) {
+    if (!mission_ || !mission_->rollingDigits.has_value() || !renderTarget_ ||
+        !submission.belongsTo(*mission_->rollingDigits) ||
+        submission.commandCount == 0U ||
+        submission.commandCount > submission.orderedCommands.size()) {
+      return 0U;
+    }
+    for (std::size_t index = 0U; index < submission.commandCount; ++index) {
+      const auto &command = submission.orderedCommands[index];
+      const auto &rectangle = command.outputRect;
+      const auto &uv = command.uv;
+      const auto textureIndex =
+          static_cast<std::size_t>(command.textureId.value);
+      if (command.textureRole !=
+              airfix::content::LegacyAircraftHudRollingDigitsTextureRole::
+                  digits ||
+          command.blendMode !=
+              airfix::content::LegacyAircraftHudRollingDigitsBlendMode::
+                  sourceAlphaOneMinusSourceAlpha ||
+          command.depthMode !=
+              airfix::content::LegacyAircraftHudRollingDigitsDepthMode::
+                  alwaysWrite ||
+          command.samplingMode !=
+              airfix::content::LegacyAircraftHudRollingDigitsSamplingMode::
+                  linearClamp ||
+          !std::isfinite(rectangle.x) || !std::isfinite(rectangle.y) ||
+          !std::isfinite(rectangle.width) ||
+          !std::isfinite(rectangle.height) || rectangle.x < 0.0F ||
+          rectangle.y < 0.0F || rectangle.width <= 0.0F ||
+          rectangle.height <= 0.0F ||
+          rectangle.x + rectangle.width > static_cast<float>(width_) ||
+          rectangle.y + rectangle.height > static_cast<float>(height_) ||
+          !std::isfinite(uv.minimumU) || !std::isfinite(uv.minimumV) ||
+          !std::isfinite(uv.maximumU) || !std::isfinite(uv.maximumV) ||
+          uv.minimumU < 0.0F || uv.minimumV < 0.0F ||
+          uv.maximumU > 1.0F || uv.maximumV > 1.0F ||
+          uv.minimumU >= uv.maximumU || uv.minimumV >= uv.maximumV ||
+          textureIndex >= mission_->rollingDigitTextures.size() ||
+          !mission_->rollingDigitTextures[textureIndex]) {
+        return 0U;
+      }
+    }
+
+    ID3D11RenderTargetView *outputTarget = renderTarget_.Get();
+    context_->OMSetRenderTargets(1U, &outputTarget, depthView_.Get());
+    context_->RSSetViewports(1U, &viewport_);
+    context_->RSSetState(rasterizer_.Get());
+    context_->OMSetDepthStencilState(crosshairDepthState_.Get(), 0U);
+    constexpr std::array<float, 4U> blendFactor{};
+    context_->OMSetBlendState(overlayBlendState_.Get(), blendFactor.data(),
+                              0xFFFFFFFFU);
+    context_->IASetInputLayout(nullptr);
+    context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context_->VSSetShader(overlayVertexShader_.Get(), nullptr, 0U);
+    ID3D11Buffer *uniformBuffer = overlayUniforms_.Get();
+    context_->VSSetConstantBuffers(2U, 1U, &uniformBuffer);
+    context_->PSSetConstantBuffers(2U, 1U, &uniformBuffer);
+    context_->PSSetShader(overlayPixelShader_.Get(), nullptr, 0U);
+    ID3D11SamplerState *sampler = crosshairSampler_.Get();
+    context_->PSSetSamplers(0U, 1U, &sampler);
+
+    for (std::size_t index = 0U; index < submission.commandCount; ++index) {
+      const auto &command = submission.orderedCommands[index];
+      const auto &rectangle = command.outputRect;
+      const OverlayUniforms uniforms{
+          .outputAndPanelSize = {static_cast<float>(width_),
+                                 static_cast<float>(height_), rectangle.width,
+                                 rectangle.height},
+          .panelOrigin = {rectangle.x, rectangle.y, 0.0F, 0.0F},
+          .tint = normalizedArgb(command.tintArgb),
+          .uvRect = {command.uv.minimumU, command.uv.minimumV,
+                     command.uv.maximumU, command.uv.maximumV},
+      };
+      context_->UpdateSubresource(overlayUniforms_.Get(), 0U, nullptr,
+                                  &uniforms, 0U, 0U);
+      ID3D11ShaderResourceView *view =
+          mission_->rollingDigitTextures[command.textureId.value].Get();
       context_->PSSetShaderResources(0U, 1U, &view);
       context_->Draw(6U, 0U);
     }
@@ -2634,6 +2760,27 @@ private:
     return result;
   }
 
+  [[nodiscard]] std::vector<ComPtr<ID3D11ShaderResourceView>>
+  createAircraftHudRollingDigitTextures(
+      const airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet
+          &sources) const {
+    if (!sources.valid()) {
+      throw std::runtime_error(
+          "aircraft rolling digit atlas failed its upload contract");
+    }
+    std::vector<ComPtr<ID3D11ShaderResourceView>> result;
+    result.reserve(sources.textures.size());
+    for (std::size_t index = 0U; index < sources.textures.size(); ++index) {
+      const auto &source = sources.textures[index];
+      if (source.textureId.value != index) {
+        throw std::runtime_error(
+            "aircraft rolling digit atlas does not use dense HUD-local IDs");
+      }
+      result.push_back(createUploadedTexture(source));
+    }
+    return result;
+  }
+
   void createTextures() {
     texture_ =
         createTexture(airfix::render::PublicRenderSmokeScene::textureWidth,
@@ -3064,10 +3211,12 @@ void AirfixD3D11Renderer::installLoadedMissionRoom(
     airfix::content::LoadedMissionWorldRoom &&room,
     airfix::content::LoadedLegacyWeaponCrosshairTextureSet &&crosshairs,
     airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet &&healthGauge,
+    airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet
+        &&rollingDigits,
     const airfix::content::ContentRevision &expectedRevision) {
   implementation_->installLoadedMissionRoom(
       std::move(room), std::move(crosshairs), std::move(healthGauge),
-      expectedRevision);
+      std::move(rollingDigits), expectedRevision);
 }
 
 bool AirfixD3D11Renderer::missionWorldRoomInstalled() const noexcept {

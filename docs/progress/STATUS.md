@@ -106,12 +106,17 @@
   formatting, cached `pow(0.0005,elapsed)` retention, strict shortest cyclic
   routing, binary32 retained positions, and exact 7x9 windows over the
   statically verified 16x128 vertical-atlas contract. Its portable state and
-  fixed four-command plan are allocation-free and remain independent of
-  private texture ownership and native submission. Ordinary frames still issue no
-  manufactured HUD draw. Live slot ownership, changing aim/collision
-  production, explicit visibility policy, smoothed-health and digit producer
-  wiring, authenticated digit staging, physical iPhone visual acceptance, the
-  remaining HUD, and screen effects are not yet connected.
+  fixed four-command plan are allocation-free. The selected format-8 atlas now
+  loads atomically through the authenticated source-archive handle with its
+  own HUD-local identity, and both products stage it inside the complete
+  mission transaction and GPU budget. An identity-bound native-output packet
+  maps fractional UV windows and independently scaled UI rectangles into
+  physical pixels while preserving tint, source-alpha blend, linear clamp and
+  ALWAYS/write depth. D3D11 and Metal contain dormant fail-closed consumers;
+  ordinary frames still issue no manufactured HUD draw. Live slot ownership,
+  changing aim/collision production, explicit visibility policy,
+  smoothed-health and digit producer wiring, physical iPhone visual
+  acceptance, the remaining HUD, and screen effects are not yet connected.
 - The recovered CCF material contract now survives end to end from typed
   `0x2140/0x2150/0x2151` metadata and exact native defaults through world,
   aggregate mission, and player texture binding into each backend-neutral draw
