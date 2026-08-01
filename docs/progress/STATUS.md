@@ -120,7 +120,16 @@
   three-texture owner, allocation-free logical plan and identity-bound native-
   output packet preserve those rules. Both products stage the textures inside
   the atomic mission transaction and own dormant fail-closed arbitrary-quad
-  consumers. Both weapon panels are now a fourth complete primitive. Their two
+  consumers. The two rolling readouts beneath those instruments are now
+  independently complete: right consumes an already-quantized
+  `100*length(vector)` value, left consumes the already-quantized
+  `100*(remaining/initial)+0.5` route, and both retain one shared HUD-clock
+  snapshot. A bounded transactional plan preserves exact right-before-left
+  order, `640x480` anchors, white/right and actor-tinted/left drawing, optional
+  state pointers, and atlas-free state advancement. Its authenticated paired
+  packet reuses the existing digit-atlas mapping and dormant generic
+  D3D11/Metal consumers without adding GPU resources or live values. Both
+  weapon panels are now a fourth complete primitive. Their two
   backgrounds precede primary and selected-secondary slots; each slot retains
   exact ammunition-digit, icon, and status-fill geometry. The dynamic
   authenticated `weapon_*.gti` catalog is archive-derived rather than
@@ -138,7 +147,8 @@
   set and own dormant fail-closed consumers. Live slot ownership, changing
   aim/collision production, explicit visibility policy, ammunition/status
   values, smoothed-health, digit, instrument, aircraft identity, team,
-  technology and shared-clock producer wiring, physical iPhone visual
+  technology, instrument-readout values and shared-clock producer wiring,
+  physical iPhone visual
   acceptance, mission status outside this AirCraft cluster, and screen effects
   are not yet connected.
 - The recovered CCF material contract now survives end to end from typed

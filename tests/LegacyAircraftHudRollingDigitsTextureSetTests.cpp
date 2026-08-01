@@ -1,5 +1,7 @@
+#include "airfix/content/LegacyAircraftHudInstrumentReadoutsSubmission.hpp"
 #include "airfix/content/LegacyAircraftHudRollingDigitsSubmission.hpp"
 #include "airfix/content/LegacyAircraftHudRollingDigitsTextureSet.hpp"
+#include "airfix/render/LegacyAircraftHudInstrumentReadouts.hpp"
 #include "airfix/render/NativeRenderLayout.hpp"
 #include "support/SyntheticContent.hpp"
 
@@ -22,6 +24,7 @@
 namespace {
 
 using airfix::content::ContentRevision;
+using airfix::content::LegacyAircraftHudInstrumentReadoutsSubmissionStatus;
 using airfix::content::LegacyAircraftHudRollingDigitsBlendMode;
 using airfix::content::LegacyAircraftHudRollingDigitsDepthMode;
 using airfix::content::LegacyAircraftHudRollingDigitsSamplingMode;
@@ -374,6 +377,173 @@ void testSubmissionFailuresAreAtomic() {
       "out-of-atlas digit UV published a packet");
 }
 
+[[nodiscard]] airfix::render::LegacyAircraftHudInstrumentReadoutsInput
+instrumentReadoutsInput() noexcept {
+  return {
+      .activeWindowPresent = false,
+      .cameraAttachedAtEntry = true,
+      .typeHudEnabled = true,
+      .cameraAttachedAfterLayout = true,
+      .screenWidth = 640U,
+      .screenHeight = 480U,
+      .accumulatedElapsedSeconds = 0.0F,
+      .rightDigitStateAvailable = true,
+      .rightDigitState =
+          airfix::render::makeLegacyAircraftHudRollingDigitsState(123),
+      .quantizedVectorMagnitudeTimesHundred = 123,
+      .leftDigitStateAvailable = true,
+      .leftDigitState =
+          airfix::render::makeLegacyAircraftHudRollingDigitsState(75),
+      .quantizedRemainingRatioPercent = 75,
+      .leftTintArgb = 0xFF3366CCU,
+      .rollingDigitAtlasAvailable = true,
+  };
+}
+
+void testInstrumentReadoutSubmissionIsAtomicAndOrdered() {
+  PackFixture fixture;
+  auto session = fixture.open();
+  const auto loaded =
+      airfix::content::loadLegacyAircraftHudRollingDigitsTexture(session);
+  require(loaded.success(), "readout submission fixture did not load");
+  const auto plan =
+      airfix::render::buildLegacyAircraftHudInstrumentReadoutsPlan(
+          instrumentReadoutsInput());
+  const auto result =
+      airfix::content::buildLegacyAircraftHudInstrumentReadoutsSubmission(
+          plan, *loaded.textures, nativeLayout(), 100.0F);
+  require(result.ready() && result.submission->belongsTo(*loaded.textures) &&
+              result.submission->readoutCount == 2U &&
+              result.submission->readout(2U) == nullptr,
+          "paired readouts did not publish atomically");
+  const auto *right = result.submission->readout(0U);
+  const auto *left = result.submission->readout(1U);
+  require(
+      right != nullptr && left != nullptr &&
+          right->side ==
+              airfix::render::LegacyAircraftHudInstrumentReadoutSide::right &&
+          left->side ==
+              airfix::render::LegacyAircraftHudInstrumentReadoutSide::left &&
+          right->digits.has_value() && left->digits.has_value() &&
+          right->digits->commandCount == 4U &&
+          left->digits->commandCount == 4U &&
+          close(right->digits->command(0U)->outputRect.x, 1236.75F) &&
+          close(right->digits->command(0U)->outputRect.y, 1014.75F) &&
+          close(left->digits->command(0U)->outputRect.x, 615.75F) &&
+          right->digits->command(0U)->tintArgb == 0xFFFFFFFFU &&
+          left->digits->command(0U)->tintArgb == 0xFF3366CCU,
+      "paired readout order, native mapping or tint changed");
+
+  const auto enlarged =
+      airfix::content::buildLegacyAircraftHudInstrumentReadoutsSubmission(
+          plan, *loaded.textures, nativeLayout(), 150.0F);
+  require(enlarged.ready() &&
+              close(enlarged.submission->readout(0U)
+                        ->digits->command(0U)
+                        ->outputRect.x,
+                    1236.75F) &&
+              close(enlarged.submission->readout(0U)
+                        ->digits->command(0U)
+                        ->outputRect.y,
+                    1015.875F) &&
+              close(enlarged.submission->readout(0U)
+                        ->digits->command(0U)
+                        ->outputRect.width,
+                    23.625F) &&
+              close(enlarged.submission->readout(0U)
+                        ->digits->command(1U)
+                        ->outputRect.x,
+                    1263.75F),
+          "paired readouts did not retain per-widget UI-scale anchors");
+
+  auto forged = *result.submission;
+  std::swap(forged.orderedReadouts[0U], forged.orderedReadouts[1U]);
+  require(!forged.belongsTo(*loaded.textures),
+          "reordered readout sides reached a backend");
+  forged = *result.submission;
+  forged.orderedReadouts[1U].digits->uiScalePercent = 125.0F;
+  require(!forged.belongsTo(*loaded.textures),
+          "mixed UI-scale readouts reached a backend");
+}
+
+void testInstrumentReadoutSubmissionFailuresAreAtomic() {
+  PackFixture fixture;
+  auto session = fixture.open();
+  const auto loaded =
+      airfix::content::loadLegacyAircraftHudRollingDigitsTexture(session);
+  require(loaded.success(), "readout failure fixture did not load");
+  auto plan = airfix::render::buildLegacyAircraftHudInstrumentReadoutsPlan(
+      instrumentReadoutsInput());
+  const auto requireFailure = [&](const auto &candidatePlan,
+                                  const auto &textures, const auto &layout,
+                                  const float scale, const auto expected,
+                                  const std::string_view message) {
+    const auto result =
+        airfix::content::buildLegacyAircraftHudInstrumentReadoutsSubmission(
+            candidatePlan, textures, layout, scale);
+    require(result.status == expected && !result.submission.has_value(),
+            message);
+    return result;
+  };
+
+  auto rejectedPlan = plan;
+  rejectedPlan.status = airfix::render::
+      LegacyAircraftHudInstrumentReadoutsPlanStatus::digitPlanFailed;
+  requireFailure(
+      rejectedPlan, *loaded.textures, nativeLayout(), 100.0F,
+      LegacyAircraftHudInstrumentReadoutsSubmissionStatus::planNotReady,
+      "rejected readout plan published a packet");
+  auto forgedTextures = *loaded.textures;
+  forgedTextures.textures.front().textureId.value = 9U;
+  requireFailure(
+      plan, forgedTextures, nativeLayout(), 100.0F,
+      LegacyAircraftHudInstrumentReadoutsSubmissionStatus::invalidTextureSet,
+      "forged readout texture owner published a packet");
+  requireFailure(plan, *loaded.textures, nativeLayout({800.0F, 600.0F}), 100.0F,
+                 LegacyAircraftHudInstrumentReadoutsSubmissionStatus::
+                     incompatibleUiDesignExtent,
+                 "foreign readout UI domain was reinterpreted");
+  requireFailure(
+      plan, *loaded.textures, nativeLayout(), 151.0F,
+      LegacyAircraftHudInstrumentReadoutsSubmissionStatus::uiScaleOutOfRange,
+      "out-of-policy readout UI scale was accepted");
+
+  auto malformed = plan;
+  malformed.orderedReadouts[0U].digits.orderedCommands[0U].sourceRect.bottom =
+      129.0F;
+  const auto innerFailure =
+      requireFailure(malformed, *loaded.textures, nativeLayout(), 100.0F,
+                     LegacyAircraftHudInstrumentReadoutsSubmissionStatus::
+                         readoutSubmissionRejected,
+                     "invalid inner digit packet published a paired readout");
+  require(
+      innerFailure.rejectedSide ==
+              airfix::render::LegacyAircraftHudInstrumentReadoutSide::right &&
+          innerFailure.readoutStatus ==
+              LegacyAircraftHudRollingDigitsSubmissionStatus::
+                  invalidPlanCommand,
+      "paired readout rejection lost its bounded failure cause");
+
+  malformed = plan;
+  std::swap(malformed.orderedReadouts[0U], malformed.orderedReadouts[1U]);
+  requireFailure(
+      malformed, *loaded.textures, nativeLayout(), 100.0F,
+      LegacyAircraftHudInstrumentReadoutsSubmissionStatus::invalidReadoutPlan,
+      "reordered readout plan published a packet");
+
+  auto noAtlasInput = instrumentReadoutsInput();
+  noAtlasInput.rollingDigitAtlasAvailable = false;
+  const auto emptyPlan =
+      airfix::render::buildLegacyAircraftHudInstrumentReadoutsPlan(
+          noAtlasInput);
+  const auto empty =
+      airfix::content::buildLegacyAircraftHudInstrumentReadoutsSubmission(
+          emptyPlan, *loaded.textures, nativeLayout(), 100.0F);
+  require(empty.ready() && empty.submission->readoutCount == 0U &&
+              empty.submission->belongsTo(*loaded.textures),
+          "valid empty readout packet was rejected");
+}
+
 } // namespace
 
 int main() {
@@ -382,6 +552,8 @@ int main() {
     testLoadFailuresAreAtomic();
     testSubmissionBindsIdentityAndNativeOutput();
     testSubmissionFailuresAreAtomic();
+    testInstrumentReadoutSubmissionIsAtomicAndOrdered();
+    testInstrumentReadoutSubmissionFailuresAreAtomic();
     std::cout << "LegacyAircraftHudRollingDigits texture tests passed\n";
     return 0;
   } catch (const std::exception &error) {
