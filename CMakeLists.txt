@@ -366,6 +366,7 @@ add_library(airfix_content
     src/airfix/content/LegacyAircraftHudInstrumentReadoutsSubmission.cpp
     src/airfix/content/LegacyAircraftHudInstrumentsSubmission.cpp
     src/airfix/content/LegacyAircraftHudInstrumentsTextureSet.cpp
+    src/airfix/content/LegacyAircraftHudRenderEvent.cpp
     src/airfix/content/LegacyAircraftHudRollingDigitsSubmission.cpp
     src/airfix/content/LegacyAircraftHudRollingDigitsTextureSet.cpp
     src/airfix/content/LegacyAircraftHudWeaponPanelsSubmission.cpp
@@ -536,6 +537,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::content)
     add_test(NAME airfix_legacy_aircraft_hud_weapon_panel_texture_set_tests
         COMMAND airfix_legacy_aircraft_hud_weapon_panel_texture_set_tests)
+
+    add_executable(airfix_legacy_aircraft_hud_render_event_tests
+        tests/LegacyAircraftHudRenderEventTests.cpp)
+    target_link_libraries(airfix_legacy_aircraft_hud_render_event_tests
+        PRIVATE airfix::content)
+    add_test(NAME airfix_legacy_aircraft_hud_render_event_tests
+        COMMAND airfix_legacy_aircraft_hud_render_event_tests)
 
     add_executable(airfix_legacy_weapon_crosshair_texture_set_tests
         tests/LegacyWeaponCrosshairTextureSetTests.cpp)

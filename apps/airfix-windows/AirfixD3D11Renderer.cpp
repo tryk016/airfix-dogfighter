@@ -5,6 +5,7 @@
 #include "airfix/content/LegacyAircraftHealthGaugeSubmission.hpp"
 #include "airfix/content/LegacyAircraftHudIdentityStatusSubmission.hpp"
 #include "airfix/content/LegacyAircraftHudInstrumentsSubmission.hpp"
+#include "airfix/content/LegacyAircraftHudRenderEvent.hpp"
 #include "airfix/content/LegacyAircraftHudRollingDigitsSubmission.hpp"
 #include "airfix/content/LegacyAircraftHudWeaponPanelsSubmission.hpp"
 #include "airfix/content/LegacyWeaponCrosshairSpriteSubmission.hpp"
@@ -967,7 +968,15 @@ public:
       const airfix::content::LegacyAircraftHudWeaponPanelsSubmission
           *weaponPanelsSubmission = nullptr,
       const airfix::content::LegacyAircraftHudIdentityStatusSubmission
-          *identityStatusSubmission = nullptr) {
+          *identityStatusSubmission = nullptr,
+      const airfix::content::LegacyAircraftHudRenderEvent *hudRenderEvent =
+          nullptr) {
+    if (hudRenderEvent != nullptr && (healthGaugeSubmission != nullptr ||
+                                      hudInstrumentsSubmission != nullptr ||
+                                      weaponPanelsSubmission != nullptr ||
+                                      identityStatusSubmission != nullptr)) {
+      return false;
+    }
     const auto frameStarted = std::chrono::steady_clock::now();
     double frameIntervalMilliseconds = 1000.0 / 60.0;
     if (previousFrameStart_.has_value()) {
@@ -1000,6 +1009,10 @@ public:
       if (!renderTarget_) {
         return !validateGpuOutput;
       }
+    }
+    if (hudRenderEvent != nullptr &&
+        !canDrawLegacyAircraftHudRenderEvent(*hudRenderEvent)) {
+      return false;
     }
 
     constexpr std::array<float, 4U> clearColor{0.035F, 0.055F, 0.085F, 1.0F};
@@ -1188,20 +1201,24 @@ public:
       presentScaledScene();
     }
 
+    const std::size_t hudRenderEventDrawCallCount =
+        hudRenderEvent != nullptr
+            ? drawLegacyAircraftHudRenderEvent(*hudRenderEvent)
+            : 0U;
     const std::size_t hudInstrumentDrawCallCount =
-        hudInstrumentsSubmission != nullptr
+        hudRenderEvent == nullptr && hudInstrumentsSubmission != nullptr
             ? drawLegacyAircraftHudInstruments(*hudInstrumentsSubmission)
             : 0U;
     const std::size_t weaponPanelDrawCallCount =
-        weaponPanelsSubmission != nullptr
+        hudRenderEvent == nullptr && weaponPanelsSubmission != nullptr
             ? drawLegacyAircraftHudWeaponPanels(*weaponPanelsSubmission)
             : 0U;
     const std::size_t healthGaugeDrawCallCount =
-        healthGaugeSubmission != nullptr
+        hudRenderEvent == nullptr && healthGaugeSubmission != nullptr
             ? drawLegacyAircraftHealthGauge(*healthGaugeSubmission)
             : 0U;
     const std::size_t identityStatusDrawCallCount =
-        identityStatusSubmission != nullptr
+        hudRenderEvent == nullptr && identityStatusSubmission != nullptr
             ? drawLegacyAircraftHudIdentityStatus(*identityStatusSubmission)
             : 0U;
     const bool crosshairDrawn = crosshairSubmission != nullptr &&
@@ -1211,6 +1228,7 @@ public:
         static_cast<std::uint64_t>(submission.commands.size());
     const std::uint64_t auxiliaryDrawCallCount =
         (usesScaledSceneTarget ? 1U : 0U) +
+        static_cast<std::uint64_t>(hudRenderEventDrawCallCount) +
         static_cast<std::uint64_t>(weaponPanelDrawCallCount) +
         static_cast<std::uint64_t>(healthGaugeDrawCallCount) +
         static_cast<std::uint64_t>(hudInstrumentDrawCallCount) +
@@ -1218,6 +1236,7 @@ public:
         (crosshairDrawn ? 1U : 0U);
     const std::uint64_t auxiliaryTriangleCount =
         (usesScaledSceneTarget ? 1U : 0U) +
+        static_cast<std::uint64_t>(hudRenderEventDrawCallCount) * 2U +
         static_cast<std::uint64_t>(weaponPanelDrawCallCount) * 2U +
         static_cast<std::uint64_t>(healthGaugeDrawCallCount) * 2U +
         static_cast<std::uint64_t>(hudInstrumentDrawCallCount) * 2U +
@@ -1981,6 +2000,62 @@ private:
     context_->PSSetShaderResources(0U, 1U, &nullView);
     context_->OMSetBlendState(nullptr, blendFactor.data(), 0xFFFFFFFFU);
     return true;
+  }
+
+  [[nodiscard]] bool canDrawLegacyAircraftHudRenderEvent(
+      const airfix::content::LegacyAircraftHudRenderEvent &event) const {
+    if (!mission_ || !renderTarget_ || !mission_->hudInstruments.has_value() ||
+        !mission_->rollingDigits.has_value() ||
+        !mission_->weaponPanels.has_value() ||
+        !mission_->healthGauge.has_value() ||
+        !mission_->identityStatus.has_value() ||
+        !event.belongsTo(*mission_->hudInstruments, *mission_->rollingDigits,
+                         *mission_->weaponPanels, *mission_->healthGauge,
+                         *mission_->identityStatus) ||
+        event.totalCommandCount() == 0U) {
+      return false;
+    }
+    const auto completeResources = [](const auto &resources,
+                                      const std::size_t expectedCount) {
+      return resources.size() == expectedCount &&
+             std::all_of(resources.begin(), resources.end(),
+                         [](const auto &resource) {
+                           return static_cast<bool>(resource);
+                         });
+    };
+    return completeResources(mission_->hudInstrumentTextures,
+                             mission_->hudInstruments->textures.size()) &&
+           completeResources(mission_->rollingDigitTextures,
+                             mission_->rollingDigits->textures.size()) &&
+           completeResources(mission_->weaponPanelTextures,
+                             mission_->weaponPanels->textures.size()) &&
+           completeResources(mission_->healthGaugeTextures,
+                             mission_->healthGauge->textures.size()) &&
+           completeResources(mission_->identityStatusTextures,
+                             mission_->identityStatus->textures.size());
+  }
+
+  // Dormant until a verified AirCraft runtime producer owns the complete
+  // source snapshot. The fixed field traversal preserves native HUD order and
+  // never sorts or combines independently authenticated submissions.
+  [[nodiscard]] std::size_t drawLegacyAircraftHudRenderEvent(
+      const airfix::content::LegacyAircraftHudRenderEvent &event) {
+    if (!canDrawLegacyAircraftHudRenderEvent(event)) {
+      return 0U;
+    }
+
+    std::size_t drawn = drawLegacyAircraftHudInstruments(event.instruments);
+    for (std::size_t index = 0U; index < event.instrumentReadouts.readoutCount;
+         ++index) {
+      const auto &readout = event.instrumentReadouts.orderedReadouts[index];
+      if (readout.digits.has_value()) {
+        drawn += drawLegacyAircraftHudRollingDigits(*readout.digits);
+      }
+    }
+    drawn += drawLegacyAircraftHudWeaponPanels(event.weaponPanels);
+    drawn += drawLegacyAircraftHealthGauge(event.healthGauge);
+    drawn += drawLegacyAircraftHudIdentityStatus(event.identityStatus);
+    return drawn == event.totalCommandCount() ? drawn : 0U;
   }
 
   [[nodiscard]] std::size_t drawLegacyAircraftHealthGauge(

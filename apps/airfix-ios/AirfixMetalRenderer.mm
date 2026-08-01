@@ -3,6 +3,7 @@
 #include "airfix/content/LegacyAircraftHealthGaugeSubmission.hpp"
 #include "airfix/content/LegacyAircraftHudIdentityStatusSubmission.hpp"
 #include "airfix/content/LegacyAircraftHudInstrumentsSubmission.hpp"
+#include "airfix/content/LegacyAircraftHudRenderEvent.hpp"
 #include "airfix/content/LegacyAircraftHudRollingDigitsSubmission.hpp"
 #include "airfix/content/LegacyAircraftHudWeaponPanelsSubmission.hpp"
 #include "airfix/content/LegacyWeaponCrosshairSpriteSubmission.hpp"
@@ -1298,6 +1299,15 @@ bool preflightPrivateRoom(id<MTLDevice> device,
                              outputExtent:
                                  (airfix::render::OutputPixelExtent)outputExtent
                      drawableDepthTexture:(id<MTLTexture>)drawableDepthTexture;
+- (NSUInteger)
+    encodeLegacyAircraftHudRenderEvent:
+        (const airfix::content::LegacyAircraftHudRenderEvent &)event
+                             resources:(AirfixMetalRoomResources *)resources
+                         commandBuffer:(id<MTLCommandBuffer>)commandBuffer
+                            renderPass:(MTLRenderPassDescriptor *)renderPass
+                          outputExtent:
+                              (airfix::render::OutputPixelExtent)outputExtent
+                  drawableDepthTexture:(id<MTLTexture>)drawableDepthTexture;
 @end
 
 @implementation AirfixMetalRenderer
@@ -3423,6 +3433,115 @@ bool preflightPrivateRoom(id<MTLDevice> device,
   }
   [encoder endEncoding];
   return static_cast<NSUInteger>(submission.commandCount);
+}
+
+// Dormant until a verified AirCraft runtime producer owns the complete source
+// snapshot. A caller must discard the command buffer unless the returned count
+// equals event.totalCommandCount(); ordinary MTKView frames never call this.
+- (NSUInteger)
+    encodeLegacyAircraftHudRenderEvent:
+        (const airfix::content::LegacyAircraftHudRenderEvent &)event
+                             resources:(AirfixMetalRoomResources *)resources
+                         commandBuffer:(id<MTLCommandBuffer>)commandBuffer
+                            renderPass:(MTLRenderPassDescriptor *)renderPass
+                          outputExtent:
+                              (airfix::render::OutputPixelExtent)outputExtent
+                  drawableDepthTexture:(id<MTLTexture>)drawableDepthTexture {
+  if (resources == nil || commandBuffer == nil || renderPass == nil ||
+      drawableDepthTexture == nil || !resources->_hudInstruments.has_value() ||
+      !resources->_rollingDigits.has_value() ||
+      !resources->_weaponPanels.has_value() ||
+      !resources->_healthGauge.has_value() ||
+      !resources->_identityStatus.has_value() ||
+      resources.hudInstrumentTextures == nil ||
+      resources.rollingDigitTextures == nil ||
+      resources.weaponPanelTextures == nil ||
+      resources.healthGaugeTextures == nil ||
+      resources.identityStatusTextures == nil ||
+      resources.hudInstrumentTextures.count !=
+          resources->_hudInstruments->textures.size() ||
+      resources.rollingDigitTextures.count !=
+          resources->_rollingDigits->textures.size() ||
+      resources.weaponPanelTextures.count !=
+          resources->_weaponPanels->textures.size() ||
+      resources.healthGaugeTextures.count !=
+          resources->_healthGauge->textures.size() ||
+      resources.identityStatusTextures.count !=
+          resources->_identityStatus->textures.size() ||
+      !event.belongsTo(*resources->_hudInstruments, *resources->_rollingDigits,
+                       *resources->_weaponPanels, *resources->_healthGauge,
+                       *resources->_identityStatus) ||
+      event.totalCommandCount() == 0U ||
+      !fitsNSUInteger(event.totalCommandCount())) {
+    return 0U;
+  }
+
+  for (id<MTLTexture> texture in resources.hudInstrumentTextures) {
+    if (texture == nil) {
+      return 0U;
+    }
+  }
+  for (id<MTLTexture> texture in resources.rollingDigitTextures) {
+    if (texture == nil) {
+      return 0U;
+    }
+  }
+  for (id<MTLTexture> texture in resources.weaponPanelTextures) {
+    if (texture == nil) {
+      return 0U;
+    }
+  }
+  for (id<MTLTexture> texture in resources.healthGaugeTextures) {
+    if (texture == nil) {
+      return 0U;
+    }
+  }
+  for (id<MTLTexture> texture in resources.identityStatusTextures) {
+    if (texture == nil) {
+      return 0U;
+    }
+  }
+
+  NSUInteger encoded =
+      [self encodeLegacyAircraftHudInstruments:event.instruments
+                                     resources:resources
+                                 commandBuffer:commandBuffer
+                                    renderPass:renderPass
+                                  outputExtent:outputExtent
+                          drawableDepthTexture:drawableDepthTexture];
+  for (std::size_t index = 0U; index < event.instrumentReadouts.readoutCount;
+       ++index) {
+    const auto &readout = event.instrumentReadouts.orderedReadouts[index];
+    if (readout.digits.has_value()) {
+      encoded +=
+          [self encodeLegacyAircraftHudRollingDigits:*readout.digits
+                                           resources:resources
+                                       commandBuffer:commandBuffer
+                                          renderPass:renderPass
+                                        outputExtent:outputExtent
+                                drawableDepthTexture:drawableDepthTexture];
+    }
+  }
+  encoded += [self encodeLegacyAircraftHudWeaponPanels:event.weaponPanels
+                                             resources:resources
+                                         commandBuffer:commandBuffer
+                                            renderPass:renderPass
+                                          outputExtent:outputExtent
+                                  drawableDepthTexture:drawableDepthTexture];
+  encoded += [self encodeLegacyAircraftHealthGauge:event.healthGauge
+                                         resources:resources
+                                     commandBuffer:commandBuffer
+                                        renderPass:renderPass
+                                      outputExtent:outputExtent
+                              drawableDepthTexture:drawableDepthTexture];
+  encoded += [self encodeLegacyAircraftHudIdentityStatus:event.identityStatus
+                                               resources:resources
+                                           commandBuffer:commandBuffer
+                                              renderPass:renderPass
+                                            outputExtent:outputExtent
+                                    drawableDepthTexture:drawableDepthTexture];
+  return encoded == static_cast<NSUInteger>(event.totalCommandCount()) ? encoded
+                                                                       : 0U;
 }
 
 - (BOOL)updateDiagnosticsOverlayTextureWithDevice:(id<MTLDevice>)device {

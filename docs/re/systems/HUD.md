@@ -11,18 +11,20 @@ aircraft-icon, health-number, team-badge, and technology-number cluster.
 four reset-skipping gates, and one-time reset of the HUD elapsed clock.
 `EV-20260801-007` covers the two four-digit readouts beneath the analog
 instruments, including their input arithmetic, order, anchors, tint, and use
-of that shared snapshot.
+of that shared snapshot. `EV-20260801-008` covers the complete authenticated
+HUD render-event transaction, shared clock commit/rollback, six state updates,
+and dormant native-order D3D11/Metal consumers.
 Ghidra 12.1.2 is the primary decompiler; Rizin 0.9.1
 independently confirms the function boundaries, calls, and instruction order
 in the hash-verified `AirCraft.type` copy with SHA-256
 `9745842bde40406390b46f935e9f12d6626675f89a8fbb303cb135d76cf7dd1e`.
 
 The AirCraft vtable slot `+0xBC` resolves to RVA `0x00006B00`, exact range
-`[0x10006B00,0x10007321)`, 2,081 bytes. The complete function also draws
-instrument, weapon, aircraft, team, and numeric elements. The internally
-complete armour/health-gauge subsection and the separate rolling-number
-state/plan are implemented here; this is not a claim that the whole HUD or
-mission-status UI is reconstructed.
+`[0x10006B00,0x10007321)`, 2,081 bytes. All recovered draw subsections inside
+that exact function now compose into one authenticated event in native order.
+This closes the static render-stage composition; it is not a claim that live
+AirCraft producers, mission-status UI outside this function, or device visual
+parity are complete.
 
 See
 [EXP-20260801-098](../../experiments/EXP-20260801-098-aircraft-health-gauge-plan.md)
@@ -45,6 +47,8 @@ The shared elapsed-clock lifecycle is in
 [EXP-20260801-107](../../experiments/EXP-20260801-107-aircraft-hud-elapsed-clock.md).
 The two instrument readouts are in
 [EXP-20260801-108](../../experiments/EXP-20260801-108-aircraft-hud-instrument-readouts.md).
+The complete render-event transaction is in
+[EXP-20260801-109](../../experiments/EXP-20260801-109-aircraft-hud-render-event.md).
 
 ## Enclosing gates
 
@@ -384,18 +388,37 @@ resources inside the complete mission transaction and own dormant fail-closed
 consumers. Ordinary frames do not manufacture aircraft identity, health,
 team, technology, clock, or visibility.
 
+## Complete render-event transaction
+
+`LegacyAircraftHudRenderEvent` composes the already verified subsections in
+the enclosing function's structural order: analog instruments, paired digital
+readouts, both weapon panels, armour/health gauge, then aircraft identity and
+status. No subsection is sorted or independently published.
+
+The composer begins one `LegacyAircraftHudElapsedClockState` stage, obtains
+one bit-identical elapsed snapshot for all six possible rolling displays, and
+injects it into the three paired planners. It builds every plan and every
+authenticated native-output submission before publishing either the event or
+the six replacement states. A rejected gate, invalid value, mapping failure,
+mixed revision/transaction identity, or failed nested packet aborts the stage
+and retains the accumulated clock. Only a completely validated event commits
+the exact positive-zero clock reset.
+
+D3D11 and Metal now contain matching dormant full-event consumers. Both
+prevalidate all five owner sets, GPU resources, transaction identity, command
+counts, and nested submissions, then traverse the fixed native order. Metal
+requires the caller to discard the command buffer unless the complete expected
+count is returned. Ordinary frame callbacks do not call either consumer; no
+camera gate, health, instrument, weapon, team, technology, digit, or `_ftol`
+result is manufactured.
+
 ## Remaining HUD work
 
-- Connect the verified two-instrument fields and tint through ordinary HUD
-  render-event publication without substituting validation values.
-- Recover and connect the six verified live digit producers and the isolated
-  shared-clock lifecycle to the already authenticated native-output
-  submission, preserving zero/one/many refreshes per render event.
-- Connect primary/selected-secondary ownership, ammunition, and status
-  producers to the verified weapon-panel submission without fabricated state.
-- Connect the verified aircraft identity, team, health-number, and technology-
-  level producers plus the one-time enclosing HUD clock reset without
-  substituting validation values.
-- Connect the verified smoothed-health producer to ordinary render-event
-  publication without substituting capture-only values.
+- Recover and connect one coherent live producer for all verified camera
+  gates, instrument/tint, weapon/ammunition/status, smoothed-health, aircraft
+  identity/team/technology, and six digit values without capture-only state.
+- Connect the refresh scheduler to the isolated elapsed clock while preserving
+  zero, one, or many refreshes per render event.
+- Accept a live x87 conversion policy before product code quantizes the float
+  inputs that crossed native `_ftol`.
 - Validate the composed HUD at the required aspect ratios and safe areas.
