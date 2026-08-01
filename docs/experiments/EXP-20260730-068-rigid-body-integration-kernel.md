@@ -2,8 +2,8 @@
 
 **Date:** 2026-07-30
 **Evidence ID:** `EV-20260730-004`
-**Status:** complete static kernel report and synthetic test plan; no runtime
-code changed
+**Status:** complete static kernel report plus policy-conditioned research
+oracle; no product runtime code changed
 **Decision:** NO-GO for a bit-parity C++20 kernel until the live x87 control
 word or an explicit portable numeric policy is accepted; GO for using the
 recovered layout and instruction schedule as a policy-conditioned test oracle
@@ -52,6 +52,10 @@ state. A startup-compatible `PC=53, RC=nearest-even` condition is useful for
 conditional vectors, but it is not a branch-time observation. No game,
 debugger, GUI, original resource, or executable path was run in this
 experiment.
+
+A 2026-08-01 follow-up implements the permitted policy-conditioned oracle as
+offline Python research tooling. It does not change this report's confidence,
+select a policy for the game, or lift the runtime NO-GO.
 
 ## Sources and method
 
@@ -705,6 +709,33 @@ environment” from “portable fail-closed policy”. They must not silently tu
 the constructor's uninitialized fields into zeros or normalize a quaternion
 at a different phase.
 
+## Policy-oracle implementation follow-up (2026-08-01)
+
+`tools/re/cc_rigid_body_oracle.py` now provides the approved offline reference
+model. It:
+
+- decodes finite binary32 and binary64 inputs to exact rational values while
+  retaining signed zero;
+- applies an explicit `PC24`, `PC53`, or `PC64` precision and one of the four
+  x87 rounding directions after every recovered arithmetic instruction;
+- represents each documented binary32 spill explicitly, including the matrix
+  `k=0,2,1` order and X/Y-versus-Z damping asymmetry;
+- models pre-step auxiliaries, all 13 derivative and Euler lanes,
+  post-update quaternion normalization, positive-zero accumulator clearing,
+  and the later auxiliary refresh; and
+- fails closed for non-finite inputs, invalid mass or time step, zero
+  quaternion, divide-by-zero, unsupported policy, and unrepresentable stores.
+
+The V1-V5 public tables remain restricted to round-to-nearest/even because no
+directed-rounding full-vector table was published. V6 is computed under all
+12 precision/rounding combinations. The capture validator now obtains V1-V6
+expectations from the executable oracle instead of duplicating hard-coded
+results. Independent tests keep the published tables as fixed fixtures, check
+signed-zero and finite boundary encodings, reject unsupported domains and
+shapes, and exercise deterministic repeated finite steps. No game binary,
+original resource, debugger trace, native process, scheduler, or product
+runtime is involved.
+
 ## Minimal later dynamic experiment
 
 No dynamic experiment was run. If separately authorized, the minimum
@@ -731,7 +762,7 @@ dynamic requirement remains.
 This experiment must remain separate from ordinary gameplay, owner content,
 renderer timing, input sampling, and the 12 ms scheduler.
 
-## Validation
+## Original static validation
 
 - Ghidra and Rizin raw instruction bytes and end-exclusive boundaries agree
   for all 17 selected functions; all nine Ghidra reports have
@@ -746,8 +777,14 @@ renderer timing, input sampling, and the 12 ms scheduler.
   empty-CFG, transpose-call, self-contained-vector, and constant-report
   findings; the final re-review found no further issue.
 
-No portable source changed, so no CMake build or runtime CTest suite was
-needed. No game, GUI, debugger, or dynamic process was started.
+At the time of the static report no portable source changed, so no CMake build
+or runtime CTest suite was needed. No game, GUI, debugger, or dynamic process
+was started.
+
+The later oracle follow-up is registered as a synthetic CTest and is validated
+with the existing capture-validator suite. Its build and repository-boundary
+results are recorded in the project progress log rather than retroactively
+changing the original evidence counts above.
 
 ## Decision and confidence
 

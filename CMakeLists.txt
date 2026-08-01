@@ -428,6 +428,10 @@ if(AIRFIX_BUILD_TESTS)
             NAME airfix_aircraft_runtime_capture_validator_tests
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/AircraftRuntimeCaptureValidatorTests.py)
+        add_test(
+            NAME airfix_cc_rigid_body_oracle_tests
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/CcRigidBodyOracleTests.py)
     endif()
 
     add_executable(airfix_legacy_afs_function_schedule_tests

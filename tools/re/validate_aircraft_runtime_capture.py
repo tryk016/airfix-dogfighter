@@ -12,11 +12,24 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from fractions import Fraction
+import importlib.util
 import json
 from pathlib import Path
 import stat
 import sys
 from typing import Any, NoReturn
+
+
+_ORACLE_PATH = Path(__file__).with_name("cc_rigid_body_oracle.py")
+_ORACLE_SPEC = importlib.util.spec_from_file_location(
+    "airfix_cc_rigid_body_oracle", _ORACLE_PATH
+)
+if _ORACLE_SPEC is None or _ORACLE_SPEC.loader is None:
+    raise RuntimeError("unable to load the CcRigidBody oracle")
+_ORACLE_MODULE = importlib.util.module_from_spec(_ORACLE_SPEC)
+sys.modules[_ORACLE_SPEC.name] = _ORACLE_MODULE
+_ORACLE_SPEC.loader.exec_module(_ORACLE_MODULE)
+_rigid_vector_expected = _ORACLE_MODULE.vector_expected
 
 
 SCHEMA = "airfix-aircraft-runtime-capture/v1"
@@ -316,12 +329,6 @@ def event_store_bits(payload: int, precision: str, rounding: str) -> int:
     )
 
 
-IDENTITY_MATRIX = (
-    0x3F800000, 0, 0,
-    0, 0x3F800000, 0,
-    0, 0, 0x3F800000,
-)
-ZERO_STATE = (0,) * 13
 VECTOR_SITES = {
     "V1": "rigid.euler.entry",
     "V2": "rigid.euler.entry",
@@ -344,66 +351,7 @@ VECTOR_STATES = {
 
 
 def _vector_expected(vector_id: str, precision: str, rounding: str) -> dict[str, Any]:
-    if vector_id in {"V1", "V2", "V3", "V4", "V5"} and rounding != "nearest":
-        raise ValueError("directed-rounding oracle is not established for this vector")
-    if vector_id == "V1":
-        derivative = list(ZERO_STATE)
-        derivative[3] = 0x80000000
-        return {
-            "derivative_words": tuple(derivative),
-            "post_state_words": VECTOR_STATES["V1"],
-            "accumulator_words": (0,) * 6,
-        }
-    if vector_id == "V2":
-        return {
-            "post_state_words": (
-                0x3F000000, 0xBF800000, 0x40000000,
-                0x3F800000, 0, 0, 0,
-                0x40200000, 0xC0A00000, 0x41200000,
-                0, 0, 0,
-            ),
-            "velocity_words": (0x3FA00000, 0xC0200000, 0x40A00000),
-            "rotation_words": IDENTITY_MATRIX,
-            "world_inverse_inertia_words": IDENTITY_MATRIX,
-            "accumulator_words": (0,) * 6,
-        }
-    if vector_id == "V3":
-        return {
-            "rotation_words": (
-                0, 0x3F800000, 0,
-                0, 0, 0x3F800000,
-                0x3F800000, 0, 0,
-            ),
-            "world_inverse_inertia_words": (
-                0x41000000, 0, 0,
-                0, 0x40000000, 0,
-                0, 0, 0x40800000,
-            ),
-            "angular_velocity_words": (0x41000000, 0x40800000, 0x41400000),
-        }
-    if vector_id == "V4":
-        return {
-            "derivative_quaternion_words": (0x80000000, 0x3F800000, 0, 0),
-            "post_quaternion_words": (0x3F3504F3, 0x3F3504F3, 0, 0),
-        }
-    if vector_id == "V5":
-        derivatives = (
-            (0x3F733332, 0x3F733332, 0x3F733332)
-            if precision == "pc24"
-            else (0x3F733332, 0x3F733332, 0x3F733331)
-        )
-        return {
-            "stored_damping_xy_bits": 0x3D4CCCE8,
-            "angular_momentum_derivative_words": derivatives,
-        }
-    if vector_id == "V6":
-        upper = rounding == "up" or (rounding == "nearest" and precision == "pc64")
-        return {
-            "dt_bits": 0x39803009,
-            "derivative_bits": 0x397FA012,
-            "stored_state_bits": 0x3F800001 if upper else 0x3F800000,
-        }
-    raise ValueError("unknown vector")
+    return _rigid_vector_expected(vector_id, precision, rounding)
 
 
 def _validate_observed(observed: Any, expected: dict[str, Any], line: int) -> None:

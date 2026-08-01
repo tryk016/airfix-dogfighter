@@ -599,11 +599,17 @@
   runtime integration was added. The complete supplied-module static audit
   finds no later recognized environment writer or mutator import, narrowing
   the remaining numeric work to a hardware-breakpoint consumer-site CW/SW
-  capture without changing that implementation NO-GO. A public, fail-closed
-  capture validator now authenticates the exact module/RVA sites, decodes raw
+  capture without changing that implementation NO-GO. An offline exact-
+  rational oracle now executes the finite recovered schedule under explicit
+  PC24/PC53/PC64 and rounding-mode policies, including every documented
+  binary32 spill, post-Euler normalization, reset, and auxiliary refresh. It
+  rejects unobserved non-finite/exception behavior and is not product runtime.
+  A public, fail-closed capture validator now authenticates the exact
+  module/RVA sites, decodes raw
   CW/SW/MXCSR, enforces one thread and stable policy, checks zero/one/many
-  12 ms refresh ordering, and executes the 11 event-store plus V1-V6 exact-bit
-  oracles. Its tests are entirely synthetic; no real capture has been run, so
+  12 ms refresh ordering, and executes the 11 event-store plus computed V1-V6
+  exact-bit oracles without a duplicate rigid-body result table. Its tests are
+  entirely synthetic; no real capture has been run, so
   the rigid-body and live-flight NO-GO remains unchanged.
 - Recovered the complete player spawn/type/primary-actor event chain and the
   fixed 16-entry mission start table. The selector uses requested index modulo

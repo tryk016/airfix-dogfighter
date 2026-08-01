@@ -1,7 +1,7 @@
 # CcRigidBody integration boundary
 
-**Status:** exact static layout and instruction schedule recovered; no portable
-kernel implemented
+**Status:** exact static layout and instruction schedule recovered;
+policy-conditioned research oracle implemented; no portable runtime kernel
 **Evidence:** `EV-20260724-003`, `EV-20260730-004`, `EV-20260730-008`
 **Reference build:** SHA-256 values in `docs/evidence/source-manifest.sha256`
 
@@ -89,7 +89,8 @@ Static-only confidence is `2/medium`. The live x87 precision control, rounding
 control, exception masks, and non-finite behavior are not observed. Therefore:
 
 - GO for the documented layout, phase order, and policy-conditioned test
-  oracle;
+  oracle, now implemented in `tools/re/cc_rigid_body_oracle.py` with explicit
+  PC24/PC53/PC64 and rounding-mode inputs;
 - NO-GO for a bit-parity C++20 kernel or any runtime integration until the
   numeric policy is explicitly selected or captured; and
 - no scheduler, collision, renderer, or live-input ownership belongs in this
@@ -102,3 +103,12 @@ environment writer or additional mutator import in any supplied runtime
 module. It narrows the remaining work to a consumer-site CW/SW capture, but it
 does not establish RC, exception state, external-library behavior, or
 branch-time policy. The bit-parity implementation NO-GO therefore remains.
+
+The oracle uses exact rational arithmetic and explicit binary32 stores. It
+models the recovered finite-domain instruction schedule without relying on the
+host floating-point environment. Unsupported non-finite, divide-by-zero,
+overflow, and zero-quaternion cases fail closed instead of inventing native
+exception behavior. The controlled-runtime capture validator computes its
+V1-V6 expectations through this oracle; it no longer carries a second
+hard-coded rigid-body result table. This tooling is not linked into either
+product and does not select a live-game numeric policy.

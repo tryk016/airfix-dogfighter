@@ -5169,3 +5169,37 @@ superseded evidence.
 - The public-boundary scan passes for all 730 tracked files. The Ghidra and
   Rizin wrapper suites, 12/12 Rizin export tests, clang-format enforcement,
   `git diff --check`, and an independent post-fix review also pass.
+
+## 2026-08-01 - policy-conditioned CcRigidBody oracle
+
+- Implemented the GO portion of `EV-20260730-004` / `EXP-20260730-068` as an
+  offline exact-rational Python oracle. Explicit PC24/PC53/PC64 precision and
+  all four rounding directions are inputs; no host floating-point mode is
+  assumed.
+- The model preserves signed zero, every recovered arithmetic boundary and
+  binary32 spill, matrix `k=0,2,1` accumulation, left-Hamilton quaternion
+  derivative, X/Y-stored versus Z-retained damping, the 13-lane Euler step,
+  post-update normalization, accumulator reset, and post-step auxiliary
+  refresh.
+- Non-finite values, invalid mass/time step, zero quaternion, unsupported
+  policies, malformed shapes, divide-by-zero, and unrepresentable stores fail
+  closed. This deliberately does not claim native NaN, trap, status-word, or
+  branch-time policy behavior.
+- The controlled-runtime capture validator now computes V1-V6 through the
+  oracle instead of maintaining a second hard-coded result table. Fixed
+  published fixtures independently check V1-V5 under RNE and V6 under all 12
+  PC/RC combinations; further tests cover signed-zero/boundary encodings,
+  rejection, immutability, and deterministic finite steps.
+- The oracle remains research tooling and is not linked into Windows or iOS.
+  No scheduler, live input, collision, renderer, game binary, debugger, or
+  private/original resource is used. The bit-parity runtime NO-GO remains
+  unchanged pending accepted numeric policy or a valid consumer-site capture.
+- Three clean toolchains pass. Clang 22.1.8/Ninja and the isolated
+  Airfix-Dev GCC 13.3/Ninja environment each build 446 steps and pass 140/140
+  CTests. Visual Studio 2026 MSVC 19.51 HostX64/Ninja builds the complete
+  740-step Windows product, runtime HLSL, and D3D11 path and passes 152/152
+  CTests including both product smokes. Airfix-Dev was terminated afterward;
+  all WSL distributions are stopped. Both RE wrapper suites, 12/12 Rizin
+  exporter tests, Python bytecode compilation, the synthetic and 732-file
+  public-boundary scans, the 375-row/14-column unique function catalogue, and
+  `git diff --check` pass.
