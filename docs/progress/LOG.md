@@ -4903,3 +4903,27 @@ superseded evidence.
   actionlint, Python bytecode compilation, and `git diff --check` pass. No real
   capture or original/private data entered the repository; hosted platform
   builds remain the publication gate.
+
+## 2026-08-01 - AirCraft armour/health-gauge plan
+
+- `EV-20260801-001` / `EXP-20260801-098` use Ghidra 12.1.2 and Rizin 0.9.1
+  to confirm the exact 2,081-byte AirCraft HUD stage at RVA `0x00006B00` and
+  close one complete internal subsystem without claiming the remaining HUD.
+- The recovered gauge draws optional `armour_meter`, an unconditional
+  opaque-black annular damage mask, then optional `armour`. It uses the exact
+  `screenWidth < 640 ? 6 : screenHeight - 136` anchor, centre `(72,top+64)`,
+  radii 62/44, `-pi/4` start, binary32 `0.1` stepping, and smoothed-health
+  sweep. A final quad is always emitted; valid input is bounded to 32 mask
+  quads and 34 total commands.
+- `LegacyAircraftHealthGaugePlan` is allocation-free, fail-closed, and keeps
+  logical UI coordinates separate from native 3D resolution. It preserves the
+  native active-window/type and two camera observations while leaving private
+  texture authentication, UI mapping, D3D11/Metal submission, and the rest of
+  the HUD disconnected.
+- The complete portable Ninja build passes 129/129 CTests; its 265-entry
+  compilation database includes the new source and excludes Apple-only code.
+  A fresh MSVC 19.51 HostX64/Ninja Windows-product build compiles 705 steps and
+  passes 141/141 CTests, including D3D11 and both product smokes. Public-boundary
+  synthetic tests and the 680-file scan, function-catalog validation,
+  formatting, and `git diff --check` pass. Hosted platform builds remain the
+  publication gate.

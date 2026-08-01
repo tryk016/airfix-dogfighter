@@ -230,6 +230,7 @@ add_library(airfix_render
     src/airfix/render/DrawMesh.cpp
     src/airfix/render/DrawSubmissionPlan.cpp
     src/airfix/render/LegacyCameraTransform.cpp
+    src/airfix/render/LegacyAircraftHealthGaugePlan.cpp
     src/airfix/render/LegacyCanvasLayout.cpp
     src/airfix/render/LegacyDepthState.cpp
     src/airfix/render/LegacyGameplayCameraChase.cpp
@@ -975,6 +976,14 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_legacy_canvas_layout_tests
         COMMAND airfix_legacy_canvas_layout_tests)
+
+    add_executable(airfix_legacy_aircraft_health_gauge_plan_tests
+        tests/LegacyAircraftHealthGaugePlanTests.cpp)
+    target_link_libraries(
+        airfix_legacy_aircraft_health_gauge_plan_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_legacy_aircraft_health_gauge_plan_tests
+        COMMAND airfix_legacy_aircraft_health_gauge_plan_tests)
 
     add_executable(airfix_native_render_layout_tests
         tests/NativeRenderLayoutTests.cpp)

@@ -1,6 +1,6 @@
 # Project status
 
-**Updated:** 2026-07-31
+**Updated:** 2026-08-01
 **Stage:** Phase 1 — static analysis and archive recovery in progress
 
 ## Now
@@ -84,9 +84,15 @@
   crosshair substage: after its independent AirCraft HUD call and the recovered
   type/active/camera gates, selected secondary renders before primary. A
   bounded value plan preserves that order and rejects mixed-provenance packets
-  atomically. Ordinary frames still issue no manufactured HUD draw. Live slot
-  ownership, changing aim/collision production, explicit visibility policy,
-  the remaining HUD, and screen effects are not yet connected.
+  atomically. The independent earlier AirCraft HUD stage now has its first
+  complete portable subsection: a bounded allocation-free armour/health-gauge
+  plan preserves both camera samples, native gate order, the `639/640` anchor
+  split, optional background/foreground textures, the smoothed-health annular
+  mask with at most 32 black quads, and exact layer order in logical UI
+  coordinates. Ordinary frames still issue no manufactured HUD draw. Live
+  slot ownership, changing aim/collision production, explicit visibility
+  policy, authenticated gauge texture binding, backend submission, the
+  remaining HUD, and screen effects are not yet connected.
 - The recovered CCF material contract now survives end to end from typed
   `0x2140/0x2150/0x2151` metadata and exact native defaults through world,
   aggregate mission, and player texture binding into each backend-neutral draw
