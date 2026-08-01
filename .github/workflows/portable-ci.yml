@@ -68,11 +68,14 @@ jobs:
       matrix:
         include:
           - os: ubuntu-24.04
+            timeout_minutes: 15
           - os: windows-2025
+            timeout_minutes: 15
           - os: macos-26
+            timeout_minutes: 30
 
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: ${{ matrix.timeout_minutes }}
 
     steps:
       - name: Check out sources

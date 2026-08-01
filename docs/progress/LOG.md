@@ -5231,3 +5231,31 @@ superseded evidence.
   public-boundary tests, the 738-file repository scan, the 375-row/14-column
   unique function catalogue, changed-source formatting, changed-scope local
   path review, and `git diff --check` pass.
+
+## 2026-08-01 - complete AirCraft HUD render event
+
+- `EV-20260801-008` / `EXP-20260801-109` compose every recovered subsection of
+  AirCraft RVA `0x00006B00` into one authenticated render event in native
+  order: instruments, right/left readouts, weapon panels, health gauge, then
+  identity/status.
+- One elapsed-clock transaction feeds six bit-identical consumer snapshots.
+  The event and all six replacement states publish only after every plan,
+  native-output mapping, content revision, stream transaction identity, owner,
+  and nested command validates. Any failure aborts and retains elapsed time;
+  complete success performs the one exact positive-zero reset.
+- D3D11 and Metal now own matching dormant full-event consumers and verify the
+  complete GPU-resource set before fixed-order traversal. Ordinary gameplay
+  frames remain unchanged and manufacture no live HUD values. The x32dbg Phase
+  A attempt remains `NO-GO` with `0/32` accepted hits and supplies no runtime
+  conclusion.
+- A clean portable GCC/Ninja build passes 142/142 CTests. Visual Studio 2026
+  MSVC 19.51 HostX64/Ninja builds the complete SDL3/D3D11/XAudio2 Windows
+  product and passes 154/154 CTests including both product smokes. Hosted iOS
+  build validation remains assigned to GitHub Actions. The isolated
+  `Airfix-Dev` WSL distro independently builds 443 steps with GCC 13.3 and
+  passes 142/142 CTests, then stops without touching either shared WSL distro.
+- Both RE wrapper suites, all 12 Rizin normalization tests, all nine runtime-
+  capture validator tests, synthetic public-boundary tests, the 742-file public
+  scan, 375-row/14-column unique function catalogue, changed-document links,
+  changed-scope path scan, clang-format warnings-as-errors, and
+  `git diff --check` pass.

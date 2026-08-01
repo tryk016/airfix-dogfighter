@@ -144,7 +144,13 @@
   while a ten-command allocation-free plan and identity-bound packet retain
   the shared digit atlas, UI/native-resolution separation, source-alpha blend,
   linear clamp, and ALWAYS/write depth. Both native products stage the entire
-  set and own dormant fail-closed consumers. Live slot ownership, changing
+  set and own dormant fail-closed consumers. All five subsections now enter one
+  authenticated full-stage render event in native order. One clock transaction
+  supplies the same bit-exact elapsed snapshot to all six rolling states,
+  publishes their replacements only with the complete event, and resets only
+  after total validation; every failure aborts without consuming elapsed time.
+  D3D11 and Metal own matching dormant full-event consumers, while ordinary
+  frames remain disconnected. Live slot ownership, changing
   aim/collision production, explicit visibility policy, ammunition/status
   values, smoothed-health, digit, instrument, aircraft identity, team,
   technology, instrument-readout values and shared-clock producer wiring,
