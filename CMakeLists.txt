@@ -353,6 +353,7 @@ endif()
 
 add_library(airfix_content
     src/airfix/content/LegacyAircraftAudioClipSet.cpp
+    src/airfix/content/LegacyAircraftHealthGaugeSubmission.cpp
     src/airfix/content/LegacyAircraftHealthGaugeTextureSet.cpp
     src/airfix/content/LegacyProjectileRuntimeQueryAdapter.cpp
     src/airfix/content/LegacyWeaponCrosshairTextureSet.cpp

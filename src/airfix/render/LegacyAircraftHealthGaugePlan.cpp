@@ -152,6 +152,8 @@ LegacyAircraftHealthGaugePlan buildLegacyAircraftHealthGaugePlan(
       .status = LegacyAircraftHealthGaugePlanStatus::ready,
       .damageSweepRadians = damageSweep,
       .textureOrigin = origin,
+      .sourceScreenWidth = input.screenWidth,
+      .sourceScreenHeight = input.screenHeight,
   };
   if (input.armourMeterTextureAvailable &&
       !appendTexture(

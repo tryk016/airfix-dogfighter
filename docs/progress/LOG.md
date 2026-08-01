@@ -4942,8 +4942,38 @@ superseded evidence.
 - Windows loads and uploads both resources before its no-fail D3D11 mission
   swap. iOS carries them in the private snapshot, accounts them in the shared
   Metal heap/admission plan, uploads/generates all mip levels, and retains them
-  under the published room owner. Neither backend issues a health-gauge draw.
+  under the published room owner. At this checkpoint neither backend issued a
+  health-gauge draw; EXP-20260801-100 supersedes the Windows private-validation
+  state.
 - The full portable build passes 130/130 CTests. A real MSVC 19.51 HostX64/
   Ninja build compiles the complete Windows product and passes 142/142 CTests,
   including both product smokes. Hosted iOS compilation remains the
   Objective-C++ publication gate.
+
+## 2026-08-01 - authenticated health-gauge native submission
+
+- `EXP-20260801-100` closes the screen-state and native-output prerequisites.
+  Ghidra 12.1.2 plus Rizin 0.9.1 map the two format-8 texture calls through Cc
+  `GtScreen::Blit`/`GtImage::IsAlpha` to source-alpha blending, and the black
+  mask calls through `GtScreen::Fill` to opaque blending-disabled triangles.
+  Both paths use recovered depth mode 2: ALWAYS compare with writes enabled.
+- `LegacyAircraftHealthGaugeSubmission` is a fixed-capacity value packet bound
+  to the exact authenticated transaction and gauge-local texture IDs. It maps
+  the proven 640x480 UI domain into physical output pixels, scales the widget
+  around its bottom-left anchor, preserves command order and state, and rejects
+  forged, mixed-session, non-finite, incompatible-domain or out-of-policy input
+  atomically. The 640x480 extent remains UI metadata and never becomes a 3D
+  raster limit.
+- D3D11 now owns dedicated four-point gauge shaders and switches alpha/opaque
+  pipeline state per recovered command. The private capture-only CLI supplies
+  50% health solely to the presentation planner. A real owner-private
+  1920x1080 Enhanced capture contains the installed aircraft, authenticated
+  HUD textures, 16 mask commands and diagnostics overlay. Ordinary gameplay
+  still issues no gauge packet; live producer wiring and Metal consumption are
+  separate gates.
+- The clean GCC 15.2/Ninja portable build passes 130/130 CTests. The clean
+  MSVC 19.51 HostX64/Ninja build compiles the complete Windows product and
+  HLSL and passes 142/142 CTests. The synthetic public-boundary suite, 688-file
+  repository scan, 12 Rizin exporter tests, nine capture-validator tests, all
+  three reverse-engineering wrapper suites, changed-range formatting, and
+  `git diff --check` pass. Hosted platform Actions remain the publication gate.

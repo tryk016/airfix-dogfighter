@@ -1,6 +1,7 @@
 # EXP-20260801-098: aircraft health-gauge plan
 
-**Status:** implemented from static evidence; backend consumption pending
+**Status:** plan implemented; authenticated submission follows in
+`EXP-20260801-100`
 
 **Evidence ID:** `EV-20260801-001`
 **Decision:** GO for the renderer-neutral armour/health-gauge command plan;
@@ -104,3 +105,9 @@ common D3D11/Metal consumption.
 modern UI mapping, and backend submission are joined. The remaining clock,
 digits, weapon, aircraft/team, and mission-status portions of the enclosing
 function remain separate reconstruction work.
+
+The screen-call contract, native-output mapping, and private Windows
+submission were subsequently joined in
+[EXP-20260801-100](EXP-20260801-100-aircraft-health-gauge-submission.md).
+Ordinary-frame drawing remains gated only by the live producer and complete
+render-event wiring.

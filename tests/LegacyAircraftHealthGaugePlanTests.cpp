@@ -117,7 +117,8 @@ void testHalfHealthGeometryAndOrdering() {
   const auto plan = buildLegacyAircraftHealthGaugePlan(validInput());
   require(plan.ready(), "half-health gauge plan was rejected");
   require(close(plan.damageSweepRadians, piRadians * 0.5F) &&
-              plan.textureOrigin == LegacyCanvasPoint{8.0F, 344.0F},
+              plan.textureOrigin == LegacyCanvasPoint{8.0F, 344.0F} &&
+              plan.sourceScreenWidth == 640U && plan.sourceScreenHeight == 480U,
           "half-health sweep or normal-screen anchor changed");
   require(plan.commandCount == 18U &&
               plan.command(0U)->kind ==

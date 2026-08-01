@@ -1,7 +1,7 @@
 # EXP-20260801-099: authenticated health-gauge textures
 
 **Status:** cross-archive loader and native GPU resource staging implemented;
-ordinary drawing intentionally disabled
+private Windows consumption follows in `EXP-20260801-100`
 
 **Evidence ID:** `EV-20260801-001`
 **Decision:** GO for atomic authenticated ownership and D3D11/Metal staging;
@@ -76,7 +76,8 @@ requested, and retains the authenticated C++ set beside the room and
 crosshairs. A single failure destroys the unpublished candidate and preserves
 the active snapshot.
 
-Both products still issue no gauge draw call. Static evidence establishes the
+At this experiment checkpoint, both products still issued no gauge draw call.
+Static evidence establishes the
 ordered plan, but the generic native screen calls used by this HUD stage do not
 yet justify guessing a blend/depth state or bypassing the modern UI transform.
 
@@ -103,3 +104,9 @@ resource staging.
 **NO-GO** for ordinary-frame rendering until the renderer-neutral gauge plan,
 screen-call state, native-output UI mapping, and live aircraft health producer
 are joined without semantic guesses.
+
+The first three prerequisites were subsequently joined in
+[EXP-20260801-100](EXP-20260801-100-aircraft-health-gauge-submission.md), including
+a real private D3D11 validation capture. Ordinary gameplay still issues no
+gauge packet until the live producer is connected; Metal drawing remains a
+separate backend slice.

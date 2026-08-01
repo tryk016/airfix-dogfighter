@@ -996,6 +996,13 @@ int run(const int argumentCount, char *arguments[]) {
                  "captured\n";
     return 0;
   }
+  if (options.captureHealthGaugeValidationFrameOutput.has_value()) {
+    renderer.captureMissionHealthGaugeValidationFrameToBmp(
+        *options.captureHealthGaugeValidationFrameOutput);
+    std::cout << "Authenticated private D3D11 health-gauge validation frame "
+                 "captured\n";
+    return 0;
+  }
   if (options.captureDiagnosticFrameOutput.has_value()) {
     renderer.capturePublicDiagnosticFrameToBmp(
         *options.captureDiagnosticFrameOutput);

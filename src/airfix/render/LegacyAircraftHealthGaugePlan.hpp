@@ -81,6 +81,8 @@ struct LegacyAircraftHealthGaugePlan final {
   std::size_t commandCount{};
   float damageSweepRadians{};
   LegacyCanvasPoint textureOrigin{};
+  std::uint32_t sourceScreenWidth{};
+  std::uint32_t sourceScreenHeight{};
 
   [[nodiscard]] constexpr bool ready() const noexcept {
     return status == LegacyAircraftHealthGaugePlanStatus::ready;

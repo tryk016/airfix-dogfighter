@@ -133,6 +133,12 @@ public:
   void captureMissionCrosshairValidationFrameToBmp(
       const std::filesystem::path &outputPath);
 
+  // Private visual-validation harness. It supplies a fixed half-health value
+  // only to the recovered HUD planner, never to gameplay simulation, and
+  // renders the authenticated background/mask/foreground command sequence.
+  void captureMissionHealthGaugeValidationFrameToBmp(
+      const std::filesystem::path &outputPath);
+
   // Captures the public synthetic scene and developer overlay. This contains
   // no owner content and exists for repeatable renderer diagnostics.
   void capturePublicDiagnosticFrameToBmp(
