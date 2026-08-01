@@ -134,8 +134,13 @@ LegacyAircraftHealthGaugePlan buildLegacyAircraftHealthGaugePlan(
   const double healthPercent =
       (static_cast<double>(input.displayedHealth) * 100.0) /
       static_cast<double>(input.maximumHealth);
-  const float damageSweep = static_cast<float>((1.0 - healthPercent * 0.01) *
-                                               static_cast<double>(piRadians));
+  // Keep the recovered multiply, subtract, and final scale as separate full
+  // expressions. Apple Clang may otherwise contract the first two operations
+  // into an FMA, which the native x87 instruction stream did not perform.
+  const double damageFraction = healthPercent * 0.01;
+  const double remainingFraction = 1.0 - damageFraction;
+  const float damageSweep =
+      static_cast<float>(remainingFraction * static_cast<double>(piRadians));
   const LegacyCanvasPoint origin{textureLeft, top};
   if (!std::isfinite(top) || !std::isfinite(centreY) ||
       !std::isfinite(damageSweep) || !finite(origin)) {
