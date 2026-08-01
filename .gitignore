@@ -18,6 +18,7 @@
 # Reverse-engineering working data (large and machine-specific)
 /analysis/ghidra-projects/
 /analysis/ghidra-appdata/
+/analysis/ghidra-appdata-*/
 /analysis/dumps/
 /analysis/traces/
 /analysis/screenshots/

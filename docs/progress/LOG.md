@@ -5142,3 +5142,30 @@ superseded evidence.
   steps and all 150 native CTests pass, including D3D11 and both product
   smokes. A clean portable build passes all 138 CTests. Hosted
   iPhoneOS/iPhoneSimulator compilation remains the publication gate.
+
+## 2026-08-01 - AirCraft HUD elapsed clock
+
+- `EV-20260801-006` / `EXP-20260801-107` use a fresh Ghidra 12.1.2 headless
+  instruction export as the primary source and Rizin 0.9.1 as an independent
+  byte/boundary check for the constructor, slot-44 refresh, and complete HUD
+  stage. The recovered lifecycle initializes `AirCraft+0x54C` to `+0`, adds
+  every supplied refresh delta, shares one value across six rolling-number
+  consumers, and resets once only after all four enclosing HUD gates pass.
+- `LegacyAircraftHudElapsedClockState` is a dormant, allocation-free,
+  single-thread-confined transaction. It rejects invalid deltas and mixed/stale
+  stages atomically; abort and each native gate retain elapsed time. It owns no
+  scheduler, render-event publication, application calls, or fabricated live
+  counter values.
+- The startup-compatible PC53/RNE policy is represented with binary64 staging
+  before the binary32 store. Live process-wide x87 state remains unaccepted,
+  so this is not a bit-parity or runtime-integration claim.
+- Independent instruction boundaries correct the rolling-digit initializer
+  note from 88 to 90 bytes and the draw helper note from 158 to 160 bytes.
+- Clean validation passes on all three supported host toolchains: Clang
+  22.1.8/Ninja with 139/139 CTests, Visual Studio 2026 MSVC/Ninja with a
+  740-step build and 151/151 CTests (including D3D11 and both product smokes),
+  and the dedicated `Airfix-Dev` WSL distro with a 446-step GCC 13.3/Ninja
+  build and 139/139 CTests. The dedicated distro was terminated afterward.
+- The public-boundary scan passes for all 730 tracked files. The Ghidra and
+  Rizin wrapper suites, 12/12 Rizin export tests, clang-format enforcement,
+  `git diff --check`, and an independent post-fix review also pass.

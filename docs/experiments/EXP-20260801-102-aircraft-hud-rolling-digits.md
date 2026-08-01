@@ -23,9 +23,9 @@ constants, and references for these exact ranges:
 
 | Function | Exact VA range | Size | Recovered role |
 |---|---|---:|---|
-| `0x10009210` | `[0x10009210,0x10009268)` | 88 | initialize four retained digit positions |
+| `0x10009210` | `[0x10009210,0x1000926A)` | 90 | initialize four retained digit positions |
 | `0x10009280` | `[0x10009280,0x1000939F)` | 287 | update/animate toward a formatted value |
-| `0x100093A0` | `[0x100093A0,0x1000943E)` | 158 | draw four vertical-atlas windows |
+| `0x100093A0` | `[0x100093A0,0x10009440)` | 160 | draw four vertical-atlas windows |
 
 Rizin 0.9.1 plus rz-ghidra independently reproduced all three boundaries and
 their instruction streams. The draw target was separately checked in the
