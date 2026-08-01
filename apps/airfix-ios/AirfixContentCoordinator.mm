@@ -5,6 +5,7 @@
 
 #include "airfix/content/LegacyAircraftAudioClipSet.hpp"
 #include "airfix/content/LegacyAircraftHealthGaugeTextureSet.hpp"
+#include "airfix/content/LegacyAircraftHudInstrumentsTextureSet.hpp"
 #include "airfix/content/LegacyAircraftHudRollingDigitsTextureSet.hpp"
 #include "airfix/content/MissionLoadManifest.hpp"
 #include "airfix/content/MissionWorldRoomLoader.hpp"
@@ -1111,6 +1112,23 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
                   return;
                 }
 
+                auto hudInstrumentsResult =
+                    airfix::content::
+                        loadLegacyAircraftHudInstrumentTextures(
+                            *strongSelf->_verifiedSession, {}, stopToken);
+                if (!strongSelf->_verifiedSession.has_value() ||
+                    strongSelf->_verifiedSession->revision() !=
+                        revisionBeforeLoad ||
+                    !hudInstrumentsResult.success() ||
+                    !hudInstrumentsResult.textures.has_value() ||
+                    !hudInstrumentsResult.textures->belongsTo(
+                        *strongSelf->_verifiedSession) ||
+                    hudInstrumentsResult.textures->revision !=
+                        ticket->expectedRevision) {
+                  publishFailure();
+                  return;
+                }
+
                 const auto resultRevision = result.room->revision;
                 AirfixMissionWorldRoomSnapshot *const snapshot =
                     airfix::ios::makeMissionWorldRoomSnapshot(
@@ -1118,7 +1136,8 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
                         std::move(*audioResult.clips),
                         std::move(*crosshairResult.textures),
                         std::move(*healthGaugeResult.textures),
-                        std::move(*rollingDigitsResult.textures));
+                        std::move(*rollingDigitsResult.textures),
+                        std::move(*hudInstrumentsResult.textures));
                 dispatch_async(dispatch_get_main_queue(), ^{
                     AirfixContentCoordinator* coordinator = weakSelf;
                     if (coordinator == nil ||

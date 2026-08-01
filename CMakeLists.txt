@@ -231,6 +231,7 @@ add_library(airfix_render
     src/airfix/render/DrawSubmissionPlan.cpp
     src/airfix/render/LegacyCameraTransform.cpp
     src/airfix/render/LegacyAircraftHudRollingDigits.cpp
+    src/airfix/render/LegacyAircraftHudInstruments.cpp
     src/airfix/render/LegacyAircraftHealthGaugePlan.cpp
     src/airfix/render/LegacyCanvasLayout.cpp
     src/airfix/render/LegacyDepthState.cpp
@@ -356,6 +357,8 @@ add_library(airfix_content
     src/airfix/content/LegacyAircraftAudioClipSet.cpp
     src/airfix/content/LegacyAircraftHealthGaugeSubmission.cpp
     src/airfix/content/LegacyAircraftHealthGaugeTextureSet.cpp
+    src/airfix/content/LegacyAircraftHudInstrumentsSubmission.cpp
+    src/airfix/content/LegacyAircraftHudInstrumentsTextureSet.cpp
     src/airfix/content/LegacyAircraftHudRollingDigitsSubmission.cpp
     src/airfix/content/LegacyAircraftHudRollingDigitsTextureSet.cpp
     src/airfix/content/LegacyProjectileRuntimeQueryAdapter.cpp
@@ -494,6 +497,14 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::content)
     add_test(NAME airfix_legacy_aircraft_hud_rolling_digits_texture_set_tests
         COMMAND airfix_legacy_aircraft_hud_rolling_digits_texture_set_tests)
+
+    add_executable(airfix_legacy_aircraft_hud_instruments_texture_set_tests
+        tests/LegacyAircraftHudInstrumentsTextureSetTests.cpp)
+    target_link_libraries(
+        airfix_legacy_aircraft_hud_instruments_texture_set_tests
+        PRIVATE airfix::content)
+    add_test(NAME airfix_legacy_aircraft_hud_instruments_texture_set_tests
+        COMMAND airfix_legacy_aircraft_hud_instruments_texture_set_tests)
 
     add_executable(airfix_legacy_weapon_crosshair_texture_set_tests
         tests/LegacyWeaponCrosshairTextureSetTests.cpp)
@@ -1013,6 +1024,14 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_legacy_aircraft_hud_rolling_digits_tests
         COMMAND airfix_legacy_aircraft_hud_rolling_digits_tests)
+
+    add_executable(airfix_legacy_aircraft_hud_instruments_tests
+        tests/LegacyAircraftHudInstrumentsTests.cpp)
+    target_link_libraries(
+        airfix_legacy_aircraft_hud_instruments_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_legacy_aircraft_hud_instruments_tests
+        COMMAND airfix_legacy_aircraft_hud_instruments_tests)
 
     add_executable(airfix_native_render_layout_tests
         tests/NativeRenderLayoutTests.cpp)

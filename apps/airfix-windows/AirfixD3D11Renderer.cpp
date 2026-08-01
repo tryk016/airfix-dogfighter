@@ -3,6 +3,7 @@
 #include "AirfixEmbeddedShader.hpp"
 
 #include "airfix/content/LegacyAircraftHealthGaugeSubmission.hpp"
+#include "airfix/content/LegacyAircraftHudInstrumentsSubmission.hpp"
 #include "airfix/content/LegacyAircraftHudRollingDigitsSubmission.hpp"
 #include "airfix/content/LegacyWeaponCrosshairSpriteSubmission.hpp"
 #include "airfix/content/MissionWorldRoomPublication.hpp"
@@ -185,9 +186,10 @@ struct alignas(16) GaugeUniforms {
   std::array<std::array<float, 4U>, 4U> outputQuad{};
   std::array<float, 4U> outputSize{};
   std::array<float, 4U> tint{};
+  std::array<float, 4U> uvRect{};
 };
 
-static_assert(sizeof(GaugeUniforms) == 96U);
+static_assert(sizeof(GaugeUniforms) == 112U);
 static_assert(alignof(GaugeUniforms) == 16U);
 
 [[nodiscard]] constexpr std::array<float, 4U>
@@ -388,6 +390,9 @@ class AirfixD3D11Renderer::Implementation final {
     std::optional<
         airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet>
         rollingDigits;
+    std::optional<
+        airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet>
+        hudInstruments;
     std::shared_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>
         cameraMissionRuntime;
     std::shared_ptr<airfix::render::PlayerActorPoseRuntime> poseRuntime;
@@ -396,6 +401,7 @@ class AirfixD3D11Renderer::Implementation final {
     std::vector<ComPtr<ID3D11ShaderResourceView>> crosshairTextures;
     std::vector<ComPtr<ID3D11ShaderResourceView>> healthGaugeTextures;
     std::vector<ComPtr<ID3D11ShaderResourceView>> rollingDigitTextures;
+    std::vector<ComPtr<ID3D11ShaderResourceView>> hudInstrumentTextures;
     airfix::render::CameraLogicalExtent referenceCameraCanvas{};
     float referenceHorizontalFovDegrees{};
 
@@ -409,6 +415,9 @@ class AirfixD3D11Renderer::Implementation final {
         std::optional<
             airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet>
             &&loadedRollingDigits,
+        std::optional<
+            airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet>
+            &&loadedHudInstruments,
         std::shared_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>
             gameplayCameraRuntime,
         std::shared_ptr<airfix::render::PlayerActorPoseRuntime>
@@ -421,11 +430,14 @@ class AirfixD3D11Renderer::Implementation final {
             &&healthGaugeTextureResources,
         std::vector<ComPtr<ID3D11ShaderResourceView>>
             &&rollingDigitTextureResources,
+        std::vector<ComPtr<ID3D11ShaderResourceView>>
+            &&hudInstrumentTextureResources,
         const airfix::render::CameraLogicalExtent cameraCanvas,
         const float horizontalFovDegrees)
         : room(std::move(loadedRoom)), crosshairs(std::move(loadedCrosshairs)),
           healthGauge(std::move(loadedHealthGauge)),
           rollingDigits(std::move(loadedRollingDigits)),
+          hudInstruments(std::move(loadedHudInstruments)),
           cameraMissionRuntime(std::move(gameplayCameraRuntime)),
           poseRuntime(std::move(playerPoseRuntime)),
           meshes(std::move(meshResources)),
@@ -433,6 +445,7 @@ class AirfixD3D11Renderer::Implementation final {
           crosshairTextures(std::move(crosshairTextureResources)),
           healthGaugeTextures(std::move(healthGaugeTextureResources)),
           rollingDigitTextures(std::move(rollingDigitTextureResources)),
+          hudInstrumentTextures(std::move(hudInstrumentTextureResources)),
           referenceCameraCanvas(cameraCanvas),
           referenceHorizontalFovDegrees(horizontalFovDegrees) {}
   };
@@ -691,6 +704,7 @@ public:
       const airfix::content::ContentRevision &expectedRevision) {
     installLoadedMissionRoomTransaction(std::move(room), std::nullopt,
                                         std::nullopt, std::nullopt,
+                                        std::nullopt,
                                         expectedRevision);
   }
 
@@ -700,6 +714,8 @@ public:
       airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet &&healthGauge,
       airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet
           &&rollingDigits,
+      airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet
+          &&hudInstruments,
       const airfix::content::ContentRevision &expectedRevision) {
     installLoadedMissionRoomTransaction(
         std::move(room),
@@ -711,6 +727,9 @@ public:
         std::optional<
             airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet>{
             std::move(rollingDigits)},
+        std::optional<
+            airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet>{
+            std::move(hudInstruments)},
         expectedRevision);
   }
 
@@ -723,6 +742,9 @@ public:
       std::optional<
           airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet>
           &&rollingDigits,
+      std::optional<
+          airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet>
+          &&hudInstruments,
       const airfix::content::ContentRevision &expectedRevision) {
     if (airfix::content::validateMissionWorldRoomPublication(room,
                                                              expectedRevision)
@@ -753,6 +775,12 @@ public:
         (!rollingDigits->valid() ||
          rollingDigits->revision != expectedRevision)) {
       throw std::runtime_error("authenticated aircraft rolling digit atlas "
+                               "failed its publication contract");
+    }
+    if (hudInstruments.has_value() &&
+        (!hudInstruments->valid() ||
+         hudInstruments->revision != expectedRevision)) {
+      throw std::runtime_error("authenticated aircraft HUD instrument set "
                                "failed its publication contract");
     }
 
@@ -808,6 +836,10 @@ public:
         rollingDigits.has_value()
             ? createAircraftHudRollingDigitTextures(*rollingDigits)
             : std::vector<ComPtr<ID3D11ShaderResourceView>>{};
+    auto hudInstrumentTextures =
+        hudInstruments.has_value()
+            ? createAircraftHudInstrumentTextures(*hudInstruments)
+            : std::vector<ComPtr<ID3D11ShaderResourceView>>{};
 
     // Full validation and GPU preparation must complete before mission-owned
     // collision storage is moved. The active mission remains untouched on
@@ -844,10 +876,11 @@ public:
     std::vector<airfix::content::LoadedTextureAsset>().swap(room.textures);
     auto candidate = std::make_unique<MissionResources>(
         std::move(room), std::move(crosshairs), std::move(healthGauge),
-        std::move(rollingDigits),
+        std::move(rollingDigits), std::move(hudInstruments),
         std::move(cameraMissionRuntime), std::move(posePreparation.runtime),
         std::move(meshes), std::move(textures), std::move(crosshairTextures),
         std::move(healthGaugeTextures), std::move(rollingDigitTextures),
+        std::move(hudInstrumentTextures),
         referenceCameraCanvas,
         referenceHorizontalFovDegrees);
     mission_ = std::move(candidate);
@@ -889,7 +922,9 @@ public:
       const airfix::content::LegacyWeaponCrosshairSpriteSubmission
           *crosshairSubmission = nullptr,
       const airfix::content::LegacyAircraftHealthGaugeSubmission
-          *healthGaugeSubmission = nullptr) {
+          *healthGaugeSubmission = nullptr,
+      const airfix::content::LegacyAircraftHudInstrumentsSubmission
+          *hudInstrumentsSubmission = nullptr) {
     const auto frameStarted = std::chrono::steady_clock::now();
     double frameIntervalMilliseconds = 1000.0 / 60.0;
     if (previousFrameStart_.has_value()) {
@@ -1130,6 +1165,10 @@ public:
         healthGaugeSubmission != nullptr
             ? drawLegacyAircraftHealthGauge(*healthGaugeSubmission)
             : 0U;
+    const std::size_t hudInstrumentDrawCallCount =
+        hudInstrumentsSubmission != nullptr
+            ? drawLegacyAircraftHudInstruments(*hudInstrumentsSubmission)
+            : 0U;
     const bool crosshairDrawn =
         crosshairSubmission != nullptr &&
         drawLegacyWeaponCrosshair(*crosshairSubmission);
@@ -1139,10 +1178,12 @@ public:
     const std::uint64_t auxiliaryDrawCallCount =
         (usesScaledSceneTarget ? 1U : 0U) +
         static_cast<std::uint64_t>(healthGaugeDrawCallCount) +
+        static_cast<std::uint64_t>(hudInstrumentDrawCallCount) +
         (crosshairDrawn ? 1U : 0U);
     const std::uint64_t auxiliaryTriangleCount =
         (usesScaledSceneTarget ? 1U : 0U) +
         static_cast<std::uint64_t>(healthGaugeDrawCallCount) * 2U +
+        static_cast<std::uint64_t>(hudInstrumentDrawCallCount) * 2U +
         (crosshairDrawn ? 2U : 0U);
     const auto cpuSampled = std::chrono::steady_clock::now();
     const double cpuFrameMilliseconds =
@@ -1666,6 +1707,12 @@ private:
       for (const auto &texture : mission_->healthGaugeTextures) {
         total = saturatingAdd(total, textureBytes(texture.Get()));
       }
+      for (const auto &texture : mission_->rollingDigitTextures) {
+        total = saturatingAdd(total, textureBytes(texture.Get()));
+      }
+      for (const auto &texture : mission_->hudInstrumentTextures) {
+        total = saturatingAdd(total, textureBytes(texture.Get()));
+      }
     } else {
       total = saturatingAdd(total, textureBytes(texture_.Get()));
     }
@@ -2005,6 +2052,7 @@ private:
           .outputSize = {static_cast<float>(width_),
                          static_cast<float>(height_), 0.0F, 0.0F},
           .tint = normalizedArgb(command.colourArgb),
+          .uvRect = {0.0F, 0.0F, 1.0F, 1.0F},
       };
       for (std::size_t pointIndex = 0U; pointIndex < command.outputQuad.size();
            ++pointIndex) {
@@ -2028,6 +2076,93 @@ private:
         context_->OMSetBlendState(nullptr, blendFactor.data(), 0xFFFFFFFFU);
         context_->PSSetShader(gaugeSolidPixelShader_.Get(), nullptr, 0U);
       }
+      context_->PSSetShaderResources(0U, 1U, &view);
+      context_->Draw(6U, 0U);
+    }
+
+    ID3D11ShaderResourceView *nullView = nullptr;
+    context_->PSSetShaderResources(0U, 1U, &nullView);
+    context_->OMSetBlendState(nullptr, blendFactor.data(), 0xFFFFFFFFU);
+    return submission.commandCount;
+  }
+
+  [[nodiscard]] std::size_t drawLegacyAircraftHudInstruments(
+      const airfix::content::LegacyAircraftHudInstrumentsSubmission
+          &submission) {
+    if (!mission_ || !mission_->hudInstruments.has_value() || !renderTarget_ ||
+        !submission.belongsTo(*mission_->hudInstruments) ||
+        submission.commandCount == 0U ||
+        submission.commandCount > submission.orderedCommands.size()) {
+      return 0U;
+    }
+
+    const auto validPoint = [&](const airfix::render::OutputPixelPoint point) {
+      return std::isfinite(point.x) && std::isfinite(point.y) &&
+             point.x >= 0.0F && point.y >= 0.0F &&
+             point.x <= static_cast<float>(width_) &&
+             point.y <= static_cast<float>(height_);
+    };
+    for (std::size_t index = 0U; index < submission.commandCount; ++index) {
+      const auto &command = submission.orderedCommands[index];
+      const auto textureIndex =
+          static_cast<std::size_t>(command.textureId.value);
+      if (command.blendMode !=
+              airfix::content::LegacyAircraftHudInstrumentBlendMode::
+                  sourceAlphaOneMinusSourceAlpha ||
+          command.depthMode !=
+              airfix::content::LegacyAircraftHudInstrumentDepthMode::
+                  alwaysWrite ||
+          command.samplingMode !=
+              airfix::content::LegacyAircraftHudInstrumentSamplingMode::
+                  linearClamp ||
+          !std::all_of(command.outputQuad.begin(), command.outputQuad.end(),
+                       validPoint) ||
+          textureIndex >= mission_->hudInstrumentTextures.size() ||
+          !mission_->hudInstrumentTextures[textureIndex]) {
+        return 0U;
+      }
+    }
+
+    ID3D11RenderTargetView *outputTarget = renderTarget_.Get();
+    context_->OMSetRenderTargets(1U, &outputTarget, depthView_.Get());
+    context_->RSSetViewports(1U, &viewport_);
+    context_->RSSetState(rasterizer_.Get());
+    context_->OMSetDepthStencilState(crosshairDepthState_.Get(), 0U);
+    constexpr std::array<float, 4U> blendFactor{};
+    context_->OMSetBlendState(overlayBlendState_.Get(), blendFactor.data(),
+                              0xFFFFFFFFU);
+    context_->IASetInputLayout(nullptr);
+    context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context_->VSSetShader(gaugeVertexShader_.Get(), nullptr, 0U);
+    context_->PSSetShader(gaugeTexturePixelShader_.Get(), nullptr, 0U);
+    ID3D11Buffer *uniformBuffer = gaugeUniforms_.Get();
+    context_->VSSetConstantBuffers(3U, 1U, &uniformBuffer);
+    context_->PSSetConstantBuffers(3U, 1U, &uniformBuffer);
+    ID3D11SamplerState *sampler = crosshairSampler_.Get();
+    context_->PSSetSamplers(0U, 1U, &sampler);
+
+    for (std::size_t index = 0U; index < submission.commandCount; ++index) {
+      const auto &command = submission.orderedCommands[index];
+      GaugeUniforms uniforms{
+          .outputSize = {static_cast<float>(width_),
+                         static_cast<float>(height_), 0.0F, 0.0F},
+          .tint = normalizedArgb(command.tintArgb),
+          .uvRect = {command.uv.minimumU, command.uv.minimumV,
+                     command.uv.maximumU, command.uv.maximumV},
+      };
+      for (std::size_t pointIndex = 0U; pointIndex < command.outputQuad.size();
+           ++pointIndex) {
+        uniforms.outputQuad[pointIndex] = {
+            command.outputQuad[pointIndex].x,
+            command.outputQuad[pointIndex].y,
+            0.0F,
+            0.0F,
+        };
+      }
+      context_->UpdateSubresource(gaugeUniforms_.Get(), 0U, nullptr, &uniforms,
+                                  0U, 0U);
+      ID3D11ShaderResourceView *view =
+          mission_->hudInstrumentTextures[command.textureId.value].Get();
       context_->PSSetShaderResources(0U, 1U, &view);
       context_->Draw(6U, 0U);
     }
@@ -2781,6 +2916,27 @@ private:
     return result;
   }
 
+  [[nodiscard]] std::vector<ComPtr<ID3D11ShaderResourceView>>
+  createAircraftHudInstrumentTextures(
+      const airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet
+          &sources) const {
+    if (!sources.valid()) {
+      throw std::runtime_error(
+          "aircraft HUD instrument textures failed their upload contract");
+    }
+    std::vector<ComPtr<ID3D11ShaderResourceView>> result;
+    result.reserve(sources.textures.size());
+    for (std::size_t index = 0U; index < sources.textures.size(); ++index) {
+      const auto &source = sources.textures[index];
+      if (source.textureId.value != index) {
+        throw std::runtime_error(
+            "aircraft HUD instruments do not use dense HUD-local IDs");
+      }
+      result.push_back(createUploadedTexture(source));
+    }
+    return result;
+  }
+
   void createTextures() {
     texture_ =
         createTexture(airfix::render::PublicRenderSmokeScene::textureWidth,
@@ -3213,10 +3369,12 @@ void AirfixD3D11Renderer::installLoadedMissionRoom(
     airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet &&healthGauge,
     airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet
         &&rollingDigits,
+    airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet
+        &&hudInstruments,
     const airfix::content::ContentRevision &expectedRevision) {
   implementation_->installLoadedMissionRoom(
       std::move(room), std::move(crosshairs), std::move(healthGauge),
-      std::move(rollingDigits), expectedRevision);
+      std::move(rollingDigits), std::move(hudInstruments), expectedRevision);
 }
 
 bool AirfixD3D11Renderer::missionWorldRoomInstalled() const noexcept {

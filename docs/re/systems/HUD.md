@@ -3,8 +3,9 @@
 ## Scope and evidence
 
 `EV-20260801-001` covers the first complete renderer-neutral subsection of the
-aircraft HUD, while `EV-20260801-002` covers its reusable four-digit rolling
-number helper. Ghidra 12.1.2 is the primary decompiler; Rizin 0.9.1
+aircraft HUD, `EV-20260801-002` covers its reusable four-digit rolling-number
+helper, and `EV-20260801-003` covers the complete pair of analog instruments.
+Ghidra 12.1.2 is the primary decompiler; Rizin 0.9.1
 independently confirms the function boundaries, calls, and instruction order
 in the hash-verified `AirCraft.type` copy with SHA-256
 `9745842bde40406390b46f935e9f12d6626675f89a8fbb303cb135d76cf7dd1e`.
@@ -27,6 +28,8 @@ The matching fail-closed Metal encoder is in
 [EXP-20260801-101](../../experiments/EXP-20260801-101-metal-aircraft-health-gauge-encoder.md).
 The rolling-number reconstruction is in
 [EXP-20260801-102](../../experiments/EXP-20260801-102-aircraft-hud-rolling-digits.md).
+The analog instruments are in
+[EXP-20260801-104](../../experiments/EXP-20260801-104-aircraft-hud-analog-instruments.md).
 
 ## Enclosing gates
 
@@ -216,9 +219,34 @@ The PC53-compatible double staging is a documented presentation policy, not a
 claim of live x87 bit identity. The six live value producers and enclosing HUD
 clock remain explicit later slices.
 
+## Recovered analog instruments
+
+AirCraft RVA `0x00007330`, exact range `[0x10007330,0x1000742F)`, draws one
+optional `64x64` face and one optional rotated indicator. The HUD calls it for
+the right centre `(width/2+138,height-40)` before the left centre
+`(width/2-138,height-40)`. The right value is the already-smoothed field at
+`+0x540`; the left value is the ratio `+0x400/+0x3F8`. The latter remains
+described as a remaining/initial ratio rather than receiving an unproved
+stronger gameplay label. Right tint is white; left tint comes from `+0x550`.
+
+The shared indicator consumes `(0,0)-(7,30)` from the exact format-8 `16x32`
+asset and rotates across `(0.5-value)*3.9269909858703613` radians around the
+recovered `3.5,23` pivot. Both format-8 `64x64` faces come from the selected
+localization archive; the indicator comes from the source archive. One bounded
+authenticated owner and one identity-bound native-output packet retain this
+cross-archive provenance, right-before-left order, UVs, tint, source-alpha
+blend, linear clamp and ALWAYS/write depth. D3D11 and Metal stage all three
+resources atomically and own dormant fail-closed arbitrary-quad consumers.
+
+The portable planner accepts the already-produced presentation values and is
+allocation-free. It does not update smoothing, label the ratio as fuel,
+manufacture live values, or constrain native 3D resolution. Ordinary frames
+remain disconnected until a verified runtime producer publishes the packet.
+
 ## Remaining HUD work
 
-- Recover and classify the two clock/instrument calls and their live values.
+- Connect the verified two-instrument fields and tint through ordinary HUD
+  render-event publication without substituting validation values.
 - Recover and connect the six verified live digit producers and shared HUD
   clock to the already authenticated native-output submission.
 - Complete primary/selected-secondary icon, ammunition, and status-bar plans.

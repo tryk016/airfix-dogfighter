@@ -1,12 +1,14 @@
 #import "AirfixMetalRenderer.h"
 
 #include "airfix/content/LegacyAircraftHealthGaugeSubmission.hpp"
+#include "airfix/content/LegacyAircraftHudInstrumentsSubmission.hpp"
 #include "airfix/content/LegacyAircraftHudRollingDigitsSubmission.hpp"
 #include "airfix/content/LegacyWeaponCrosshairSpriteSubmission.hpp"
 #import <Metal/Metal.h>
 #import <simd/simd.h>
 
 #include "airfix/content/LegacyAircraftHealthGaugeTextureSet.hpp"
+#include "airfix/content/LegacyAircraftHudInstrumentsTextureSet.hpp"
 #include "airfix/content/LegacyAircraftHudRollingDigitsTextureSet.hpp"
 #include "airfix/content/LegacyWeaponCrosshairTextureSet.hpp"
 #include "airfix/content/MissionWorldRoomLoader.hpp"
@@ -122,6 +124,7 @@ struct alignas(16) GpuGaugeUniforms {
     std::array<simd_float4, 4U> outputQuad;
     simd_float4 outputSize;
     simd_float4 tint;
+    simd_float4 uvRect;
 };
 
 static_assert(sizeof(GpuVertex) == 48U);
@@ -131,11 +134,12 @@ static_assert(sizeof(GpuGameplayUniforms) == 160U);
 static_assert(alignof(GpuGameplayUniforms) == 16U);
 static_assert(sizeof(GpuOverlayUniforms) == 64U);
 static_assert(alignof(GpuOverlayUniforms) == 16U);
-static_assert(sizeof(GpuGaugeUniforms) == 96U);
+static_assert(sizeof(GpuGaugeUniforms) == 112U);
 static_assert(alignof(GpuGaugeUniforms) == 16U);
 static_assert(offsetof(GpuGaugeUniforms, outputQuad) == 0U);
 static_assert(offsetof(GpuGaugeUniforms, outputSize) == 64U);
 static_assert(offsetof(GpuGaugeUniforms, tint) == 80U);
+static_assert(offsetof(GpuGaugeUniforms, uvRect) == 96U);
 
 [[nodiscard]] simd_float4 normalizedArgb(
     const std::uint32_t argb) noexcept {
@@ -553,6 +557,9 @@ gameplayCameraInitializeInput(
     std::optional<
         airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet>
         _rollingDigits;
+    std::optional<
+        airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet>
+        _hudInstruments;
     std::vector<NSUInteger> _indexOffsets;
     std::shared_ptr<airfix::render::PlayerActorPoseRuntime>
         _scenePoseRuntime;
@@ -565,6 +572,7 @@ gameplayCameraInitializeInput(
 @property(nonatomic, strong) NSArray<id<MTLTexture>>* crosshairTextures;
 @property(nonatomic, strong) NSArray<id<MTLTexture>> *healthGaugeTextures;
 @property(nonatomic, strong) NSArray<id<MTLTexture>> *rollingDigitTextures;
+@property(nonatomic, strong) NSArray<id<MTLTexture>> *hudInstrumentTextures;
 @property(nonatomic, strong) id<MTLHeap> bufferHeap;
 @property(nonatomic, strong) id<MTLHeap> textureHeap;
 @end
@@ -581,6 +589,7 @@ gameplayCameraInitializeInput(
     _crosshairTextures = nil;
     _healthGaugeTextures = nil;
     _rollingDigitTextures = nil;
+    _hudInstrumentTextures = nil;
     _bufferHeap = nil;
     _textureHeap = nil;
 }
@@ -1101,6 +1110,12 @@ textureAssetId(const airfix::content::LoadedLegacyAircraftHealthGaugeTexture
     return texture.textureId;
 }
 
+[[nodiscard]] airfix::render::TextureAssetId textureAssetId(
+    const airfix::content::LoadedLegacyAircraftHudInstrumentTexture &texture)
+    noexcept {
+  return texture.textureId;
+}
+
 template <typename LoadedTexture>
 bool validateTextureAsset(
     const LoadedTexture& texture,
@@ -1426,6 +1441,24 @@ bool preflightPrivateRoom(
                                            outputExtent
                            drawableDepthTexture:
                                (id<MTLTexture>)drawableDepthTexture;
+- (NSUInteger)encodeLegacyAircraftHudInstruments:
+                  (const airfix::content::
+                       LegacyAircraftHudInstrumentsSubmission&)submission
+                                             resources:
+                                                 (AirfixMetalRoomResources*)
+                                                     resources
+                                          commandBuffer:
+                                              (id<MTLCommandBuffer>)
+                                                  commandBuffer
+                                             renderPass:
+                                                 (MTLRenderPassDescriptor*)
+                                                     renderPass
+                                           outputExtent:
+                                               (airfix::render::
+                                                    OutputPixelExtent)
+                                                   outputExtent
+                                   drawableDepthTexture:
+                                       (id<MTLTexture>)drawableDepthTexture;
 - (NSUInteger)encodeLegacyAircraftHudRollingDigits:
                   (const airfix::content::
                        LegacyAircraftHudRollingDigitsSubmission&)submission
@@ -3079,6 +3112,7 @@ bool preflightPrivateRoom(
                     0.0F,
                 },
             .tint = normalizedArgb(command.colourArgb),
+            .uvRect = {0.0F, 0.0F, 1.0F, 1.0F},
         };
         for (std::size_t pointIndex = 0U;
              pointIndex < command.outputQuad.size();
@@ -3111,6 +3145,143 @@ bool preflightPrivateRoom(
                     self.healthGaugeSolidPipelineState];
         }
         [encoder setFragmentTexture:texture atIndex:0U];
+        [encoder drawPrimitives:MTLPrimitiveTypeTriangle
+                    vertexStart:0U
+                    vertexCount:6U];
+    }
+    [encoder endEncoding];
+    return static_cast<NSUInteger>(submission.commandCount);
+}
+
+- (NSUInteger)encodeLegacyAircraftHudInstruments:
+                  (const airfix::content::
+                       LegacyAircraftHudInstrumentsSubmission&)submission
+                                             resources:
+                                                 (AirfixMetalRoomResources*)
+                                                     resources
+                                          commandBuffer:
+                                              (id<MTLCommandBuffer>)
+                                                  commandBuffer
+                                             renderPass:
+                                                 (MTLRenderPassDescriptor*)
+                                                     renderPass
+                                           outputExtent:
+                                               (airfix::render::
+                                                    OutputPixelExtent)
+                                                   outputExtent
+                                   drawableDepthTexture:
+                                       (id<MTLTexture>)drawableDepthTexture {
+    if (resources == nil || commandBuffer == nil || renderPass == nil ||
+        drawableDepthTexture == nil ||
+        !resources->_hudInstruments.has_value() ||
+        resources.hudInstrumentTextures == nil ||
+        resources.hudInstrumentTextures.count !=
+            airfix::content::legacyAircraftHudInstrumentTextureCount ||
+        self.healthGaugeTexturePipelineState == nil ||
+        self.healthGaugeDepthState == nil ||
+        self.healthGaugeSamplerState == nil || outputExtent.width == 0U ||
+        outputExtent.height == 0U ||
+        !submission.belongsTo(*resources->_hudInstruments) ||
+        submission.commandCount == 0U ||
+        !fitsNSUInteger(submission.commandCount)) {
+        return 0U;
+    }
+
+    const auto pointIsInsideOutput =
+        [outputExtent](const airfix::render::OutputPixelPoint point) noexcept {
+            return std::isfinite(point.x) && std::isfinite(point.y) &&
+                point.x >= 0.0F && point.y >= 0.0F &&
+                point.x <= static_cast<float>(outputExtent.width) &&
+                point.y <= static_cast<float>(outputExtent.height);
+        };
+    for (std::size_t index = 0U; index < submission.commandCount; ++index) {
+        const auto& command = submission.orderedCommands[index];
+        const auto textureIndex =
+            static_cast<NSUInteger>(command.textureId.value);
+        if (!std::all_of(
+                command.outputQuad.begin(), command.outputQuad.end(),
+                pointIsInsideOutput) ||
+            textureIndex >= resources.hudInstrumentTextures.count ||
+            resources.hudInstrumentTextures[textureIndex] == nil) {
+            return 0U;
+        }
+    }
+
+    id<MTLTexture> outputTexture = renderPass.colorAttachments[0].texture;
+    if (outputTexture == nil ||
+        outputTexture.pixelFormat != MTLPixelFormatBGRA8Unorm ||
+        drawableDepthTexture.pixelFormat != MTLPixelFormatDepth32Float ||
+        outputTexture.width != static_cast<NSUInteger>(outputExtent.width) ||
+        outputTexture.height != static_cast<NSUInteger>(outputExtent.height) ||
+        drawableDepthTexture.width !=
+            static_cast<NSUInteger>(outputExtent.width) ||
+        drawableDepthTexture.height !=
+            static_cast<NSUInteger>(outputExtent.height)) {
+        return 0U;
+    }
+    MTLRenderPassDescriptor* instrumentsPass =
+        [MTLRenderPassDescriptor renderPassDescriptor];
+    instrumentsPass.colorAttachments[0].texture = outputTexture;
+    instrumentsPass.colorAttachments[0].loadAction = MTLLoadActionLoad;
+    instrumentsPass.colorAttachments[0].storeAction = MTLStoreActionStore;
+    instrumentsPass.depthAttachment.texture = drawableDepthTexture;
+    instrumentsPass.depthAttachment.loadAction = MTLLoadActionDontCare;
+    instrumentsPass.depthAttachment.storeAction = MTLStoreActionDontCare;
+
+    id<MTLRenderCommandEncoder> encoder =
+        [commandBuffer renderCommandEncoderWithDescriptor:instrumentsPass];
+    if (encoder == nil) {
+        return 0U;
+    }
+    [encoder setRenderPipelineState:self.healthGaugeTexturePipelineState];
+    [encoder setDepthStencilState:self.healthGaugeDepthState];
+    [encoder setCullMode:MTLCullModeNone];
+    [encoder
+        setViewport:MTLViewport{
+            0.0,
+            0.0,
+            static_cast<double>(outputExtent.width),
+            static_cast<double>(outputExtent.height),
+            0.0,
+            1.0,
+        }];
+    [encoder setFragmentSamplerState:self.healthGaugeSamplerState atIndex:0U];
+
+    for (std::size_t index = 0U; index < submission.commandCount; ++index) {
+        const auto& command = submission.orderedCommands[index];
+        GpuGaugeUniforms uniforms{
+            .outputSize =
+                {
+                    static_cast<float>(outputExtent.width),
+                    static_cast<float>(outputExtent.height),
+                    0.0F,
+                    0.0F,
+                },
+            .tint = normalizedArgb(command.tintArgb),
+            .uvRect =
+                {
+                    command.uv.minimumU,
+                    command.uv.minimumV,
+                    command.uv.maximumU,
+                    command.uv.maximumV,
+                },
+        };
+        for (std::size_t pointIndex = 0U;
+             pointIndex < command.outputQuad.size(); ++pointIndex) {
+            uniforms.outputQuad[pointIndex] = {
+                command.outputQuad[pointIndex].x,
+                command.outputQuad[pointIndex].y,
+                0.0F,
+                0.0F,
+            };
+        }
+        [encoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:3U];
+        [encoder setFragmentBytes:&uniforms length:sizeof(uniforms) atIndex:3U];
+        [encoder
+            setFragmentTexture:resources.hudInstrumentTextures[
+                                   static_cast<NSUInteger>(
+                                       command.textureId.value)]
+                        atIndex:0U];
         [encoder drawPrimitives:MTLPrimitiveTypeTriangle
                     vertexStart:0U
                     vertexCount:6U];
@@ -3350,6 +3521,9 @@ bool preflightPrivateRoom(
     aircraftHudRollingDigits:
         (airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet &&)
             rollingDigits
+    aircraftHudInstruments:
+        (airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet &&)
+            hudInstruments
                        error:(NSError *_Nullable *_Nullable)error {
   if (error != nullptr) {
     *error = nil;
@@ -3386,7 +3560,8 @@ bool preflightPrivateRoom(
     if (!preflightPrivateRoom(device, room, preflight) || !crosshairs.valid() ||
         crosshairs.revision != room.revision || !healthGauge.valid() ||
         healthGauge.revision != room.revision || !rollingDigits.valid() ||
-        rollingDigits.revision != room.revision) {
+        rollingDigits.revision != room.revision || !hudInstruments.valid() ||
+        hudInstruments.revision != room.revision) {
       if (error != nullptr) {
         *error = makeError(
             RendererError::invalidPayload,
@@ -3426,6 +3601,19 @@ bool preflightPrivateRoom(
           *error = makeError(
               RendererError::invalidPayload,
               @"The private rolling-digit atlas failed the bounded Metal "
+               "snapshot contract.");
+        }
+        return nil;
+      }
+    }
+    for (std::size_t textureIndex = 0U;
+         textureIndex < hudInstruments.textures.size(); ++textureIndex) {
+      if (!validateTextureAsset(hudInstruments.textures[textureIndex],
+                                textureIndex, preflight.aggregateGpuBytes)) {
+        if (error != nullptr) {
+          *error = makeError(
+              RendererError::invalidPayload,
+              @"The private HUD instrument set failed the bounded Metal "
                "snapshot contract.");
         }
         return nil;
@@ -3685,6 +3873,23 @@ bool preflightPrivateRoom(
         }
       }
     }
+    if (heapPlanValid) {
+      for (const auto &source : hudInstruments.textures) {
+        MTLTextureDescriptor *descriptor = [[MTLTextureDescriptor alloc] init];
+        if (descriptor == nil) {
+          heapPlanValid = false;
+          break;
+        }
+        configurePrivateTextureDescriptor(descriptor, source);
+        if (!accountHeapResourcePlacement(
+                [device heapTextureSizeAndAlignWithDescriptor:descriptor],
+                textureHeapBytes, textureHeapAlignment,
+                kMaximumPrivateRoomGpuHeapPlanBytes)) {
+          heapPlanValid = false;
+          break;
+        }
+      }
+    }
     if (!heapPlanValid ||
         !finalizeHeapPlan(bufferHeapBytes, bufferHeapAlignment,
                           kMaximumPrivateRoomGpuHeapPlanBytes) ||
@@ -3837,11 +4042,14 @@ bool preflightPrivateRoom(
       NSMutableArray<id<MTLTexture>> *rollingDigitTextures =
           [NSMutableArray arrayWithCapacity:static_cast<NSUInteger>(
                                                 rollingDigits.textures.size())];
+      NSMutableArray<id<MTLTexture>> *hudInstrumentTextures =
+          [NSMutableArray arrayWithCapacity:static_cast<NSUInteger>(
+                                                hudInstruments.textures.size())];
       NSMutableArray<id<MTLTexture>> *generatedMipTextures =
           [NSMutableArray array];
       if (textures == nil || crosshairTextures == nil ||
           healthGaugeTextures == nil || rollingDigitTextures == nil ||
-          generatedMipTextures == nil) {
+          hudInstrumentTextures == nil || generatedMipTextures == nil) {
         if (error != nullptr) {
           *error =
               makeError(RendererError::textureCreation,
@@ -4033,6 +4241,52 @@ bool preflightPrivateRoom(
         [rollingDigitTextures addObject:texture];
       }
 
+      for (const auto &source : hudInstruments.textures) {
+        const auto &upload = source.upload;
+        MTLTextureDescriptor *descriptor = [[MTLTextureDescriptor alloc] init];
+        if (descriptor == nil) {
+          if (error != nullptr) {
+            *error = makeError(
+                RendererError::textureCreation,
+                @"Private HUD instrument metadata could not be allocated.");
+          }
+          return nil;
+        }
+        configurePrivateTextureDescriptor(descriptor, source);
+
+        id<MTLTexture> texture =
+            [textureHeap newTextureWithDescriptor:descriptor];
+        if (texture == nil || texture.width != descriptor.width ||
+            texture.height != descriptor.height ||
+            texture.mipmapLevelCount != descriptor.mipmapLevelCount ||
+            texture.allocatedSize == 0U) {
+          if (error != nullptr) {
+            *error = makeError(
+                RendererError::textureCreation,
+                @"Metal could not create every private HUD instrument texture.");
+          }
+          return nil;
+        }
+
+        for (std::size_t levelIndex = 0U;
+             levelIndex < source.uploadLevels.size(); ++levelIndex) {
+          const auto &level = upload.uploadLevels[levelIndex];
+          const auto &image = source.uploadLevels[levelIndex];
+          [texture
+              replaceRegion:MTLRegionMake2D(
+                                0U, 0U, static_cast<NSUInteger>(image.width),
+                                static_cast<NSUInteger>(image.height))
+                mipmapLevel:static_cast<NSUInteger>(level.level)
+                  withBytes:image.pixels.data()
+                bytesPerRow:static_cast<NSUInteger>(level.bytesPerRow)];
+        }
+        if (upload.mipPolicy ==
+            airfix::render::GtiMipPolicy::generateFromBase) {
+          [generatedMipTextures addObject:texture];
+        }
+        [hudInstrumentTextures addObject:texture];
+      }
+
       if (generatedMipTextures.count != 0U) {
         id<MTLCommandBuffer> mipCommandBuffer = [commandQueue commandBuffer];
         if (mipCommandBuffer == nil) {
@@ -4129,15 +4383,20 @@ bool preflightPrivateRoom(
           [healthGaugeTextures copy];
       NSArray<id<MTLTexture>> *rollingDigitTextureSnapshot =
           [rollingDigitTextures copy];
+      NSArray<id<MTLTexture>> *hudInstrumentTextureSnapshot =
+          [hudInstrumentTextures copy];
       if (meshBufferSnapshot == nil || textureSnapshot == nil ||
           crosshairTextureSnapshot == nil ||
           healthGaugeTextureSnapshot == nil ||
           rollingDigitTextureSnapshot == nil ||
+          hudInstrumentTextureSnapshot == nil ||
           meshBufferSnapshot.count != room.model.meshes.size() ||
           textureSnapshot.count != room.textures.size() ||
           crosshairTextureSnapshot.count != crosshairs.textures.size() ||
           healthGaugeTextureSnapshot.count != healthGauge.textures.size() ||
-          rollingDigitTextureSnapshot.count != rollingDigits.textures.size()) {
+          rollingDigitTextureSnapshot.count != rollingDigits.textures.size() ||
+          hudInstrumentTextureSnapshot.count !=
+              hudInstruments.textures.size()) {
         if (error != nullptr) {
           *error =
               makeError(RendererError::unexpectedFailure,
@@ -4150,6 +4409,7 @@ bool preflightPrivateRoom(
       candidateResources.crosshairTextures = crosshairTextureSnapshot;
       candidateResources.healthGaugeTextures = healthGaugeTextureSnapshot;
       candidateResources.rollingDigitTextures = rollingDigitTextureSnapshot;
+      candidateResources.hudInstrumentTextures = hudInstrumentTextureSnapshot;
       candidateResources.bufferHeap = bufferHeap;
       candidateResources.textureHeap = textureHeap;
       preparedRoom->_ownerToken = ownerToken;
@@ -4172,6 +4432,7 @@ bool preflightPrivateRoom(
       candidateResources->_crosshairs.emplace(std::move(crosshairs));
       candidateResources->_healthGauge.emplace(std::move(healthGauge));
       candidateResources->_rollingDigits.emplace(std::move(rollingDigits));
+      candidateResources->_hudInstruments.emplace(std::move(hudInstruments));
 
       reservationHolder->_reservation.emplace(
           std::move(*privatePlanReservation));

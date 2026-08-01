@@ -1148,6 +1148,10 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
                     airfix::ios::
                         takeLoadedLegacyAircraftHudRollingDigitTextures(
                             snapshot);
+                auto hudInstruments =
+                    airfix::ios::
+                        takeLoadedLegacyAircraftHudInstrumentTextures(
+                            snapshot);
                 preparedAudioClips = std::make_shared<
                     airfix::content::LoadedLegacyAircraftAudioClips>(
                     std::move(audioClips));
@@ -1157,6 +1161,8 @@ constexpr std::array<airfix::audio::AudioVoiceId, 6U>
                                    aircraftHealthGauge:std::move(healthGauge)
                               aircraftHudRollingDigits:
                                   std::move(rollingDigits)
+                              aircraftHudInstruments:
+                                  std::move(hudInstruments)
                                                  error:&preparationError];
             }
             catch (...) {

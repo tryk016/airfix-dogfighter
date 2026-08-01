@@ -113,10 +113,17 @@
   maps fractional UV windows and independently scaled UI rectangles into
   physical pixels while preserving tint, source-alpha blend, linear clamp and
   ALWAYS/write depth. D3D11 and Metal contain dormant fail-closed consumers;
-  ordinary frames still issue no manufactured HUD draw. Live slot ownership,
-  changing aim/collision production, explicit visibility policy,
-  smoothed-health and digit producer wiring, physical iPhone visual
-  acceptance, the remaining HUD, and screen effects are not yet connected.
+  ordinary frames still issue no manufactured HUD draw. The paired analog
+  instruments are now a third complete primitive: their exact right-before-
+  left order, centres, 64x64 faces, 7x30 rotated indicator, 225-degree span,
+  pivot, UV window and tints are recovered. A cross-archive authenticated
+  three-texture owner, allocation-free logical plan and identity-bound native-
+  output packet preserve those rules. Both products stage the textures inside
+  the atomic mission transaction and own dormant fail-closed arbitrary-quad
+  consumers. Live slot ownership, changing aim/collision production, explicit
+  visibility policy, smoothed-health, digit and instrument producer wiring,
+  physical iPhone visual acceptance, the remaining HUD, and screen effects
+  are not yet connected.
 - The recovered CCF material contract now survives end to end from typed
   `0x2140/0x2150/0x2151` metadata and exact native defaults through world,
   aggregate mission, and player texture binding into each backend-neutral draw

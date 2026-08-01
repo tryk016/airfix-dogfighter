@@ -5053,3 +5053,31 @@ superseded evidence.
   tests, including the digit contract and D3D11 renderer/runtime-HLSL paths.
   The public-boundary scanner accepts all 699 tracked files. Hosted iOS
   compilation remains the Objective-C++/Metal publication gate.
+
+## 2026-08-01 - AirCraft HUD analog instruments
+
+- `EV-20260801-003` / `EXP-20260801-104` use Ghidra 12.1.2 as the primary
+  source and Rizin 0.9.1 as the independent byte/control-flow check for exact
+  AirCraft RVA `0x00007330`, range `[0x10007330,0x1000742F)`. The recovered
+  helper draws an optional 64x64 face and a 7x30 rotated indicator with exact
+  binary32 constants, pivot, tint and native right-before-left call order.
+- An allocation-free four-command plan accepts the already-smoothed right
+  value and the left remaining/initial ratio without assigning an unproved
+  gameplay label or manufacturing live state. It retains independent missing
+  textures and fails closed on invalid gates, extents and non-finite values.
+- A bounded authenticated owner loads both format-8 64x64 faces from the
+  selected localization archive and the format-8 16x32 indicator from the
+  source archive. Exact dimensions, source/decode/upload/resident budgets,
+  cancellation and immutable transaction identity are enforced atomically.
+- The identity-bound native-output packet preserves logical 640x480 UI
+  geometry independently of the 3D target, user UI scale around the lower
+  centre, the indicator's 7/16 by 30/32 UV window, ARGB tint, source-alpha
+  blending, linear clamp and ALWAYS/write depth. D3D11 and Metal stage the
+  three resources in the mission transaction and own dormant fail-closed
+  arbitrary-quad consumers. Ordinary frames still issue no fabricated draw.
+- A fresh GCC 15.2/Ninja build passes 134/134 portable CTests. A fresh MSVC
+  19.51 HostX64/Ninja build compiles the complete Windows product and runtime
+  HLSL and passes 146/146 CTests, including the renderer and both product
+  smokes. The synthetic public-boundary suite and 708-file repository scan
+  pass. Hosted iPhoneOS/iPhoneSimulator compilation remains the publication
+  gate for the Objective-C++ and Metal changes.
