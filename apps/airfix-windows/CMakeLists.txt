@@ -175,6 +175,28 @@ target_link_libraries(airfix_windows_settings_panel PUBLIC
     airfix::settings
 )
 
+add_library(airfix_windows_ui_semantics STATIC
+    AirfixWindowsUiSemantics.cpp
+    AirfixWindowsUiSemantics.hpp
+)
+target_include_directories(airfix_windows_ui_semantics PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+target_compile_features(airfix_windows_ui_semantics PUBLIC cxx_std_20)
+if(MSVC)
+    target_compile_options(airfix_windows_ui_semantics PRIVATE
+        /W4 /permissive-)
+else()
+    target_compile_options(airfix_windows_ui_semantics PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+endif()
+target_link_libraries(airfix_windows_ui_semantics PUBLIC
+    airfix_windows_settings_panel
+)
+
 add_library(airfix_windows_ui_rasterizer STATIC
     AirfixWindowsUiRasterizer.cpp
     AirfixWindowsUiRasterizer.hpp
@@ -199,7 +221,7 @@ else()
 endif()
 target_link_libraries(airfix_windows_ui_rasterizer
     PUBLIC
-        airfix_windows_settings_panel
+        airfix_windows_ui_semantics
     PRIVATE
         d2d1
         dwrite
@@ -577,6 +599,25 @@ if(AIRFIX_BUILD_TESTS)
         airfix_windows_ui_rasterizer)
     add_test(NAME airfix_windows_ui_rasterizer_tests
         COMMAND airfix_windows_ui_rasterizer_tests)
+
+    add_executable(airfix_windows_ui_semantics_tests
+        AirfixWindowsUiSemanticsTests.cpp)
+    target_compile_features(airfix_windows_ui_semantics_tests
+        PRIVATE cxx_std_20)
+    if(MSVC)
+        target_compile_options(airfix_windows_ui_semantics_tests PRIVATE
+            /W4 /permissive-)
+    else()
+        target_compile_options(airfix_windows_ui_semantics_tests PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+    endif()
+    target_link_libraries(airfix_windows_ui_semantics_tests PRIVATE
+        airfix_windows_ui_semantics)
+    add_test(NAME airfix_windows_ui_semantics_tests
+        COMMAND airfix_windows_ui_semantics_tests)
 
     add_test(NAME airfix_windows_product_smoke_tests
         COMMAND airfix_windows --smoke-test --render-diagnostics)

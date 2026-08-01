@@ -5259,3 +5259,26 @@ superseded evidence.
   scan, 375-row/14-column unique function catalogue, changed-document links,
   changed-scope path scan, clang-format warnings-as-errors, and
   `git diff --check` pass.
+
+## 2026-08-01 - bounded Windows accessibility semantics seam
+
+- The Windows settings panel now publishes its visible hit-test rows separately
+  from the complete bounded logical row set. A fixed-capacity semantic tree
+  covers every settings screen, including logically available rows clipped by
+  a small viewport, without allocating or exposing private content details.
+- Typed focus, invoke, decrement, and increment actions pass through the same
+  panel state machine as pointer and controller input. Screen and monotonic
+  generation guards reject stale or same-screen ABA actions; preview-only
+  controller samples deliberately do not invalidate otherwise valid actions.
+- The rasterizer and semantic tree share bounded labels and values. Snapshot
+  validation fails closed for invalid enums, settings, dimensions, geometry,
+  logical ordering, visible-row divergence, and malformed controller state.
+  Stable runtime identifiers and parent relationships are covered by synthetic
+  tests. A native COM UI Automation provider, `WM_GETOBJECT` bridge, and
+  physical Narrator acceptance remain explicitly pending.
+- An independent review found action-enum, visible/logical consistency,
+  disabled-state, malformed-snapshot, and stale-generation edge cases; each was
+  fixed and covered by regression tests before approval. A clean Visual Studio
+  2026 MSVC/Ninja build completes the 751-step Windows graph and passes 155/155
+  CTests, including both product smokes. Clang-format warnings-as-errors, the
+  745-file public-boundary scan, and `git diff --check` pass.

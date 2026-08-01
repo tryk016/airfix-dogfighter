@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 
 namespace airfix::windows {
 
@@ -60,6 +61,46 @@ enum class AirfixWindowsRenderSettingsItem : std::uint8_t {
   count,
 };
 
+[[nodiscard]] constexpr bool airfixWindowsRenderSettingsItemIsAdjustable(
+    const AirfixWindowsRenderSettingsItem item) noexcept {
+  switch (item) {
+  case AirfixWindowsRenderSettingsItem::renderScale:
+  case AirfixWindowsRenderSettingsItem::interfaceScale:
+  case AirfixWindowsRenderSettingsItem::presentation:
+  case AirfixWindowsRenderSettingsItem::verticalFovAdjustment:
+  case AirfixWindowsRenderSettingsItem::visualProfile:
+  case AirfixWindowsRenderSettingsItem::rendererStatistics:
+  case AirfixWindowsRenderSettingsItem::innerDeadzone:
+  case AirfixWindowsRenderSettingsItem::outerSaturation:
+  case AirfixWindowsRenderSettingsItem::sensitivity:
+  case AirfixWindowsRenderSettingsItem::responseCurve:
+  case AirfixWindowsRenderSettingsItem::inversion:
+  case AirfixWindowsRenderSettingsItem::bindingAction:
+  case AirfixWindowsRenderSettingsItem::bindingAssignment:
+    return true;
+  case AirfixWindowsRenderSettingsItem::displaySettings:
+  case AirfixWindowsRenderSettingsItem::controllerCalibration:
+  case AirfixWindowsRenderSettingsItem::resume:
+  case AirfixWindowsRenderSettingsItem::apply:
+  case AirfixWindowsRenderSettingsItem::cancel:
+  case AirfixWindowsRenderSettingsItem::leftStickX:
+  case AirfixWindowsRenderSettingsItem::leftStickY:
+  case AirfixWindowsRenderSettingsItem::rightStickX:
+  case AirfixWindowsRenderSettingsItem::rightStickY:
+  case AirfixWindowsRenderSettingsItem::buttonBindings:
+  case AirfixWindowsRenderSettingsItem::resetAxis:
+  case AirfixWindowsRenderSettingsItem::resetAllCalibration:
+  case AirfixWindowsRenderSettingsItem::moveBinding:
+  case AirfixWindowsRenderSettingsItem::resetAllAssignments:
+  case AirfixWindowsRenderSettingsItem::swapAssignments:
+  case AirfixWindowsRenderSettingsItem::saveControllerProfile:
+  case AirfixWindowsRenderSettingsItem::back:
+  case AirfixWindowsRenderSettingsItem::count:
+    return false;
+  }
+  return false;
+}
+
 enum class AirfixWindowsRenderSettingsStatus : std::uint8_t {
   ready,
   noChanges,
@@ -79,6 +120,22 @@ enum class AirfixWindowsRenderSettingsStatus : std::uint8_t {
   controllerBindingConflict,
   controllerBindingProtectedConflict,
   controllerBindingActionUnavailable,
+};
+
+enum class AirfixWindowsAccessibilityAction : std::uint8_t {
+  focus,
+  invoke,
+  decrement,
+  increment,
+};
+
+enum class AirfixWindowsAccessibilityActionStatus : std::uint8_t {
+  accepted,
+  staleScreen,
+  staleContext,
+  itemUnavailable,
+  itemDisabled,
+  actionUnsupported,
 };
 
 enum class AirfixWindowsRenderSettingsSessionOverride : std::uint8_t {
@@ -103,8 +160,7 @@ inline constexpr AirfixWindowsRenderSettingsSessionOverrideMask
         static_cast<std::uint8_t>(
             AirfixWindowsRenderSettingsSessionOverride::rendererStatistics) |
         static_cast<std::uint8_t>(
-            AirfixWindowsRenderSettingsSessionOverride::
-                verticalFovAdjustment));
+            AirfixWindowsRenderSettingsSessionOverride::verticalFovAdjustment));
 
 [[nodiscard]] constexpr AirfixWindowsRenderSettingsSessionOverrideMask
 airfixWindowsRenderSettingsSessionOverrideMask(
@@ -128,8 +184,7 @@ airfixWindowsRenderSettingsSessionOverrideMask(
   }
   if (overrides.verticalFovAdjustmentDegrees.has_value()) {
     mask |= static_cast<std::uint8_t>(
-        AirfixWindowsRenderSettingsSessionOverride::
-            verticalFovAdjustment);
+        AirfixWindowsRenderSettingsSessionOverride::verticalFovAdjustment);
   }
   return mask;
 }
@@ -169,6 +224,8 @@ struct AirfixWindowsRenderSettingsViewItem final {
   AirfixWindowsUiPixelRect nextBounds;
   bool selected{};
   bool enabled{true};
+  bool visible{true};
+  bool offscreen{};
 
   [[nodiscard]] friend constexpr bool
   operator==(const AirfixWindowsRenderSettingsViewItem &,
@@ -178,6 +235,14 @@ struct AirfixWindowsRenderSettingsViewItem final {
 inline constexpr std::size_t airfixWindowsRenderSettingsMaximumViewItems = 8U;
 inline constexpr std::uint8_t airfixWindowsControllerBindingNoControlIndex =
     static_cast<std::uint8_t>(input::controllerAssignableControlCount);
+
+// Canonical logical order for one screen. The returned static span never
+// exposes caller strings or storage state and is shared by the panel and its
+// accessibility validator.
+[[nodiscard]] std::span<const AirfixWindowsRenderSettingsItem>
+airfixWindowsRenderSettingsItemsForScreen(
+    AirfixWindowsRenderSettingsScreen screen,
+    bool controllerProfileAvailable) noexcept;
 
 struct AirfixWindowsControllerProfilePanelState final {
   input::ControllerInputProfileRecord active;
@@ -198,6 +263,7 @@ struct AirfixWindowsControllerAxisInputSnapshot final {
 // paths, persistence records, checksums, texture identities, or arbitrary
 // caller strings.
 struct AirfixWindowsRenderSettingsViewSnapshot final {
+  std::uint64_t accessibilityGeneration{1U};
   AirfixWindowsRenderSettingsScreen screen{
       AirfixWindowsRenderSettingsScreen::pause};
   AirfixWindowsRenderSettingsItem selectedItem{
@@ -215,6 +281,13 @@ struct AirfixWindowsRenderSettingsViewSnapshot final {
              airfixWindowsRenderSettingsMaximumViewItems>
       items{};
   std::uint8_t itemCount{};
+  // All logical rows on the current screen, including rows outside the
+  // clipped visual viewport. This remains separate from items/itemCount so
+  // pointer hit-testing cannot accidentally target an offscreen row.
+  std::array<AirfixWindowsRenderSettingsViewItem,
+             airfixWindowsRenderSettingsMaximumViewItems>
+      logicalItems{};
+  std::uint8_t logicalItemCount{};
   AirfixWindowsRenderSettingsSessionOverrideMask sessionOverrideMask{};
   std::array<input::ControllerAxisCalibrationRecord,
              input::controllerProfileAxisCount>
@@ -269,6 +342,16 @@ struct AirfixWindowsRenderSettingsIntent final {
   }
 };
 
+struct AirfixWindowsAccessibilityActionResult final {
+  AirfixWindowsAccessibilityActionStatus status{
+      AirfixWindowsAccessibilityActionStatus::itemUnavailable};
+  AirfixWindowsRenderSettingsIntent intent;
+
+  [[nodiscard]] constexpr bool accepted() const noexcept {
+    return status == AirfixWindowsAccessibilityActionStatus::accepted;
+  }
+};
+
 // Owner-thread Windows presentation-panel state. The class performs no
 // renderer, filesystem, registry, or persistence work. Apply returns the
 // shared model's immutable ticket to the product coordinator.
@@ -298,6 +381,15 @@ public:
   [[nodiscard]] AirfixWindowsRenderSettingsIntent
   consumePointer(const AirfixWindowsPointerInput &pointer) noexcept;
 
+  // Consumes one bounded accessibility action on the owner thread. The
+  // caller supplies the screen generation it observed; stale or unavailable
+  // targets fail closed without changing focus, draft state, or tickets.
+  [[nodiscard]] AirfixWindowsAccessibilityActionResult
+  consumeAccessibilityAction(AirfixWindowsRenderSettingsScreen screen,
+                             std::uint64_t accessibilityGeneration,
+                             AirfixWindowsRenderSettingsItem item,
+                             AirfixWindowsAccessibilityAction action) noexcept;
+
   [[nodiscard]] AirfixWindowsRenderSettingsViewSnapshot
   snapshot() const noexcept;
 
@@ -326,6 +418,38 @@ public:
   }
 
 private:
+  class AccessibilityMutationGuard final {
+  public:
+    explicit AccessibilityMutationGuard(
+        AirfixWindowsRenderSettingsPanel &owner) noexcept
+        : owner_(owner), before_(owner.snapshot()) {
+      before_.accessibilityGeneration = 0U;
+      before_.controllerPreviewRaw = input::q15Zero;
+      before_.controllerPreviewEffective = input::q15Zero;
+    }
+
+    AccessibilityMutationGuard(const AccessibilityMutationGuard &) = delete;
+    AccessibilityMutationGuard &
+    operator=(const AccessibilityMutationGuard &) = delete;
+
+    ~AccessibilityMutationGuard() {
+      auto after = owner_.snapshot();
+      after.accessibilityGeneration = 0U;
+      after.controllerPreviewRaw = input::q15Zero;
+      after.controllerPreviewEffective = input::q15Zero;
+      if (after != before_) {
+        ++owner_.accessibilityGeneration_;
+        if (owner_.accessibilityGeneration_ == 0U) {
+          ++owner_.accessibilityGeneration_;
+        }
+      }
+    }
+
+  private:
+    AirfixWindowsRenderSettingsPanel &owner_;
+    AirfixWindowsRenderSettingsViewSnapshot before_;
+  };
+
   AirfixWindowsRenderSettingsPanel(
       settings::RenderPresentationSettingsMenuModel model,
       std::optional<settings::ControllerInputProfileMenuModel>
@@ -389,6 +513,7 @@ private:
   bool verticalNavigationLatched_{};
   bool horizontalNavigationLatched_{};
   bool resumeAvailable_{true};
+  std::uint64_t accessibilityGeneration_{1U};
 };
 
 } // namespace airfix::windows

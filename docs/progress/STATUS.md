@@ -339,8 +339,14 @@
   project that exact transaction through keyboard/mouse/controller input on
   Windows and touch/controller input on iOS. The iOS surface uses Dynamic Type,
   safe-area scrolling, accessibility labels, and a separate cancel-first
-  conflict screen. Windows UI Automation, glyphs, haptics, live replacement,
-  and physical-device persistence acceptance remain.
+  conflict screen. Windows now also publishes every logical panel row even
+  when DPI/UI-scale clipping moves it offscreen, derives raster and future
+  assistive text from one bounded source, and accepts fail-closed owner-thread
+  focus/invoke/decrement/increment actions. A monotonic semantic generation
+  rejects delayed same-screen/ABA actions while ignoring preview-only analog
+  samples. The COM `WM_GETOBJECT` provider,
+  Narrator acceptance, glyphs, haptics, live replacement, and physical-device
+  persistence acceptance remain.
 - Local Git repository initialized on branch `main`; planning baseline committed
   as `59828ed`.
 - GitHub remote `tryk016/airfix-dogfighter` connected and the planning baseline
@@ -1290,8 +1296,10 @@
    batch, sort, deduplicate, replay, or let the value-only consumer execute UI
    or disk effects.
 4. Complete ADR-0015 acceptance around the implemented native text pickers.
-   Add a bounded Windows UI Automation tree before claiming Narrator support,
-   then run keyboard/mouse/controller accessibility acceptance. Before
+   Connect the implemented bounded Windows semantic tree/action seam to a
+   Windows-only COM provider through the SDL-owned HWND and `WM_GETOBJECT`
+   before claiming Narrator support, then run keyboard/mouse/controller
+   accessibility acceptance. Before
    supporting live replacement, add a host-owned pause transaction that
    prepares a fresh pair. Then add persistent touch layout/visibility profiles,
    controller glyphs, haptics, and finished menu bindings before touch-only and
