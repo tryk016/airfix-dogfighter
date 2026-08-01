@@ -29,6 +29,12 @@ struct GpuOverlayUniforms {
     float4 tint;
 };
 
+struct GpuGaugeUniforms {
+    float4 outputQuad[4];
+    float4 outputSize;
+    float4 tint;
+};
+
 struct DiagnosticRasterVertex {
     float4 position [[position]];
     float2 uv [[user(uv)]];
@@ -143,6 +149,29 @@ vertex DiagnosticRasterVertex airfixOverlayVertexMain(
     return output;
 }
 
+vertex DiagnosticRasterVertex airfixGaugeVertexMain(
+    uint vertexId [[vertex_id]],
+    constant GpuGaugeUniforms& uniforms [[buffer(3)]]) {
+    constexpr uint quadIndices[] = {0U, 1U, 2U, 0U, 2U, 3U};
+    constexpr float2 quadUv[] = {
+        float2(0.0f, 0.0f),
+        float2(1.0f, 0.0f),
+        float2(1.0f, 1.0f),
+        float2(0.0f, 1.0f),
+    };
+    const uint quadIndex = quadIndices[vertexId];
+    const float2 pixelPosition = uniforms.outputQuad[quadIndex].xy;
+
+    DiagnosticRasterVertex output;
+    output.position = float4(
+        pixelPosition.x * 2.0f / uniforms.outputSize.x - 1.0f,
+        1.0f - pixelPosition.y * 2.0f / uniforms.outputSize.y,
+        1.0f,
+        1.0f);
+    output.uv = quadUv[quadIndex];
+    return output;
+}
+
 fragment float4 airfixFragmentMain(
     RasterFragmentInput input [[stage_in]],
     texture2d<float> colorTexture [[texture(0)]],
@@ -156,4 +185,17 @@ fragment float4 airfixOverlayFragmentMain(
     texture2d<float> colorTexture [[texture(0)]],
     sampler colorSampler [[sampler(0)]]) {
     return colorTexture.sample(colorSampler, input.uv) * uniforms.tint;
+}
+
+fragment float4 airfixGaugeTextureFragmentMain(
+    RasterFragmentInput input [[stage_in]],
+    constant GpuGaugeUniforms& uniforms [[buffer(3)]],
+    texture2d<float> colorTexture [[texture(0)]],
+    sampler colorSampler [[sampler(0)]]) {
+    return colorTexture.sample(colorSampler, input.uv) * uniforms.tint;
+}
+
+fragment float4 airfixGaugeSolidFragmentMain(
+    constant GpuGaugeUniforms& uniforms [[buffer(3)]]) {
+    return uniforms.tint;
 }

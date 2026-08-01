@@ -21,6 +21,8 @@ and
 The verified screen-call state, native-output submission, and private Windows
 validation pass are in
 [EXP-20260801-100](../../experiments/EXP-20260801-100-aircraft-health-gauge-submission.md).
+The matching fail-closed Metal encoder is in
+[EXP-20260801-101](../../experiments/EXP-20260801-101-metal-aircraft-health-gauge-encoder.md).
 
 ## Enclosing gates
 
@@ -142,8 +144,12 @@ Windows consumes this packet in a dedicated D3D11 shader path. The private
 half-health frame using the installed authenticated mission, aircraft,
 textures, mask, and diagnostics overlay. Its fixed 50% input exists only in
 the capture harness. Ordinary gameplay does not fabricate a live health value.
-Metal retains the same authenticated resources and portable packet contract,
-but its visible submission remains a later backend slice.
+Metal retains the same authenticated resources and portable packet contract.
+Its 96-byte four-point ABI, alpha and opaque pipelines, linear-clamp sampling,
+ALWAYS/write depth, output-target validation, and all-or-nothing command
+encoding are implemented. The ordinary `MTKView` callback does not call the
+encoder until a verified live producer exists, and physical-device visual
+acceptance remains pending.
 
 The bounded dynamic follow-up for producer/consumer order is documented in
 [Controlled aircraft health-gauge capture](../../toolchain/AIRCRAFT-HEALTH-GAUGE-CAPTURE.md).

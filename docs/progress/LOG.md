@@ -4977,3 +4977,26 @@ superseded evidence.
   repository scan, 12 Rizin exporter tests, nine capture-validator tests, all
   three reverse-engineering wrapper suites, changed-range formatting, and
   `git diff --check` pass. Hosted platform Actions remain the publication gate.
+
+## 2026-08-01 - authenticated health-gauge Metal encoder
+
+- `EXP-20260801-101` closes the dormant iOS backend slice without connecting
+  fabricated health to the ordinary frame callback. The already published
+  Metal room snapshot remains the sole owner of both authenticated gauge
+  textures and their transaction identity.
+- A checked 96-byte CPU/Metal ABI carries four physical-output points, native
+  output extent, and ARGB tint. Dedicated texture and solid pipelines preserve
+  the recovered source-alpha/opaque split; both share linear clamp and
+  ALWAYS/write depth. The vertex shader emits the original arbitrary quads as
+  two triangles rather than reinterpreting the annular mask as a rectangle.
+- The encoder validates the complete packet, exact texture count and IDs,
+  non-null GPU resources, finite in-output geometry, target/depth dimensions,
+  and pixel formats before opening a render encoder. Rejection therefore draws
+  no partial prefix; success preserves background/masks/foreground order.
+- Existing portable submission tests remain the backend-neutral oracle. The
+  clean GCC/Ninja suite passes 130/130 tests and the complete MSVC product
+  suite passes 142/142. The synthetic boundary test, 689-file repository scan,
+  12 Rizin exporter tests, nine capture-validator tests, all three RE wrapper
+  suites, `actionlint`, and both staged and working-tree `diff --check` pass.
+  Hosted `iphoneos`/`iphonesimulator` shader compilation remains the
+  publication gate.

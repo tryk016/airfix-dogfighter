@@ -1,5 +1,6 @@
 #import "AirfixMetalRenderer.h"
 
+#include "airfix/content/LegacyAircraftHealthGaugeSubmission.hpp"
 #include "airfix/content/LegacyWeaponCrosshairSpriteSubmission.hpp"
 #import <Metal/Metal.h>
 #import <simd/simd.h>
@@ -114,6 +115,12 @@ struct alignas(16) GpuOverlayUniforms {
     simd_float4 tint;
 };
 
+struct alignas(16) GpuGaugeUniforms {
+    std::array<simd_float4, 4U> outputQuad;
+    simd_float4 outputSize;
+    simd_float4 tint;
+};
+
 static_assert(sizeof(GpuVertex) == 48U);
 static_assert(alignof(GpuVertex) == 16U);
 static_assert(sizeof(GpuUniforms) == 64U);
@@ -121,6 +128,11 @@ static_assert(sizeof(GpuGameplayUniforms) == 160U);
 static_assert(alignof(GpuGameplayUniforms) == 16U);
 static_assert(sizeof(GpuOverlayUniforms) == 48U);
 static_assert(alignof(GpuOverlayUniforms) == 16U);
+static_assert(sizeof(GpuGaugeUniforms) == 96U);
+static_assert(alignof(GpuGaugeUniforms) == 16U);
+static_assert(offsetof(GpuGaugeUniforms, outputQuad) == 0U);
+static_assert(offsetof(GpuGaugeUniforms, outputSize) == 64U);
+static_assert(offsetof(GpuGaugeUniforms, tint) == 80U);
 
 [[nodiscard]] simd_float4 normalizedArgb(
     const std::uint32_t argb) noexcept {
@@ -1336,6 +1348,8 @@ bool preflightPrivateRoom(
 @property(nonatomic, strong)
     id<MTLDepthStencilState> crosshairDepthState;
 @property(nonatomic, strong)
+    id<MTLDepthStencilState> healthGaugeDepthState;
+@property(nonatomic, strong)
     id<MTLSamplerState> classicSceneSamplerState;
 @property(nonatomic, strong)
     id<MTLSamplerState> enhancedSceneSamplerState;
@@ -1344,11 +1358,17 @@ bool preflightPrivateRoom(
 @property(nonatomic, strong)
     id<MTLSamplerState> crosshairSamplerState;
 @property(nonatomic, strong)
+    id<MTLSamplerState> healthGaugeSamplerState;
+@property(nonatomic, strong)
     id<MTLRenderPipelineState> presentationPipelineState;
 @property(nonatomic, strong)
     id<MTLRenderPipelineState> overlayPipelineState;
 @property(nonatomic, strong)
     id<MTLRenderPipelineState> crosshairPipelineState;
+@property(nonatomic, strong)
+    id<MTLRenderPipelineState> healthGaugeTexturePipelineState;
+@property(nonatomic, strong)
+    id<MTLRenderPipelineState> healthGaugeSolidPipelineState;
 @property(nonatomic, strong)
     id<MTLSamplerState> presentationSamplerState;
 @property(nonatomic, strong) id<MTLTexture> diagnosticsOverlayTexture;
@@ -1378,6 +1398,20 @@ bool preflightPrivateRoom(
                             outputExtent:
                                 (airfix::render::OutputPixelExtent)outputExtent
                     drawableDepthTexture:(id<MTLTexture>)drawableDepthTexture;
+- (NSUInteger)encodeLegacyAircraftHealthGauge:
+                  (const airfix::content::
+                       LegacyAircraftHealthGaugeSubmission&)submission
+                                     resources:
+                                         (AirfixMetalRoomResources*)resources
+                                  commandBuffer:
+                                      (id<MTLCommandBuffer>)commandBuffer
+                                     renderPass:
+                                         (MTLRenderPassDescriptor*)renderPass
+                                   outputExtent:
+                                       (airfix::render::OutputPixelExtent)
+                                           outputExtent
+                           drawableDepthTexture:
+                               (id<MTLTexture>)drawableDepthTexture;
 @end
 
 @implementation AirfixMetalRenderer
@@ -1491,17 +1525,25 @@ bool preflightPrivateRoom(
         [library newFunctionWithName:@"airfixPresentationVertexMain"];
     id<MTLFunction> overlayVertexFunction =
         [library newFunctionWithName:@"airfixOverlayVertexMain"];
+    id<MTLFunction> gaugeVertexFunction =
+        [library newFunctionWithName:@"airfixGaugeVertexMain"];
     id<MTLFunction> fragmentFunction = [library newFunctionWithName:@"airfixFragmentMain"];
     id<MTLFunction> overlayFragmentFunction =
         [library newFunctionWithName:@"airfixOverlayFragmentMain"];
+    id<MTLFunction> gaugeTextureFragmentFunction =
+        [library newFunctionWithName:@"airfixGaugeTextureFragmentMain"];
+    id<MTLFunction> gaugeSolidFragmentFunction =
+        [library newFunctionWithName:@"airfixGaugeSolidFragmentMain"];
     if (vertexFunction == nil || gameplayVertexFunction == nil ||
         presentationVertexFunction == nil ||
-        overlayVertexFunction == nil || fragmentFunction == nil ||
-        overlayFragmentFunction == nil) {
+        overlayVertexFunction == nil || gaugeVertexFunction == nil ||
+        fragmentFunction == nil || overlayFragmentFunction == nil ||
+        gaugeTextureFragmentFunction == nil ||
+        gaugeSolidFragmentFunction == nil) {
         if (error != nullptr) {
             *error = makeError(
                 RendererError::missingShaderFunction,
-                @"default.metallib does not contain every Airfix diagnostic, gameplay, and presentation shader.");
+                @"default.metallib does not contain every Airfix diagnostic, gameplay, presentation, and HUD shader.");
         }
         return nil;
     }
@@ -1629,6 +1671,52 @@ bool preflightPrivateRoom(
             *error = makeError(
                 RendererError::pipelineCreation,
                 [@"Metal weapon crosshair pipeline creation failed: "
+                    stringByAppendingString:reason]);
+        }
+        return nil;
+    }
+
+    pipelineDescriptor.label = @"Airfix aircraft health gauge texture pipeline";
+    pipelineDescriptor.vertexFunction = gaugeVertexFunction;
+    pipelineDescriptor.fragmentFunction = gaugeTextureFragmentFunction;
+    NSError* healthGaugeTexturePipelineError = nil;
+    id<MTLRenderPipelineState> healthGaugeTexturePipelineState =
+        [device
+            newRenderPipelineStateWithDescriptor:pipelineDescriptor
+                                           error:&healthGaugeTexturePipelineError];
+    if (healthGaugeTexturePipelineState == nil) {
+        if (error != nullptr) {
+            NSString* reason =
+                healthGaugeTexturePipelineError.localizedDescription;
+            if (reason == nil) {
+                reason = @"unknown aircraft health gauge texture pipeline error";
+            }
+            *error = makeError(
+                RendererError::pipelineCreation,
+                [@"Metal aircraft health gauge texture pipeline creation failed: "
+                    stringByAppendingString:reason]);
+        }
+        return nil;
+    }
+
+    pipelineDescriptor.label = @"Airfix aircraft health gauge solid pipeline";
+    pipelineDescriptor.fragmentFunction = gaugeSolidFragmentFunction;
+    pipelineDescriptor.colorAttachments[0].blendingEnabled = NO;
+    NSError* healthGaugeSolidPipelineError = nil;
+    id<MTLRenderPipelineState> healthGaugeSolidPipelineState =
+        [device
+            newRenderPipelineStateWithDescriptor:pipelineDescriptor
+                                           error:&healthGaugeSolidPipelineError];
+    if (healthGaugeSolidPipelineState == nil) {
+        if (error != nullptr) {
+            NSString* reason =
+                healthGaugeSolidPipelineError.localizedDescription;
+            if (reason == nil) {
+                reason = @"unknown aircraft health gauge solid pipeline error";
+            }
+            *error = makeError(
+                RendererError::pipelineCreation,
+                [@"Metal aircraft health gauge solid pipeline creation failed: "
                     stringByAppendingString:reason]);
         }
         return nil;
@@ -2293,13 +2381,19 @@ bool preflightPrivateRoom(
     self.depthState = depthState;
     self.gameplayDepthState = gameplayDepthState;
     self.crosshairDepthState = crosshairDepthState;
+    self.healthGaugeDepthState = crosshairDepthState;
     self.classicSceneSamplerState = classicSceneSamplerState;
     self.enhancedSceneSamplerState = enhancedSceneSamplerState;
     self.overlaySamplerState = overlaySamplerState;
     self.crosshairSamplerState = crosshairSamplerState;
+    self.healthGaugeSamplerState = crosshairSamplerState;
     self.presentationPipelineState = presentationPipelineState;
     self.overlayPipelineState = overlayPipelineState;
     self.crosshairPipelineState = crosshairPipelineState;
+    self.healthGaugeTexturePipelineState =
+        healthGaugeTexturePipelineState;
+    self.healthGaugeSolidPipelineState =
+        healthGaugeSolidPipelineState;
     self.presentationSamplerState = presentationSamplerState;
     self.fallbackResource = fallbackResource;
     self.roomSnapshot = roomSnapshot;
@@ -2831,6 +2925,165 @@ bool preflightPrivateRoom(
                 vertexCount:6U];
     [encoder endEncoding];
     return YES;
+}
+
+- (NSUInteger)encodeLegacyAircraftHealthGauge:
+                  (const airfix::content::
+                       LegacyAircraftHealthGaugeSubmission&)submission
+                                     resources:
+                                         (AirfixMetalRoomResources*)resources
+                                  commandBuffer:
+                                      (id<MTLCommandBuffer>)commandBuffer
+                                     renderPass:
+                                         (MTLRenderPassDescriptor*)renderPass
+                                   outputExtent:
+                                       (airfix::render::OutputPixelExtent)
+                                           outputExtent
+                           drawableDepthTexture:
+                               (id<MTLTexture>)drawableDepthTexture {
+    if (resources == nil || commandBuffer == nil || renderPass == nil ||
+        drawableDepthTexture == nil ||
+        !resources->_healthGauge.has_value() ||
+        resources.healthGaugeTextures == nil ||
+        resources.healthGaugeTextures.count !=
+            airfix::content::legacyAircraftHealthGaugeTextureCount ||
+        self.healthGaugeTexturePipelineState == nil ||
+        self.healthGaugeSolidPipelineState == nil ||
+        self.healthGaugeDepthState == nil ||
+        self.healthGaugeSamplerState == nil ||
+        outputExtent.width == 0U || outputExtent.height == 0U ||
+        !submission.belongsTo(*resources->_healthGauge) ||
+        submission.commandCount == 0U ||
+        !fitsNSUInteger(submission.commandCount)) {
+        return 0U;
+    }
+
+    const auto pointIsInsideOutput =
+        [outputExtent](const airfix::render::OutputPixelPoint point) noexcept {
+            return std::isfinite(point.x) && std::isfinite(point.y) &&
+                point.x >= 0.0F && point.y >= 0.0F &&
+                point.x <= static_cast<float>(outputExtent.width) &&
+                point.y <= static_cast<float>(outputExtent.height);
+        };
+    for (std::size_t index = 0U;
+         index < submission.commandCount;
+         ++index) {
+        const auto& command = submission.orderedCommands[index];
+        if (!std::all_of(
+                command.outputQuad.begin(),
+                command.outputQuad.end(),
+                pointIsInsideOutput)) {
+            return 0U;
+        }
+        if (command.textured()) {
+            const auto textureIndex =
+                static_cast<NSUInteger>(command.textureId.value);
+            if (textureIndex >= resources.healthGaugeTextures.count ||
+                resources.healthGaugeTextures[textureIndex] == nil) {
+                return 0U;
+            }
+        }
+        else if (command.kind !=
+            airfix::render::LegacyAircraftHealthGaugeCommandKind::
+                damageMaskQuad) {
+            return 0U;
+        }
+    }
+
+    id<MTLTexture> outputTexture =
+        renderPass.colorAttachments[0].texture;
+    if (outputTexture == nil ||
+        outputTexture.pixelFormat != MTLPixelFormatBGRA8Unorm ||
+        drawableDepthTexture.pixelFormat != MTLPixelFormatDepth32Float ||
+        outputTexture.width != static_cast<NSUInteger>(outputExtent.width) ||
+        outputTexture.height != static_cast<NSUInteger>(outputExtent.height) ||
+        drawableDepthTexture.width !=
+            static_cast<NSUInteger>(outputExtent.width) ||
+        drawableDepthTexture.height !=
+            static_cast<NSUInteger>(outputExtent.height)) {
+        return 0U;
+    }
+    MTLRenderPassDescriptor* gaugePass =
+        [MTLRenderPassDescriptor renderPassDescriptor];
+    gaugePass.colorAttachments[0].texture = outputTexture;
+    gaugePass.colorAttachments[0].loadAction = MTLLoadActionLoad;
+    gaugePass.colorAttachments[0].storeAction = MTLStoreActionStore;
+    gaugePass.depthAttachment.texture = drawableDepthTexture;
+    // All recovered gauge commands use ALWAYS with writes. Existing depth is
+    // irrelevant, and the later diagnostics pass does not consume it.
+    gaugePass.depthAttachment.loadAction = MTLLoadActionDontCare;
+    gaugePass.depthAttachment.storeAction = MTLStoreActionDontCare;
+
+    id<MTLRenderCommandEncoder> encoder =
+        [commandBuffer renderCommandEncoderWithDescriptor:gaugePass];
+    if (encoder == nil) {
+        return 0U;
+    }
+    [encoder setDepthStencilState:self.healthGaugeDepthState];
+    [encoder setCullMode:MTLCullModeNone];
+    [encoder
+        setViewport:MTLViewport{
+            0.0,
+            0.0,
+            static_cast<double>(outputExtent.width),
+            static_cast<double>(outputExtent.height),
+            0.0,
+            1.0,
+        }];
+    [encoder setFragmentSamplerState:self.healthGaugeSamplerState
+                              atIndex:0U];
+
+    for (std::size_t index = 0U;
+         index < submission.commandCount;
+         ++index) {
+        const auto& command = submission.orderedCommands[index];
+        GpuGaugeUniforms uniforms{
+            .outputSize =
+                {
+                    static_cast<float>(outputExtent.width),
+                    static_cast<float>(outputExtent.height),
+                    0.0F,
+                    0.0F,
+                },
+            .tint = normalizedArgb(command.colourArgb),
+        };
+        for (std::size_t pointIndex = 0U;
+             pointIndex < command.outputQuad.size();
+             ++pointIndex) {
+            uniforms.outputQuad[pointIndex] = {
+                command.outputQuad[pointIndex].x,
+                command.outputQuad[pointIndex].y,
+                0.0F,
+                0.0F,
+            };
+        }
+        [encoder setVertexBytes:&uniforms
+                         length:sizeof(uniforms)
+                        atIndex:3U];
+        [encoder setFragmentBytes:&uniforms
+                           length:sizeof(uniforms)
+                          atIndex:3U];
+
+        id<MTLTexture> texture = nil;
+        if (command.textured()) {
+            [encoder
+                setRenderPipelineState:
+                    self.healthGaugeTexturePipelineState];
+            texture = resources.healthGaugeTextures[
+                static_cast<NSUInteger>(command.textureId.value)];
+        }
+        else {
+            [encoder
+                setRenderPipelineState:
+                    self.healthGaugeSolidPipelineState];
+        }
+        [encoder setFragmentTexture:texture atIndex:0U];
+        [encoder drawPrimitives:MTLPrimitiveTypeTriangle
+                    vertexStart:0U
+                    vertexCount:6U];
+    }
+    [encoder endEncoding];
+    return static_cast<NSUInteger>(submission.commandCount);
 }
 
 - (BOOL)updateDiagnosticsOverlayTextureWithDevice:(id<MTLDevice>)device {
