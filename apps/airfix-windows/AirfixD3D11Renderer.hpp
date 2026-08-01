@@ -5,6 +5,7 @@
 #include "airfix/content/LegacyAircraftHealthGaugeTextureSet.hpp"
 #include "airfix/content/LegacyAircraftHudInstrumentsTextureSet.hpp"
 #include "airfix/content/LegacyAircraftHudRollingDigitsTextureSet.hpp"
+#include "airfix/content/LegacyAircraftHudWeaponPanelTextureSet.hpp"
 #include "airfix/content/LegacyWeaponCrosshairTextureSet.hpp"
 #include "airfix/content/MissionWorldRoomLoader.hpp"
 #include "airfix/render/PlayerActorPoseRuntime.hpp"
@@ -56,9 +57,9 @@ struct RenderPresentationSettingsPublicationGate final {
   Callback callback{};
   void *context{};
 
-  [[nodiscard]] constexpr bool accepts(
-      const airfix::render::RenderPresentationSettings
-          &candidate) const noexcept {
+  [[nodiscard]] constexpr bool
+  accepts(const airfix::render::RenderPresentationSettings &candidate)
+      const noexcept {
     return callback == nullptr || callback(context, candidate);
   }
 };
@@ -83,8 +84,7 @@ public:
   [[nodiscard]] RenderPresentationSettingsApplyResult
   applyRenderPresentationSettings(
       const airfix::render::RenderPresentationSettings &candidate,
-      RenderPresentationSettingsPublicationGate publicationGate =
-          {}) noexcept;
+      RenderPresentationSettingsPublicationGate publicationGate = {}) noexcept;
 
   [[nodiscard]] airfix::render::RenderPresentationSettings
   renderPresentationSettings() const noexcept;
@@ -106,6 +106,8 @@ public:
           &&rollingDigits,
       airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet
           &&hudInstruments,
+      airfix::content::LoadedLegacyAircraftHudWeaponPanelTextureSet
+          &&weaponPanels,
       const airfix::content::ContentRevision &expectedRevision);
 
   [[nodiscard]] bool missionWorldRoomInstalled() const noexcept;
@@ -130,8 +132,8 @@ public:
 
   // Captures the complete installed mission from a fitted, one-frame
   // developer camera. The gameplay camera runtime is never changed.
-  void captureMissionOverviewFrameToBmp(
-      const std::filesystem::path &outputPath);
+  void
+  captureMissionOverviewFrameToBmp(const std::filesystem::path &outputPath);
 
   // Private visual-validation harness. It draws the authenticated machine-gun
   // sight at output centre through the native sprite path, but does not claim
@@ -147,8 +149,8 @@ public:
 
   // Captures the public synthetic scene and developer overlay. This contains
   // no owner content and exists for repeatable renderer diagnostics.
-  void capturePublicDiagnosticFrameToBmp(
-      const std::filesystem::path &outputPath);
+  void
+  capturePublicDiagnosticFrameToBmp(const std::filesystem::path &outputPath);
 
   // Publishes or clears a product UI layer in physical output pixels. The
   // image is premultiplied BGRA8 and contains only bounded, path-free UI
@@ -175,19 +177,16 @@ private:
   void failNextScaledTargetPreparationsAfterColorForTesting(
       std::uint32_t failureCount) noexcept;
   void reportSurfaceUnavailableForNextApplyForTesting() noexcept;
-  [[nodiscard]] bool resizeToPixelExtentForTesting(
-      int width, int height);
+  [[nodiscard]] bool resizeToPixelExtentForTesting(int width, int height);
   [[nodiscard]] std::array<const void *, 5U>
   scaledSceneTargetIdentityForTesting() const noexcept;
   [[nodiscard]] std::optional<airfix::render::RenderTargetPixelRect>
   lastSceneViewportForTesting() const noexcept;
   [[nodiscard]] std::optional<airfix::render::ScenePresentationMode>
   lastScenePresentationForTesting() const noexcept;
-  [[nodiscard]] std::optional<
-      airfix::render::SceneTextureSamplingPolicy>
+  [[nodiscard]] std::optional<airfix::render::SceneTextureSamplingPolicy>
   lastSceneTextureSamplingPolicyForTesting() const noexcept;
-  [[nodiscard]] bool
-  hasDiagnosticsOverlayResourcesForTesting() const noexcept;
+  [[nodiscard]] bool hasDiagnosticsOverlayResourcesForTesting() const noexcept;
   [[nodiscard]] bool hasProductUiOverlayResourcesForTesting() const noexcept;
 
   class Implementation;

@@ -15,6 +15,7 @@
 #include "airfix/content/LegacyAircraftHealthGaugeTextureSet.hpp"
 #include "airfix/content/LegacyAircraftHudInstrumentsTextureSet.hpp"
 #include "airfix/content/LegacyAircraftHudRollingDigitsTextureSet.hpp"
+#include "airfix/content/LegacyAircraftHudWeaponPanelTextureSet.hpp"
 #include "airfix/content/LegacyWeaponCrosshairTextureSet.hpp"
 #include "airfix/content/MissionLoadManifest.hpp"
 #include "airfix/content/MissionWorldRoomLoader.hpp"
@@ -430,6 +431,8 @@ struct LoadedPrivateContent final {
       aircraftHudRollingDigitTextures;
   std::optional<airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet>
       aircraftHudInstrumentTextures;
+  std::optional<airfix::content::LoadedLegacyAircraftHudWeaponPanelTextureSet>
+      aircraftHudWeaponPanelTextures;
 };
 
 [[nodiscard]] std::filesystem::path resolveInstalledContentRoot() {
@@ -470,6 +473,8 @@ struct LoadedPrivateContent final {
       aircraftHudRollingDigitTextures;
   std::optional<airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet>
       aircraftHudInstrumentTextures;
+  std::optional<airfix::content::LoadedLegacyAircraftHudWeaponPanelTextureSet>
+      aircraftHudWeaponPanelTextures;
   if (mission.has_value()) {
     const airfix::content::MissionLoadManifestRequest manifestRequest{
         .levelLogicalPath = mission->levelLogicalPath,
@@ -546,8 +551,19 @@ struct LoadedPrivateContent final {
       throw std::runtime_error(
           "authenticated aircraft HUD instruments could not be loaded");
     }
-    aircraftHudInstrumentTextures =
-        std::move(*loadedHudInstruments.textures);
+    aircraftHudInstrumentTextures = std::move(*loadedHudInstruments.textures);
+
+    auto loadedHudWeaponPanels =
+        airfix::content::loadLegacyAircraftHudWeaponPanelTextures(session);
+    if (!loadedHudWeaponPanels.success() ||
+        !loadedHudWeaponPanels.textures.has_value() ||
+        !loadedHudWeaponPanels.textures->belongsTo(session) ||
+        loadedHudWeaponPanels.textures->revision != revision ||
+        session.revision() != revision) {
+      throw std::runtime_error(
+          "authenticated aircraft HUD weapon panels could not be loaded");
+    }
+    aircraftHudWeaponPanelTextures = std::move(*loadedHudWeaponPanels.textures);
   }
 
   for (const auto &clip : audioResult.clips->clipViews()) {
@@ -578,8 +594,9 @@ struct LoadedPrivateContent final {
       .aircraftHealthGaugeTextures = std::move(aircraftHealthGaugeTextures),
       .aircraftHudRollingDigitTextures =
           std::move(aircraftHudRollingDigitTextures),
-      .aircraftHudInstrumentTextures =
-          std::move(aircraftHudInstrumentTextures),
+      .aircraftHudInstrumentTextures = std::move(aircraftHudInstrumentTextures),
+      .aircraftHudWeaponPanelTextures =
+          std::move(aircraftHudWeaponPanelTextures),
   };
 }
 
@@ -1003,6 +1020,10 @@ int run(const int argumentCount, char *arguments[]) {
       throw std::runtime_error("authenticated Windows mission has no aircraft "
                                "HUD instrument textures");
     }
+    if (!privateContent->aircraftHudWeaponPanelTextures.has_value()) {
+      throw std::runtime_error("authenticated Windows mission has no aircraft "
+                               "HUD weapon panel textures");
+    }
     playerSpawnPose = privateContent->missionRoom->playerSpawnPose;
     renderer.installLoadedMissionRoom(
         std::move(*privateContent->missionRoom),
@@ -1010,12 +1031,14 @@ int run(const int argumentCount, char *arguments[]) {
         std::move(*privateContent->aircraftHealthGaugeTextures),
         std::move(*privateContent->aircraftHudRollingDigitTextures),
         std::move(*privateContent->aircraftHudInstrumentTextures),
+        std::move(*privateContent->aircraftHudWeaponPanelTextures),
         privateContent->revision);
     privateContent->missionRoom.reset();
     privateContent->weaponCrosshairTextures.reset();
     privateContent->aircraftHealthGaugeTextures.reset();
     privateContent->aircraftHudRollingDigitTextures.reset();
     privateContent->aircraftHudInstrumentTextures.reset();
+    privateContent->aircraftHudWeaponPanelTextures.reset();
     if (!renderer.missionWorldRoomInstalled()) {
       throw std::runtime_error(
           "authenticated Windows mission was not published");

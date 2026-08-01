@@ -6,6 +6,7 @@
 #include "airfix/content/LegacyAircraftHealthGaugeTextureSet.hpp"
 #include "airfix/content/LegacyAircraftHudInstrumentsTextureSet.hpp"
 #include "airfix/content/LegacyAircraftHudRollingDigitsTextureSet.hpp"
+#include "airfix/content/LegacyAircraftHudWeaponPanelTextureSet.hpp"
 #include "airfix/content/LegacyWeaponCrosshairTextureSet.hpp"
 #include "airfix/content/MissionWorldRoomLoader.hpp"
 #include "airfix/content/WorldRoomPublicationGate.hpp"
@@ -25,18 +26,18 @@ namespace airfix::ios {
     content::LoadedLegacyWeaponCrosshairTextureSet &&crosshairs,
     content::LoadedLegacyAircraftHealthGaugeTextureSet &&healthGauge,
     content::LoadedLegacyAircraftHudRollingDigitsTextureSet &&rollingDigits,
-    content::LoadedLegacyAircraftHudInstrumentTextureSet &&hudInstruments);
+    content::LoadedLegacyAircraftHudInstrumentTextureSet &&hudInstruments,
+    content::LoadedLegacyAircraftHudWeaponPanelTextureSet &&weaponPanels);
 
 // One-shot renderer handoff. A second call fails rather than returning a
 // moved-from payload.
-[[nodiscard]] content::LoadedMissionWorldRoom takeLoadedMissionWorldRoom(
-    AirfixMissionWorldRoomSnapshot* snapshot);
+[[nodiscard]] content::LoadedMissionWorldRoom
+takeLoadedMissionWorldRoom(AirfixMissionWorldRoomSnapshot *snapshot);
 [[nodiscard]] content::LoadedLegacyAircraftAudioClips
-takeLoadedLegacyAircraftAudioClips(
-    AirfixMissionWorldRoomSnapshot* snapshot);
+takeLoadedLegacyAircraftAudioClips(AirfixMissionWorldRoomSnapshot *snapshot);
 [[nodiscard]] content::LoadedLegacyWeaponCrosshairTextureSet
 takeLoadedLegacyWeaponCrosshairTextures(
-    AirfixMissionWorldRoomSnapshot* snapshot);
+    AirfixMissionWorldRoomSnapshot *snapshot);
 [[nodiscard]] content::LoadedLegacyAircraftHealthGaugeTextureSet
 takeLoadedLegacyAircraftHealthGaugeTextures(
     AirfixMissionWorldRoomSnapshot *snapshot);
@@ -46,18 +47,20 @@ takeLoadedLegacyAircraftHudRollingDigitTextures(
 [[nodiscard]] content::LoadedLegacyAircraftHudInstrumentTextureSet
 takeLoadedLegacyAircraftHudInstrumentTextures(
     AirfixMissionWorldRoomSnapshot *snapshot);
+[[nodiscard]] content::LoadedLegacyAircraftHudWeaponPanelTextureSet
+takeLoadedLegacyAircraftHudWeaponPanelTextures(
+    AirfixMissionWorldRoomSnapshot *snapshot);
 
 // Remains available after the payload has been taken so the main-thread
 // coordinator can reject a stale two-phase Metal publication.
 [[nodiscard]] content::WorldRoomPublicationTicket
-missionWorldRoomPublicationTicket(
-    AirfixMissionWorldRoomSnapshot* snapshot);
-[[nodiscard]] content::ContentRevision missionWorldRoomResultRevision(
-    AirfixMissionWorldRoomSnapshot* snapshot);
+missionWorldRoomPublicationTicket(AirfixMissionWorldRoomSnapshot *snapshot);
+[[nodiscard]] content::ContentRevision
+missionWorldRoomResultRevision(AirfixMissionWorldRoomSnapshot *snapshot);
 // Independent immutable copy; remains available after the one-shot large
 // room payload has moved to the renderer.
 [[nodiscard]] std::optional<simulation::PlayerSpawnPose>
 missionWorldRoomPlayerSpawnPose(
-    AirfixMissionWorldRoomSnapshot* snapshot) noexcept;
+    AirfixMissionWorldRoomSnapshot *snapshot) noexcept;
 
 } // namespace airfix::ios

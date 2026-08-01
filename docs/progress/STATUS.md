@@ -120,10 +120,18 @@
   three-texture owner, allocation-free logical plan and identity-bound native-
   output packet preserve those rules. Both products stage the textures inside
   the atomic mission transaction and own dormant fail-closed arbitrary-quad
-  consumers. Live slot ownership, changing aim/collision production, explicit
-  visibility policy, smoothed-health, digit and instrument producer wiring,
-  physical iPhone visual acceptance, the remaining HUD, and screen effects
-  are not yet connected.
+  consumers. Both weapon panels are now a fourth complete primitive. Their two
+  backgrounds precede primary and selected-secondary slots; each slot retains
+  exact ammunition-digit, icon, and status-fill geometry. The dynamic
+  authenticated `weapon_*.gti` catalog is archive-derived rather than
+  hard-coded, while the status palette and destination-multiply blend preserve
+  the recovered native contract. An allocation-free 14-command plan,
+  cross-owner native-output submission, and D3D11/Metal consumers are staged
+  but deliberately dormant. Live slot ownership, changing aim/collision
+  production, explicit visibility policy, ammunition/status values,
+  smoothed-health, digit and instrument producer wiring, physical iPhone
+  visual acceptance, the remaining aircraft/team/mission-status HUD, and
+  screen effects are not yet connected.
 - The recovered CCF material contract now survives end to end from typed
   `0x2140/0x2150/0x2151` metadata and exact native defaults through world,
   aggregate mission, and player texture binding into each backend-neutral draw

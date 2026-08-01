@@ -4,8 +4,9 @@
 
 `EV-20260801-001` covers the first complete renderer-neutral subsection of the
 aircraft HUD, `EV-20260801-002` covers its reusable four-digit rolling-number
-helper, and `EV-20260801-003` covers the complete pair of analog instruments.
-Ghidra 12.1.2 is the primary decompiler; Rizin 0.9.1
+helper, `EV-20260801-003` covers the complete pair of analog instruments, and
+`EV-20260801-004` covers both weapon panels. Ghidra 12.1.2 is the primary
+decompiler; Rizin 0.9.1
 independently confirms the function boundaries, calls, and instruction order
 in the hash-verified `AirCraft.type` copy with SHA-256
 `9745842bde40406390b46f935e9f12d6626675f89a8fbb303cb135d76cf7dd1e`.
@@ -30,6 +31,8 @@ The rolling-number reconstruction is in
 [EXP-20260801-102](../../experiments/EXP-20260801-102-aircraft-hud-rolling-digits.md).
 The analog instruments are in
 [EXP-20260801-104](../../experiments/EXP-20260801-104-aircraft-hud-analog-instruments.md).
+The weapon-panel reconstruction is in
+[EXP-20260801-105](../../experiments/EXP-20260801-105-aircraft-hud-weapon-panels.md).
 
 ## Enclosing gates
 
@@ -243,13 +246,48 @@ allocation-free. It does not update smoothing, label the ratio as fuel,
 manufacture live values, or constrain native 3D resolution. Ordinary frames
 remain disconnected until a verified runtime producer publishes the packet.
 
+## Recovered weapon panels
+
+The complete primary/selected-secondary subsection draws both optional panel
+backgrounds before processing primary and then secondary weapon content. At
+the reference `640x480` UI extent, the `64x64` background origins are
+`(223,408)` and `(353,408)`. Each present slot advances and draws its four
+ammunition digits at offset `(16,40)`, then resolves an optional `64x32`
+weapon icon at offset `(6,6)`, followed by a `52x30` status fill after a
+catalog match.
+
+The icon catalog is not a hard-coded list. The authenticated source archive is
+enumerated for in-game HUD `weapon_*.gti` entries, and the archive-derived
+suffix is compared case-insensitively with the weapon type name after exactly
+two leading bytes are removed. The fixed `weapon1.gti` and `weapon2.gti`
+backgrounds come from the selected localization archive. All are format 8;
+backgrounds must be `64x64` and dynamic icons `64x32`. One bounded loader
+publishes the entire set only after exact provenance, dimension, mip, budget,
+revision, and transaction checks pass.
+
+The status value is accepted after the unresolved external `_ftol` conversion,
+clamped to `[0,4]`, and mapped to exact AARRGGBB values `0xBF269A1A`,
+`0xBF94C61C`, `0xBFEDC610`, `0xBFE26D00`, and `0xBFBD1700`. Native
+`GT_ALPHA` mode 2 is retained as destination multiplication by source colour;
+it is not treated as ordinary source-alpha blending. Texture layers keep
+source-alpha blending, linear clamp, and ALWAYS/write depth.
+
+The allocation-free 14-command plan advances both digit states atomically and
+retains background-before-slots and primary-before-secondary order. Its
+identity-bound native-output submission maps the logical UI through
+`NativeRenderLayout` independently of the 3D target. D3D11 and Metal stage the
+dynamic resources in the mission transaction and own dormant fail-closed
+consumers. Ordinary frames do not fabricate selected weapons, ammunition,
+status, or visibility.
+
 ## Remaining HUD work
 
 - Connect the verified two-instrument fields and tint through ordinary HUD
   render-event publication without substituting validation values.
 - Recover and connect the six verified live digit producers and shared HUD
   clock to the already authenticated native-output submission.
-- Complete primary/selected-secondary icon, ammunition, and status-bar plans.
+- Connect primary/selected-secondary ownership, ammunition, and status
+  producers to the verified weapon-panel submission without fabricated state.
 - Recover aircraft/team indicators and the relationship to mission status.
 - Connect the verified smoothed-health producer to ordinary render-event
   publication without substituting capture-only values.
