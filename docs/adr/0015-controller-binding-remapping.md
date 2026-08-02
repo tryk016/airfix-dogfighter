@@ -153,8 +153,9 @@ and iOS remapping requirement.
 - Touch, keyboard, mouse, and the active router are unaffected.
 - Analog remapping, menu remapping, deletion, multiple bindings per action,
   physical capture, and live replacement remain deliberately unavailable.
-- The eventual Windows UI needs a bounded UI Automation tree before remapping
-  can be called Narrator-accessible.
+- Windows now exposes a bounded UI Automation provider, but remapping is not
+  called Narrator-accessible until physical assistive-technology acceptance is
+  complete.
 
 ## Action items
 
@@ -165,14 +166,17 @@ and iOS remapping requirement.
 4. [x] Add the iOS text-picker surface with Dynamic Type and VoiceOver
        semantics.
 5. [x] Add the Windows keyboard/mouse/controller text-picker surface.
-6. [ ] Add a bounded Windows UI Automation provider before claiming Narrator
+6. [x] Add a bounded Windows UI Automation provider before claiming Narrator
        support.
    - [x] Publish every logical row independently of visual clipping, centralize
          bounded names/values/status text, and expose owner-thread typed
          focus/invoke/decrement/increment actions. A monotonic semantic
          generation rejects delayed same-screen/ABA actions without being
          invalidated by the 15 Hz analog preview.
-   - [ ] Attach a Windows-only COM provider to the SDL-owned HWND through
+   - [x] Attach a Windows-only COM provider to the SDL-owned HWND through
          `WM_GETOBJECT`, with immutable snapshots and a bounded owner-thread
-         action queue.
-7. [ ] Run controller-only physical acceptance before release.
+         action queue. Stable fragment IDs, screen-space bounds, offscreen
+         state, read-only values, invoke/focus actions, and bounded focus,
+         layout, live-region, and structure events remain outside simulation.
+7. [ ] Run physical Narrator acceptance across every settings/remapping screen.
+8. [ ] Run controller-only physical acceptance before release.

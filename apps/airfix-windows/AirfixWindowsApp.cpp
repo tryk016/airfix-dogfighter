@@ -7,6 +7,7 @@
 #include "AirfixWindowsRenderSettingsCoordinator.hpp"
 #include "AirfixWindowsRenderSettingsPanel.hpp"
 #include "AirfixWindowsSettingsRoot.hpp"
+#include "AirfixWindowsUiAutomation.hpp"
 #include "AirfixWindowsUiRasterizer.hpp"
 #include "AirfixXAudio2Backend.hpp"
 
@@ -400,6 +401,12 @@ windowsUiExtent(SDL_Window &window) {
       .height = static_cast<std::uint32_t>(height),
       .dpiScale = dpiScale,
   };
+}
+
+[[nodiscard]] void *windowsNativeWindow(SDL_Window &window) noexcept {
+  const SDL_PropertiesID properties = SDL_GetWindowProperties(&window);
+  return SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_WIN32_HWND_POINTER,
+                                nullptr);
 }
 
 [[nodiscard]] airfix::windows::AirfixWindowsPointerInput
@@ -1185,6 +1192,13 @@ int run(const int argumentCount, char *arguments[]) {
     throw std::runtime_error(SDL_GetError());
   }
 
+  airfix::windows::AirfixWindowsUiAutomationHost uiAutomation;
+  const bool uiAutomationAvailable =
+      uiAutomation.attach(windowsNativeWindow(*window));
+  if (!uiAutomationAvailable) {
+    std::cerr << "Windows UI Automation: unavailable\n";
+  }
+
   if (renderer.missionWorldRoomInstalled() && playerSpawnPose.has_value() &&
       !gameplayCameraMissionRuntime.expired()) {
     // Windows commits the authenticated room, audio clips, frozen spawn pose,
@@ -1225,9 +1239,15 @@ int run(const int argumentCount, char *arguments[]) {
       return;
     }
     const auto raster = uiRasterizer.rasterize(snapshot);
-    if (!raster.complete() || !renderer.setProductUiRaster(*raster.raster)) {
+    const auto semantics =
+        airfix::windows::buildAirfixWindowsUiSemanticTree(snapshot);
+    const bool semanticsPublished =
+        semantics.complete() &&
+        (!uiAutomationAvailable || uiAutomation.publish(*semantics.tree));
+    if (!raster.complete() || !renderer.setProductUiRaster(*raster.raster) ||
+        !semanticsPublished) {
       throw std::runtime_error(
-          "Windows product UI raster could not be published");
+          "Windows product UI raster and semantics could not be published");
     }
     publishedPanelSnapshot = snapshot;
   };
@@ -1314,6 +1334,9 @@ int run(const int argumentCount, char *arguments[]) {
           const bool resumed = session.resume();
           audio.setActive(resumed);
           if (resumed) {
+            if (uiAutomationAvailable) {
+              (void)uiAutomation.publish(std::nullopt);
+            }
             renderer.clearProductUiRaster();
             renderSettingsPanel.reset();
             publishedPanelSnapshot.reset();
@@ -1402,6 +1425,20 @@ int run(const int argumentCount, char *arguments[]) {
       default:
         break;
       }
+    }
+
+    while (const auto request = uiAutomation.popAction()) {
+      if (!renderSettingsPanel.has_value()) {
+        continue;
+      }
+      const auto result = renderSettingsPanel->consumeAccessibilityAction(
+          request->screen, request->accessibilityGeneration, request->item,
+          request->action);
+      if (!result.accepted()) {
+        continue;
+      }
+      session.noteInputActivity();
+      consumeRenderSettingsIntent(result.intent);
     }
 
     const std::uint64_t currentTime = SDL_GetTicksNS();

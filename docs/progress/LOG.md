@@ -5309,3 +5309,32 @@ superseded evidence.
   2026 MSVC/Ninja build completes the 751-step Windows graph and passes 155/155
   CTests, including both product smokes. Clang-format warnings-as-errors, the
   745-file public-boundary scan, and `git diff --check` pass.
+
+## 2026-08-02 - bounded Windows UI Automation provider
+
+- The SDL-owned Windows HWND now answers `WM_GETOBJECT` with a server-side UI
+  Automation fragment provider over the existing immutable semantic tree. It
+  exposes stable automation/runtime IDs, hierarchy and navigation, physical
+  screen bounds, focus/offscreen/enabled state, polite live status, read-only
+  values, and role-appropriate invoke actions without touching simulation.
+- COM callers enqueue only fixed typed focus/invoke/decrement/increment
+  requests into a 32-entry queue. The SDL owner thread drains that queue
+  through the panel's screen and monotonic-generation guards; overflow,
+  malformed trees, an older active generation, withdrawn fragments, and
+  fragments cached on a different screen fail closed.
+- The subclass reference owns a shared state independently of the host, so an
+  unexpected failed detach cannot leave a dangling callback. `WM_NCDESTROY`
+  withdraws the tree, clears queued actions, removes the subclass, and releases
+  that reference. UI Automation remains an optional product capability if
+  attachment is unavailable.
+- A structured correctness/security review found and fixed cross-screen
+  runtime-ID reuse, stale fragment-root/runtime/value access, an invalid
+  `ChildrenInvalidated` runtime-ID argument, missing live-region metadata,
+  insufficient fixed-root validation, and callback lifetime risk. Synthetic
+  integration tests use a real hidden Win32 HWND and real `IUIAutomation`
+  client round trips, including window destruction and stale-element cases.
+- A fresh Visual Studio 2026 MSVC 19.51/Ninja build completes 758 build edges
+  and passes 157/157 CTests, including the UI Automation integration test and
+  both Windows product smokes. Clang-format warnings-as-errors, the 752-file
+  public-boundary scan, changed-scope local-path review, and `git diff --check`
+  pass. Physical Narrator acceptance remains explicitly pending.
