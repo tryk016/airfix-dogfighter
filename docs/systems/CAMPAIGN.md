@@ -33,7 +33,7 @@ mission outcome --> LegacyMissionOutcomeConsumer
                              CampaignStateCodec (AFCS)
                                            |
                                            v
-                         future campaign store adapter
+                                CampaignStateStore
                                            |
                                            v
                                 DurableDocumentPair
@@ -97,11 +97,26 @@ little-endian envelope. It preserves absence separately from zero, rejects
 noncanonical current-schema content, and retains a bounded, digest-valid
 higher schema byte-for-byte without interpreting it.
 
-The codec owns no file or directory name and performs no I/O. It therefore
-does not yet decide how a legacy import becomes an `AFCS` record, which copy
-of a current/backup pair wins, when a frontend saves, or how an error is shown.
-The exact format and its forward-compatibility boundary are defined by
+The codec owns no file or directory name and performs no I/O. The exact format
+and its forward-compatibility boundary are defined by
 [ADR-0021](../adr/0021-versioned-campaign-state-document.md).
+
+### `CampaignStateStore`
+
+The isolated store composes `AFCS` with ADR-0018 without adding profile or
+platform policy. Its caller injects an absolute private leaf already selected
+for one profile. Inside that leaf, fixed current/backup/partial names provide:
+
+- current → backup → canonical empty-state load selection;
+- byte-exact future-schema preservation and downgrade blocking;
+- replaceable malformed/oversized regular content without promoting it;
+- fail-closed linked, wrong-type, or unavailable entries;
+- exact no-op detection, valid-current rotation, atomic publication, and
+  ambiguous-commit readback; and
+- fixed path-free diagnostics plus an explicit repair-needed signal.
+
+The store has one externally serialized owner and cannot select a profile,
+derive a Windows/iOS root, import a roster, schedule a save, or show an error.
 
 ## Deliberate non-goals
 
@@ -112,15 +127,15 @@ This slice does not implement:
   equipment, or other reward rules;
 - a legacy roster writer or bit-identical round trip;
 - a versioned portable profile-identity/medal schema;
-- the legacy-to-`AFCS` adapter, filesystem store, migration, recovery UI, or
-  lifecycle integration;
+- the legacy-to-`AFCS` adapter, profile-directory partitioning, migration,
+  automatic repair, recovery UI, save scheduling, or lifecycle integration;
 - automatic conversion from `LegacyRoster` to `LegacyCampaignSeed`;
 - Windows/iOS runtime wiring.
 
-A future campaign store must combine the `AFCS` codec with
-[ADR-0018](../adr/0018-shared-durable-document-pair.md) only after its
-selection, default, recovery, downgrade, and lifecycle policy is specified.
-It must not copy the original direct `wb` writer.
+`CampaignStateStore` combines the codec with
+[ADR-0018](../adr/0018-shared-durable-document-pair.md) only at the injected
+private-leaf boundary. Future host integration must not copy the original
+direct `wb` writer.
 
 ## Validation
 
@@ -136,6 +151,10 @@ Public tests use synthetic byte vectors only:
 - `CampaignStateCodecTests` covers deterministic canonical encoding, optional
   presence, signed extrema, envelope and field corruption, configured and
   absolute size limits, semantic rejection, and opaque future preservation.
+- `CampaignStateStoreTests` covers missing/default, no-op, rotation, backup
+  recovery, repair signalling, malformed/oversized replacement, future-schema
+  blocking, wrong types/links, stale and unsafe partials, injected-directory
+  validation, and pre/post-publication failure readback.
 
 No original roster, profile name, portrait, medal corpus, local path, or game
 binary is required by the build or tests.

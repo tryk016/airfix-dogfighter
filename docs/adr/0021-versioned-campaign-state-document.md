@@ -68,10 +68,33 @@ trailing fields fail closed. A bounded document with a higher semantic schema,
 valid envelope, exact size, and valid digest is retained byte-for-byte as an
 opaque future record; it is never interpreted or rewritten by an older build.
 
-`AFCS` is storage-neutral. This decision adds the semantic record and codec,
-not filenames, directories, document-pair inspection, migration, UI, or file
-I/O. A later store adapter may use ADR-0018 only after defining load/default,
-backup selection, downgrade blocking, and save-error behavior.
+The codec itself remains storage-neutral. The separate `CampaignStateStore`
+target now binds it to ADR-0018 using four fixed leaf names inside one injected
+directory:
+
+- `campaign-state.afcs`;
+- `campaign-state.afcs.backup`;
+- `campaign-state.afcs.partial`; and
+- `campaign-state.afcs.backup.partial`.
+
+The injected directory must be an absolute application-private leaf already
+partitioned by the host for the selected profile. The store never receives or
+derives a callsign, profile identifier, platform root, or legacy filename.
+This keeps profile identity and UTF-8 policy outside the numeric document.
+
+Load selection is deterministic: a valid current wins; otherwise a valid
+backup wins; otherwise the canonical empty schema-1 record is returned.
+Malformed and oversized regular content is replaceable and can request an
+explicit repair save. A valid future current is never bypassed by an older
+backup. Any retained future schema, unsafe/linked entry, or unavailable read
+blocks persistence without rewriting bytes. Save rotates only a valid current,
+uses the shared exact-readback ambiguity rules, and reports fixed path-free
+errors while retaining the requested semantic state only when the candidate
+transaction is relevant.
+
+This store adds no platform root lookup, profile catalogue, legacy adapter,
+automatic repair, migration, UI, save scheduling, or runtime wiring. The host
+must serialize access to one injected leaf.
 
 ## Options considered
 
@@ -128,9 +151,16 @@ native no-follow file handling remain separate. The digest detects corruption
 and makes future-schema preservation/ambiguous readback byte-exact, matching
 the established AFRS/AFIP model.
 
+An injected per-profile directory avoids freezing a profile identifier, but
+it deliberately moves partitioning responsibility to the future host adapter.
+Until that adapter exists, the store is a tested dormant boundary and cannot
+select or create a player's save location by itself.
+
 ## Consequences
 
 - Windows and iOS can share one deterministic numeric campaign-state codec.
+- Windows and iOS can share one current/backup/default recovery and atomic
+  commit policy once their hosts inject the correct private profile leaf.
 - Missing legacy chunks can remain missing through import instead of being
   silently rewritten as stored zero.
 - Future semantic schemas can block downgrade writes without data loss.
@@ -139,7 +169,7 @@ the established AFRS/AFIP model.
 - A full player-profile schema, UTF-8/import policy, medals/rewards, and unknown
   legacy payload migration still need separate decisions.
 - `AFCS` does not authorize connecting the isolated mission-outcome consumer,
-  AFS VM, frontend, or filesystem.
+  AFS VM, frontend, profile catalogue, or platform lifecycle.
 
 ## Action items
 
@@ -149,8 +179,8 @@ the established AFRS/AFIP model.
        synthetic tests.
 3. [ ] Define the legacy numeric adapter and explicit incomplete/unsupported
        import policy.
-4. [ ] Define AFCS current/backup names, inspection, recovery/default behavior,
-       and ADR-0018 store adapter.
+4. [x] Define AFCS current/backup names, inspection, recovery/default behavior,
+       and implement the isolated ADR-0018 store adapter.
 5. [ ] Define a separate profile identity/UTF-8 and medal/reward decision.
 6. [ ] Connect persistence only after the bounded VM, outcome lifecycle,
        ordering, and save-error UI are ready.
