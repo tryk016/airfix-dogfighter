@@ -759,6 +759,13 @@ if(AIRFIX_BUILD_TESTS)
     add_test(NAME airfix_texture_replacement_resolver_tests
         COMMAND airfix_texture_replacement_resolver_tests)
 
+    add_executable(airfix_texture_mode_state_tests
+        tests/TextureModeStateTests.cpp)
+    target_link_libraries(airfix_texture_mode_state_tests
+        PRIVATE airfix::texture)
+    add_test(NAME airfix_texture_mode_state_tests
+        COMMAND airfix_texture_mode_state_tests)
+
     add_executable(airfix_texture_hd_png_preparation_tests
         tests/TextureHdPngPreparationTests.cpp)
     target_link_libraries(airfix_texture_hd_png_preparation_tests

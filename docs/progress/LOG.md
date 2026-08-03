@@ -5748,3 +5748,29 @@ superseded evidence.
   12/12 Rizin normalization, CI-classifier tests, and `git diff --check` pass.
   Hosted Linux/macOS/Windows, clangd, and unsigned iOS remain the publication
   gate.
+
+## 2026-08-03 - durable requested/effective HD texture mode
+
+- Advanced AFRS to semantic schema 4 with one independent requested
+  `TextureMode`. Existing schema 1, 2, and 3 documents migrate to Classic;
+  current records round-trip Enhanced exactly, future records remain opaque,
+  and downgrade protection is unchanged.
+- Added a portable, path-free `TextureModeRuntimeState`. It resolves requested
+  mode and coarse package availability to the effective mission mode, reports
+  safe Classic fallback, and requires a controlled mission reload whenever an
+  active snapshot's requested or effective state would change. Forged enums
+  and impossible Classic-request/Enhanced-effective states fail closed.
+- Windows now resolves the durable preference at startup. `--texture-mode`
+  remains a non-persistent session override; private root and manifest locator
+  remain outside AFRS and may accompany a persisted Enhanced preference. A
+  missing or invalid package uses fixed redacted status and starts the mission
+  in Classic without aborting or mutating any running snapshot.
+- Added synthetic migration, golden-vector, invalid-state, command-line, and
+  reload-policy coverage. A clean MSVC 19.51/Ninja Windows product build passes
+  168/168 tests, including D3D11/XAudio2 product smokes; a clean GNU
+  15.2/Ninja portable build completes all 492 edges and passes 153/153 CTests.
+  Public-boundary regressions and the 813-file scan,
+  documentation integrity (119 experiments/408 catalogue rows), 12/12 Rizin
+  normalization, CI-classifier tests, and `git diff --check` pass. Generic
+  native mode UI, atomic in-process mission reload, iOS owner import/Metal
+  upload, streaming, and compressed derivatives remain later stages.

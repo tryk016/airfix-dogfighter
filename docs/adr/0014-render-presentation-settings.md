@@ -65,7 +65,9 @@ The portable layer also owns:
 ADR-0016 extends the record to schema 2 with the safe vertical-FOV field.
 ADR-0017 extends it to schema 3 with independent UI scale. Schema 1 migrates to
 exact zero-degree FOV and 100% UI scale; schema 2 migrates to exact 100% UI
-scale; later schemas remain opaque. The record contains no content root,
+scale. ADR-0019 advances the current record to schema 4 with independent,
+requested-only `TextureMode`; schema 1-3 migrate to Classic and later schemas
+remain opaque. The record contains no content root,
 logical asset path, checksum, GPU or device identifier, save-game state, or
 gameplay value.
 

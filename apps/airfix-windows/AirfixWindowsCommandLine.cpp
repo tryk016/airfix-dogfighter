@@ -188,9 +188,11 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
       textureModeSeen = true;
       const auto value = requireValue(arguments, index);
       if (value == "classic") {
-        options.textureMode = airfix::texture::TextureMode::classic;
+        options.renderOverrides.textureMode =
+            airfix::texture::TextureMode::classic;
       } else if (value == "enhanced") {
-        options.textureMode = airfix::texture::TextureMode::enhanced;
+        options.renderOverrides.textureMode =
+            airfix::texture::TextureMode::enhanced;
       } else {
         invalidCommandLine();
       }
@@ -409,9 +411,11 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
       (hasAnyTextureOption && (!hasContentSelection || !hasMissionPair ||
                                options.validateContentOnly)) ||
       (texturePackRoot.has_value() != texturePackManifest.has_value()) ||
-      (options.textureMode == airfix::texture::TextureMode::enhanced &&
+      (options.renderOverrides.textureMode ==
+           airfix::texture::TextureMode::enhanced &&
        !hasTexturePackPair) ||
-      (options.textureMode == airfix::texture::TextureMode::classic &&
+      (options.renderOverrides.textureMode ==
+           airfix::texture::TextureMode::classic &&
        hasTexturePackPair) ||
       (captureFrameOutput.has_value() &&
        (options.validateContentOnly || !hasMissionPair)) ||

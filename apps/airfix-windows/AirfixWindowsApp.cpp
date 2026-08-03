@@ -30,6 +30,7 @@
 #include "airfix/settings/RenderPresentationSettingsStore.hpp"
 #include "airfix/simulation/LegacyAircraftAudioCoordinator.hpp"
 #include "airfix/simulation/PlayerSpawnPose.hpp"
+#include "airfix/texture/TextureModeState.hpp"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -1034,25 +1035,47 @@ int run(const int argumentCount, char *arguments[]) {
   std::unique_ptr<airfix::windows::AirfixWindowsTexturePackSession>
       texturePackSession;
   airfix::content::MissionWorldRoomTextureReplacementContext textureReplacement;
-  if (options.textureMode == airfix::texture::TextureMode::enhanced) {
+  auto texturePackageAvailability =
+      airfix::texture::TexturePackageAvailability::notConfigured;
+  if (startupSettings.textureMode == airfix::texture::TextureMode::enhanced &&
+      options.texturePack.has_value()) {
+    texturePackageAvailability =
+        airfix::texture::TexturePackageAvailability::validating;
     auto opened = airfix::windows::openAirfixWindowsTexturePack(
         options.texturePack->root, options.texturePack->manifestRelativePath);
     if (opened.success()) {
       texturePackSession = std::move(opened.session);
-      textureReplacement = {
-          .requestedMode = airfix::texture::TextureMode::enhanced,
-          .resolver = &texturePackSession->resolver(),
-          .files = &texturePackSession->files(),
-          .lookupPolicy = {},
-          .pngPerTexture = {},
-      };
-      std::cout << "Private HD texture package: ready; mission reload policy "
-                   "active\n";
+      texturePackageAvailability =
+          airfix::texture::TexturePackageAvailability::ready;
     } else {
+      texturePackageAvailability =
+          airfix::texture::TexturePackageAvailability::unavailable;
       std::cerr << "Private HD texture package unavailable ("
                 << airfix::windows::texturePackStatusCategory(opened.status)
-                << "); using Classic for this session\n";
+                << "); using Classic for this mission\n";
     }
+  }
+  const auto textureModeState = airfix::texture::resolveTextureModeState(
+      startupSettings.textureMode, texturePackageAvailability);
+  if (!textureModeState.complete()) {
+    throw std::runtime_error("Windows texture mode state is invalid");
+  }
+  if (textureModeState.state->effectiveMode ==
+      airfix::texture::TextureMode::enhanced) {
+    textureReplacement = {
+        .requestedMode = airfix::texture::TextureMode::enhanced,
+        .resolver = &texturePackSession->resolver(),
+        .files = &texturePackSession->files(),
+        .lookupPolicy = {},
+        .pngPerTexture = {},
+    };
+    std::cout << "Private HD texture package: ready; mission reload policy "
+                 "active\n";
+  } else if (textureModeState.state->fallbackToClassic() &&
+             texturePackageAvailability ==
+                 airfix::texture::TexturePackageAvailability::notConfigured) {
+    std::cerr << "HD texture pack unavailable; Classic textures will be "
+                 "used for this mission\n";
   }
   std::optional<airfix::simulation::PlayerSpawnPose> playerSpawnPose;
   airfix::runtime::PlayerActorPoseRuntimeEndpoint playerActorPoseRuntime;

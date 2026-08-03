@@ -1,7 +1,6 @@
 #pragma once
 
 #include "airfix/render/RenderPresentationSettings.hpp"
-#include "airfix/texture/TextureMode.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -50,8 +49,6 @@ struct AirfixWindowsCommandLineOptions final {
   std::optional<std::filesystem::path> contentRoot;
   std::optional<std::filesystem::path> importAfPackSource;
   std::optional<AirfixWindowsMissionOptions> mission;
-  airfix::texture::TextureMode textureMode{
-      airfix::texture::TextureMode::classic};
   std::optional<AirfixWindowsTexturePackLocation> texturePack;
   std::optional<std::filesystem::path> captureFrameOutput;
   std::optional<std::filesystem::path> captureOverviewFrameOutput;
