@@ -1362,11 +1362,12 @@
    bytecode, a bounded VM, the `Load`/`Start` lifecycle, mutation during
    refresh, and global dispatcher/presentation order are proven. Then recover
    the remaining score/stat producers and corruption behavior before wiring
-   them. The bounded `AFCS` schema now covers the recovered numeric state, but
-   its legacy adapter, current/backup selection, default/recovery policy, and
-   lifecycle must still be specified before reusing the implemented ADR-0018
-   atomic document-pair boundary. Neither the codec nor the shared byte
-   transaction alone is save-game migration.
+   them. The bounded `AFCS` schema covers the recovered numeric state and its
+   isolated store now supplies current/backup/default selection, future-schema
+   preservation, repair signalling, and ADR-0018 atomic publication inside an
+   injected private leaf. The legacy adapter, per-profile root selection,
+   save scheduling, error UI, and lifecycle remain required. Neither the codec
+   nor the dormant store is save-game migration.
    Preserve one already-ordered outcome call per transition; do not
    batch, sort, deduplicate, replay, or let the value-only consumer execute UI
    or disk effects.
@@ -1666,10 +1667,13 @@ These questions do not block static analysis or the archive work.
   The canonical 112-byte `AFCS` schema-1 codec now preserves optional
   `THRD`/`AXMI`/`ALMI`/`SCOR` plus the eight neutral cumulative counters,
   rejects noncanonical current content, and preserves valid future schemas
-  byte-for-byte. All three pieces remain deliberately unwired. Complete
-  frontend parity, difficulty, normal reward rules, safe store recovery,
-  legacy migration, profile identity/medal schema, platform integration, and
-  bit-identical legacy output remain NO-GO/unimplemented.
+  byte-for-byte. A separate filesystem target now composes that codec with the
+  shared durable document pair, selecting current, backup, or the canonical
+  empty record and blocking downgrade/unsafe writes within an injected
+  already-partitioned private profile leaf. All pieces remain deliberately
+  unwired. Complete frontend parity, difficulty, normal reward rules, legacy
+  migration, profile identity/medal schema, platform root/lifecycle
+  integration, and bit-identical legacy output remain NO-GO/unimplemented.
 
 ## Blockers
 

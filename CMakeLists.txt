@@ -354,6 +354,28 @@ else()
     target_compile_options(airfix_io PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 
+add_library(airfix_campaign_store
+    src/airfix/campaign/CampaignStateStore.cpp
+)
+add_library(airfix::campaign_store ALIAS airfix_campaign_store)
+
+target_include_directories(airfix_campaign_store
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+)
+target_compile_features(airfix_campaign_store PUBLIC cxx_std_20)
+target_link_libraries(airfix_campaign_store
+    PUBLIC airfix::campaign
+    PRIVATE airfix::io
+)
+
+if(MSVC)
+    target_compile_options(airfix_campaign_store PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(airfix_campaign_store PRIVATE
+        -Wall -Wextra -Wpedantic)
+endif()
+
 add_library(airfix_settings
     src/airfix/settings/ControllerInputBindingPickerModel.cpp
     src/airfix/settings/ControllerInputProfileCodec.cpp
@@ -657,6 +679,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::campaign)
     add_test(NAME airfix_campaign_state_codec_tests
         COMMAND airfix_campaign_state_codec_tests)
+
+    add_executable(airfix_campaign_state_store_tests
+        tests/CampaignStateStoreTests.cpp)
+    target_link_libraries(airfix_campaign_state_store_tests
+        PRIVATE airfix::campaign_store airfix::io)
+    add_test(NAME airfix_campaign_state_store_tests
+        COMMAND airfix_campaign_state_store_tests)
 
     add_executable(airfix_texture_hd_manifest_index_tests
         tests/TextureHdManifestIndexTests.cpp)
