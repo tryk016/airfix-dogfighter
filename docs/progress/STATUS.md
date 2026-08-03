@@ -1370,7 +1370,15 @@
    complete HUD/sight validation is implemented; ordinary frames remain
    correctly disconnected from fixed validation values.
    Validate the implemented diagnostic overlay on both physical iPhones before
-   lighting, materials, shadows, or post-processing.
+   lighting, materials, shadows, or post-processing. Then implement Enhanced
+   as a scalable raster pipeline in this order: end-to-end color correctness;
+   dynamic directional, point, and spot lights; plastic-tuned materials;
+   cascaded/atlas/budgeted-cube shadow maps; reflection probes and selected
+   planar reflections; optional High/Ultra SSR and SSAO; and finally HDR,
+   atmosphere, and post-processing. Ray tracing is explicitly outside the
+   product roadmap: D3D11/HLSL and Metal remain the primary render paths, with
+   quality budgets covering iPhone SE 3 through high-end iPhone and Windows
+   targets.
 10. Keep ADR-0019's private HD texture mode as a separate staged workstream.
     Public-boundary scanner hardening is complete. Next implement only the
     bounded reviewed-manifest index, root-confined file capability, resolver,
