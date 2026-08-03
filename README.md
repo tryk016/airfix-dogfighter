@@ -72,6 +72,10 @@ model and its safe application rules are defined by
 [ADR-0014](docs/adr/0014-render-presentation-settings.md).
 The independent, presentation-only FOV policy and schema migration are defined
 by [ADR-0016](docs/adr/0016-safe-fov-settings.md).
+The optional owner-local HD texture package remains unimplemented; its
+Classic-safe fallback, security boundary, cache model, and staged integration
+are proposed in
+[ADR-0019](docs/adr/0019-private-hd-texture-replacements.md).
 
 ## Current state
 
@@ -419,6 +423,7 @@ Read the [architecture](docs/ARCHITECTURE.md), the
 the [Windows platform stack decision](docs/adr/0008-windows-rendering-and-platform-stack.md),
 the [Windows audio decision](docs/adr/0009-windows-xaudio2-audio-backend.md),
 the [authenticated aircraft-audio decision](docs/adr/0011-authenticated-owner-local-aircraft-audio.md),
+the [proposed private HD texture replacement plan](docs/adr/0019-private-hd-texture-replacements.md),
 the [audio-system contract](docs/systems/AUDIO.md),
 and the [reverse-engineering workflow](docs/RE-WORKFLOW.md) for the detailed
 contracts.

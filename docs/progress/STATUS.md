@@ -1,6 +1,6 @@
 # Project status
 
-**Updated:** 2026-08-01
+**Updated:** 2026-08-03
 **Stage:** Phase 1 — static analysis and archive recovery in progress
 
 ## Now
@@ -173,9 +173,19 @@
   diagnostic cutaway only to physical room-shell contributors while retaining
   ordinary two-sided rendering for placed objects and the player aircraft.
   The camera is an owning one-frame value and never enters the gameplay camera
-  exchange. A local 1920x1080, 100%-scale Classic capture verifies the full
-  room, textured placed scene, player aircraft, and diagnostics overlay; the
-  derived image remains private and outside Git.
+  exchange. Local 1920x1080, 100%-scale Classic and Enhanced captures verify
+  the full room, textured placed scene, player aircraft, and diagnostics
+  overlay; the derived images remain private and outside Git.
+- Proposed ADR-0019 plans an optional owner-local HD texture package without
+  changing Classic GTI behavior. It records the required accepted-only
+  manifest index, logical-path plus source-SHA identity, root-confined file
+  capabilities, per-texture fallback, independent requested/effective mode,
+  cache partitions, bounded residency, staged RGBA8/BC7/BC3/ASTC work, and
+  synthetic-only public tests. The reviewed private corpus was revalidated
+  locally as 1,833 logical textures, 1,689 accepted unique results, and 16,304
+  mip files. No manifest, image, checksum, logical path, local root, or
+  pipeline branch content was copied into this repository. Integration remains
+  unimplemented; repository-boundary hardening is the first preparatory gate.
 - ADR-0014 defines one cross-platform render-presentation settings transaction.
   Its portable C++20 foundation is implemented: render scale, Hor+/Original
   4:3, safe FOV, UI scale, diagnostics, and the Classic/Enhanced selector form
@@ -1345,6 +1355,13 @@
    inventing their visibility or gameplay rules.
    Validate the implemented diagnostic overlay on both physical iPhones before
    lighting, materials, shadows, or post-processing.
+10. Keep ADR-0019's private HD texture mode as a separate staged workstream.
+    Land the public-boundary scanner hardening first, then implement only the
+    bounded reviewed-manifest index, root-confined file capability, resolver,
+    and per-texture GTI fallback under synthetic tests. Do not expose an
+    Enhanced texture selector, add private resources to CMake/CI, or begin
+    streaming/compressed derivatives until those portable boundaries pass
+    independent review.
 
 ## Open questions
 
