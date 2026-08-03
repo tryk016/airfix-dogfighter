@@ -5260,6 +5260,33 @@ superseded evidence.
   changed-scope path scan, clang-format warnings-as-errors, and
   `git diff --check` pass.
 
+## 2026-08-01 - shared durable document-pair transaction
+
+- ADR-0018 extracts the duplicated AFRS/AFIP byte transaction into
+  codec-neutral `airfix::io::DurableDocumentPair` code over the existing
+  Win32/POSIX `DurableFile` primitives. Domain callbacks classify exact bounded
+  bytes as valid, future-preserve, or replaceable-invalid; codecs, semantic
+  defaults, schema diagnostics, and public errors remain owned by each store.
+- Current, backup, current-partial, and backup-partial publication now share
+  one exact-readback path. Valid current bytes rotate exactly, invalid regular
+  bytes are never promoted, future bytes block downgrades without mutation,
+  unsafe/linked entries fail closed, and post-replacement failures produce
+  `committedAfterReadback` or `commitUnknown` according to the proven durable
+  outcome. Fixed diagnostics remain path-free.
+- Direct synthetic tests cover both backup and current replacement faults
+  before and after publication, failed durability retry, stale/unsafe partials,
+  file-state classification, first/no-op/rotation/replacement commits, invalid
+  configuration, and future preservation. Existing AFRS and AFIP store suites
+  retain their observable recovery and requested-record contracts.
+- Complete Windows GCC 15.2/Ninja and MSVC 19.51/Ninja portable builds each
+  pass 143/143 CTests. A clean Linux GCC 13.3/Ninja build in the isolated
+  `Airfix-Dev` WSL distro also passes 143/143; all three WSL distributions are
+  stopped afterward. This is a reusable atomic byte boundary, not an
+  implementation of campaign/save-game schemas, migration, iOS save
+  lifecycle, or `THRD`/`AXMI`/`ALMI`/`SCOR`.
+- Synthetic public-boundary tests and the 746-file repository scan pass, as do
+  changed-source clang-format warnings-as-errors and `git diff --check`.
+
 ## 2026-08-01 - bounded Windows accessibility semantics seam
 
 - The Windows settings panel now publishes its visible hit-test rows separately
