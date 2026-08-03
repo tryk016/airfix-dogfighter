@@ -378,15 +378,30 @@ Confirmed selected mode boundaries are:
 | destructor | `0x100011E0–0x100012C2` |
 | vehicle helper | `0x10001900–0x100019B2` |
 
+## Later complete VM boundary
+
+`EV-20260803-003` subsequently recovered the complete `0x01–0x46` runtime
+dispatch, process/execution layouts, local mutation rules, first-step/delay
+behavior, `Load`/`Start` internals, reset, and destruction. See
+[AFS-VM](AFS-VM.md) and [FMT-AFS](../../formats/AFS.md). It confirms the
+outcome call's synchronous position inside the process pass and corrects the
+word-vector helper boundary to `[0x10061220,0x100612A3)`, followed by a
+separate helper at `[0x100612B0,0x100612B7)`.
+
+That later evidence does not implement the VM and does not establish global
+ordering between the mission dependant and separate AI/physics dependants.
+
 ## Open questions
 
-- What is the complete bytecode of representative success/failure actions,
-  including each condition and surrounding control flow?
-- How do `NfMission::Load` and `NfMission::Start` replace or coexist with
-  database/process state in the live mission lifecycle?
-- What is the complete dispatcher/process/presentation order when several
-  processes, dynamic process operations, and immediate `Spawned` calls
-  interact?
+- Which complete authored condition expressions surround representative
+  success/failure calls? The action envelope and runtime instruction set are
+  recovered, but private source is neither published nor promoted to a public
+  fixture.
+- Which outer owner calls `NfMission::Load`, `Reset`, and `Start`, and does it
+  guarantee replacement? Neither `Load` nor `Start` flushes processes itself.
+- What is the global dispatcher order between mission scripting,
+  presentation, actor AI, force, physics, and other dependants? Local process
+  mutation and immediate `Spawned` behavior are now recovered.
 - What versioned portable schema and migration should replace the now-recovered
   non-transactional roster reader and direct non-atomic writer?
 - What controlled numeric policy should reproduce the statically recovered
