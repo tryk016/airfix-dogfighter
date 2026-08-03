@@ -692,10 +692,13 @@ loadLegacyAircraftHudWeaponPanelTextures(
       const render::TextureImportRequest request{
           .assetId = render::TextureAssetId{static_cast<std::uint32_t>(index)},
           .archiveFileIndex = source.fileIndex,
+          .logicalPath = source.logicalPath,
       };
       render::GtiUploadPreparation preparation;
       try {
-        preparation = render::prepareGtiUpload(request, bytes, gtiLimits);
+        auto sourcePreparation =
+            render::prepareTextureSource(request, bytes, nullptr, {}, gtiLimits);
+        preparation = std::move(sourcePreparation.classicGti);
       } catch (const std::bad_alloc &) {
         throw;
       } catch (...) {

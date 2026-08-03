@@ -201,6 +201,7 @@ endif()
 add_library(airfix_texture
     src/airfix/texture/PrivateTextureFileStore.cpp
     src/airfix/texture/TextureHdManifestIndex.cpp
+    src/airfix/texture/TextureReplacementResolver.cpp
 )
 add_library(airfix::texture ALIAS airfix_texture)
 
@@ -344,7 +345,7 @@ target_include_directories(airfix_render
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
 )
 target_compile_features(airfix_render PUBLIC cxx_std_20)
-target_link_libraries(airfix_render PUBLIC airfix::assets)
+target_link_libraries(airfix_render PUBLIC airfix::assets airfix::texture)
 target_link_libraries(airfix_runtime
     PUBLIC airfix::render airfix::simulation)
 
@@ -721,6 +722,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::texture)
     add_test(NAME airfix_private_texture_file_store_tests
         COMMAND airfix_private_texture_file_store_tests)
+
+    add_executable(airfix_texture_replacement_resolver_tests
+        tests/TextureReplacementResolverTests.cpp)
+    target_link_libraries(airfix_texture_replacement_resolver_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_texture_replacement_resolver_tests
+        COMMAND airfix_texture_replacement_resolver_tests)
 
     add_executable(airfix_durable_file_tests tests/DurableFileTests.cpp)
     target_link_libraries(airfix_durable_file_tests PRIVATE airfix::io)

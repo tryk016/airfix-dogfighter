@@ -134,6 +134,12 @@ public:
     [[nodiscard]] const TextureHdManifestRecord* findByLogicalPath(
         std::string_view logicalPath) const;
 
+    // Uses the exact validation and configured byte limit used by the index.
+    // This distinguishes an invalid source identity from a valid path that is
+    // simply absent without exposing a normalized private value.
+    [[nodiscard]] bool
+    acceptsLogicalPath(std::string_view logicalPath) const noexcept;
+
     [[nodiscard]] const TextureHdManifestRecord* findBySourceGtiSha256(
         const crypto::Sha256Digest& digest) const noexcept;
 

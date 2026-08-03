@@ -1899,8 +1899,9 @@ loadMissionWorldRoom(VerifiedContentSession &session,
 
             render::GtiUploadPreparation preparation;
             try {
-                preparation =
-                    render::prepareGtiUpload(import, gtiBytes, perAssetLimits);
+                auto sourcePreparation = render::prepareTextureSource(
+                    import, gtiBytes, nullptr, {}, perAssetLimits);
+                preparation = std::move(sourcePreparation.classicGti);
             } catch (const std::bad_alloc &) {
                 throw;
             } catch (...) {

@@ -257,4 +257,23 @@ GtiUploadPreparation prepareGtiUpload(
     return result;
 }
 
+TextureSourcePreparation prepareTextureSource(
+    const TextureImportRequest& request,
+    const std::span<const std::uint8_t> gtiBytes,
+    const texture::TextureReplacementResolver* const resolver,
+    const texture::TextureReplacementLookupPolicy replacementPolicy,
+    const GtiUploadDataLimits& limits) {
+    TextureSourcePreparation result;
+    if (resolver != nullptr) {
+        result.replacement =
+            resolver->resolve(request.logicalPath, gtiBytes, replacementPolicy);
+        if (result.replacement.replacementReady()) {
+            return result;
+        }
+    }
+
+    result.classicGti = prepareGtiUpload(request, gtiBytes, limits);
+    return result;
+}
+
 } // namespace airfix::render

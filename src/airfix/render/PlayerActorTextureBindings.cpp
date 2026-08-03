@@ -379,6 +379,24 @@ PlayerActorTextureBindings buildPlayerActorTextureBindings(
         if (const auto existing =
                 globalIds.find(request.archiveFileIndex);
             existing != globalIds.end()) {
+            if (existing->second.value >= result.imports.size()) {
+                addIssue(
+                    result,
+                    PlayerActorTextureBindingIssueKind::invalidLocalBinding,
+                    std::nullopt,
+                    request.archiveFileIndex);
+                return result;
+            }
+            const auto& globalRequest = result.imports[existing->second.value];
+            if (!globalRequest.logicalPath.empty() &&
+                globalRequest.logicalPath != request.logicalPath) {
+                addIssue(
+                    result,
+                    PlayerActorTextureBindingIssueKind::invalidLocalBinding,
+                    std::nullopt,
+                    request.archiveFileIndex);
+                return result;
+            }
             localToGlobal[localIndex] = existing->second;
             continue;
         }
@@ -387,6 +405,7 @@ PlayerActorTextureBindings buildPlayerActorTextureBindings(
         result.imports.push_back({
             .assetId = globalId,
             .archiveFileIndex = request.archiveFileIndex,
+            .logicalPath = request.logicalPath,
         });
         globalIds.emplace(request.archiveFileIndex, globalId);
         localToGlobal[localIndex] = globalId;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "airfix/render/TextureRuntimePlan.hpp"
+#include "airfix/texture/TextureReplacementResolver.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -49,6 +50,27 @@ struct GtiUploadPreparation {
     }
 };
 
+struct TextureSourcePreparation final {
+    texture::TextureReplacementResolution replacement;
+    // Populated exactly when replacement resolution falls back. The existing
+    // GTI preparation function remains the sole Classic implementation.
+    GtiUploadPreparation classicGti;
+
+    [[nodiscard]] bool replacementReady() const noexcept {
+        return replacement.replacementReady();
+    }
+
+    [[nodiscard]] bool classicFallbackUsed() const noexcept {
+        return !replacementReady();
+    }
+
+    // Source selection only. A replacement candidate has not yet passed PNG
+    // decoding or upload preparation; those are deliberately a later stage.
+    [[nodiscard]] bool sourceSelected() const noexcept {
+        return replacementReady() || classicGti.success();
+    }
+};
+
 // Parses, plans, and decodes one complete GTI source transaction. Authored
 // chains decode every selected mip. Legacy dimension anomalies decode only the
 // base level and leave lower-level generation to the eventual render backend.
@@ -57,6 +79,18 @@ struct GtiUploadPreparation {
 [[nodiscard]] GtiUploadPreparation prepareGtiUpload(
     const TextureImportRequest& request,
     std::span<const std::uint8_t> gtiBytes,
+    const GtiUploadDataLimits& limits = {});
+
+// Resolves one optional private base-image candidate from the actual immutable
+// GTI bytes. No configured resolver means permanent Classic mode. Every
+// fixed-reason replacement failure calls prepareGtiUpload with the identical
+// request, byte span, and limits; candidate success deliberately stops before
+// PNG decoding, which belongs to the next reviewed stage.
+[[nodiscard]] TextureSourcePreparation prepareTextureSource(
+    const TextureImportRequest& request,
+    std::span<const std::uint8_t> gtiBytes,
+    const texture::TextureReplacementResolver* resolver = nullptr,
+    texture::TextureReplacementLookupPolicy replacementPolicy = {},
     const GtiUploadDataLimits& limits = {});
 
 } // namespace airfix::render

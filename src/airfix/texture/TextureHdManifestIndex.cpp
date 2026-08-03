@@ -1066,6 +1066,11 @@ const TextureHdManifestRecord* TextureHdManifestIndex::findByLogicalPath(
     return &records_[found->recordIndex];
 }
 
+bool TextureHdManifestIndex::acceptsLogicalPath(
+    const std::string_view logicalPath) const noexcept {
+    return udsp::isLogicalPathValid(logicalPath, logicalPathLimit_);
+}
+
 const TextureHdManifestRecord*
 TextureHdManifestIndex::findBySourceGtiSha256(
     const crypto::Sha256Digest& digest) const noexcept {
