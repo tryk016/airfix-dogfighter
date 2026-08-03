@@ -5338,3 +5338,33 @@ superseded evidence.
   both Windows product smokes. Clang-format warnings-as-errors, the 752-file
   public-boundary scan, changed-scope local-path review, and `git diff --check`
   pass. Physical Narrator acceptance remains explicitly pending.
+
+## 2026-08-03 - proposed private HD texture integration
+
+- ADR-0019 records a plan only; no runtime integration, private package,
+  pipeline-branch merge, CMake resource, or product setting is added. Classic
+  remains the only effective texture-source mode and continues through the
+  existing authenticated GTI decode/upload transaction.
+- The current loader, logical texture binding, RGBA8/mip preparation,
+  presentation schema, D3D11 resource publication, Metal heap transaction, and
+  cache/budget boundaries were inspected. The plan identifies that logical
+  paths are currently dropped before GTI read, source GTI SHA-256 is absent,
+  D3D11 has no aggregate texture-residency ledger, and both backends publish a
+  complete mission-owned texture set rather than a streaming cache.
+- The public pipeline contract at commit
+  `c92ba4ec5a6fe349e796bc71bd69ea4ab8a1a7f2` was reviewed without switching or
+  merging its branch. Its local verifier rechecked the reviewed private corpus
+  successfully: 1,833 logical textures, 1,689 accepted unique results, and
+  16,304 mip files. No logical path, checksum, image, manifest, private root,
+  or other owner data entered the repository or network.
+- The proposed architecture keeps `TextureMode` independent of visual profile,
+  resolves every result path from an accepted reviewed-manifest record,
+  confirms actual GTI bytes by SHA-256, rejects root escape and linked/special
+  files, falls back per texture, and separates Classic/Enhanced cache keys and
+  budgets. It explicitly records that the current schema authenticates the
+  base PNG but has no expected digest for each non-zero mip, so later
+  independently streamable mips need an authenticated chain extension.
+- Implementation is staged behind repository-boundary hardening, synthetic
+  JSONL/PNG tests, a root-confined file capability, a portable resolver, and
+  byte-identical GTI fallback. Windows RGBA8 pilot, durable settings, Metal,
+  streaming, and BC7/BC3/ASTC derivatives remain later gates.
