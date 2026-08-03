@@ -626,10 +626,13 @@ The following remain outside Git and public CI:
        classifying legacy GTI or private replacements. Unclassified input stays
        UNORM, explicit sRGB and linear-data labels have native D3D11/Metal
        mappings, and unknown labels fail closed.
-6. [ ] Implement only stages 2-5 behind data-less synthetic tests and keep
-       product effective mode Classic.
-7. [ ] Run the Windows opt-in RGBA8 pilot and private visual comparisons.
-8. [ ] Add persistence and iOS only after the portable fallback matrix is
+6. [x] Implement stage 2 as a bounded reviewed-manifest parser and immutable
+       accepted-only index behind data-less synthetic tests. It performs no
+       filesystem I/O and the product effective mode remains Classic.
+7. [ ] Implement stages 3-5: root-confined file capability, resolver, and
+       byte-identical per-texture GTI fallback behind synthetic tests.
+8. [ ] Run the Windows opt-in RGBA8 pilot and private visual comparisons.
+9. [ ] Add persistence and iOS only after the portable fallback matrix is
        complete and independently reviewed.
-9. [ ] Add streaming and compressed derivatives only after device budgets and
-       per-mip authentication are defined.
+10. [ ] Add streaming and compressed derivatives only after device budgets and
+        per-mip authentication are defined.

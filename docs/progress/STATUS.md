@@ -194,12 +194,18 @@
   cache partitions, bounded residency, staged RGBA8/BC7/BC3/ASTC work, and
   synthetic-only public tests. The reviewed private corpus was revalidated
   locally as 1,833 logical textures, 1,689 accepted unique results, and 16,304
-  mip files. No manifest, image, checksum, logical path, local root, or
-  pipeline branch content was copied into this repository. Integration remains
-  unimplemented. The first preparatory gate is now complete: the public-boundary
-  scanner and synthetic regression suite reject private texture roots,
-  raster/GPU texture formats, JSONL/NDJSON manifests and backups, and common
-  archives, while the entire owner-local tree is ignored at repository root.
+  mip files. No manifest, image, checksum, logical path, local root, or pipeline
+  branch content was copied into this repository. The public stage-2
+  implementation now parses bounded in-memory reviewed JSONL, retains only
+  explicitly accepted records, normalizes logical identity, validates declared
+  counts and 4x mip metadata, and exposes immutable path/SHA lookups with
+  path-free diagnostics. Its tests use only synthetic bytes. Root access,
+  linked-file confinement, resolver/fallback I/O, PNG decoding, cache
+  publication, settings, and Enhanced product mode remain unimplemented. The
+  repository-boundary scanner and synthetic regression suite continue to
+  reject private texture roots, raster/GPU texture formats, JSONL/NDJSON
+  manifests and backups, and common archives, while the entire owner-local tree
+  is ignored at repository root.
 - ADR-0014 defines one cross-platform render-presentation settings transaction.
   Its portable C++20 foundation is implemented: render scale, Hor+/Original
   4:3, safe FOV, UI scale, diagnostics, and the Classic/Enhanced selector form
@@ -1380,12 +1386,12 @@
    quality budgets covering iPhone SE 3 through high-end iPhone and Windows
    targets.
 10. Keep ADR-0019's private HD texture mode as a separate staged workstream.
-    Public-boundary scanner hardening is complete. Next implement only the
-    bounded reviewed-manifest index, root-confined file capability, resolver,
-    and per-texture GTI fallback under synthetic tests. Do not expose an
-    Enhanced texture selector, add private resources to CMake/CI, or begin
-    streaming/compressed derivatives until those portable boundaries pass
-    independent review.
+    Public-boundary hardening and the bounded, accepted-only reviewed-manifest
+    parser/index are complete under synthetic tests. Next implement only the
+    root-confined file capability, resolver, and byte-identical per-texture GTI
+    fallback. Do not expose an Enhanced texture selector, add private resources
+    to CMake/CI, or begin streaming/compressed derivatives until those portable
+    boundaries pass independent review.
 
 ## Open questions
 
@@ -1397,6 +1403,13 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The bounded reviewed HD manifest parser/index passes a complete GCC
+  15.2/Ninja build with all 144/144 portable CTests and a complete Visual Studio
+  2026 MSVC 19.51/Ninja Windows product build with all 158/158 CTests, including
+  both data-less product smokes. Its dedicated suite uses only synthetic
+  in-memory JSONL. Public-boundary regression tests, the 759-file repository
+  scan, and `git diff --check` pass; hosted Linux/macOS/Windows and unsigned iOS
+  builds remain the publication gate.
 - The portable legacy sorted-render queue passes a fresh complete Windows GCC
   15.2/Ninja build with 121/121 CTests and a complete MSVC 19.51/Ninja Windows
   product build with 131/131 CTests, including both D3D11 product smokes.

@@ -5436,3 +5436,24 @@ superseded evidence.
   Public-boundary tests and the 755-file scanner also pass. Hosted iOS
   compilation remains the publication gate for the Objective-C++/Metal
   spelling and integration.
+
+## 2026-08-03 - bounded reviewed HD manifest index
+
+- Implemented ADR-0019 stage 2 as a portable C++20 parser over caller-owned
+  bytes. It accepts one bounded reviewed-corpus JSONL header plus bounded result
+  records, rejects malformed or inconsistent data, and retains only records
+  whose public and explicit review statuses are both `accepted`.
+- The immutable index supports normalized logical-GTI-path and source-GTI-SHA
+  lookup. It validates schema and corpus identity, lowercase digests, declared
+  counts, 4x dimensions, natural mip-chain length, alpha/method parameters, and
+  root-relative path syntax. Duplicate logical identities or source digests
+  fail the whole load.
+- Diagnostics expose only an issue category and optional one-based line number;
+  they never retain a manifest value, logical path, checksum, or local root.
+  The parser performs no filesystem I/O. Root confinement, file authentication,
+  PNG decoding, replacement resolution, cache publication, settings, and
+  Enhanced product mode remain later gates; Classic behaviour is unchanged.
+- Tests construct all JSONL in memory and cover valid accepted/rejected mixes,
+  lookups, malformed JSON, duplicate keys/identities, traversal, schema and
+  count inconsistencies, and configurable input/line/container/string/path/
+  dimension/mip limits. No original or private asset is read or copied.
