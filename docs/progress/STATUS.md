@@ -199,9 +199,13 @@
   implementation now parses bounded in-memory reviewed JSONL, retains only
   explicitly accepted records, normalizes logical identity, validates declared
   counts and 4x mip metadata, and exposes immutable path/SHA lookups with
-  path-free diagnostics. Its tests use only synthetic bytes. Root access,
-  linked-file confinement, resolver/fallback I/O, PNG decoding, cache
-  publication, settings, and Enhanced product mode remain unimplemented. The
+  path-free diagnostics. Its tests use only synthetic bytes. ADR-0020 now adds
+  the disconnected stage-3 root capability: it pins an absolute owner-selected
+  root, resolves each component through native root-relative no-follow opens,
+  rejects links/reparse points, special or multiply linked files, enforces
+  generation and byte limits, and exposes only fixed statuses. Resolver/
+  fallback I/O, PNG decoding, cache publication, settings, and Enhanced product
+  mode remain unimplemented. The
   repository-boundary scanner and synthetic regression suite continue to
   reject private texture roots, raster/GPU texture formats, JSONL/NDJSON
   manifests and backups, and common archives, while the entire owner-local tree

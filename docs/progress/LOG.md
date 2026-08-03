@@ -5457,3 +5457,34 @@ superseded evidence.
   lookups, malformed JSON, duplicate keys/identities, traversal, schema and
   count inconsistencies, and configurable input/line/container/string/path/
   dimension/mip limits. No original or private asset is read or copied.
+
+## 2026-08-03 - root-confined private texture file capability
+
+- Accepted ADR-0020 and implemented ADR-0019 stage 3 without connecting a
+  private package or product. The portable interface contains only an opaque
+  capability, non-zero generation, bounded relative read, byte result, and
+  fixed path-free status; only the owner-side platform factory accepts an
+  absolute configured root, whose spelling is discarded after open.
+- Windows now walks individual UTF-8 components relative to pinned directory
+  handles with `NtCreateFile` and reparse processing disabled. Apple/Linux use
+  descriptor-relative `openat` with `O_NOFOLLOW`. Both require ordinary
+  single-link files, bound allocation before read, and revalidate the opened
+  identity and metadata after the exact read. A stale generation performs no
+  filesystem access.
+- Synthetic tests cover valid nested reads, path grammar and UTF-8 limits,
+  absolute/traversal/alternate-stream names, missing/oversized/wrong-type and
+  hard-link files, symbolic-link/junction roots and intermediates, generation
+  mismatch, and replacement of the configured root spelling. Failures retain
+  no partial bytes or input-derived diagnostics.
+- MinGW GCC 15.2 and Visual Studio 2026 MSVC 19.51 compile the Windows adapter,
+  and the focused suite passes with both. A fresh portable build passes all
+  145/145 CTests; a fresh SDL3/D3D11/XAudio2 MSVC product build completes 766
+  build edges and passes all 159/159 CTests. Clang analyzer/bugprone review is
+  clean after fixing native-handle ownership across allocation failure and
+  explicitly rejecting embedded NUL in the configured root.
+  Formatting, public-boundary tests and the 768-file scan, changed-document
+  links, changed-scope local-path review, and diff checks pass. Hosted Linux,
+  macOS, and iOS builds remain publication gates.
+- Classic GTI behavior is unchanged. Manifest filesystem loading, resolver,
+  actual-GTI hashing, per-texture fallback, PNG preparation, settings, caches,
+  native uploads, and effective Enhanced mode remain explicitly disconnected.
