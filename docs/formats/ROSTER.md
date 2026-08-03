@@ -221,7 +221,12 @@ policy, not a claim about every legacy duplicate or migration case.
 separate canonical product document for the recovered numeric campaign state.
 `AFCS` is not a legacy roster writer and does not preserve profile strings,
 medals, unknown payloads, original record order, or bit-identical legacy bytes.
-No automatic legacy-to-`AFCS` migration is implemented by the codec.
+The codec itself performs no migration. The isolated
+`LegacyCampaignStateImport` adapter now copies the validated optional numeric
+subset exactly, rejects `THRD` outside `0`/`1`, and reports whether name,
+portrait, medals, or unknown records were omitted. Any omitted data requires
+retaining the legacy source. No runtime migration, source deletion, profile
+identity conversion, or automatic save is implemented.
 
 **NO-GO** for reproducing legacy corrupt-file behavior. The recovered behavior
 is memory-unsafe and not completely defined without prohibited execution.
