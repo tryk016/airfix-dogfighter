@@ -419,7 +419,10 @@ add_custom_command(TARGET airfix_windows POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
         "${sdl3_SOURCE_DIR}/LICENSE.txt"
         "$<TARGET_FILE_DIR:airfix_windows>/third-party-licenses/SDL3.txt"
-    COMMENT "Copying the SDL3 zlib license"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${airfix_lodepng_source_SOURCE_DIR}/LICENSE"
+        "$<TARGET_FILE_DIR:airfix_windows>/third-party-licenses/LodePNG.txt"
+    COMMENT "Copying the SDL3 and LodePNG zlib licenses"
     VERBATIM
 )
 

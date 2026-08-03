@@ -2,6 +2,32 @@ cmake_minimum_required(VERSION 3.25)
 
 project(AirfixDogfighterReconstruction VERSION 0.1.0 LANGUAGES CXX)
 
+include(FetchContent)
+
+# PNG-only decoder used behind the project's own strict RGBA8/IHDR boundary.
+# The immutable commit archive and its SHA-256 are recorded in TOOLCHAIN-LOCK.
+FetchContent_Declare(airfix_lodepng_source
+    URL
+        "https://github.com/lvandeve/lodepng/archive/ed6fe5825c6a4fbb7f58ab35a4231c7543cd452a.tar.gz"
+    URL_HASH
+        "SHA256=c2459a3f9145258f901d262576f7a56ca08087d3b3efeee3ae033c0952120803"
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_MakeAvailable(airfix_lodepng_source)
+
+add_library(airfix_lodepng STATIC
+    "${airfix_lodepng_source_SOURCE_DIR}/lodepng.cpp"
+)
+target_include_directories(airfix_lodepng SYSTEM PUBLIC
+    "${airfix_lodepng_source_SOURCE_DIR}"
+)
+target_compile_definitions(airfix_lodepng PUBLIC
+    LODEPNG_NO_COMPILE_ANCILLARY_CHUNKS
+    LODEPNG_NO_COMPILE_DISK
+    LODEPNG_NO_COMPILE_ENCODER
+    LODEPNG_NO_COMPILE_ERROR_TEXT
+)
+
 option(AIRFIX_BUILD_TESTS "Build reconstruction tests" ON)
 option(AIRFIX_BUILD_TOOLS "Build desktop reconstruction tools" ON)
 option(AIRFIX_BUILD_IOS_APP "Build the data-less iOS application shell" OFF)
@@ -201,6 +227,7 @@ endif()
 add_library(airfix_texture
     src/airfix/texture/PrivateTextureFileStore.cpp
     src/airfix/texture/TextureHdManifestIndex.cpp
+    src/airfix/texture/TextureHdPngPreparation.cpp
     src/airfix/texture/TextureReplacementResolver.cpp
 )
 add_library(airfix::texture ALIAS airfix_texture)
@@ -219,7 +246,9 @@ target_include_directories(airfix_texture
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
 )
 target_compile_features(airfix_texture PUBLIC cxx_std_20)
-target_link_libraries(airfix_texture PUBLIC airfix::crypto airfix::udsp)
+target_link_libraries(airfix_texture
+    PUBLIC airfix::crypto airfix::udsp
+    PRIVATE airfix_lodepng)
 
 if(MSVC)
     target_compile_options(airfix_texture PRIVATE /W4 /permissive-)
@@ -729,6 +758,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_texture_replacement_resolver_tests
         COMMAND airfix_texture_replacement_resolver_tests)
+
+    add_executable(airfix_texture_hd_png_preparation_tests
+        tests/TextureHdPngPreparationTests.cpp)
+    target_link_libraries(airfix_texture_hd_png_preparation_tests
+        PRIVATE airfix::texture)
+    add_test(NAME airfix_texture_hd_png_preparation_tests
+        COMMAND airfix_texture_hd_png_preparation_tests)
 
     add_executable(airfix_durable_file_tests tests/DurableFileTests.cpp)
     target_link_libraries(airfix_durable_file_tests PRIVATE airfix::io)

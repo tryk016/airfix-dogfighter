@@ -210,8 +210,14 @@
   with a fixed redacted fallback reason. Every miss or failure invokes the
   unchanged GTI preparation with the identical request, bytes, and limits.
   Digest-only matching requires explicit caller policy and remains disabled in
-  all products. PNG/IHDR and mip decoding, cache publication, settings, and
-  Enhanced product mode remain unimplemented. The
+  all products. Stage 5 now reauthenticates the candidate base and prepares the
+  declared PNG RGBA8 mip chain through a hash-pinned, memory-only decoder. It
+  enforces exact IHDR/dimensions, CRC/decode, straight-alpha metadata,
+  base/mip-zero identity, fixed redacted failures, and checked encoded/in-flight/
+  decoded CPU budgets. Only the base is cryptographically authenticated by the
+  current schema; non-zero mips are labelled structural-only. Cache
+  publication, settings, native upload, and Enhanced product mode remain
+  unimplemented. The
   repository-boundary scanner and synthetic regression suite continue to
   reject private texture roots, raster/GPU texture formats, JSONL/NDJSON
   manifests and backups, and common archives, while the entire owner-local tree
@@ -1429,11 +1435,13 @@
 10. Keep ADR-0019's private HD texture mode as a separate staged workstream.
     Public-boundary hardening and the bounded, accepted-only reviewed-manifest
     parser/index, root-confined file capability, source resolver, base checksum,
-    and byte-identical per-texture GTI fallback are complete under synthetic
-    tests. Next implement only bounded PNG RGBA8/IHDR and mip-chain preparation
-    with checked CPU accounting. Do not expose an Enhanced texture selector,
-    add private resources to CMake/CI, or begin native upload, streaming, or
-    compressed derivatives until those portable boundaries pass review.
+    byte-identical per-texture GTI fallback, and bounded PNG RGBA8/mip-chain
+    preparation are complete under synthetic tests. Next implement the
+    Windows-only session opt-in pilot: explicit private root/mode arguments,
+    D3D11 RGBA8 upload, reload-only activation, and a conservative bounded
+    cache. Do not expose a persistent Enhanced selector, add private resources
+    to CMake/CI, or begin streaming/compressed derivatives until that pilot
+    passes private visual comparison and public fallback tests.
 
 ## Open questions
 
@@ -1445,6 +1453,17 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The private HD texture stage-5 preparer passes complete GCC 15.2/Ninja and
+  MSVC 19.51/Ninja portable builds with 152/152 CTests in each tree. A full
+  MSVC Windows-product build passes 166/166 CTests, including D3D11/XAudio2,
+  native/scaled product smoke tests, and UI Automation. Its new suite contains
+  generated in-memory PNG bytes only and covers signature/IHDR/CRC, exact RGBA8
+  and non-interlace, natural mip dimensions, missing/extra numbered levels,
+  base/mip-zero identity, opaque/binary/translucent alpha, stale generation,
+  file failures, and independent encoded/chain/in-flight/decoded budgets.
+  Clang analyzer/bugprone checks are clean; product outputs stage exact SDL3
+  and LodePNG licenses. Hosted Linux/macOS/Windows and unsigned iOS builds
+  remain the publication gate.
 - The private HD texture stage-4 resolver passes a complete Windows GCC
   15.2/Ninja build with 151/151 CTests. A fresh MSVC 19.51/Ninja build compiles
   all 485 portable edges and passes all 149 native CTests; CTest could not

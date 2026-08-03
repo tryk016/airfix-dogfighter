@@ -507,7 +507,15 @@ the renderer, and gives both backends one fallback and cache vocabulary.
    A successful candidate deliberately stops before PNG decoding.
 5. **RGBA8 PNG preparation.** Select and license-review a PNG-only decoder,
    enforce RGBA8/IHDR and mip-chain contracts, add checked CPU accounting, and
-   return `PreparedTextureAsset` without native GPU code.
+   return `PreparedTextureAsset` without native GPU code. Implemented: the
+   hash-pinned, zlib-licensed LodePNG memory decoder is compiled without its
+   encoder, disk I/O, ancillary-chunk, or error-text surfaces. The portable
+   boundary reauthenticates the base, requires non-interlaced 8-bit RGBA IHDR,
+   validates CRC/decode, exact natural dimensions, straight-alpha metadata,
+   declared `mip-00.png` through the 1x1 level, byte-identical base/mip zero,
+   the absence of the next numbered mip, and independent per-level, chain,
+   in-flight, and decoded-byte budgets. Non-zero mips remain explicitly
+   structural-only because the current manifest has no per-mip digests.
 6. **Windows opt-in pilot.** Add session-only `--texture-pack-root` and
    `--texture-mode enhanced`, D3D11 RGBA8 uploads, an initial bounded cache, and
    private capture comparison. A mission reload remains mandatory. No

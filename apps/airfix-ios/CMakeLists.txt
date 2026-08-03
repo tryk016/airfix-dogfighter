@@ -105,6 +105,19 @@ add_executable(airfix_ios MACOSX_BUNDLE
     AirfixTouchControlsView.mm
 )
 
+configure_file(
+    "${airfix_lodepng_source_SOURCE_DIR}/LICENSE"
+    "${CMAKE_CURRENT_BINARY_DIR}/LodePNG.txt"
+    COPYONLY
+)
+set_source_files_properties(
+    "${CMAKE_CURRENT_BINARY_DIR}/LodePNG.txt"
+    PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/third-party-licenses"
+)
+target_sources(airfix_ios PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}/LodePNG.txt"
+)
+
 # CMake does not place an otherwise unknown .metal extension in Xcode's Sources
 # phase. Keep it visible in the project and compile it explicitly below.
 set_source_files_properties(AirfixShaders.metal PROPERTIES HEADER_FILE_ONLY YES)

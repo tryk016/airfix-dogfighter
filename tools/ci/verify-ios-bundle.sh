@@ -49,6 +49,12 @@ if [[ ! -s "$shader_library" ]]; then
     exit 1
 fi
 
+lodepng_license="$bundle/third-party-licenses/LodePNG.txt"
+if [[ ! -s "$lodepng_license" ]]; then
+    echo "LodePNG license is missing or empty: $lodepng_license" >&2
+    exit 1
+fi
+
 architectures="$(lipo -archs "$executable")"
 if [[ " $architectures " != *" arm64 "* ]]; then
     echo "bundle has no ARM64 slice: $architectures" >&2

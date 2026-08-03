@@ -75,8 +75,11 @@ by [ADR-0016](docs/adr/0016-safe-fov-settings.md).
 The optional owner-local HD texture package remains disabled in both products.
 Its public, synthetic-only foundation now includes an accepted-manifest index,
 a root-confined file capability, and a resolver that proves exact Classic GTI
-fallback. PNG/mip preparation, settings, native uploads, and private content
-remain later stages documented in
+fallback. A disconnected portable preparer now also validates memory-only
+RGBA8 PNG decoding, the complete declared mip chain, straight-alpha metadata,
+and bounded encoded/decoded memory before returning backend-neutral levels.
+Settings, native uploads, caches, and private content remain later stages; no
+product can select Enhanced textures yet. The staged contract is documented in
 [ADR-0019](docs/adr/0019-private-hd-texture-replacements.md).
 
 ## Current state
