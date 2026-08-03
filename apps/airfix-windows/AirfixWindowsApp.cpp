@@ -30,6 +30,7 @@
 #include "airfix/settings/RenderPresentationSettingsStore.hpp"
 #include "airfix/simulation/LegacyAircraftAudioCoordinator.hpp"
 #include "airfix/simulation/PlayerSpawnPose.hpp"
+#include "airfix/texture/TextureModeMissionReload.hpp"
 #include "airfix/texture/TextureModeState.hpp"
 
 #include <SDL3/SDL.h>
@@ -429,23 +430,27 @@ windowsPointerInput(SDL_Window &window, const bool primaryPressed,
   };
 }
 
+struct LoadedPrivateMissionVisuals final {
+  airfix::content::ContentRevision revision;
+  airfix::content::LoadedMissionWorldRoom missionRoom;
+  airfix::content::LoadedLegacyWeaponCrosshairTextureSet
+      weaponCrosshairTextures;
+  airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet
+      aircraftHealthGaugeTextures;
+  airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet
+      aircraftHudRollingDigitTextures;
+  airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet
+      aircraftHudInstrumentTextures;
+  airfix::content::LoadedLegacyAircraftHudWeaponPanelTextureSet
+      aircraftHudWeaponPanelTextures;
+  airfix::content::LoadedLegacyAircraftHudIdentityStatusTextureSet
+      aircraftHudIdentityStatusTextures;
+};
+
 struct LoadedPrivateContent final {
   airfix::content::ContentRevision revision;
   airfix::simulation::LegacyAircraftAudioBindings aircraftAudioBindings;
-  std::optional<airfix::content::LoadedMissionWorldRoom> missionRoom;
-  std::optional<airfix::content::LoadedLegacyWeaponCrosshairTextureSet>
-      weaponCrosshairTextures;
-  std::optional<airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet>
-      aircraftHealthGaugeTextures;
-  std::optional<airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet>
-      aircraftHudRollingDigitTextures;
-  std::optional<airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet>
-      aircraftHudInstrumentTextures;
-  std::optional<airfix::content::LoadedLegacyAircraftHudWeaponPanelTextureSet>
-      aircraftHudWeaponPanelTextures;
-  std::optional<
-      airfix::content::LoadedLegacyAircraftHudIdentityStatusTextureSet>
-      aircraftHudIdentityStatusTextures;
+  std::optional<LoadedPrivateMissionVisuals> missionVisuals;
 };
 
 [[nodiscard]] std::filesystem::path resolveInstalledContentRoot() {
@@ -456,6 +461,120 @@ struct LoadedPrivateContent final {
     // error stable and private.
     throw std::runtime_error("private Windows content storage is unavailable");
   }
+}
+
+[[nodiscard]] LoadedPrivateMissionVisuals loadPrivateMissionVisuals(
+    airfix::content::VerifiedContentSession &session,
+    const airfix::windows::AirfixWindowsMissionOptions &mission,
+    const airfix::content::MissionWorldRoomTextureReplacementContext
+        &textureReplacement) {
+  const auto revision = session.revision();
+  const airfix::content::MissionLoadManifestRequest manifestRequest{
+      .levelLogicalPath = mission.levelLogicalPath,
+      .setupLogicalPath = mission.setupLogicalPath,
+      .playerObjectLogicalPath = mission.playerObjectLogicalPath,
+  };
+  auto manifest =
+      airfix::content::buildMissionLoadManifest(session, manifestRequest);
+  if (!manifest.success() || !manifest.manifest.has_value() ||
+      !manifest.manifest->belongsTo(session) ||
+      manifest.manifest->revision() != revision) {
+    throw std::runtime_error(
+        "authenticated Windows mission manifest could not be built");
+  }
+
+  const airfix::content::MissionWorldRoomLoadRequest roomRequest{
+      .initialRootName = {},
+      .requestedStartIndex = mission.requestedStartIndex,
+      .basis = {},
+      .uvPolicy = airfix::render::UvPolicy::preserveRaw,
+  };
+  auto loadedRoom = airfix::content::loadMissionWorldRoom(
+      session, *manifest.manifest, roomRequest, {}, {}, {}, textureReplacement);
+  if (!loadedRoom.success() || !loadedRoom.room.has_value() ||
+      loadedRoom.room->revision != revision || session.revision() != revision) {
+    throw std::runtime_error(
+        "authenticated Windows mission room could not be loaded");
+  }
+
+  auto loadedCrosshairs =
+      airfix::content::loadLegacyWeaponCrosshairTextures(session);
+  if (!loadedCrosshairs.success() || !loadedCrosshairs.textures.has_value() ||
+      !loadedCrosshairs.textures->belongsTo(session) ||
+      loadedCrosshairs.textures->revision != revision ||
+      session.revision() != revision) {
+    throw std::runtime_error(
+        "authenticated weapon crosshair textures could not be loaded");
+  }
+
+  auto loadedHealthGauge =
+      airfix::content::loadLegacyAircraftHealthGaugeTextures(session);
+  if (!loadedHealthGauge.success() || !loadedHealthGauge.textures.has_value() ||
+      !loadedHealthGauge.textures->belongsTo(session) ||
+      loadedHealthGauge.textures->revision != revision ||
+      session.revision() != revision) {
+    throw std::runtime_error("authenticated aircraft health gauge "
+                             "textures could not be loaded");
+  }
+
+  auto loadedRollingDigits =
+      airfix::content::loadLegacyAircraftHudRollingDigitsTexture(session);
+  if (!loadedRollingDigits.success() ||
+      !loadedRollingDigits.textures.has_value() ||
+      !loadedRollingDigits.textures->belongsTo(session) ||
+      loadedRollingDigits.textures->revision != revision ||
+      session.revision() != revision) {
+    throw std::runtime_error("authenticated aircraft rolling digit "
+                             "atlas could not be loaded");
+  }
+
+  auto loadedHudInstruments =
+      airfix::content::loadLegacyAircraftHudInstrumentTextures(session);
+  if (!loadedHudInstruments.success() ||
+      !loadedHudInstruments.textures.has_value() ||
+      !loadedHudInstruments.textures->belongsTo(session) ||
+      loadedHudInstruments.textures->revision != revision ||
+      session.revision() != revision) {
+    throw std::runtime_error(
+        "authenticated aircraft HUD instruments could not be loaded");
+  }
+
+  auto loadedHudWeaponPanels =
+      airfix::content::loadLegacyAircraftHudWeaponPanelTextures(session);
+  if (!loadedHudWeaponPanels.success() ||
+      !loadedHudWeaponPanels.textures.has_value() ||
+      !loadedHudWeaponPanels.textures->belongsTo(session) ||
+      loadedHudWeaponPanels.textures->revision != revision ||
+      session.revision() != revision) {
+    throw std::runtime_error(
+        "authenticated aircraft HUD weapon panels could not be loaded");
+  }
+
+  auto loadedHudIdentityStatus =
+      airfix::content::loadLegacyAircraftHudIdentityStatusTextures(session);
+  if (!loadedHudIdentityStatus.success() ||
+      !loadedHudIdentityStatus.textures.has_value() ||
+      !loadedHudIdentityStatus.textures->belongsTo(session) ||
+      loadedHudIdentityStatus.textures->revision != revision ||
+      session.revision() != revision) {
+    throw std::runtime_error("authenticated aircraft HUD "
+                             "identity/status textures could not be loaded");
+  }
+
+  return {
+      .revision = revision,
+      .missionRoom = std::move(*loadedRoom.room),
+      .weaponCrosshairTextures = std::move(*loadedCrosshairs.textures),
+      .aircraftHealthGaugeTextures = std::move(*loadedHealthGauge.textures),
+      .aircraftHudRollingDigitTextures =
+          std::move(*loadedRollingDigits.textures),
+      .aircraftHudInstrumentTextures =
+          std::move(*loadedHudInstruments.textures),
+      .aircraftHudWeaponPanelTextures =
+          std::move(*loadedHudWeaponPanels.textures),
+      .aircraftHudIdentityStatusTextures =
+          std::move(*loadedHudIdentityStatus.textures),
+  };
 }
 
 [[nodiscard]] LoadedPrivateContent loadPrivateContent(
@@ -479,124 +598,10 @@ struct LoadedPrivateContent final {
         "authenticated aircraft audio could not be loaded");
   }
 
-  std::optional<airfix::content::LoadedMissionWorldRoom> missionRoom;
-  std::optional<airfix::content::LoadedLegacyWeaponCrosshairTextureSet>
-      weaponCrosshairTextures;
-  std::optional<airfix::content::LoadedLegacyAircraftHealthGaugeTextureSet>
-      aircraftHealthGaugeTextures;
-  std::optional<airfix::content::LoadedLegacyAircraftHudRollingDigitsTextureSet>
-      aircraftHudRollingDigitTextures;
-  std::optional<airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet>
-      aircraftHudInstrumentTextures;
-  std::optional<airfix::content::LoadedLegacyAircraftHudWeaponPanelTextureSet>
-      aircraftHudWeaponPanelTextures;
-  std::optional<
-      airfix::content::LoadedLegacyAircraftHudIdentityStatusTextureSet>
-      aircraftHudIdentityStatusTextures;
+  std::optional<LoadedPrivateMissionVisuals> missionVisuals;
   if (mission.has_value()) {
-    const airfix::content::MissionLoadManifestRequest manifestRequest{
-        .levelLogicalPath = mission->levelLogicalPath,
-        .setupLogicalPath = mission->setupLogicalPath,
-        .playerObjectLogicalPath = mission->playerObjectLogicalPath,
-    };
-    auto manifest =
-        airfix::content::buildMissionLoadManifest(session, manifestRequest);
-    if (!manifest.success() || !manifest.manifest.has_value() ||
-        !manifest.manifest->belongsTo(session) ||
-        manifest.manifest->revision() != revision) {
-      throw std::runtime_error(
-          "authenticated Windows mission manifest could not be built");
-    }
-
-    const airfix::content::MissionWorldRoomLoadRequest roomRequest{
-        .initialRootName = {},
-        .requestedStartIndex = mission->requestedStartIndex,
-        .basis = {},
-        .uvPolicy = airfix::render::UvPolicy::preserveRaw,
-    };
-    auto loadedRoom = airfix::content::loadMissionWorldRoom(
-        session, *manifest.manifest, roomRequest, {}, {}, {},
-        textureReplacement);
-    if (!loadedRoom.success() || !loadedRoom.room.has_value() ||
-        loadedRoom.room->revision != revision ||
-        session.revision() != revision) {
-      throw std::runtime_error(
-          "authenticated Windows mission room could not be loaded");
-    }
-    missionRoom = std::move(*loadedRoom.room);
-
-    auto loadedCrosshairs =
-        airfix::content::loadLegacyWeaponCrosshairTextures(session);
-    if (!loadedCrosshairs.success() || !loadedCrosshairs.textures.has_value() ||
-        !loadedCrosshairs.textures->belongsTo(session) ||
-        loadedCrosshairs.textures->revision != revision ||
-        session.revision() != revision) {
-      throw std::runtime_error(
-          "authenticated weapon crosshair textures could not be loaded");
-    }
-    weaponCrosshairTextures = std::move(*loadedCrosshairs.textures);
-
-    auto loadedHealthGauge =
-        airfix::content::loadLegacyAircraftHealthGaugeTextures(session);
-    if (!loadedHealthGauge.success() ||
-        !loadedHealthGauge.textures.has_value() ||
-        !loadedHealthGauge.textures->belongsTo(session) ||
-        loadedHealthGauge.textures->revision != revision ||
-        session.revision() != revision) {
-      throw std::runtime_error("authenticated aircraft health gauge "
-                               "textures could not be loaded");
-    }
-    aircraftHealthGaugeTextures = std::move(*loadedHealthGauge.textures);
-
-    auto loadedRollingDigits =
-        airfix::content::loadLegacyAircraftHudRollingDigitsTexture(session);
-    if (!loadedRollingDigits.success() ||
-        !loadedRollingDigits.textures.has_value() ||
-        !loadedRollingDigits.textures->belongsTo(session) ||
-        loadedRollingDigits.textures->revision != revision ||
-        session.revision() != revision) {
-      throw std::runtime_error("authenticated aircraft rolling digit "
-                               "atlas could not be loaded");
-    }
-    aircraftHudRollingDigitTextures = std::move(*loadedRollingDigits.textures);
-
-    auto loadedHudInstruments =
-        airfix::content::loadLegacyAircraftHudInstrumentTextures(session);
-    if (!loadedHudInstruments.success() ||
-        !loadedHudInstruments.textures.has_value() ||
-        !loadedHudInstruments.textures->belongsTo(session) ||
-        loadedHudInstruments.textures->revision != revision ||
-        session.revision() != revision) {
-      throw std::runtime_error(
-          "authenticated aircraft HUD instruments could not be loaded");
-    }
-    aircraftHudInstrumentTextures = std::move(*loadedHudInstruments.textures);
-
-    auto loadedHudWeaponPanels =
-        airfix::content::loadLegacyAircraftHudWeaponPanelTextures(session);
-    if (!loadedHudWeaponPanels.success() ||
-        !loadedHudWeaponPanels.textures.has_value() ||
-        !loadedHudWeaponPanels.textures->belongsTo(session) ||
-        loadedHudWeaponPanels.textures->revision != revision ||
-        session.revision() != revision) {
-      throw std::runtime_error(
-          "authenticated aircraft HUD weapon panels could not be loaded");
-    }
-    aircraftHudWeaponPanelTextures = std::move(*loadedHudWeaponPanels.textures);
-
-    auto loadedHudIdentityStatus =
-        airfix::content::loadLegacyAircraftHudIdentityStatusTextures(session);
-    if (!loadedHudIdentityStatus.success() ||
-        !loadedHudIdentityStatus.textures.has_value() ||
-        !loadedHudIdentityStatus.textures->belongsTo(session) ||
-        loadedHudIdentityStatus.textures->revision != revision ||
-        session.revision() != revision) {
-      throw std::runtime_error("authenticated aircraft HUD "
-                               "identity/status textures could not be "
-                               "loaded");
-    }
-    aircraftHudIdentityStatusTextures =
-        std::move(*loadedHudIdentityStatus.textures);
+    missionVisuals.emplace(loadPrivateMissionVisuals(
+        session, *mission, textureReplacement));
   }
 
   for (const auto &clip : audioResult.clips->clipViews()) {
@@ -622,17 +627,124 @@ struct LoadedPrivateContent final {
   return {
       .revision = revision,
       .aircraftAudioBindings = *bindings,
-      .missionRoom = std::move(missionRoom),
-      .weaponCrosshairTextures = std::move(weaponCrosshairTextures),
-      .aircraftHealthGaugeTextures = std::move(aircraftHealthGaugeTextures),
-      .aircraftHudRollingDigitTextures =
-          std::move(aircraftHudRollingDigitTextures),
-      .aircraftHudInstrumentTextures = std::move(aircraftHudInstrumentTextures),
-      .aircraftHudWeaponPanelTextures =
-          std::move(aircraftHudWeaponPanelTextures),
-      .aircraftHudIdentityStatusTextures =
-          std::move(aircraftHudIdentityStatusTextures),
+      .missionVisuals = std::move(missionVisuals),
   };
+}
+
+[[nodiscard]] airfix::content::MissionWorldRoomTextureReplacementContext
+missionTextureReplacementContext(
+    const airfix::texture::TextureMode effectiveMode,
+    airfix::windows::AirfixWindowsTexturePackSession *texturePack) {
+  if (effectiveMode == airfix::texture::TextureMode::classic) {
+    return {};
+  }
+  if (effectiveMode != airfix::texture::TextureMode::enhanced ||
+      texturePack == nullptr) {
+    throw std::runtime_error(
+        "Enhanced mission textures have no authenticated package");
+  }
+  return {
+      .requestedMode = airfix::texture::TextureMode::enhanced,
+      .resolver = &texturePack->resolver(),
+      .files = &texturePack->files(),
+      .lookupPolicy = {},
+      .pngPerTexture = {},
+  };
+}
+
+struct PublishedPrivateMissionState final {
+  airfix::simulation::PlayerSpawnPose playerSpawnPose;
+  airfix::runtime::PlayerActorPoseRuntimeEndpoint playerActorPoseRuntime;
+  std::weak_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>
+      gameplayCameraMissionRuntime;
+
+  [[nodiscard]] bool complete() const noexcept {
+    return playerActorPoseRuntime.has_value() &&
+           !playerActorPoseRuntime->expired() &&
+           !gameplayCameraMissionRuntime.expired();
+  }
+};
+
+[[nodiscard]] PublishedPrivateMissionState publishPrivateMissionVisuals(
+    airfix::windows::AirfixD3D11Renderer &renderer,
+    LoadedPrivateMissionVisuals &&visuals) {
+  const auto spawn = visuals.missionRoom.playerSpawnPose;
+  std::cout << "Mission textures: enhanced="
+            << visuals.missionRoom.enhancedTextureCount
+            << " classic=" << visuals.missionRoom.classicTextureCount
+            << " fallback=" << visuals.missionRoom.textureFallbackCount
+            << '\n';
+  renderer.installLoadedMissionRoom(
+      std::move(visuals.missionRoom),
+      std::move(visuals.weaponCrosshairTextures),
+      std::move(visuals.aircraftHealthGaugeTextures),
+      std::move(visuals.aircraftHudRollingDigitTextures),
+      std::move(visuals.aircraftHudInstrumentTextures),
+      std::move(visuals.aircraftHudWeaponPanelTextures),
+      std::move(visuals.aircraftHudIdentityStatusTextures), visuals.revision);
+  return {
+      .playerSpawnPose = spawn,
+      .playerActorPoseRuntime = renderer.playerActorPoseRuntimeEndpoint(),
+      .gameplayCameraMissionRuntime =
+          renderer.gameplayCameraMissionRuntimeEndpoint(),
+  };
+}
+
+struct WindowsMissionTextureReloadContext final {
+  const std::filesystem::path *contentRoot{};
+  const airfix::windows::AirfixWindowsMissionOptions *mission{};
+  airfix::windows::AirfixWindowsTexturePackSession *texturePack{};
+  airfix::windows::AirfixD3D11Renderer *renderer{};
+  std::optional<airfix::simulation::PlayerSpawnPose> *playerSpawnPose{};
+  airfix::runtime::PlayerActorPoseRuntimeEndpoint *playerActorPoseRuntime{};
+  std::weak_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>
+      *gameplayCameraMissionRuntime{};
+  bool *simulationPipelineReady{};
+};
+
+[[nodiscard]] bool reloadWindowsMissionTextures(
+    void *opaqueContext,
+    const airfix::texture::TextureMode effectiveMode) noexcept {
+  auto *context =
+      static_cast<WindowsMissionTextureReloadContext *>(opaqueContext);
+  if (context == nullptr || context->contentRoot == nullptr ||
+      context->mission == nullptr || context->renderer == nullptr ||
+      context->playerSpawnPose == nullptr ||
+      context->playerActorPoseRuntime == nullptr ||
+      context->gameplayCameraMissionRuntime == nullptr ||
+      context->simulationPipelineReady == nullptr) {
+    return false;
+  }
+
+  try {
+    const auto replacement = missionTextureReplacementContext(
+        effectiveMode, context->texturePack);
+    auto inspection =
+        airfix::afpack::inspectActiveContent(*context->contentRoot);
+    if (inspection.status() != airfix::afpack::ActiveContentStatus::ready) {
+      return false;
+    }
+    auto session = airfix::content::VerifiedContentSession::adopt(
+        std::move(inspection).takeReadyLease());
+    auto visuals = loadPrivateMissionVisuals(
+        session, *context->mission, replacement);
+    auto published = publishPrivateMissionVisuals(
+        *context->renderer, std::move(visuals));
+
+    // installLoadedMissionRoom prepares every GPU resource before its no-fail
+    // swap. Only after that swap do the simulation-facing weak endpoints move
+    // to the new renderer-owned scene.
+    *context->playerSpawnPose = published.playerSpawnPose;
+    *context->playerActorPoseRuntime = published.playerActorPoseRuntime;
+    *context->gameplayCameraMissionRuntime =
+        published.gameplayCameraMissionRuntime;
+    *context->simulationPipelineReady = published.complete();
+    return true;
+  } catch (...) {
+    // A preparation failure is intentionally path-free and nonfatal. The
+    // renderer transaction preserves the old scene and endpoint owners.
+    return false;
+  }
 }
 
 int run(const int argumentCount, char *arguments[]) {
@@ -1034,11 +1146,9 @@ int run(const int argumentCount, char *arguments[]) {
   std::optional<LoadedPrivateContent> privateContent;
   std::unique_ptr<airfix::windows::AirfixWindowsTexturePackSession>
       texturePackSession;
-  airfix::content::MissionWorldRoomTextureReplacementContext textureReplacement;
   auto texturePackageAvailability =
       airfix::texture::TexturePackageAvailability::notConfigured;
-  if (startupSettings.textureMode == airfix::texture::TextureMode::enhanced &&
-      options.texturePack.has_value()) {
+  if (options.texturePack.has_value()) {
     texturePackageAvailability =
         airfix::texture::TexturePackageAvailability::validating;
     auto opened = airfix::windows::openAirfixWindowsTexturePack(
@@ -1052,7 +1162,7 @@ int run(const int argumentCount, char *arguments[]) {
           airfix::texture::TexturePackageAvailability::unavailable;
       std::cerr << "Private HD texture package unavailable ("
                 << airfix::windows::texturePackStatusCategory(opened.status)
-                << "); using Classic for this mission\n";
+                << "); Enhanced mode is disabled\n";
     }
   }
   const auto textureModeState = airfix::texture::resolveTextureModeState(
@@ -1060,15 +1170,10 @@ int run(const int argumentCount, char *arguments[]) {
   if (!textureModeState.complete()) {
     throw std::runtime_error("Windows texture mode state is invalid");
   }
+  const auto textureReplacement = missionTextureReplacementContext(
+      textureModeState.state->effectiveMode, texturePackSession.get());
   if (textureModeState.state->effectiveMode ==
       airfix::texture::TextureMode::enhanced) {
-    textureReplacement = {
-        .requestedMode = airfix::texture::TextureMode::enhanced,
-        .resolver = &texturePackSession->resolver(),
-        .files = &texturePackSession->files(),
-        .lookupPolicy = {},
-        .pngPerTexture = {},
-    };
     std::cout << "Private HD texture package: ready; mission reload policy "
                  "active\n";
   } else if (textureModeState.state->fallbackToClassic() &&
@@ -1085,63 +1190,20 @@ int run(const int argumentCount, char *arguments[]) {
     privateContent.emplace(loadPrivateContent(
         *activeContentRoot, options.mission, audio, textureReplacement));
   }
-  if (privateContent.has_value() && privateContent->missionRoom.has_value()) {
-    std::cout << "Mission textures: enhanced="
-              << privateContent->missionRoom->enhancedTextureCount
-              << " classic=" << privateContent->missionRoom->classicTextureCount
-              << " fallback="
-              << privateContent->missionRoom->textureFallbackCount << '\n';
-    if (!privateContent->weaponCrosshairTextures.has_value()) {
-      throw std::runtime_error("authenticated Windows mission has no "
-                               "weapon crosshair textures");
-    }
-    if (!privateContent->aircraftHealthGaugeTextures.has_value()) {
-      throw std::runtime_error("authenticated Windows mission has no aircraft "
-                               "health gauge textures");
-    }
-    if (!privateContent->aircraftHudRollingDigitTextures.has_value()) {
-      throw std::runtime_error("authenticated Windows mission has no aircraft "
-                               "rolling digit atlas");
-    }
-    if (!privateContent->aircraftHudInstrumentTextures.has_value()) {
-      throw std::runtime_error("authenticated Windows mission has no aircraft "
-                               "HUD instrument textures");
-    }
-    if (!privateContent->aircraftHudWeaponPanelTextures.has_value()) {
-      throw std::runtime_error("authenticated Windows mission has no aircraft "
-                               "HUD weapon panel textures");
-    }
-    if (!privateContent->aircraftHudIdentityStatusTextures.has_value()) {
-      throw std::runtime_error("authenticated Windows mission has no aircraft "
-                               "HUD identity/status textures");
-    }
-    playerSpawnPose = privateContent->missionRoom->playerSpawnPose;
-    renderer.installLoadedMissionRoom(
-        std::move(*privateContent->missionRoom),
-        std::move(*privateContent->weaponCrosshairTextures),
-        std::move(*privateContent->aircraftHealthGaugeTextures),
-        std::move(*privateContent->aircraftHudRollingDigitTextures),
-        std::move(*privateContent->aircraftHudInstrumentTextures),
-        std::move(*privateContent->aircraftHudWeaponPanelTextures),
-        std::move(*privateContent->aircraftHudIdentityStatusTextures),
-        privateContent->revision);
-    privateContent->missionRoom.reset();
-    privateContent->weaponCrosshairTextures.reset();
-    privateContent->aircraftHealthGaugeTextures.reset();
-    privateContent->aircraftHudRollingDigitTextures.reset();
-    privateContent->aircraftHudInstrumentTextures.reset();
-    privateContent->aircraftHudWeaponPanelTextures.reset();
-    privateContent->aircraftHudIdentityStatusTextures.reset();
+  if (privateContent.has_value() && privateContent->missionVisuals.has_value()) {
+    auto published = publishPrivateMissionVisuals(
+        renderer, std::move(*privateContent->missionVisuals));
+    privateContent->missionVisuals.reset();
     if (!renderer.missionWorldRoomInstalled()) {
       throw std::runtime_error(
           "authenticated Windows mission was not published");
     }
-    playerActorPoseRuntime = renderer.playerActorPoseRuntimeEndpoint();
-    gameplayCameraMissionRuntime =
-        renderer.gameplayCameraMissionRuntimeEndpoint();
-    if (gameplayCameraMissionRuntime.expired()) {
+    playerSpawnPose = published.playerSpawnPose;
+    playerActorPoseRuntime = published.playerActorPoseRuntime;
+    gameplayCameraMissionRuntime = published.gameplayCameraMissionRuntime;
+    if (!published.complete()) {
       throw std::runtime_error(
-          "authenticated Windows gameplay camera was not published");
+          "authenticated Windows mission endpoints were not published");
     }
   }
   audio.setActive(false);
@@ -1284,6 +1346,38 @@ int run(const int argumentCount, char *arguments[]) {
   bool windowFocused =
       (SDL_GetWindowFlags(window.get()) & SDL_WINDOW_INPUT_FOCUS) != 0U;
 
+  WindowsMissionTextureReloadContext textureReloadContext;
+  std::optional<airfix::texture::TextureModeMissionReloadCoordinator>
+      textureReloadCoordinator;
+  if (activeContentRoot.has_value() && options.mission.has_value() &&
+      renderer.missionWorldRoomInstalled()) {
+    textureReloadContext = {
+        .contentRoot = &*activeContentRoot,
+        .mission = &*options.mission,
+        .texturePack = texturePackSession.get(),
+        .renderer = &renderer,
+        .playerSpawnPose = &playerSpawnPose,
+        .playerActorPoseRuntime = &playerActorPoseRuntime,
+        .gameplayCameraMissionRuntime = &gameplayCameraMissionRuntime,
+        .simulationPipelineReady = &simulationPipelineReady,
+    };
+    textureReloadCoordinator =
+        airfix::texture::TextureModeMissionReloadCoordinator::create(
+            {
+                .requestedMode = textureModeState.state->requestedMode,
+                .effectiveMode = textureModeState.state->effectiveMode,
+            },
+            texturePackageAvailability,
+            {
+                .function = reloadWindowsMissionTextures,
+                .context = &textureReloadContext,
+            });
+    if (!textureReloadCoordinator.has_value()) {
+      throw std::runtime_error(
+          "Windows mission texture reload coordinator could not be created");
+    }
+  }
+
   const auto mayResumeSimulation = [&]() noexcept {
     return session.lifecycleState() ==
                airfix::runtime::LifecycleState::foregroundPaused &&
@@ -1344,7 +1438,11 @@ int run(const int argumentCount, char *arguments[]) {
                                                     ->persistenceAvailable(),
                         .repairRequired = controllerProfileRepairRequired,
                     },
-            });
+            },
+            texturePackageAvailability,
+            textureReloadCoordinator.has_value()
+                ? std::optional{textureReloadCoordinator->activeMission()}
+                : std::nullopt);
     if (!renderSettingsPanel.has_value()) {
       throw std::runtime_error(
           "Windows render settings panel could not be created");
@@ -1370,7 +1468,18 @@ int run(const int argumentCount, char *arguments[]) {
           renderSettingsPanel->setPersistenceAvailable(
               renderSettingsCoordinator->persistenceAvailable());
           if (outcome.accepted()) {
+            std::optional<airfix::texture::TextureModeMissionReloadOutcome>
+                textureReloadOutcome;
+            if (intent.applyTicket->delta.textureModeChanged &&
+                textureReloadCoordinator.has_value()) {
+              textureReloadOutcome = textureReloadCoordinator->request(
+                  outcome.effectiveSettings.textureMode);
+            }
             (void)renderSettingsPanel->finishApplySuccess(*intent.applyTicket);
+            if (textureReloadOutcome.has_value()) {
+              renderSettingsPanel->setTextureModeReloadOutcome(
+                  *textureReloadOutcome);
+            }
           } else {
             (void)renderSettingsPanel->finishApplyFailure(*intent.applyTicket);
           }

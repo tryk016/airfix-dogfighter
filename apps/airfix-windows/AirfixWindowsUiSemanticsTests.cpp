@@ -151,8 +151,8 @@ void allScreensExposeBoundedStableSemantics() {
   current = tree(panel);
   require(current.screen ==
                   AirfixWindowsRenderSettingsScreen::displaySettings &&
-              current.nodeCount == 23U && rowCount(current) == 8U,
-          "display semantics shape is not bounded 3+8+12");
+              current.nodeCount == 26U && rowCount(current) == 9U,
+          "display semantics shape is not bounded 3+9+14");
   requireBoundedPathFreeTree(current);
   invoke(panel, AirfixWindowsRenderSettingsItem::cancel);
 
@@ -205,7 +205,7 @@ void offscreenRowsRemainDiscoverableButNotHitTestable() {
   invoke(panel, AirfixWindowsRenderSettingsItem::displaySettings);
   const auto snapshot = panel.snapshot();
   require(snapshot.itemCount < snapshot.logicalItemCount &&
-              snapshot.logicalItemCount == 8U,
+              snapshot.logicalItemCount == 9U,
           "small enlarged panel did not exercise clipped rows");
   const auto offscreen = std::count_if(
       snapshot.logicalItems.begin(),
@@ -215,7 +215,7 @@ void offscreenRowsRemainDiscoverableButNotHitTestable() {
           "logical snapshot did not label clipped rows as offscreen");
 
   const auto semantics = tree(panel);
-  require(rowCount(semantics) == 8U,
+  require(rowCount(semantics) == 9U,
           "semantic tree silently dropped clipped logical rows");
   const auto offscreenRows = std::count_if(
       semantics.nodes.begin(), semantics.nodes.begin() + semantics.nodeCount,
@@ -477,7 +477,7 @@ void semanticActionsAdvertiseOnlySupportedOperations() {
   }
 
   auto invalid = panel.snapshot();
-  invalid.logicalItemCount = 9U;
+  invalid.logicalItemCount = 10U;
   AirfixWindowsUiSemanticBuildResult rejected =
       airfix::windows::buildAirfixWindowsUiSemanticTree(invalid);
   require(!rejected.complete() && rejected.issue.has_value(),

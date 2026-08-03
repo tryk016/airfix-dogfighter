@@ -76,14 +76,18 @@ The optional owner-local HD texture package now has a Windows pilot and a
 portable durable requested/effective-mode contract. Classic remains the safe
 default; AFRS schema 4 stores only the requested `TextureMode`, while package
 availability and the active mission's effective mode remain separate runtime
-state. Windows can validate an explicitly located private reviewed manifest,
-resolve each authenticated GTI independently, upload a complete RGBA8 mip
-chain through D3D11, and use exact per-texture Classic fallback without
-aborting the mission. Mode changes never mutate a running mission and require
-a controlled reload. A bounded generation-aware cache avoids duplicate
-uploads. Package paths, manifests, images, iOS integration, streaming, and
-compressed GPU derivatives remain outside the public repository or later
-stages. The staged contract is documented in
+state. Windows can validate an explicitly located private reviewed manifest
+even when the active preference is Classic, resolve each authenticated GTI
+independently, upload complete RGBA8 mip chains through D3D11, and use exact
+per-texture Classic fallback without aborting the mission. Its native settings
+panel can switch Classic/Enhanced by preparing a complete replacement room and
+HUD set before one renderer publication; failure keeps the old scene and asks
+for a retry/restart. The iOS panel exposes the same durable setting but keeps
+Enhanced disabled until the owner-import and Metal transaction exist. A
+bounded generation-aware cache avoids duplicate uploads. Package paths,
+manifests, images, iOS private-package integration, streaming, and compressed
+GPU derivatives remain outside the public repository or later stages. The
+staged contract is documented in
 [ADR-0019](docs/adr/0019-private-hd-texture-replacements.md).
 
 ## Current state

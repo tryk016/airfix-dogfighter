@@ -228,6 +228,7 @@ add_library(airfix_texture
     src/airfix/texture/PrivateTextureFileStore.cpp
     src/airfix/texture/TextureHdManifestIndex.cpp
     src/airfix/texture/TextureHdPngPreparation.cpp
+    src/airfix/texture/TextureModeMissionReload.cpp
     src/airfix/texture/TextureReplacementResolver.cpp
 )
 add_library(airfix::texture ALIAS airfix_texture)
@@ -765,6 +766,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::texture)
     add_test(NAME airfix_texture_mode_state_tests
         COMMAND airfix_texture_mode_state_tests)
+
+    add_executable(airfix_texture_mode_mission_reload_tests
+        tests/TextureModeMissionReloadTests.cpp)
+    target_link_libraries(airfix_texture_mode_mission_reload_tests
+        PRIVATE airfix::texture)
+    add_test(NAME airfix_texture_mode_mission_reload_tests
+        COMMAND airfix_texture_mode_mission_reload_tests)
 
     add_executable(airfix_texture_hd_png_preparation_tests
         tests/TextureHdPngPreparationTests.cpp)

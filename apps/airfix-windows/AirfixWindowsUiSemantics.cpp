@@ -134,6 +134,9 @@ controllerScreen(const AirfixWindowsRenderSettingsScreen screen) noexcept {
 
 [[nodiscard]] bool validSnapshot(
     const AirfixWindowsRenderSettingsViewSnapshot &snapshot) noexcept {
+  const auto textureState = texture::resolveTextureModeState(
+      snapshot.draftSettings.textureMode,
+      snapshot.textureModeState.packageAvailability);
   if (snapshot.accessibilityGeneration == 0U || !validScreen(snapshot.screen) ||
       snapshot.output.width == 0U || snapshot.output.height == 0U ||
       !std::isfinite(snapshot.output.dpiScale) ||
@@ -146,6 +149,11 @@ controllerScreen(const AirfixWindowsRenderSettingsScreen screen) noexcept {
           .has_value() ||
       render::validateRenderPresentationSettings(snapshot.draftSettings)
           .has_value() ||
+      !textureState.complete() ||
+      textureState.state->requestedMode !=
+          snapshot.textureModeState.requestedMode ||
+      textureState.state->effectiveMode !=
+          snapshot.textureModeState.effectiveMode ||
       (snapshot.sessionOverrideMask &
        static_cast<AirfixWindowsRenderSettingsSessionOverrideMask>(
            ~airfixWindowsRenderSettingsAllSessionOverrides)) != 0U ||
@@ -313,6 +321,8 @@ airfixWindowsUiItemLabel(const AirfixWindowsRenderSettingsItem item) noexcept {
     return text(L"Vertical FOV increase");
   case AirfixWindowsRenderSettingsItem::visualProfile:
     return text(L"Visual profile");
+  case AirfixWindowsRenderSettingsItem::textureMode:
+    return text(L"Mission textures");
   case AirfixWindowsRenderSettingsItem::rendererStatistics:
     return text(L"Renderer statistics");
   case AirfixWindowsRenderSettingsItem::apply:
@@ -385,6 +395,14 @@ AirfixWindowsUiSemanticText airfixWindowsUiItemValue(
     return text(draft.visualProfile == render::VisualProfile::enhanced
                     ? L"Enhanced preview"
                     : L"Classic");
+  case AirfixWindowsRenderSettingsItem::textureMode:
+    if (draft.textureMode == texture::TextureMode::classic) {
+      return text(L"Classic");
+    }
+    return text(snapshot.textureModeState.effectiveMode ==
+                        texture::TextureMode::enhanced
+                    ? L"Enhanced"
+                    : L"Enhanced (Classic fallback)");
   case AirfixWindowsRenderSettingsItem::rendererStatistics:
     return text(draft.diagnosticsOverlayEnabled ? L"On" : L"Off");
   case AirfixWindowsRenderSettingsItem::bindingAction:
@@ -474,6 +492,12 @@ AirfixWindowsUiSemanticText airfixWindowsUiStatus(
       return text(L"Session overrides are active");
     }
     if (snapshot.screen == AirfixWindowsRenderSettingsScreen::displaySettings) {
+      if (snapshot.textureModeState.fallbackToClassic()) {
+        return text(L"HD texture package unavailable - Classic remains active");
+      }
+      if (snapshot.textureModeState.missionReloadRequired) {
+        return text(L"Applying will reload the complete mission visuals");
+      }
       return text(snapshot.dirty
                       ? L"Changes are ready to apply"
                       : L"Presentation only - gameplay is unchanged");
@@ -491,6 +515,11 @@ AirfixWindowsUiSemanticText airfixWindowsUiStatus(
     return text(L"Display settings cannot be saved");
   case AirfixWindowsRenderSettingsStatus::invalidSettings:
     return text(L"The selected display settings are invalid");
+  case AirfixWindowsRenderSettingsStatus::enhancedTexturesUnavailable:
+    return text(L"Enhanced textures require a validated private package");
+  case AirfixWindowsRenderSettingsStatus::
+      textureReloadFailedRestartRequired:
+    return text(L"Saved - mission reload failed; restart to retry safely");
   case AirfixWindowsRenderSettingsStatus::controllerProfileReady:
     if (snapshot.screen ==
         AirfixWindowsRenderSettingsScreen::controllerAxisCalibration) {

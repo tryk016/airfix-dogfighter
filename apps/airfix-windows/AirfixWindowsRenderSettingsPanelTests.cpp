@@ -28,6 +28,10 @@ using airfix::windows::AirfixWindowsRenderSettingsStatus;
 using airfix::windows::AirfixWindowsRenderSettingsViewItem;
 using airfix::windows::AirfixWindowsRenderSettingsViewSnapshot;
 using airfix::windows::AirfixWindowsUiPixelExtent;
+using airfix::texture::TextureMode;
+using airfix::texture::TextureModeMissionReloadOutcome;
+using airfix::texture::TextureModeMissionReloadStatus;
+using airfix::texture::TexturePackageAvailability;
 
 void require(const bool condition, const std::string_view message) {
   if (!condition) {
@@ -72,12 +76,15 @@ void openSettings(AirfixWindowsRenderSettingsPanel &panel) {
 [[nodiscard]] AirfixWindowsRenderSettingsPanel
 makePanel(const float scale = 100.0F, const bool persistenceAvailable = true,
           const AirfixWindowsUiPixelExtent output = {},
-          const float uiScale = 100.0F) {
+          const float uiScale = 100.0F,
+          const TexturePackageAvailability texturePackageAvailability =
+              TexturePackageAvailability::notConfigured) {
   RenderPresentationSettings settings;
   settings.renderScalePercent = scale;
   settings.uiScalePercent = uiScale;
   auto panel = AirfixWindowsRenderSettingsPanel::create(
-      settings, persistenceAvailable, output);
+      settings, persistenceAvailable, output, 0U, true, std::nullopt,
+      texturePackageAvailability);
   require(panel.has_value(), "valid panel fixture was rejected");
   return *panel;
 }
@@ -289,7 +296,8 @@ void navigationUsesHysteresisAndBoundedRows() {
 }
 
 void editsUseStepsShouldersAndBounds() {
-  auto panel = makePanel(101.0F);
+  auto panel = makePanel(101.0F, true, {}, 100.0F,
+                         TexturePackageAvailability::ready);
   openSettings(panel);
 
   static_cast<void>(
@@ -361,6 +369,14 @@ void editsUseStepsShouldersAndBounds() {
   move(panel, 1);
   static_cast<void>(
       panel.consumeInputFrame(pressedFrame(DigitalAction::uiConfirm)));
+  require(panel.snapshot().draftSettings.textureMode == TextureMode::enhanced &&
+              panel.snapshot().textureModeState.effectiveMode ==
+                  TextureMode::enhanced &&
+              panel.snapshot().textureModeState.missionReloadRequired,
+          "confirm did not request an atomic Enhanced mission reload");
+  move(panel, 1);
+  static_cast<void>(
+      panel.consumeInputFrame(pressedFrame(DigitalAction::uiConfirm)));
   require(panel.snapshot().draftSettings.diagnosticsOverlayEnabled,
           "confirm did not toggle renderer statistics");
   require(panel.snapshot().dirty,
@@ -372,7 +388,7 @@ void applyCancelAndResumeAreDistinctIntents() {
   openSettings(panel);
   static_cast<void>(
       panel.consumeInputFrame(pressedFrame(DigitalAction::uiTabNext)));
-  for (std::uint8_t index = 0U; index < 6U; ++index) {
+  for (std::uint8_t index = 0U; index < 7U; ++index) {
     move(panel, 1);
   }
 
@@ -411,7 +427,7 @@ void applyCancelAndResumeAreDistinctIntents() {
   openSettings(cancelledPanel);
   static_cast<void>(
       cancelledPanel.consumeInputFrame(pressedFrame(DigitalAction::uiTabNext)));
-  for (std::uint8_t index = 0U; index < 7U; ++index) {
+  for (std::uint8_t index = 0U; index < 8U; ++index) {
     move(cancelledPanel, 1);
   }
   const auto close =
@@ -424,6 +440,47 @@ void applyCancelAndResumeAreDistinctIntents() {
                   100.0F &&
               !cancelledPanel.snapshot().dirty,
           "Cancel did not restore the applied draft");
+}
+
+void textureModeAvailabilityAndReloadOutcomeAreExplicit() {
+  auto unavailable = makePanel();
+  openSettings(unavailable);
+  for (std::uint8_t index = 0U; index < 5U; ++index) {
+    move(unavailable, 1);
+  }
+  static_cast<void>(unavailable.consumeInputFrame(
+      pressedFrame(DigitalAction::uiConfirm)));
+  require(unavailable.snapshot().selectedItem ==
+              AirfixWindowsRenderSettingsItem::textureMode &&
+              unavailable.snapshot().draftSettings.textureMode ==
+                  TextureMode::classic &&
+              unavailable.snapshot().status ==
+                  AirfixWindowsRenderSettingsStatus::
+                      enhancedTexturesUnavailable &&
+              !unavailable.snapshot().dirty,
+          "unavailable Enhanced option changed the settings draft");
+
+  auto ready = makePanel(100.0F, true, {}, 100.0F,
+                         TexturePackageAvailability::ready);
+  openSettings(ready);
+  for (std::uint8_t index = 0U; index < 5U; ++index) {
+    move(ready, 1);
+  }
+  static_cast<void>(
+      ready.consumeInputFrame(pressedFrame(DigitalAction::uiConfirm)));
+  require(ready.snapshot().textureModeState.missionReloadRequired,
+          "ready Enhanced edit omitted the mission reload contract");
+
+  ready.setTextureModeReloadOutcome(TextureModeMissionReloadOutcome{
+      .status = TextureModeMissionReloadStatus::reloadFailed,
+      .requestedState = ready.snapshot().textureModeState,
+      .activeMission = {},
+  });
+  require(ready.snapshot().status ==
+              AirfixWindowsRenderSettingsStatus::
+                  textureReloadFailedRestartRequired &&
+              ready.snapshot().textureModeState.missionReloadRequired,
+          "failed mission reload did not preserve the active Classic state");
 }
 
 void resumeRemainsDisabledWithoutReadyGameplay() {
@@ -492,7 +549,7 @@ void interfaceScaleUsesNativeRasterAndScrollableRows() {
   openSettings(panel);
   const auto baseline = panel.snapshot();
   require(std::fabs(baseline.layoutScale - 1.0F) < 1.0e-6F &&
-              baseline.itemCount == 8U,
+              baseline.itemCount == 9U,
           "default interface scale changed the native Windows layout");
 
   move(panel, 1);
@@ -504,7 +561,7 @@ void interfaceScaleUsesNativeRasterAndScrollableRows() {
   require(
       enlarged.draftSettings.uiScalePercent == 150.0F &&
           std::fabs(enlarged.layoutScale - 1.5F) < 1.0e-6F &&
-          enlarged.itemCount < 8U &&
+          enlarged.itemCount < 9U &&
           findItem(enlarged, AirfixWindowsRenderSettingsItem::interfaceScale)
               .selected,
       "enlarged interface did not use native DPI scaling and a visible row "
@@ -1086,7 +1143,9 @@ void snapshotExposesOnlyBoundedOperationalMetadata() {
           AirfixWindowsRenderSettingsSessionOverride::rendererStatistics) |
       static_cast<std::uint8_t>(
           AirfixWindowsRenderSettingsSessionOverride::
-              verticalFovAdjustment));
+              verticalFovAdjustment) |
+      static_cast<std::uint8_t>(
+          AirfixWindowsRenderSettingsSessionOverride::textureMode));
   require(snapshot.sessionOverrideMask == expectedMask,
           "snapshot did not sanitize its session-override mask");
   require(!snapshot.persistenceAvailable && !snapshot.dirty &&
@@ -1103,6 +1162,7 @@ int main() {
     invalidAppliedSettingsFailClosed();
     navigationUsesHysteresisAndBoundedRows();
     editsUseStepsShouldersAndBounds();
+    textureModeAvailabilityAndReloadOutcomeAreExplicit();
     applyCancelAndResumeAreDistinctIntents();
     resumeRemainsDisabledWithoutReadyGameplay();
     layoutFitsDefaultSmallAndHighDpiOutputs();

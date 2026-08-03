@@ -93,27 +93,34 @@ struct TextureModeStateResolveResult final {
       };
 
   if (!validMode(requestedMode)) {
-    return {.issue = TextureModeStateIssue::unsupportedRequestedMode};
+    return {
+        .state = std::nullopt,
+        .issue = TextureModeStateIssue::unsupportedRequestedMode,
+    };
   }
   if (!validAvailability(packageAvailability)) {
     return {
+        .state = std::nullopt,
         .issue = TextureModeStateIssue::unsupportedPackageAvailability,
     };
   }
   if (activeMission.has_value()) {
     if (!validMode(activeMission->requestedMode)) {
       return {
+          .state = std::nullopt,
           .issue = TextureModeStateIssue::unsupportedActiveRequestedMode,
       };
     }
     if (!validMode(activeMission->effectiveMode)) {
       return {
+          .state = std::nullopt,
           .issue = TextureModeStateIssue::unsupportedActiveEffectiveMode,
       };
     }
     if (activeMission->requestedMode == TextureMode::classic &&
         activeMission->effectiveMode != TextureMode::classic) {
       return {
+          .state = std::nullopt,
           .issue = TextureModeStateIssue::inconsistentActiveMissionState,
       };
     }

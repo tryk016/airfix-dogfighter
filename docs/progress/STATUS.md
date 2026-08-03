@@ -219,8 +219,13 @@
   has bounded D3D11 publication/cache and a private acceptance pass. AFRS
   schema 4 persists the requested texture mode, schema 1-3 migrate to Classic,
   and a separate path-free runtime state resolves package availability,
-  effective mode, fallback, and reload requirements. Generic native UI,
-  in-process mission reload, Metal upload, and streaming remain unimplemented.
+  effective mode, fallback, and reload requirements. Both native settings
+  panels now expose the independent mode. Windows enables Enhanced only for a
+  ready package and atomically replaces the complete room/HUD visual snapshot
+  without re-registering audio; failure preserves the old scene and active
+  mode. iOS displays the same durable setting but keeps Enhanced disabled until
+  its owner-import/Metal transaction exists. Metal HD upload and streaming
+  remain unimplemented.
   The
   repository-boundary scanner and synthetic regression suite continue to
   reject private texture roots, raster/GPU texture formats, JSONL/NDJSON
@@ -1448,9 +1453,10 @@
     Enhanced with no fallback. The portable requested/effective model and AFRS
     schema-4 persistence are now complete, and Windows startup resolves the
     durable preference against a session-local package locator with safe
-    Classic fallback. Next add generic native UI and an atomic in-process
-    mission reload, then begin the iOS owner-import/Metal pilot; do not add
-    private resources to CMake/CI or begin streaming/compressed derivatives.
+    Classic fallback. Generic native UI and the atomic Windows in-process
+    mission reload are complete. Next begin the iOS owner-import/Metal pilot;
+    do not add private resources to CMake/CI or begin streaming/compressed
+    derivatives.
 
 ## Open questions
 
@@ -1462,6 +1468,18 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The generic TextureMode UI and Windows mission-reload slice passes a clean
+  GNU 15.2/Ninja portable build (495/495 edges, 154/154 CTests) and a clean
+  MSVC 19.51/Ninja Windows Release product build (169/169 CTests). The Windows
+  total includes D3D11 renderer, native/scaled product smoke, XAudio2, UI
+  raster/semantics/Automation, settings, package, and reload-state coverage.
+  The first Windows test pass found two sandbox-blocked Python commands; after
+  selecting the already installed accessible interpreter, the identical full
+  suite passed. Public-boundary tests and the 816-file scan, documentation
+  integrity (119 experiments/408 catalogue rows), 12/12 Rizin normalization,
+  CI-classifier tests, and `git diff --check` pass. Hosted
+  Linux/macOS/Windows, clangd, and unsigned iOS remain the publication gates
+  for this branch.
 - The durable texture-mode slice passes a clean MSVC 19.51/Ninja Windows
   product build and all 168/168 CTests, including D3D11/XAudio2 product smokes.
   Its synthetic coverage includes AFRS schema-1/2/3 migration, schema-4 golden
