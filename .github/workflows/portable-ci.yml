@@ -249,10 +249,13 @@ jobs:
       - name: Test Windows product
         run: ctest --preset windows-product-release
 
-      - name: Verify SDL license staging
+      - name: Verify third-party license staging
         shell: pwsh
         run: |
-          $license = "build/windows-product/apps/airfix-windows/Release/third-party-licenses/SDL3.txt"
-          if (-not (Test-Path -LiteralPath $license)) {
-            throw "SDL3 license was not staged beside the Windows product"
+          $licenseRoot = "build/windows-product/apps/airfix-windows/Release/third-party-licenses"
+          foreach ($licenseName in @("SDL3.txt", "LodePNG.txt")) {
+            $license = Join-Path $licenseRoot $licenseName
+            if (-not (Test-Path -LiteralPath $license)) {
+              throw "$licenseName was not staged beside the Windows product"
+            }
           }

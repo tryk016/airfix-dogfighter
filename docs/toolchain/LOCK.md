@@ -50,12 +50,15 @@ still be declared by the repository and must not assume these absolute paths.
 | Dependency | Version | Use | License | Official source | SHA-256 |
 |---|---:|---|---|---|---|
 | SDL | 3.4.12 | Windows window lifecycle, events, keyboard, mouse, and controllers; rendering remains native D3D11 | Zlib | [release](https://github.com/libsdl-org/SDL/releases/tag/release-3.4.12), [source archive](https://github.com/libsdl-org/SDL/releases/download/release-3.4.12/SDL3-3.4.12.tar.gz) | `f07b958a9ac5020fb7a44cadb957f658b2149c3c8abb4f63145fac9303249db7` |
+| LodePNG | commit `ed6fe5825c6a4fbb7f58ab35a4231c7543cd452a` (2026-05-28) | Memory-only PNG decoder behind strict RGBA8/IHDR validation; encoder, disk I/O, ancillary chunks, and error text are disabled | Zlib | [official repository](https://github.com/lvandeve/lodepng), [commit archive](https://github.com/lvandeve/lodepng/archive/ed6fe5825c6a4fbb7f58ab35a4231c7543cd452a.tar.gz) | `c2459a3f9145258f901d262576f7a56ca08087d3b3efeee3ae033c0952120803`; upstream commit is unsigned, so CMake requires this exact archive digest |
 
 The Windows product CMake target fetches the exact SDL source archive above and
 verifies its digest before configuration. It builds SDL statically and copies
-the upstream license into the build output. Neither SDL sources nor build
-products are vendored into the repository. Portable core and iOS configurations
-do not fetch or build SDL.
+the upstream license into the build output. Portable configurations fetch the
+exact LodePNG commit archive, verify its digest, compile only the required
+memory-decoder surface, and stage its upstream license in both product outputs.
+Neither dependency's sources nor build products are vendored into the
+repository. Portable core and iOS configurations do not fetch or build SDL.
 
 ## Hosted CI dependencies
 

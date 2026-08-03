@@ -5684,3 +5684,40 @@ superseded evidence.
   PNG signature, IHDR, RGBA8 dimensions, mip-chain completeness,
   decoded-memory accounting, cache/settings integration, and native
   D3D11/Metal upload remain explicit later stages.
+
+## 2026-08-03 - bounded private HD PNG and mip-chain preparation
+
+- Implemented ADR-0019 stage 5 as a disconnected portable boundary. Both
+  products remain forced to Classic, no private path or package is configured,
+  and no D3D11/Metal upload, selector, cache, or streaming path was added.
+- Added `PreparedTextureAsset` and `prepareTextureHdPng`. The transaction
+  revalidates generation, source/base identity, accepted 4x metadata, sample
+  space and alpha enum before private I/O. Every failure returns one fixed
+  path/checksum-free issue and destroys partial decoded levels.
+- Each declared `mip-00.png` onward is read only through the pinned
+  root-capability, checked as non-interlaced 8-bit RGBA PNG with exact natural
+  dimensions, decoded in memory, and accounted against per-level, chain,
+  peak-in-flight, and decoded CPU budgets. Mip zero must be byte-identical to
+  the authenticated base; the first undeclared numbered mip must be absent.
+- Selected LodePNG from its official repository at commit
+  `ed6fe5825c6a4fbb7f58ab35a4231c7543cd452a`. The upstream commit is unsigned,
+  so CMake pins archive SHA-256
+  `c2459a3f9145258f901d262576f7a56ca08087d3b3efeee3ae033c0952120803`.
+  Only memory decode is compiled; encoder, disk I/O, ancillary chunks, and
+  error text are disabled. Its zlib license is staged in Windows and iOS
+  outputs and verified by product CI.
+- The current manifest authenticates only the base PNG. Level zero is labelled
+  authenticated after byte equality; non-zero levels are deliberately labelled
+  structural-only and are not claimed cryptographically verified. Unrelated
+  directory entries are ignored; the private offline corpus verifier remains
+  responsible for its stronger exact-directory inventory check.
+- Synthetic tests cover valid decoding, signature/IHDR/color/interlace/CRC
+  failures, wrong dimensions, missing and extra numbered levels, stale or
+  malformed metadata, all file-store failures, three alpha policies, and all
+  CPU byte budgets. No PNG file, JSONL, original GTI, logical path, checksum,
+  or private root from the owner corpus entered the repository.
+- Complete GCC 15.2/Ninja and MSVC 19.51/Ninja portable builds pass 152/152
+  CTests each. The complete Windows product passes 166/166 CTests including
+  D3D11/XAudio2 and both product smokes. Clang analyzer/bugprone review has no
+  open finding; exact upstream/staged license hashes match. Hosted
+  Linux/macOS/Windows and unsigned iOS remain the publication gate.
