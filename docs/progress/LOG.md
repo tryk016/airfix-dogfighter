@@ -5488,3 +5488,38 @@ superseded evidence.
 - Classic GTI behavior is unchanged. Manifest filesystem loading, resolver,
   actual-GTI hashing, per-texture fallback, PNG preparation, settings, caches,
   native uploads, and effective Enhanced mode remain explicitly disconnected.
+
+## 2026-08-03 - original campaign, frontend, and roster flow
+
+- Completed a documentation-only static study in an isolated worktree. Ghidra
+  Headless 12.1.2 was the primary source; Rizin 0.9.1/rz-ghidra independently
+  checked central boundaries, calls, xrefs, fields, constants, and FourCCs. No
+  game, debugger, or real save was run and no runtime C++20 source changed.
+- Reused the established bootstrap, mission-loading, AFS scheduling/bytecode,
+  outcome-state, result predicate/progression, and generic AFCHUNK evidence
+  before extending it. Modern render-settings and ADR-0018 durable-document
+  work were reviewed but explicitly not treated as original menu or atomic-save
+  evidence.
+- Joined startup user loading to main menu and profile selection; mapped all
+  eight main-menu routes plus central command cases 6, 7, and `0x2B`; bounded
+  campaign selection/briefing/start, pause, result, retry/continue/exit, and the
+  logic-to-render ownership seam.
+- Recovered two Axis/Allied catalogues with ten zero-based rows each. Missing
+  side maxima default to zero; UI selection clamps stored signed values to
+  `[0,9]`; success replaces `THRD` and raises only the selected `AXMI`/`ALMI`
+  with signed `mission_number + 1`; failure leaves progression unchanged.
+- Extended result evidence through the local-player gate, literal score terms,
+  `NfPlayer::RegisterStats`, cumulative stat chunks, `SCOR`, and ignored
+  remembered-roster write. Confirmed the original `FRIK` anomaly: its gate
+  tests player `+0x4C` while its addition reads `+0x48`.
+- Specialized AFCHUNK framing as FMT-ROSTER and documented profile
+  create/select/delete/shutdown lifecycle, defaults, repeated `MEDA`, structure
+  ownership, and malformed-file gaps. The original reader destroys prior state
+  before full validation; the writer truncates directly with `wb`, has no
+  atomic replace/backup, and can report success after losing up to eight final
+  bytes.
+- Published `EXP-20260803-114`, `EV-20260803-002`, FMT-ROSTER, the frontend
+  state/call graphs, structure maps, platform requirements, and separate
+  GO/NO-GO decisions. Complete frontend enum/modal parity, difficulty, ordinary
+  medals/equipment, `threadend`, safe corrupt-file behavior, and bit-identical
+  legacy export remain explicit unknowns.
