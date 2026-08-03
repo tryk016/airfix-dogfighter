@@ -32,14 +32,10 @@ constexpr std::array<Item, 3U> pauseItemsWithControllerProfile{
     Item::resume,
 };
 constexpr std::array<Item, 8U> displaySettingsItems{
-    Item::renderScale,
-    Item::interfaceScale,
-    Item::presentation,
-    Item::verticalFovAdjustment,
-    Item::visualProfile,
-    Item::rendererStatistics,
-    Item::apply,
-    Item::cancel,
+    Item::renderScale,   Item::interfaceScale,
+    Item::presentation,  Item::verticalFovAdjustment,
+    Item::visualProfile, Item::rendererStatistics,
+    Item::apply,         Item::cancel,
 };
 constexpr std::array<Item, 8U> controllerProfileItems{
     Item::leftStickX,
@@ -115,42 +111,7 @@ magnitude(const input::Q15 value) noexcept {
 
 [[nodiscard]] constexpr bool
 isValueItem(const AirfixWindowsRenderSettingsItem item) noexcept {
-  switch (item) {
-  case Item::renderScale:
-  case Item::interfaceScale:
-  case Item::presentation:
-  case Item::verticalFovAdjustment:
-  case Item::visualProfile:
-  case Item::rendererStatistics:
-  case Item::innerDeadzone:
-  case Item::outerSaturation:
-  case Item::sensitivity:
-  case Item::responseCurve:
-  case Item::inversion:
-  case Item::bindingAction:
-  case Item::bindingAssignment:
-    return true;
-  case Item::displaySettings:
-  case Item::controllerCalibration:
-  case Item::resume:
-  case Item::apply:
-  case Item::cancel:
-  case Item::leftStickX:
-  case Item::leftStickY:
-  case Item::rightStickX:
-  case Item::rightStickY:
-  case Item::buttonBindings:
-  case Item::resetAxis:
-  case Item::resetAllCalibration:
-  case Item::moveBinding:
-  case Item::resetAllAssignments:
-  case Item::swapAssignments:
-  case Item::saveControllerProfile:
-  case Item::back:
-  case Item::count:
-    return false;
-  }
-  return false;
+  return airfixWindowsRenderSettingsItemIsAdjustable(item);
 }
 
 [[nodiscard]] float nextScaleValue(const float current,
@@ -227,8 +188,8 @@ makeLayout(const AirfixWindowsUiPixelExtent output,
                  render::native_render_policy::minimumUiScalePercent,
                  render::native_render_policy::maximumUiScalePercent) /
       100.0F;
-  const float scale =
-      std::max(0.001F, std::min(requestedScale, availableWidth / basePanelWidth));
+  const float scale = std::max(
+      0.001F, std::min(requestedScale, availableWidth / basePanelWidth));
   const float panelWidth = basePanelWidth * scale;
   const float panelHeight = std::min(basePanelHeight * scale, availableHeight);
   const float rowHeight = baseRowHeight * scale;
@@ -236,9 +197,8 @@ makeLayout(const AirfixWindowsUiPixelExtent output,
   const float desiredTopSpace = baseTopSpace * scale;
   const float desiredBottomSpace = baseBottomSpace * scale;
   const float availableChromeHeight = std::max(0.0F, panelHeight - rowHeight);
-  const float chromeCompression =
-      std::min(1.0F, availableChromeHeight /
-                         (desiredTopSpace + desiredBottomSpace));
+  const float chromeCompression = std::min(
+      1.0F, availableChromeHeight / (desiredTopSpace + desiredBottomSpace));
   const float topSpace = desiredTopSpace * chromeCompression;
   const float bottomSpace = desiredBottomSpace * chromeCompression;
   const float panelX = (width - panelWidth) * 0.5F;
@@ -264,8 +224,7 @@ makeLayout(const AirfixWindowsUiPixelExtent output,
       std::max(0.0F, (rowViewportHeight - visibleRowsHeight) * 0.5F);
   const float statusGap = std::min(18.0F * scale, bottomSpace * 0.25F);
   const float statusBottomInset = statusGap;
-  const float statusTop =
-      panelY + panelHeight - bottomSpace + statusGap;
+  const float statusTop = panelY + panelHeight - bottomSpace + statusGap;
   const float statusHeight =
       std::max(0.0F, bottomSpace - statusGap - statusBottomInset);
 
@@ -305,6 +264,8 @@ makeViewItem(const AirfixWindowsRenderSettingsItem item,
       .nextBounds = {},
       .selected = item == selected,
       .enabled = enabled,
+      .visible = true,
+      .offscreen = false,
   };
   if (isValueItem(item)) {
     const float buttonWidth =
@@ -328,6 +289,13 @@ makeViewItem(const AirfixWindowsRenderSettingsItem item,
 }
 
 } // namespace
+
+std::span<const AirfixWindowsRenderSettingsItem>
+airfixWindowsRenderSettingsItemsForScreen(
+    const AirfixWindowsRenderSettingsScreen screen,
+    const bool controllerProfileAvailable) noexcept {
+  return itemsForScreen(screen, controllerProfileAvailable);
+}
 
 std::optional<AirfixWindowsRenderSettingsPanel>
 AirfixWindowsRenderSettingsPanel::create(
@@ -380,6 +348,7 @@ AirfixWindowsRenderSettingsPanel::AirfixWindowsRenderSettingsPanel(
 AirfixWindowsRenderSettingsIntent
 AirfixWindowsRenderSettingsPanel::consumeInputFrame(
     const input::InputFrame &frame) noexcept {
+  const AccessibilityMutationGuard mutation{*this};
   using input::AnalogAxis;
   using input::DigitalAction;
 
@@ -451,6 +420,7 @@ AirfixWindowsRenderSettingsPanel::consumeInputFrame(
 AirfixWindowsRenderSettingsIntent
 AirfixWindowsRenderSettingsPanel::consumePointer(
     const AirfixWindowsPointerInput &pointer) noexcept {
+  const AccessibilityMutationGuard mutation{*this};
   const auto view = snapshot();
   std::optional<AirfixWindowsRenderSettingsViewItem> hit;
   for (std::uint8_t index = 0U; index < view.itemCount; ++index) {
@@ -489,9 +459,74 @@ AirfixWindowsRenderSettingsPanel::consumePointer(
   return activateSelectedItem();
 }
 
+AirfixWindowsAccessibilityActionResult
+AirfixWindowsRenderSettingsPanel::consumeAccessibilityAction(
+    const AirfixWindowsRenderSettingsScreen screen,
+    const std::uint64_t accessibilityGeneration,
+    const AirfixWindowsRenderSettingsItem item,
+    const AirfixWindowsAccessibilityAction action) noexcept {
+  const AccessibilityMutationGuard mutation{*this};
+  switch (action) {
+  case AirfixWindowsAccessibilityAction::focus:
+  case AirfixWindowsAccessibilityAction::invoke:
+  case AirfixWindowsAccessibilityAction::decrement:
+  case AirfixWindowsAccessibilityAction::increment:
+    break;
+  default:
+    return {.status =
+                AirfixWindowsAccessibilityActionStatus::actionUnsupported};
+  }
+  if (screen != screen_) {
+    return {.status = AirfixWindowsAccessibilityActionStatus::staleScreen};
+  }
+  if (accessibilityGeneration != accessibilityGeneration_) {
+    return {.status = AirfixWindowsAccessibilityActionStatus::staleContext};
+  }
+
+  const auto view = snapshot();
+  const auto end = view.logicalItems.begin() + view.logicalItemCount;
+  const auto target = std::find_if(
+      view.logicalItems.begin(), end,
+      [item](const auto &candidate) { return candidate.item == item; });
+  if (target == end || item == Item::count) {
+    return {.status = AirfixWindowsAccessibilityActionStatus::itemUnavailable};
+  }
+  if (!target->enabled && action != AirfixWindowsAccessibilityAction::focus) {
+    return {.status = AirfixWindowsAccessibilityActionStatus::itemDisabled};
+  }
+
+  const bool adjustable = isValueItem(item);
+  if ((action == AirfixWindowsAccessibilityAction::invoke && adjustable) ||
+      ((action == AirfixWindowsAccessibilityAction::decrement ||
+        action == AirfixWindowsAccessibilityAction::increment) &&
+       !adjustable)) {
+    return {.status =
+                AirfixWindowsAccessibilityActionStatus::actionUnsupported};
+  }
+
+  selectionForCurrentScreen() = item;
+  switch (action) {
+  case AirfixWindowsAccessibilityAction::focus:
+    return {.status = AirfixWindowsAccessibilityActionStatus::accepted};
+  case AirfixWindowsAccessibilityAction::invoke:
+    return {
+        .status = AirfixWindowsAccessibilityActionStatus::accepted,
+        .intent = activateSelectedItem(),
+    };
+  case AirfixWindowsAccessibilityAction::decrement:
+    adjustSelectedValue(-1);
+    return {.status = AirfixWindowsAccessibilityActionStatus::accepted};
+  case AirfixWindowsAccessibilityAction::increment:
+    adjustSelectedValue(1);
+    return {.status = AirfixWindowsAccessibilityActionStatus::accepted};
+  }
+  return {.status = AirfixWindowsAccessibilityActionStatus::actionUnsupported};
+}
+
 AirfixWindowsRenderSettingsViewSnapshot
 AirfixWindowsRenderSettingsPanel::snapshot() const noexcept {
   AirfixWindowsRenderSettingsViewSnapshot result{
+      .accessibilityGeneration = accessibilityGeneration_,
       .screen = screen_,
       .selectedItem = selectionForCurrentScreen(),
       .status = status_,
@@ -504,6 +539,8 @@ AirfixWindowsRenderSettingsPanel::snapshot() const noexcept {
       .statusBounds = {},
       .items = {},
       .itemCount = 0U,
+      .logicalItems = {},
+      .logicalItemCount = 0U,
       .sessionOverrideMask = sessionOverrideMask_,
       .controllerDraftAxes = {},
       .selectedControllerAxis = selectedControllerAxis_,
@@ -563,25 +600,26 @@ AirfixWindowsRenderSettingsPanel::snapshot() const noexcept {
     }
   }
 
-  const auto visibleItems =
+  const auto screenItems =
       itemsForScreen(screen_, controllerProfileModel_.has_value());
   const auto selected = selectionForCurrentScreen();
   const auto selectedIterator =
-      std::find(visibleItems.begin(), visibleItems.end(), selected);
+      std::find(screenItems.begin(), screenItems.end(), selected);
   const auto selectedIndex =
-      selectedIterator == visibleItems.end()
+      selectedIterator == screenItems.end()
           ? 0U
-          : static_cast<std::size_t>(selectedIterator - visibleItems.begin());
+          : static_cast<std::size_t>(selectedIterator - screenItems.begin());
   const auto layout =
-      makeLayout(output_, screen_, visibleItems.size(), selectedIndex,
+      makeLayout(output_, screen_, screenItems.size(), selectedIndex,
                  result.draftSettings.uiScalePercent);
   result.layoutScale = layout.scale;
   result.panelBounds = layout.panel;
   result.titleBounds = layout.title;
   result.statusBounds = layout.status;
   result.itemCount = static_cast<std::uint8_t>(layout.visibleItemCount);
-  for (std::uint8_t index = 0U; index < result.itemCount; ++index) {
-    const auto item = visibleItems[layout.firstVisibleItem + index];
+  result.logicalItemCount = static_cast<std::uint8_t>(screenItems.size());
+
+  const auto itemEnabled = [&](const Item item) noexcept {
     bool enabled = true;
     switch (item) {
     case Item::resume:
@@ -655,8 +693,33 @@ AirfixWindowsRenderSettingsPanel::snapshot() const noexcept {
     case Item::count:
       break;
     }
-    result.items[index] =
-        makeViewItem(item, index, layout, result.selectedItem, enabled);
+    return enabled;
+  };
+
+  for (std::size_t logicalIndex = 0U; logicalIndex < screenItems.size();
+       ++logicalIndex) {
+    const auto item = screenItems[logicalIndex];
+    const bool visible =
+        logicalIndex >= layout.firstVisibleItem &&
+        logicalIndex < layout.firstVisibleItem + layout.visibleItemCount;
+    AirfixWindowsRenderSettingsViewItem logical{
+        .item = item,
+        .bounds = {},
+        .previousBounds = {},
+        .nextBounds = {},
+        .selected = item == result.selectedItem,
+        .enabled = itemEnabled(item),
+        .visible = visible,
+        .offscreen = !visible,
+    };
+    if (visible) {
+      const auto visibleIndex =
+          static_cast<std::uint8_t>(logicalIndex - layout.firstVisibleItem);
+      logical = makeViewItem(item, visibleIndex, layout, result.selectedItem,
+                             logical.enabled);
+      result.items[visibleIndex] = logical;
+    }
+    result.logicalItems[logicalIndex] = logical;
   }
   return result;
 }
@@ -677,11 +740,13 @@ nextUnsignedValue(const std::uint16_t current, const std::uint16_t minimum,
 
 void AirfixWindowsRenderSettingsPanel::setOutput(
     const AirfixWindowsUiPixelExtent output) noexcept {
+  const AccessibilityMutationGuard mutation{*this};
   output_ = sanitizedOutput(output);
 }
 
 void AirfixWindowsRenderSettingsPanel::setPersistenceAvailable(
     const bool available) noexcept {
+  const AccessibilityMutationGuard mutation{*this};
   model_.setPersistenceAvailable(available);
   if (!available && status_ != AirfixWindowsRenderSettingsStatus::applying) {
     status_ = AirfixWindowsRenderSettingsStatus::persistenceUnavailable;
@@ -694,6 +759,7 @@ void AirfixWindowsRenderSettingsPanel::setPersistenceAvailable(
 
 void AirfixWindowsRenderSettingsPanel::setSessionOverrideMask(
     const AirfixWindowsRenderSettingsSessionOverrideMask mask) noexcept {
+  const AccessibilityMutationGuard mutation{*this};
   sessionOverrideMask_ =
       static_cast<AirfixWindowsRenderSettingsSessionOverrideMask>(
           mask & airfixWindowsRenderSettingsAllSessionOverrides);
@@ -701,11 +767,13 @@ void AirfixWindowsRenderSettingsPanel::setSessionOverrideMask(
 
 void AirfixWindowsRenderSettingsPanel::setResumeAvailable(
     const bool available) noexcept {
+  const AccessibilityMutationGuard mutation{*this};
   resumeAvailable_ = available;
 }
 
 void AirfixWindowsRenderSettingsPanel::setControllerProfilePersistenceAvailable(
     const bool available) noexcept {
+  const AccessibilityMutationGuard mutation{*this};
   if (!controllerProfileModel_.has_value()) {
     return;
   }
@@ -726,12 +794,14 @@ void AirfixWindowsRenderSettingsPanel::setControllerProfilePersistenceAvailable(
 
 void AirfixWindowsRenderSettingsPanel::setControllerAxisInput(
     const AirfixWindowsControllerAxisInputSnapshot &input) noexcept {
+  const AccessibilityMutationGuard mutation{*this};
   controllerAxisInput_ = input;
 }
 
 bool AirfixWindowsRenderSettingsPanel::finishApplySuccess(
     const settings::RenderPresentationSettingsMenuApplyTicket
         &ticket) noexcept {
+  const AccessibilityMutationGuard mutation{*this};
   if (!activeTicket_.has_value() || *activeTicket_ != ticket ||
       !model_.finishApplySuccess(ticket)) {
     return false;
@@ -746,6 +816,7 @@ bool AirfixWindowsRenderSettingsPanel::finishApplySuccess(
 bool AirfixWindowsRenderSettingsPanel::finishApplyFailure(
     const settings::RenderPresentationSettingsMenuApplyTicket
         &ticket) noexcept {
+  const AccessibilityMutationGuard mutation{*this};
   if (!activeTicket_.has_value() || *activeTicket_ != ticket ||
       !model_.finishApplyFailure(ticket)) {
     return false;
@@ -757,6 +828,7 @@ bool AirfixWindowsRenderSettingsPanel::finishApplyFailure(
 
 bool AirfixWindowsRenderSettingsPanel::finishControllerProfileSaveSuccess(
     const settings::ControllerInputProfileMenuSaveTicket &ticket) noexcept {
+  const AccessibilityMutationGuard mutation{*this};
   if (!controllerProfileModel_.has_value() ||
       !activeControllerProfileTicket_.has_value() ||
       *activeControllerProfileTicket_ != ticket ||
@@ -776,6 +848,7 @@ bool AirfixWindowsRenderSettingsPanel::finishControllerProfileSaveSuccess(
 
 bool AirfixWindowsRenderSettingsPanel::finishControllerProfileSaveFailure(
     const settings::ControllerInputProfileMenuSaveTicket &ticket) noexcept {
+  const AccessibilityMutationGuard mutation{*this};
   if (!controllerProfileModel_.has_value() ||
       !activeControllerProfileTicket_.has_value() ||
       *activeControllerProfileTicket_ != ticket ||
@@ -907,12 +980,9 @@ void AirfixWindowsRenderSettingsPanel::adjustSelectedValue(
     case Item::verticalFovAdjustment:
       result = model_.setVerticalFovAdjustmentDegrees(std::clamp(
           draft.verticalFovAdjustmentDegrees +
-              static_cast<float>(direction) *
-                  verticalFovAdjustmentStep,
-          render::native_render_policy::
-              minimumVerticalFovAdjustmentDegrees,
-          render::native_render_policy::
-              maximumVerticalFovAdjustmentDegrees));
+              static_cast<float>(direction) * verticalFovAdjustmentStep,
+          render::native_render_policy::minimumVerticalFovAdjustmentDegrees,
+          render::native_render_policy::maximumVerticalFovAdjustmentDegrees));
       break;
     case Item::visualProfile:
       result = model_.setVisualProfile(direction < 0

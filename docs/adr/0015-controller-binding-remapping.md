@@ -165,6 +165,14 @@ and iOS remapping requirement.
 4. [x] Add the iOS text-picker surface with Dynamic Type and VoiceOver
        semantics.
 5. [x] Add the Windows keyboard/mouse/controller text-picker surface.
-6. [ ] Add a bounded Windows UI Automation tree before claiming Narrator
+6. [ ] Add a bounded Windows UI Automation provider before claiming Narrator
        support.
+   - [x] Publish every logical row independently of visual clipping, centralize
+         bounded names/values/status text, and expose owner-thread typed
+         focus/invoke/decrement/increment actions. A monotonic semantic
+         generation rejects delayed same-screen/ABA actions without being
+         invalidated by the 15 Hz analog preview.
+   - [ ] Attach a Windows-only COM provider to the SDL-owned HWND through
+         `WM_GETOBJECT`, with immutable snapshots and a bounded owner-thread
+         action queue.
 7. [ ] Run controller-only physical acceptance before release.

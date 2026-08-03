@@ -15,9 +15,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
-// Child-view-controller overlay for the four settings already defined by
-// ADR-0014. It owns only draft UI state; the coordinator remains the sole owner
-// of prepare, durable save, and Metal publication.
+// Child-view-controller overlay for the six settings defined by ADR-0014 and
+// ADR-0017. It owns only draft UI state; the coordinator remains the sole
+// owner of prepare, durable save, and Metal publication.
 @interface AirfixRenderSettingsPanelViewController : UIViewController
 
 @property(nonatomic, weak, nullable)

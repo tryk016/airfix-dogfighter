@@ -1,4 +1,5 @@
 #include "AirfixWindowsUiRasterizer.hpp"
+#include "AirfixWindowsUiSemantics.hpp"
 
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -16,12 +17,10 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstdio>
 #include <cstring>
 #include <cwchar>
 #include <limits>
 #include <new>
-#include <string_view>
 #include <utility>
 
 namespace airfix::windows {
@@ -196,7 +195,7 @@ rectInsideOutput(const AirfixWindowsUiPixelRect rect,
       return false;
     }
   }
-  return true;
+  return buildAirfixWindowsUiSemanticTree(snapshot).complete();
 }
 
 [[nodiscard]] AirfixWindowsUiRasterizeResult
@@ -215,382 +214,6 @@ createDWriteFactory(ComPtr<IDWriteFactory> &factory) noexcept {
   return DWriteCreateFactory(
       DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
       reinterpret_cast<IUnknown **>(factory.GetAddressOf()));
-}
-
-[[nodiscard]] const wchar_t *
-itemLabel(const AirfixWindowsRenderSettingsItem item) noexcept {
-  switch (item) {
-  case AirfixWindowsRenderSettingsItem::displaySettings:
-    return L"Display settings";
-  case AirfixWindowsRenderSettingsItem::controllerCalibration:
-    return L"Controller settings";
-  case AirfixWindowsRenderSettingsItem::resume:
-    return L"Resume";
-  case AirfixWindowsRenderSettingsItem::renderScale:
-    return L"Render scale";
-  case AirfixWindowsRenderSettingsItem::interfaceScale:
-    return L"Interface scale";
-  case AirfixWindowsRenderSettingsItem::presentation:
-    return L"Presentation";
-  case AirfixWindowsRenderSettingsItem::verticalFovAdjustment:
-    return L"Vertical FOV increase";
-  case AirfixWindowsRenderSettingsItem::visualProfile:
-    return L"Visual profile";
-  case AirfixWindowsRenderSettingsItem::rendererStatistics:
-    return L"Renderer statistics";
-  case AirfixWindowsRenderSettingsItem::apply:
-    return L"Apply";
-  case AirfixWindowsRenderSettingsItem::cancel:
-    return L"Cancel";
-  case AirfixWindowsRenderSettingsItem::leftStickX:
-    return L"Left stick X";
-  case AirfixWindowsRenderSettingsItem::leftStickY:
-    return L"Left stick Y";
-  case AirfixWindowsRenderSettingsItem::rightStickX:
-    return L"Right stick X";
-  case AirfixWindowsRenderSettingsItem::rightStickY:
-    return L"Right stick Y";
-  case AirfixWindowsRenderSettingsItem::buttonBindings:
-    return L"Button bindings";
-  case AirfixWindowsRenderSettingsItem::innerDeadzone:
-    return L"Inner deadzone";
-  case AirfixWindowsRenderSettingsItem::outerSaturation:
-    return L"Outer saturation";
-  case AirfixWindowsRenderSettingsItem::sensitivity:
-    return L"Sensitivity";
-  case AirfixWindowsRenderSettingsItem::responseCurve:
-    return L"Response curve";
-  case AirfixWindowsRenderSettingsItem::inversion:
-    return L"Invert axis";
-  case AirfixWindowsRenderSettingsItem::resetAxis:
-    return L"Reset selected axis";
-  case AirfixWindowsRenderSettingsItem::resetAllCalibration:
-    return L"Reset all calibration";
-  case AirfixWindowsRenderSettingsItem::bindingAction:
-    return L"Action";
-  case AirfixWindowsRenderSettingsItem::bindingAssignment:
-    return L"Assignment";
-  case AirfixWindowsRenderSettingsItem::moveBinding:
-    return L"Move";
-  case AirfixWindowsRenderSettingsItem::resetAllAssignments:
-    return L"Reset all assignments";
-  case AirfixWindowsRenderSettingsItem::swapAssignments:
-    return L"Swap assignments";
-  case AirfixWindowsRenderSettingsItem::saveControllerProfile:
-    return L"Save for next launch";
-  case AirfixWindowsRenderSettingsItem::back:
-    return L"Back";
-  case AirfixWindowsRenderSettingsItem::count:
-    break;
-  }
-  return L"";
-}
-
-[[nodiscard]] constexpr bool
-isValueItem(const AirfixWindowsRenderSettingsItem item) noexcept {
-  switch (item) {
-  case AirfixWindowsRenderSettingsItem::renderScale:
-  case AirfixWindowsRenderSettingsItem::interfaceScale:
-  case AirfixWindowsRenderSettingsItem::presentation:
-  case AirfixWindowsRenderSettingsItem::verticalFovAdjustment:
-  case AirfixWindowsRenderSettingsItem::visualProfile:
-  case AirfixWindowsRenderSettingsItem::rendererStatistics:
-  case AirfixWindowsRenderSettingsItem::innerDeadzone:
-  case AirfixWindowsRenderSettingsItem::outerSaturation:
-  case AirfixWindowsRenderSettingsItem::sensitivity:
-  case AirfixWindowsRenderSettingsItem::responseCurve:
-  case AirfixWindowsRenderSettingsItem::inversion:
-  case AirfixWindowsRenderSettingsItem::bindingAction:
-  case AirfixWindowsRenderSettingsItem::bindingAssignment:
-    return true;
-  case AirfixWindowsRenderSettingsItem::displaySettings:
-  case AirfixWindowsRenderSettingsItem::controllerCalibration:
-  case AirfixWindowsRenderSettingsItem::resume:
-  case AirfixWindowsRenderSettingsItem::apply:
-  case AirfixWindowsRenderSettingsItem::cancel:
-  case AirfixWindowsRenderSettingsItem::leftStickX:
-  case AirfixWindowsRenderSettingsItem::leftStickY:
-  case AirfixWindowsRenderSettingsItem::rightStickX:
-  case AirfixWindowsRenderSettingsItem::rightStickY:
-  case AirfixWindowsRenderSettingsItem::buttonBindings:
-  case AirfixWindowsRenderSettingsItem::resetAxis:
-  case AirfixWindowsRenderSettingsItem::resetAllCalibration:
-  case AirfixWindowsRenderSettingsItem::moveBinding:
-  case AirfixWindowsRenderSettingsItem::resetAllAssignments:
-  case AirfixWindowsRenderSettingsItem::swapAssignments:
-  case AirfixWindowsRenderSettingsItem::saveControllerProfile:
-  case AirfixWindowsRenderSettingsItem::back:
-  case AirfixWindowsRenderSettingsItem::count:
-    return false;
-  }
-  return false;
-}
-
-[[nodiscard]] constexpr bool
-hasChevron(const AirfixWindowsRenderSettingsItem item) noexcept {
-  switch (item) {
-  case AirfixWindowsRenderSettingsItem::displaySettings:
-  case AirfixWindowsRenderSettingsItem::controllerCalibration:
-  case AirfixWindowsRenderSettingsItem::leftStickX:
-  case AirfixWindowsRenderSettingsItem::leftStickY:
-  case AirfixWindowsRenderSettingsItem::rightStickX:
-  case AirfixWindowsRenderSettingsItem::rightStickY:
-  case AirfixWindowsRenderSettingsItem::buttonBindings:
-  case AirfixWindowsRenderSettingsItem::back:
-    return true;
-  default:
-    return false;
-  }
-}
-
-[[nodiscard]] const wchar_t *controllerActionLabel(
-    const input::ControllerDigitalGameplayAction action) noexcept {
-  switch (action) {
-  case input::ControllerDigitalGameplayAction::primaryFire:
-    return L"Primary fire";
-  case input::ControllerDigitalGameplayAction::secondaryFire:
-    return L"Secondary fire";
-  case input::ControllerDigitalGameplayAction::weaponNext:
-    return L"Next weapon";
-  case input::ControllerDigitalGameplayAction::rearView:
-    return L"Rear view";
-  case input::ControllerDigitalGameplayAction::cameraCycle:
-    return L"Cycle camera";
-  case input::ControllerDigitalGameplayAction::cameraRecenter:
-    return L"Recenter camera";
-  case input::ControllerDigitalGameplayAction::missionStatus:
-    return L"Mission status";
-  case input::ControllerDigitalGameplayAction::count:
-    break;
-  }
-  return L"Unavailable";
-}
-
-[[nodiscard]] const wchar_t *
-controllerControlLabel(const std::uint8_t index) noexcept {
-  constexpr std::array labels{
-      L"Right trigger",    L"Left trigger",        L"Right shoulder",
-      L"Left shoulder",    L"Primary face button", L"Secondary face button",
-      L"Left face button", L"Top face button",     L"Right stick click",
-      L"D-pad up",         L"D-pad down",          L"D-pad left",
-      L"D-pad right",      L"Menu button",
-  };
-  return index < labels.size() ? labels[index] : L"Unavailable";
-}
-
-[[nodiscard]] const wchar_t *
-itemValue(const AirfixWindowsRenderSettingsItem item,
-          const AirfixWindowsRenderSettingsViewSnapshot &snapshot,
-          std::array<wchar_t, 32U> &scratch) noexcept {
-  const auto &draft = snapshot.draftSettings;
-  switch (item) {
-  case AirfixWindowsRenderSettingsItem::renderScale:
-    static_cast<void>(
-        swprintf_s(scratch.data(), scratch.size(), L"%.0f%%",
-                   static_cast<double>(draft.renderScalePercent)));
-    return scratch.data();
-  case AirfixWindowsRenderSettingsItem::interfaceScale:
-    static_cast<void>(swprintf_s(scratch.data(), scratch.size(), L"%.0f%%",
-                                 static_cast<double>(draft.uiScalePercent)));
-    return scratch.data();
-  case AirfixWindowsRenderSettingsItem::presentation:
-    return draft.scenePresentation ==
-                   render::ScenePresentationMode::originalFourByThree
-               ? L"Original 4:3"
-               : L"Hor+";
-  case AirfixWindowsRenderSettingsItem::verticalFovAdjustment:
-    static_cast<void>(
-        swprintf_s(
-            scratch.data(), scratch.size(), L"+%.0f deg",
-            static_cast<double>(
-                draft.verticalFovAdjustmentDegrees)));
-    return scratch.data();
-  case AirfixWindowsRenderSettingsItem::visualProfile:
-    return draft.visualProfile == render::VisualProfile::enhanced
-               ? L"Enhanced preview"
-               : L"Classic";
-  case AirfixWindowsRenderSettingsItem::rendererStatistics:
-    return draft.diagnosticsOverlayEnabled ? L"On" : L"Off";
-  case AirfixWindowsRenderSettingsItem::bindingAction:
-    return controllerActionLabel(snapshot.selectedControllerBindingAction);
-  case AirfixWindowsRenderSettingsItem::bindingAssignment:
-    return controllerControlLabel(
-        snapshot.selectedControllerBindingControlIndex);
-  case AirfixWindowsRenderSettingsItem::innerDeadzone:
-  case AirfixWindowsRenderSettingsItem::outerSaturation:
-  case AirfixWindowsRenderSettingsItem::sensitivity:
-  case AirfixWindowsRenderSettingsItem::responseCurve:
-  case AirfixWindowsRenderSettingsItem::inversion: {
-    const auto axis = static_cast<std::size_t>(snapshot.selectedControllerAxis);
-    if (!snapshot.controllerProfileAvailable ||
-        axis >= snapshot.controllerDraftAxes.size()) {
-      return L"Unavailable";
-    }
-    const auto &calibration = snapshot.controllerDraftAxes[axis];
-    if (item == AirfixWindowsRenderSettingsItem::innerDeadzone ||
-        item == AirfixWindowsRenderSettingsItem::outerSaturation) {
-      const auto value = item == AirfixWindowsRenderSettingsItem::innerDeadzone
-                             ? calibration.innerDeadzoneQ15
-                             : calibration.outerSaturationQ15;
-      static_cast<void>(swprintf_s(scratch.data(), scratch.size(), L"%.1f%%",
-                                   static_cast<double>(value) * 100.0 /
-                                       static_cast<double>(input::q15One)));
-      return scratch.data();
-    }
-    if (item == AirfixWindowsRenderSettingsItem::sensitivity) {
-      static_cast<void>(swprintf_s(
-          scratch.data(), scratch.size(), L"%.0f%%",
-          static_cast<double>(calibration.sensitivityPermille) / 10.0));
-      return scratch.data();
-    }
-    if (item == AirfixWindowsRenderSettingsItem::responseCurve) {
-      switch (calibration.responseCurve) {
-      case input::ControllerResponseCurve::linear:
-        return L"Linear";
-      case input::ControllerResponseCurve::squared:
-        return L"Squared";
-      case input::ControllerResponseCurve::cubic:
-        return L"Cubic";
-      case input::ControllerResponseCurve::count:
-        return L"Invalid";
-      }
-    }
-    return calibration.inverted != 0U ? L"On" : L"Off";
-  }
-  case AirfixWindowsRenderSettingsItem::displaySettings:
-  case AirfixWindowsRenderSettingsItem::controllerCalibration:
-  case AirfixWindowsRenderSettingsItem::resume:
-  case AirfixWindowsRenderSettingsItem::apply:
-  case AirfixWindowsRenderSettingsItem::cancel:
-  case AirfixWindowsRenderSettingsItem::leftStickX:
-  case AirfixWindowsRenderSettingsItem::leftStickY:
-  case AirfixWindowsRenderSettingsItem::rightStickX:
-  case AirfixWindowsRenderSettingsItem::rightStickY:
-  case AirfixWindowsRenderSettingsItem::buttonBindings:
-  case AirfixWindowsRenderSettingsItem::resetAxis:
-  case AirfixWindowsRenderSettingsItem::resetAllCalibration:
-  case AirfixWindowsRenderSettingsItem::moveBinding:
-  case AirfixWindowsRenderSettingsItem::resetAllAssignments:
-  case AirfixWindowsRenderSettingsItem::swapAssignments:
-  case AirfixWindowsRenderSettingsItem::saveControllerProfile:
-  case AirfixWindowsRenderSettingsItem::back:
-  case AirfixWindowsRenderSettingsItem::count:
-    break;
-  }
-  return L"";
-}
-
-[[nodiscard]] const wchar_t *
-titleText(const AirfixWindowsRenderSettingsViewSnapshot &snapshot) noexcept {
-  switch (snapshot.screen) {
-  case AirfixWindowsRenderSettingsScreen::pause:
-    return L"Paused";
-  case AirfixWindowsRenderSettingsScreen::displaySettings:
-    return L"Display settings";
-  case AirfixWindowsRenderSettingsScreen::controllerCalibration:
-    return L"Controller settings";
-  case AirfixWindowsRenderSettingsScreen::controllerAxisCalibration:
-    switch (snapshot.selectedControllerAxis) {
-    case input::ControllerAxisElement::leftStickX:
-      return L"Left stick X calibration";
-    case input::ControllerAxisElement::leftStickY:
-      return L"Left stick Y calibration";
-    case input::ControllerAxisElement::rightStickX:
-      return L"Right stick X calibration";
-    case input::ControllerAxisElement::rightStickY:
-      return L"Right stick Y calibration";
-    case input::ControllerAxisElement::count:
-      break;
-    }
-    break;
-  case AirfixWindowsRenderSettingsScreen::controllerButtonBindings:
-    return L"Button bindings";
-  case AirfixWindowsRenderSettingsScreen::controllerBindingConflict:
-    return L"Assignment conflict";
-  }
-  return L"";
-}
-
-[[nodiscard]] constexpr bool
-statusIsWarning(const AirfixWindowsRenderSettingsStatus status) noexcept {
-  switch (status) {
-  case AirfixWindowsRenderSettingsStatus::applyFailed:
-  case AirfixWindowsRenderSettingsStatus::persistenceUnavailable:
-  case AirfixWindowsRenderSettingsStatus::invalidSettings:
-  case AirfixWindowsRenderSettingsStatus::controllerProfileSaveFailed:
-  case AirfixWindowsRenderSettingsStatus::
-      controllerProfilePersistenceUnavailable:
-  case AirfixWindowsRenderSettingsStatus::invalidControllerProfile:
-  case AirfixWindowsRenderSettingsStatus::controllerBindingConflict:
-  case AirfixWindowsRenderSettingsStatus::controllerBindingProtectedConflict:
-  case AirfixWindowsRenderSettingsStatus::controllerBindingActionUnavailable:
-    return true;
-  default:
-    return false;
-  }
-}
-
-[[nodiscard]] const wchar_t *
-statusText(const AirfixWindowsRenderSettingsViewSnapshot &snapshot) noexcept {
-  switch (snapshot.status) {
-  case AirfixWindowsRenderSettingsStatus::ready:
-    if (snapshot.sessionOverrideMask != 0U) {
-      return L"Session overrides are active";
-    }
-    if (snapshot.screen == AirfixWindowsRenderSettingsScreen::displaySettings) {
-      return snapshot.dirty ? L"Changes are ready to apply"
-                            : L"Presentation only - gameplay is unchanged";
-    }
-    return L"Paused";
-  case AirfixWindowsRenderSettingsStatus::noChanges:
-    return L"No display changes to apply";
-  case AirfixWindowsRenderSettingsStatus::applying:
-    return L"Applying display settings...";
-  case AirfixWindowsRenderSettingsStatus::applied:
-    return L"Display settings applied";
-  case AirfixWindowsRenderSettingsStatus::applyFailed:
-    return L"Display settings were not changed";
-  case AirfixWindowsRenderSettingsStatus::persistenceUnavailable:
-    return L"Display settings cannot be saved";
-  case AirfixWindowsRenderSettingsStatus::invalidSettings:
-    return L"The selected display settings are invalid";
-  case AirfixWindowsRenderSettingsStatus::controllerProfileReady:
-    if (snapshot.screen ==
-        AirfixWindowsRenderSettingsScreen::controllerAxisCalibration) {
-      return snapshot.controllerConnected
-                 ? L"Live preview uses the same transform as gameplay"
-                 : L"Connect a controller to preview this axis";
-    }
-    if (snapshot.controllerProfileRepairRequired &&
-        !snapshot.controllerProfileDirty) {
-      return L"Recovered profile is ready to repair";
-    }
-    return snapshot.controllerProfileDirty
-               ? L"Controller profile changes are ready to save"
-               : L"Choose calibration or button assignments";
-  case AirfixWindowsRenderSettingsStatus::controllerProfileNoChanges:
-    return L"No controller profile changes to save";
-  case AirfixWindowsRenderSettingsStatus::controllerProfileSaving:
-    return L"Saving controller profile...";
-  case AirfixWindowsRenderSettingsStatus::controllerProfileSaved:
-    return L"Controller profile repaired";
-  case AirfixWindowsRenderSettingsStatus::controllerProfileSavedRestartRequired:
-    return L"Saved - controller changes take effect after restart";
-  case AirfixWindowsRenderSettingsStatus::controllerProfileSaveFailed:
-    return L"Controller profile was not saved - retry is available";
-  case AirfixWindowsRenderSettingsStatus::
-      controllerProfilePersistenceUnavailable:
-    return L"Controller profile cannot be saved";
-  case AirfixWindowsRenderSettingsStatus::invalidControllerProfile:
-    return L"The selected controller profile is invalid";
-  case AirfixWindowsRenderSettingsStatus::controllerBindingConflict:
-    return L"Assignment is in use - cancel or swap explicitly";
-  case AirfixWindowsRenderSettingsStatus::controllerBindingProtectedConflict:
-    return L"That assignment is protected and cannot be moved";
-  case AirfixWindowsRenderSettingsStatus::controllerBindingActionUnavailable:
-    return L"This custom or unavailable action cannot be edited";
-  }
-  return L"";
 }
 
 [[nodiscard]] D2D1_COLOR_F color(const std::uint32_t rgb,
@@ -691,7 +314,8 @@ public:
                           accentWidth * 0.5F, accentWidth * 0.5F),
         accent_.Get());
 
-    drawText(titleText(snapshot), titleFormat_.Get(), snapshot.titleBounds,
+    const auto title = airfixWindowsUiTitle(snapshot);
+    drawText(title.c_str(), titleFormat_.Get(), snapshot.titleBounds,
              text_.Get(), DWRITE_TEXT_ALIGNMENT_LEADING);
 
     for (std::uint8_t index = 0U; index < snapshot.itemCount; ++index) {
@@ -707,8 +331,10 @@ public:
       statusBounds.y += previewHeight;
       statusBounds.height -= previewHeight;
     }
-    drawText(statusText(snapshot), statusFormat_.Get(), statusBounds,
-             statusIsWarning(snapshot.status) ? accent_.Get() : muted_.Get(),
+    const auto status = airfixWindowsUiStatus(snapshot);
+    drawText(status.c_str(), statusFormat_.Get(), statusBounds,
+             airfixWindowsUiStatusIsWarning(snapshot.status) ? accent_.Get()
+                                                             : muted_.Get(),
              DWRITE_TEXT_ALIGNMENT_CENTER);
   }
 
@@ -749,7 +375,8 @@ private:
         item.selected ? std::max(2.0F, 2.0F * dpi_) : std::max(1.0F, dpi_));
 
     const float horizontalPadding = 22.0F * dpi_;
-    const bool valueRow = isValueItem(item.item);
+    const bool valueRow =
+        airfixWindowsRenderSettingsItemIsAdjustable(item.item);
     auto labelBounds = item.bounds;
     labelBounds.x += horizontalPadding;
     labelBounds.width -= horizontalPadding * 2.0F;
@@ -761,11 +388,12 @@ private:
     }
 
     ID2D1Brush *foreground = item.enabled ? text_.Get() : disabled_.Get();
-    drawText(itemLabel(item.item), rowFormat_.Get(), labelBounds, foreground,
+    const auto label = airfixWindowsUiItemLabel(item.item);
+    drawText(label.c_str(), rowFormat_.Get(), labelBounds, foreground,
              DWRITE_TEXT_ALIGNMENT_LEADING);
 
     if (!valueRow) {
-      if (hasChevron(item.item)) {
+      if (airfixWindowsUiItemHasChevron(item.item)) {
         auto chevronBounds = item.bounds;
         chevronBounds.x = item.bounds.x + item.bounds.width - 54.0F * dpi_;
         chevronBounds.width = 30.0F * dpi_;
@@ -780,9 +408,9 @@ private:
     const AirfixWindowsUiPixelRect valueBounds{
         valueX, item.bounds.y, std::max(0.0F, valueRight - valueX),
         item.bounds.height};
-    std::array<wchar_t, 32U> scratch{};
-    drawText(itemValue(item.item, snapshot, scratch), valueFormat_.Get(),
-             valueBounds, foreground, DWRITE_TEXT_ALIGNMENT_CENTER);
+    const auto value = airfixWindowsUiItemValue(item.item, snapshot);
+    drawText(value.c_str(), valueFormat_.Get(), valueBounds, foreground,
+             DWRITE_TEXT_ALIGNMENT_CENTER);
     drawText(L"-", valueFormat_.Get(), item.previousBounds, foreground,
              DWRITE_TEXT_ALIGNMENT_CENTER);
     drawText(L"+", valueFormat_.Get(), item.nextBounds, foreground,
