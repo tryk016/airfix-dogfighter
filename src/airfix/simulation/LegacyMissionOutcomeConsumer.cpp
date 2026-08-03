@@ -5,11 +5,6 @@
 namespace airfix::simulation {
 namespace {
 
-[[nodiscard]] constexpr bool
-validCampaignSide(const LegacyCampaignSide side) noexcept {
-  return side == LegacyCampaignSide::axis || side == LegacyCampaignSide::allied;
-}
-
 [[nodiscard]] constexpr LegacyMissionOutcomeConsumption
 invalidConsumption(const LegacyMissionOutcomeConsumeStatus status) noexcept {
   return {
@@ -35,7 +30,7 @@ LegacyMissionOutcomeConsumption legacyMissionConsumeOutcome(
     };
   }
 
-  if (!validCampaignSide(input.side)) {
+  if (!campaign::validCampaignSide(input.side)) {
     return invalidConsumption(
         LegacyMissionOutcomeConsumeStatus::invalidCampaignSide);
   }

@@ -217,6 +217,12 @@ rejects duplicate known singleton records, permits repeated `MEDA`, and retains
 unknown records only as ID/size descriptors. This is an explicit safe product
 policy, not a claim about every legacy duplicate or migration case.
 
+[ADR-0021](../adr/0021-versioned-campaign-state-document.md) defines `AFCS`, a
+separate canonical product document for the recovered numeric campaign state.
+`AFCS` is not a legacy roster writer and does not preserve profile strings,
+medals, unknown payloads, original record order, or bit-identical legacy bytes.
+No automatic legacy-to-`AFCS` migration is implemented by the codec.
+
 **NO-GO** for reproducing legacy corrupt-file behavior. The recovered behavior
 is memory-unsafe and not completely defined without prohibited execution.
 
