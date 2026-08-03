@@ -5524,6 +5524,13 @@ superseded evidence.
   steps fall by 39%, 54%, and 74% relative to the empty-cache run. Both Windows
   products and both unsigned iOS destinations pass again without compiler
   caching.
+- The first documentation-only trial exposed a GitHub naming boundary: a
+  skipped strategy matrix reports `matrix.os`, while the main ruleset requires
+  the three concrete platform names. A docs-only Ubuntu compatibility fan-out
+  now publishes those exact statuses only after `full_build=false`; it performs
+  no checkout, build, or test and allocates no Windows/macOS runner. Full runs
+  continue to satisfy the same names through their real platform jobs, with no
+  ruleset bypass.
 
 ## 2026-08-03 - bounded AirCraft AI-to-physics cycle
 

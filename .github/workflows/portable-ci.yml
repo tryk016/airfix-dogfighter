@@ -85,6 +85,26 @@ jobs:
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: git diff --check HEAD^ HEAD
 
+  documentation-required-statuses:
+    name: ${{ matrix.required_status }}
+    needs: quality-gates
+    if: needs.quality-gates.outputs.full_build == 'false'
+    strategy:
+      fail-fast: false
+      matrix:
+        required_status:
+          - ubuntu-24.04
+          - windows-2025
+          - macos-26
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+
+    steps:
+      - name: Confirm native build is not required
+        run: |
+          test "${{ needs.quality-gates.outputs.full_build }}" = "false"
+          echo "${{ matrix.required_status }} is satisfied by the documentation quality gates; no native build is required."
+
   code-intelligence-preset:
     name: clangd preset / ubuntu-24.04
     needs: quality-gates

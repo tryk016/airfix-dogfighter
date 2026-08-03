@@ -103,6 +103,16 @@ The documentation path still runs:
 Only after those gates pass may the native jobs be reported as intentionally
 skipped.
 
+The repository ruleset requires the exact `ubuntu-24.04`, `windows-2025`, and
+`macos-26` check names. GitHub reports a job-level skipped matrix under the
+generic name `matrix.os`, so documentation-only runs publish those three exact
+compatibility statuses through a short Ubuntu matrix after the quality gate.
+Each status asserts the same `full_build=false` decision and performs no
+checkout, compilation, or test. All three use Ubuntu, so no Windows or macOS
+runner is allocated. Full-build runs skip this compatibility matrix and obtain
+the same names from the real platform jobs. This preserves the strict ruleset
+without an administrator bypass.
+
 ## Object cache
 
 The portable Ubuntu and macOS jobs and the Ninja clangd job use Mozilla's
