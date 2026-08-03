@@ -13,6 +13,7 @@ namespace {
 
 using airfix::render::ScenePresentationMode;
 using airfix::render::VisualProfile;
+using airfix::texture::TextureMode;
 using airfix::windows::parseAirfixWindowsCommandLine;
 using namespace std::string_view_literals;
 
@@ -46,7 +47,8 @@ void testEmptyAndSmokeModes() {
               !defaultOptions.useInstalledContent &&
               !defaultOptions.manageInstalledContent &&
               !defaultOptions.importAfPackSource && !defaultOptions.mission &&
-              !defaultOptions.captureSize &&
+              defaultOptions.textureMode == TextureMode::classic &&
+              !defaultOptions.texturePack && !defaultOptions.captureSize &&
               !defaultOptions.renderOverrides.renderScalePercent &&
               !defaultOptions.renderOverrides.scenePresentation &&
               !defaultOptions.renderOverrides.visualProfile &&
@@ -73,6 +75,40 @@ void testEmptyAndSmokeModes() {
               !smokeOptions.renderOverrides.diagnosticsOverlayEnabled &&
               !smokeOptions.renderOverrides.verticalFovAdjustmentDegrees,
           "smoke mode without render flags must remain sparse");
+}
+
+void testTexturePackSessionOptions() {
+  const std::array enhanced{
+      "--content-root"sv,
+      "private-pack"sv,
+      "--setup"sv,
+      "mission.afs"sv,
+      "--level"sv,
+      "mission.level"sv,
+      "--texture-mode"sv,
+      "enhanced"sv,
+      "--texture-pack-root"sv,
+      "owner-textures"sv,
+      "--texture-pack-manifest"sv,
+      "manifests/reviewed.jsonl"sv,
+  };
+  const auto enhancedOptions = parse(enhanced);
+  require(enhancedOptions.textureMode == TextureMode::enhanced &&
+              enhancedOptions.texturePack.has_value() &&
+              enhancedOptions.texturePack->root ==
+                  std::filesystem::path("owner-textures") &&
+              enhancedOptions.texturePack->manifestRelativePath ==
+                  "manifests/reviewed.jsonl",
+          "session-only Enhanced texture package was not retained");
+
+  const std::array classic{
+      "--installed-content"sv, "--setup"sv,        "mission.afs"sv, "--level"sv,
+      "mission.level"sv,       "--texture-mode"sv, "classic"sv,
+  };
+  const auto classicOptions = parse(classic);
+  require(classicOptions.textureMode == TextureMode::classic &&
+              !classicOptions.texturePack,
+          "explicit Classic texture mode was not retained");
 }
 
 void testPresentationOptions() {
@@ -197,6 +233,37 @@ void testValidationAndRejections() {
   requireRejected(
       std::array{"--setup"sv, "mission.afs"sv, "--level"sv, "mission.level"sv},
       "mission paths without a content root must fail closed");
+  requireRejected(std::array{"--content-root"sv, "private-pack"sv, "--setup"sv,
+                             "mission.afs"sv, "--level"sv, "mission.level"sv,
+                             "--texture-mode"sv, "enhanced"sv},
+                  "Enhanced mode without a package locator must fail closed");
+  requireRejected(std::array{"--content-root"sv, "private-pack"sv, "--setup"sv,
+                             "mission.afs"sv, "--level"sv, "mission.level"sv,
+                             "--texture-pack-root"sv, "owner-textures"sv},
+                  "an incomplete texture package locator must fail closed");
+  requireRejected(std::array{"--content-root"sv, "private-pack"sv, "--setup"sv,
+                             "mission.afs"sv, "--level"sv, "mission.level"sv,
+                             "--texture-mode"sv, "classic"sv,
+                             "--texture-pack-root"sv, "owner-textures"sv,
+                             "--texture-pack-manifest"sv, "reviewed.jsonl"sv},
+                  "Classic mode must not open a private HD package");
+  requireRejected(std::array{"--validate-content-root"sv, "private-pack"sv,
+                             "--setup"sv, "mission.afs"sv, "--level"sv,
+                             "mission.level"sv, "--texture-mode"sv,
+                             "classic"sv},
+                  "content validation must not activate a texture session");
+  requireRejected(
+      std::array{"--texture-mode"sv, "classic"sv},
+      "texture mode without an authenticated mission must fail closed");
+  requireRejected(std::array{"--content-root"sv, "private-pack"sv, "--setup"sv,
+                             "mission.afs"sv, "--level"sv, "mission.level"sv,
+                             "--texture-mode"sv, "future"sv},
+                  "unknown texture mode must fail closed");
+  requireRejected(std::array{"--content-root"sv, "private-pack"sv, "--setup"sv,
+                             "mission.afs"sv, "--level"sv, "mission.level"sv,
+                             "--texture-mode"sv, "classic"sv,
+                             "--texture-mode"sv, "classic"sv},
+                  "duplicate texture mode must fail closed");
   requireRejected(std::array{"--content-root"sv, "private-pack"sv, "--setup"sv,
                              "mission.afs"sv},
                   "an incomplete mission pair must fail closed");
@@ -660,6 +727,7 @@ int main() {
     testEmptyAndSmokeModes();
     testPresentationOptions();
     testAuthenticatedMissionRequest();
+    testTexturePackSessionOptions();
     testInstalledContentAndImportRequests();
     testValidationAndRejections();
     testPrivateCaptureRequest();

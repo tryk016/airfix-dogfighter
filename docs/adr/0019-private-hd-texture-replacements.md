@@ -55,11 +55,12 @@ manifest record.
 
 ## Decision
 
-The project will support an optional, owner-configured HD replacement package
-through a portable `TextureReplacementResolver`, but implementation is
-deliberately staged. Public stages 1-4 are now implemented behind synthetic
-tests. This ADR does not merge the pipeline branch, add the private package to
-a build, or make Enhanced mode a current product claim.
+The project supports an optional, owner-configured HD replacement package
+through a portable `TextureReplacementResolver`, with implementation kept
+deliberately staged. Public stages 1-5 and the Windows session-only stage-6
+pilot are implemented. The pilot has no persistent selector and does not make
+Enhanced a cross-platform product claim. This ADR does not merge the pipeline
+branch or add the private package to a build, bundle, Git, or CI.
 
 ### Independent setting and effective state
 
@@ -83,8 +84,8 @@ Classic is always available and keeps the current GTI parse, preferred-variant
 selection, authored/generated mip behavior, and failure semantics. It has no
 dependency on an HD manifest or package root.
 
-The settings model distinguishes the durable requested mode from the effective
-mode used by the active mission:
+The target settings model distinguishes the durable requested mode from the
+effective mode used by the active mission:
 
 ```text
 requested texture mode: persisted user preference
@@ -104,6 +105,13 @@ first implementation. The new room and complete active texture namespace are
 prepared before publication; failure preserves the old room and old effective
 mode. A later cache may reduce reload work, but it must not turn mode changes
 into partial in-place mutation.
+
+The implemented Windows pilot is intentionally narrower: Classic is the
+default, `--texture-mode enhanced` is valid only with an explicit private root
+and relative reviewed-manifest path, and the choice lasts for one process. A
+package-open failure starts the requested mission in Classic with a fixed,
+path-free status. Changing the mode means restarting/reloading the mission.
+Nothing is persisted and iOS remains Classic-only.
 
 When implemented, `RenderPresentationSettings` gains `TextureMode` through an
 explicit schema migration. Existing schema-1/2/3 records migrate to Classic.
@@ -170,7 +178,10 @@ legacy archive lookup. Absolute paths, drive-qualified paths, UNC/device
 paths, alternate data streams, empty/dot/dot-dot components, control
 characters, embedded NUL, and overlong values are rejected before indexing.
 Two records may not claim the same normalized path with different source
-checksums or results.
+checksums or results. The representative record category is validated
+independently from the source-category list, as required by the public schema:
+`mixed` may summarize multiple concrete categories without appearing in that
+list.
 
 The current private schema authenticates the base PNG with
 `output_png_sha256`, but does not contain an expected SHA-256 for every
@@ -347,6 +358,14 @@ RGBA8 is the only stage-one upload. BC7, BC3, and ASTC are later private
 derivative layers with their own manifest identity, per-subresource checksums,
 format metadata, and synthetic parser tests. They never replace or mutate the
 accepted RGBA source layer.
+
+The Windows pilot uploads the prepared RGBA8 mip chain as immutable D3D11
+resources. Its conservative cache is partitioned by texture mode and manifest
+generation, includes logical/source identity, GPU format, and mip policy in
+the key, and is capped at 512 entries and 256 MiB. A generation or mode change
+invalidates the inactive partition; Classic never needs to retain an Enhanced
+copy. This is a bounded reload cache, not the later streaming residency
+manager.
 
 ### Repository and telemetry boundary
 
@@ -650,9 +669,11 @@ The following remain outside Git and public CI:
        GTI bytes, resolve the manifest-selected base file through ADR-0020,
        authenticate it, and prove exact per-texture Classic fallback under
        synthetic tests. Products remain forced to Classic.
-9. [ ] Implement stage 5 bounded PNG RGBA8/IHDR and mip-chain preparation with
+9. [x] Implement stage 5 bounded PNG RGBA8/IHDR and mip-chain preparation with
        checked CPU accounting and no native GPU code.
-10. [ ] Run the Windows opt-in RGBA8 pilot and private visual comparisons.
+10. [x] Run the Windows session-only RGBA8 pilot and private visual comparison.
+        A 1920x1080 authenticated mission loaded 34 Enhanced textures with no
+        Classic fallback; the owner-local captures remain outside Git.
 11. [ ] Add persistence and iOS only after the portable fallback matrix is
        complete and independently reviewed.
 12. [ ] Add streaming and compressed derivatives only after device budgets and

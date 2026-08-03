@@ -256,6 +256,17 @@ void testAcceptedOnlyIndexAndLookups() {
         "invalid lookup path did not fail closed");
 }
 
+void testMixedRepresentativeCategory() {
+    RecordOptions mixed;
+    mixed.categories = "\"world\",\"models\"";
+    mixed.category = "mixed";
+
+    const auto parsed =
+        parseTextureHdManifest(bytesOf(header(1U, 1U, 1U) + record(mixed)));
+    require(parsed.success() && parsed.index->records().size() == 1U,
+        "schema-valid mixed representative category was rejected");
+}
+
 void testJsonAndInputLimits() {
     requireIssue({}, TextureHdManifestIssueKind::invalidHeader, std::nullopt);
     requireIssue("{\n", TextureHdManifestIssueKind::malformedJson, 1U);
@@ -469,7 +480,7 @@ void testRecordSchemaAndIdentityValidation() {
         2U);
 
     options = {};
-    options.category = "world";
+    options.category = "unsupported";
     requireIssue(
         header(1U, 1U, 1U) + record(options),
         TextureHdManifestIssueKind::invalidRecord,
@@ -635,6 +646,7 @@ void testCountsAndConfiguredRecordBounds() {
 int main() {
     try {
         testAcceptedOnlyIndexAndLookups();
+        testMixedRepresentativeCategory();
         testJsonAndInputLimits();
         testHeaderValidation();
         testRecordSchemaAndIdentityValidation();

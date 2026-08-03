@@ -1,7 +1,10 @@
 #include "airfix/content/MissionWorldRoomLoader.hpp"
 #include "airfix/content/MissionWorldRoomLoaderDetail.hpp"
+#include "airfix/content/MissionWorldRoomPublication.hpp"
+#include "airfix/crypto/Sha256.hpp"
 #include "support/SyntheticContent.hpp"
 #include "support/SyntheticLegacyAssets.hpp"
+#include "support/SyntheticPng.hpp"
 
 #include <algorithm>
 #include <array>
@@ -14,10 +17,12 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <memory>
 #include <optional>
 #include <ranges>
 #include <span>
+#include <sstream>
 #include <stdexcept>
 #include <stop_token>
 #include <string>
@@ -124,6 +129,58 @@ class TestInputStore final {
     TestInputStore() = default;
 
     std::vector<std::filesystem::path> paths_;
+};
+
+class SyntheticTextureFileStore final
+    : public airfix::texture::PrivateTextureFileStore {
+  public:
+    explicit SyntheticTextureFileStore(const std::uint64_t generation) noexcept
+        : generation_(generation) {}
+
+    [[nodiscard]] std::uint64_t generation() const noexcept override {
+        return generation_;
+    }
+
+    [[nodiscard]] airfix::texture::PrivateTextureFileReadResult
+    readFile(const std::string_view relativePath,
+             const std::size_t maximumBytes,
+             const std::uint64_t expectedGeneration) const noexcept override {
+        if (expectedGeneration != generation_) {
+            return {
+                .status =
+                    airfix::texture::PrivateTextureFileStatus::staleGeneration};
+        }
+        const auto found = files_.find(std::string(relativePath));
+        if (found == files_.end()) {
+            return {.status =
+                        airfix::texture::PrivateTextureFileStatus::notFound};
+        }
+        if (found->second.size() > maximumBytes) {
+            return {
+                .status = airfix::texture::PrivateTextureFileStatus::
+                    sizeLimitExceeded,
+            };
+        }
+        try {
+            return {
+                .status = airfix::texture::PrivateTextureFileStatus::ready,
+                .bytes = found->second,
+            };
+        }
+        catch (...) {
+            return {
+                .status = airfix::texture::PrivateTextureFileStatus::ioFailure,
+            };
+        }
+    }
+
+    void add(std::string path, Bytes bytes) {
+        files_.emplace(std::move(path), std::move(bytes));
+    }
+
+  private:
+    std::uint64_t generation_{};
+    std::map<std::string, Bytes, std::less<>> files_;
 };
 
 [[nodiscard]] VerifiedContentSession
@@ -433,6 +490,77 @@ void requireAtomicFailure(const MissionWorldRoomLoadResult &result,
             message);
 }
 
+[[nodiscard]] std::span<const std::uint8_t>
+bytesOf(const std::string &text) noexcept {
+    return {reinterpret_cast<const std::uint8_t *>(text.data()), text.size()};
+}
+
+[[nodiscard]] std::string makeReviewedHdManifest(const Bytes &sourceGti,
+                                                 const Bytes &basePng) {
+    const std::string sixtyFourA(64U, 'a');
+    const std::string sixtyFourB(64U, 'b');
+    const std::string sixtyFourC(64U, 'c');
+    std::ostringstream json;
+    json << '{' << "\"record_type\":\"hd-reviewed-corpus\","
+         << "\"schema_version\":1,"
+         << "\"review_run_id\":\"synthetic-review\","
+         << "\"source_corpus_id\":\"" << sixtyFourA << "\","
+         << "\"base_manifest_sha256\":\"" << sixtyFourB << "\","
+         << "\"base_pipeline_version\":\"synthetic-v1\","
+         << "\"override_sources\":[{\"sha256\":\"" << sixtyFourC
+         << "\",\"pipeline_version\":\"synthetic-v1\","
+         << "\"result_count\":1}],"
+         << "\"unique_result_count\":1,"
+         << "\"logical_texture_count\":1,"
+         << "\"status_counts\":{\"accepted\":1,\"rejected\":0,"
+         << "\"manual-review\":0},"
+         << "\"review_basis\":\"synthetic fixture\","
+         << "\"local_only\":true}\n";
+    json << '{' << "\"schema_version\":1,"
+         << "\"pipeline_version\":\"synthetic-v1\","
+         << "\"run_id\":\"synthetic-run\","
+         << "\"source_corpus_id\":\"" << sixtyFourA << "\","
+         << "\"source_gti_sha256\":\""
+         << airfix::crypto::toHex(airfix::crypto::sha256(sourceGti)) << "\","
+         << "\"input_png_sha256\":\"" << sixtyFourB << "\","
+         << "\"output_png_sha256\":\""
+         << airfix::crypto::toHex(airfix::crypto::sha256(basePng)) << "\","
+         << "\"logical_paths\":[\""
+         << airfix::testing::kSyntheticWallGtiLogicalPath << "\"],"
+         << "\"categories\":[\"ui-fonts\"],"
+         << "\"category\":\"ui-fonts\","
+         << "\"role\":\"synthetic-role\","
+         << "\"method\":\"synthetic-method\","
+         << "\"model\":null,\"model_provenance\":null,"
+         << "\"parameters\":{\"scale\":4,\"edge_mode\":\"clamp\","
+         << "\"rgb_resampler\":\"lanczos\","
+         << "\"alpha_resampler\":\"bicubic\","
+         << "\"transparent_rgb_extension\":true,"
+         << "\"sample_space\":\"encoded-unclassified\"},"
+         << "\"source\":{\"width\":2,\"height\":2,"
+         << "\"alpha_usage\":\"opaque\",\"mipmaps\":1},"
+         << "\"result\":{\"width\":8,\"height\":8,"
+         << "\"generated_mipmaps\":4,"
+         << "\"path\":\"hd/wall/base.png\","
+         << "\"mipmap_directory\":\"hd/wall/mips\","
+         << "\"comparison_board\":\"hd/wall/board.png\"},"
+         << "\"qa\":{},\"status\":\"accepted\","
+         << "\"automated_status\":\"manual-review\","
+         << "\"review\":{\"status\":\"accepted\","
+         << "\"basis\":\"synthetic explicit review\","
+         << "\"review_run_id\":\"synthetic-review\","
+         << "\"used_override\":false}}\n";
+    return json.str();
+}
+
+[[nodiscard]] airfix::texture::TextureHdManifestIndex
+makeHdManifestIndex(const Bytes &sourceGti, const Bytes &basePng) {
+    const auto manifest = makeReviewedHdManifest(sourceGti, basePng);
+    auto parsed = airfix::texture::parseTextureHdManifest(bytesOf(manifest));
+    require(parsed.success(), "synthetic mission HD manifest was rejected");
+    return std::move(*parsed.index);
+}
+
 [[nodiscard]] MissionWorldRoomLoadRequest rootRequest() { return {}; }
 
 void requireOneTriangle(const airfix::content::LoadedMissionWorldRoom &room,
@@ -500,7 +628,12 @@ void testRootFallbackOrderingCachingAndPoisonTexture() {
     requireOneTriangle(room, 0U, {1.0F, 2.0F, 3.0F});
     require(room.textures.size() == 2U &&
                 room.textures[0].assetId == TextureAssetId{0U} &&
-                room.textures[1].assetId == TextureAssetId{1U},
+                room.textures[1].assetId == TextureAssetId{1U} &&
+                room.requestedTextureMode ==
+                    airfix::texture::TextureMode::classic &&
+                room.classicTextureCount == 2U &&
+                room.enhancedTextureCount == 0U &&
+                room.textureFallbackCount == 0U,
             "root texture imports are not one dense global namespace");
     require(room.submission.commands[0].primary ==
                     std::optional<TextureAssetId>{TextureAssetId{0U}} &&
@@ -521,6 +654,104 @@ void testRootFallbackOrderingCachingAndPoisonTexture() {
         session.sourceArchive().lookup(kObjectOnlyGtiLogicalPath);
     require(objectOnlyLookup.status == airfix::udsp::LookupStatus::notFound,
             "poison fixture accidentally included the object-only GTI");
+}
+
+void testEnhancedTextureSelectionAndPerAssetFallback() {
+    const auto pack = makePack();
+    auto session = openSession(pack);
+    auto manifest = buildManifest(session);
+    require(manifest.success(), "Enhanced fixture manifest failed");
+
+    const auto wallGti = airfix::testing::makeSyntheticRgba8Gti(
+        airfix::testing::kSyntheticWallRgba);
+    const auto level0Pixels =
+        airfix::testing::makeSolidRgba8(8U, 8U, {9U, 19U, 29U, 255U});
+    const auto level1Pixels =
+        airfix::testing::makeSolidRgba8(4U, 4U, {39U, 49U, 59U, 255U});
+    const auto level2Pixels =
+        airfix::testing::makeSolidRgba8(2U, 2U, {69U, 79U, 89U, 255U});
+    const auto level3Pixels =
+        airfix::testing::makeSolidRgba8(1U, 1U, {99U, 109U, 119U, 255U});
+    const auto level0 =
+        airfix::testing::makeSyntheticRgba8Png(8U, 8U, level0Pixels);
+    const auto level1 =
+        airfix::testing::makeSyntheticRgba8Png(4U, 4U, level1Pixels);
+    const auto level2 =
+        airfix::testing::makeSyntheticRgba8Png(2U, 2U, level2Pixels);
+    const auto level3 =
+        airfix::testing::makeSyntheticRgba8Png(1U, 1U, level3Pixels);
+    const auto index = makeHdManifestIndex(wallGti, level0);
+
+    SyntheticTextureFileStore completeFiles{88U};
+    completeFiles.add("hd/wall/base.png", level0);
+    completeFiles.add("hd/wall/mips/mip-00.png", level0);
+    completeFiles.add("hd/wall/mips/mip-01.png", level1);
+    completeFiles.add("hd/wall/mips/mip-02.png", level2);
+    completeFiles.add("hd/wall/mips/mip-03.png", level3);
+    const airfix::texture::TextureReplacementResolver completeResolver(
+        index, completeFiles, 88U);
+    const airfix::content::MissionWorldRoomTextureReplacementContext
+        enhancedContext{
+            .requestedMode = airfix::texture::TextureMode::enhanced,
+            .resolver = &completeResolver,
+            .files = &completeFiles,
+            .lookupPolicy = {},
+            .pngPerTexture = {},
+        };
+    const auto enhanced = airfix::content::loadMissionWorldRoom(
+        session, *manifest.manifest, rootRequest(), {}, {}, {},
+        enhancedContext);
+    require(enhanced.success() && enhanced.room.has_value(),
+            "valid Enhanced mission load failed");
+    const auto &room = *enhanced.room;
+    require(
+        room.requestedTextureMode == airfix::texture::TextureMode::enhanced &&
+            room.enhancedTextureCount == 1U && room.classicTextureCount == 1U &&
+            room.textureFallbackCount == 1U && room.textures.size() == 2U &&
+            room.textures[0].sourceMode ==
+                airfix::texture::TextureMode::enhanced &&
+            room.textures[0].replacementGeneration == 88U &&
+            room.textures[0].sourceGtiSha256 ==
+                std::optional{airfix::crypto::sha256(wallGti)} &&
+            room.textures[0].uploadLevels.size() == 4U &&
+            room.textures[0].uploadLevels[0].pixels == level0Pixels &&
+            room.textures[1].sourceMode ==
+                airfix::texture::TextureMode::classic &&
+            room.textures[1].replacementGeneration == 88U &&
+            room.textures[1].sourceGtiSha256.has_value(),
+        "Enhanced selection or per-asset GTI fallback changed");
+    require(!airfix::content::validateMissionWorldRoomPublication(
+                 room, revisionFor(pack))
+                 .has_value(),
+            "Enhanced room failed its publication boundary");
+
+    SyntheticTextureFileStore incompleteFiles{89U};
+    incompleteFiles.add("hd/wall/base.png", level0);
+    incompleteFiles.add("hd/wall/mips/mip-00.png", level0);
+    const airfix::texture::TextureReplacementResolver incompleteResolver(
+        index, incompleteFiles, 89U);
+    const auto missingMip = airfix::content::loadMissionWorldRoom(
+        session, *manifest.manifest, rootRequest(), {}, {}, {},
+        {
+            .requestedMode = airfix::texture::TextureMode::enhanced,
+            .resolver = &incompleteResolver,
+            .files = &incompleteFiles,
+        });
+    require(missingMip.success() && missingMip.room.has_value() &&
+                missingMip.room->enhancedTextureCount == 0U &&
+                missingMip.room->classicTextureCount == 2U &&
+                missingMip.room->textureFallbackCount == 2U,
+            "one missing private mip aborted the mission or escaped fallback");
+
+    auto budgetContext = enhancedContext;
+    budgetContext.pngPerTexture.maximumDecodedRgbaBytes = 339U;
+    const auto overBudget = airfix::content::loadMissionWorldRoom(
+        session, *manifest.manifest, rootRequest(), {}, {}, {}, budgetContext);
+    require(overBudget.success() && overBudget.room.has_value() &&
+                overBudget.room->enhancedTextureCount == 0U &&
+                overBudget.room->classicTextureCount == 2U &&
+                overBudget.room->textureFallbackCount == 2U,
+            "over-budget HD texture did not fall back per asset");
 }
 
 [[nodiscard]] airfix::render::ConvertedNodeTransform
@@ -2153,6 +2384,7 @@ void testPlayerExactAndOneUnderBudgets() {
 int main() {
     try {
         testRootFallbackOrderingCachingAndPoisonTexture();
+        testEnhancedTextureSelectionAndPerAssetFallback();
         testPlayerVisualSeparateCcfTexturesAndTablePose();
         testPlayerVisualReusesRoomCcfAndRootPose();
         testAuthoredStartSelectsBackdropAndOwnsStart();

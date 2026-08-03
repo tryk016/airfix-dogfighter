@@ -719,6 +719,65 @@ validateMissionWorldRoomPublication(
         placedCollisionIssue.has_value()) {
         return placedCollisionIssue;
     }
+
+    std::size_t observedClassicTextureCount = 0U;
+    std::size_t observedEnhancedTextureCount = 0U;
+    std::uint64_t observedReplacementGeneration = 0U;
+    for (std::size_t textureIndex = 0U;
+         textureIndex < room.textures.size(); ++textureIndex) {
+        const auto &texture = room.textures[textureIndex];
+        if (room.requestedTextureMode == texture::TextureMode::enhanced) {
+            if (texture.replacementGeneration == 0U ||
+                (observedReplacementGeneration != 0U &&
+                 texture.replacementGeneration !=
+                     observedReplacementGeneration)) {
+                return indexedIssue(MissionWorldRoomPublicationIssueKind::
+                                        textureReplacementProvenanceMismatch,
+                                    textureIndex);
+            }
+            observedReplacementGeneration = texture.replacementGeneration;
+        }
+        switch (texture.sourceMode) {
+        case texture::TextureMode::classic:
+            ++observedClassicTextureCount;
+            if (room.requestedTextureMode == texture::TextureMode::classic &&
+                (texture.replacementGeneration != 0U ||
+                 texture.sourceGtiSha256.has_value())) {
+                return indexedIssue(MissionWorldRoomPublicationIssueKind::
+                                        textureReplacementProvenanceMismatch,
+                                    textureIndex);
+            }
+            break;
+        case texture::TextureMode::enhanced:
+            ++observedEnhancedTextureCount;
+            if (room.requestedTextureMode != texture::TextureMode::enhanced ||
+                texture.replacementGeneration == 0U ||
+                !texture.sourceGtiSha256.has_value()) {
+                return indexedIssue(MissionWorldRoomPublicationIssueKind::
+                                        textureReplacementProvenanceMismatch,
+                                    textureIndex);
+            }
+            break;
+        default:
+            return indexedIssue(MissionWorldRoomPublicationIssueKind::
+                                    textureReplacementProvenanceMismatch,
+                                textureIndex);
+        }
+    }
+    const bool classicRequestSummaryValid =
+        room.requestedTextureMode == texture::TextureMode::classic &&
+        observedClassicTextureCount == room.textures.size() &&
+        observedEnhancedTextureCount == 0U && room.textureFallbackCount == 0U;
+    const bool enhancedRequestSummaryValid =
+        room.requestedTextureMode == texture::TextureMode::enhanced &&
+        room.textureFallbackCount == observedClassicTextureCount;
+    if (observedClassicTextureCount != room.classicTextureCount ||
+        observedEnhancedTextureCount != room.enhancedTextureCount ||
+        (!classicRequestSummaryValid && !enhancedRequestSummaryValid)) {
+        return issue(
+            MissionWorldRoomPublicationIssueKind::textureModeSummaryMismatch);
+    }
+
     const auto expectedPose = buildPlayerSpawnPose(
         room.startSelection, room.selectedStart, room.runtimeBasis);
     if (!expectedPose.success() ||

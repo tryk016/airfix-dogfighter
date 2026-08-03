@@ -15,6 +15,7 @@
 #include "airfix/render/SceneTextureSampling.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -198,6 +199,12 @@ private:
   lastSceneTextureSamplingPolicyForTesting() const noexcept;
   [[nodiscard]] bool hasDiagnosticsOverlayResourcesForTesting() const noexcept;
   [[nodiscard]] bool hasProductUiOverlayResourcesForTesting() const noexcept;
+  [[nodiscard]] std::size_t
+  missionTextureCacheEntryCountForTesting() const noexcept;
+  [[nodiscard]] std::uint64_t
+  missionTextureCacheResidentBytesForTesting() const noexcept;
+  [[nodiscard]] const void *
+  missionTextureIdentityForTesting(std::size_t index) const noexcept;
 
   class Implementation;
   std::unique_ptr<Implementation> implementation_;

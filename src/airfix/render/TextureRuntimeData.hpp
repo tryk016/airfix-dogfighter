@@ -1,6 +1,8 @@
 #pragma once
 
 #include "airfix/render/TextureRuntimePlan.hpp"
+#include "airfix/texture/TextureHdPngPreparation.hpp"
+#include "airfix/texture/TextureMode.hpp"
 #include "airfix/texture/TextureReplacementResolver.hpp"
 
 #include <cstddef>
@@ -71,6 +73,24 @@ struct TextureSourcePreparation final {
     }
 };
 
+struct TextureUploadSourcePreparation final {
+    texture::TextureMode selectedMode{texture::TextureMode::classic};
+    texture::TextureReplacementFallbackReason resolverFallback{
+        texture::TextureReplacementFallbackReason::notConfigured};
+    std::optional<texture::TextureHdPngPreparationIssueKind>
+        pngPreparationFallback;
+    bool sourceDigestComputed{};
+    crypto::Sha256Digest sourceGtiSha256{};
+    std::uint64_t replacementGeneration{};
+    GtiUploadPreparation upload;
+
+    [[nodiscard]] bool success() const noexcept { return upload.success(); }
+
+    [[nodiscard]] bool enhancedSelected() const noexcept {
+        return selectedMode == texture::TextureMode::enhanced && success();
+    }
+};
+
 // Parses, plans, and decodes one complete GTI source transaction. Authored
 // chains decode every selected mip. Legacy dimension anomalies decode only the
 // base level and leave lower-level generation to the eventual render backend.
@@ -92,5 +112,19 @@ struct TextureSourcePreparation final {
     const texture::TextureReplacementResolver* resolver = nullptr,
     texture::TextureReplacementLookupPolicy replacementPolicy = {},
     const GtiUploadDataLimits& limits = {});
+
+// Complete per-texture source transaction used by opt-in product pilots. A
+// reviewed candidate is decoded and converted to the same backend-neutral
+// authored RGBA8 upload contract used by legacy GTI. Every resolver, PNG,
+// validation, or budget failure prepares the byte-identical GTI source
+// instead. No private path, checksum, or decoder text enters the result.
+[[nodiscard]] TextureUploadSourcePreparation prepareTextureUploadSource(
+    const TextureImportRequest& request,
+    std::span<const std::uint8_t> gtiBytes,
+    const texture::TextureReplacementResolver* resolver,
+    const texture::PrivateTextureFileStore* files,
+    texture::TextureReplacementLookupPolicy replacementPolicy = {},
+    const GtiUploadDataLimits& gtiLimits = {},
+    const texture::TextureHdPngPreparationLimits& pngLimits = {});
 
 } // namespace airfix::render

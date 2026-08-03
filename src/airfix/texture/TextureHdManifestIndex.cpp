@@ -876,7 +876,10 @@ struct ParsedRecord {
         }
     }
     const auto& category = stringValue(field(root, "category", issue), issue);
-    if (!validCategory(category) || !categorySet.contains(category)) {
+    // The reviewed manifest schema permits the representative `category` to
+    // be `mixed` while `categories` lists the concrete source categories.
+    // Validate both independently instead of requiring set membership.
+    if (!validCategory(category)) {
         fail(issue);
     }
     (void)stringValue(field(root, "role", issue), issue);

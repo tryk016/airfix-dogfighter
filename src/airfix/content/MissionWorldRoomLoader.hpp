@@ -12,6 +12,10 @@
 #include "airfix/render/PlayerActorSceneAssembly.hpp"
 #include "airfix/render/PlayerActorTextureBindings.hpp"
 #include "airfix/simulation/PlayerSpawnPose.hpp"
+#include "airfix/texture/PrivateTextureFileStore.hpp"
+#include "airfix/texture/TextureHdPngPreparation.hpp"
+#include "airfix/texture/TextureMode.hpp"
+#include "airfix/texture/TextureReplacementResolver.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -65,6 +69,23 @@ struct MissionWorldRoomLoadLimits {
     std::size_t maximumPlayerBlueprintSelectorBytes{4'096U};
     std::size_t maximumPlayerTextureRootBytes{4'096U};
     std::uint64_t maximumPublishedCpuBytes{768U * 1024U * 1024U};
+};
+
+struct MissionWorldRoomTextureReplacementContext final {
+    texture::TextureMode requestedMode{texture::TextureMode::classic};
+    const texture::TextureReplacementResolver *resolver{};
+    const texture::PrivateTextureFileStore *files{};
+    texture::TextureReplacementLookupPolicy lookupPolicy{};
+    texture::TextureHdPngPreparationLimits pngPerTexture{};
+
+    [[nodiscard]] bool valid() const noexcept {
+        if (requestedMode == texture::TextureMode::classic) {
+            return resolver == nullptr && files == nullptr;
+        }
+        return resolver != nullptr && files != nullptr &&
+               resolver->generation() != 0U &&
+               resolver->generation() == files->generation();
+    }
 };
 
 enum class MissionWorldRoomLoadPhase : std::uint8_t {
@@ -208,6 +229,10 @@ struct LoadedMissionWorldRoom {
     render::DrawSubmissionPlan submission;
     // Dense order: textures[index].assetId.value == index.
     std::vector<LoadedTextureAsset> textures;
+    texture::TextureMode requestedTextureMode{texture::TextureMode::classic};
+    std::size_t enhancedTextureCount{};
+    std::size_t classicTextureCount{};
+    std::size_t textureFallbackCount{};
 
     // Auditable physical-cache provenance. The vector remains parallel to the
     // room-only manifest CCF load list. The optional player index addresses
@@ -248,6 +273,8 @@ loadMissionWorldRoom(VerifiedContentSession &session,
                      const MissionWorldRoomLoadRequest &request,
                      const MissionWorldRoomLoadLimits &limits = {},
                      std::stop_token stopToken = {},
-                     MissionWorldRoomLoadProgressCallback progress = {});
+                     MissionWorldRoomLoadProgressCallback progress = {},
+                     const MissionWorldRoomTextureReplacementContext
+                         &textureReplacement = {});
 
 } // namespace airfix::content

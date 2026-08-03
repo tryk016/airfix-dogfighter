@@ -1,6 +1,7 @@
 #include "AirfixD3D11Renderer.hpp"
 
 #include "airfix/content/MissionWorldRoomPublication.hpp"
+#include "airfix/render/DrawSubmissionPlan.hpp"
 #include "airfix/render/LegacyGameplayCameraCollision.hpp"
 #include "airfix/render/LegacyGameplayCameraMissionRuntime.hpp"
 
@@ -21,56 +22,64 @@ struct AirfixD3D11RendererTestAccess final {
   static void failNextScaledTargetPreparationAfterColor(
       AirfixD3D11Renderer &renderer,
       const std::uint32_t failureCount = 1U) noexcept {
-    renderer.failNextScaledTargetPreparationsAfterColorForTesting(
-        failureCount);
+    renderer.failNextScaledTargetPreparationsAfterColorForTesting(failureCount);
   }
 
-  static void reportSurfaceUnavailableForNextApply(
-      AirfixD3D11Renderer &renderer) noexcept {
+  static void
+  reportSurfaceUnavailableForNextApply(AirfixD3D11Renderer &renderer) noexcept {
     renderer.reportSurfaceUnavailableForNextApplyForTesting();
   }
 
-  [[nodiscard]] static bool resizeToPixelExtent(
-      AirfixD3D11Renderer &renderer,
-      const int width, const int height) {
+  [[nodiscard]] static bool resizeToPixelExtent(AirfixD3D11Renderer &renderer,
+                                                const int width,
+                                                const int height) {
     return renderer.resizeToPixelExtentForTesting(width, height);
   }
 
   [[nodiscard]] static std::array<const void *, 5U>
-  scaledSceneTargetIdentity(
-      const AirfixD3D11Renderer &renderer) noexcept {
+  scaledSceneTargetIdentity(const AirfixD3D11Renderer &renderer) noexcept {
     return renderer.scaledSceneTargetIdentityForTesting();
   }
 
-  [[nodiscard]] static
-  std::optional<airfix::render::RenderTargetPixelRect>
-  lastSceneViewport(
-      const AirfixD3D11Renderer &renderer) noexcept {
+  [[nodiscard]] static std::optional<airfix::render::RenderTargetPixelRect>
+  lastSceneViewport(const AirfixD3D11Renderer &renderer) noexcept {
     return renderer.lastSceneViewportForTesting();
   }
 
-  [[nodiscard]] static
-  std::optional<airfix::render::ScenePresentationMode>
-  lastScenePresentation(
-      const AirfixD3D11Renderer &renderer) noexcept {
+  [[nodiscard]] static std::optional<airfix::render::ScenePresentationMode>
+  lastScenePresentation(const AirfixD3D11Renderer &renderer) noexcept {
     return renderer.lastScenePresentationForTesting();
   }
 
-  [[nodiscard]] static std::optional<
-      airfix::render::SceneTextureSamplingPolicy>
-  lastSceneTextureSamplingPolicy(
-      const AirfixD3D11Renderer &renderer) noexcept {
+  [[nodiscard]] static std::optional<airfix::render::SceneTextureSamplingPolicy>
+  lastSceneTextureSamplingPolicy(const AirfixD3D11Renderer &renderer) noexcept {
     return renderer.lastSceneTextureSamplingPolicyForTesting();
   }
 
-  [[nodiscard]] static bool hasDiagnosticsOverlayResources(
-      const AirfixD3D11Renderer &renderer) noexcept {
+  [[nodiscard]] static bool
+  hasDiagnosticsOverlayResources(const AirfixD3D11Renderer &renderer) noexcept {
     return renderer.hasDiagnosticsOverlayResourcesForTesting();
   }
 
   [[nodiscard]] static bool
   hasProductUiOverlayResources(const AirfixD3D11Renderer &renderer) noexcept {
     return renderer.hasProductUiOverlayResourcesForTesting();
+  }
+
+  [[nodiscard]] static std::size_t
+  missionTextureCacheEntryCount(const AirfixD3D11Renderer &renderer) noexcept {
+    return renderer.missionTextureCacheEntryCountForTesting();
+  }
+
+  [[nodiscard]] static std::uint64_t missionTextureCacheResidentBytes(
+      const AirfixD3D11Renderer &renderer) noexcept {
+    return renderer.missionTextureCacheResidentBytesForTesting();
+  }
+
+  [[nodiscard]] static const void *
+  missionTextureIdentity(const AirfixD3D11Renderer &renderer,
+                         const std::size_t index) noexcept {
+    return renderer.missionTextureIdentityForTesting(index);
   }
 };
 
@@ -134,6 +143,74 @@ syntheticCameraRoom(const airfix::content::ContentRevision &contentRevision) {
   return room;
 }
 
+[[nodiscard]] airfix::content::LoadedMissionWorldRoom
+syntheticTexturedRoom(const airfix::content::ContentRevision &contentRevision,
+                      const airfix::texture::TextureMode mode,
+                      const std::uint64_t replacementGeneration,
+                      const std::size_t textureCount = 1U) {
+  auto room = syntheticCameraRoom(contentRevision);
+  room.textures.reserve(textureCount);
+  for (std::size_t index = 0U; index < textureCount; ++index) {
+    airfix::crypto::Sha256Digest digest{};
+    digest.fill(0x5AU);
+    digest[0U] = static_cast<std::uint8_t>(index);
+    digest[1U] = static_cast<std::uint8_t>(index >> 8U);
+    room.textures.push_back({
+        .assetId = {static_cast<std::uint32_t>(index)},
+        .sourceFileIndex = index + 1U,
+        .sourceMode = mode,
+        .replacementGeneration = replacementGeneration,
+        .sourceGtiSha256 = mode == airfix::texture::TextureMode::enhanced
+                               ? std::optional{digest}
+                               : std::nullopt,
+        .upload =
+            {
+                .request =
+                    {
+                        .assetId = {static_cast<std::uint32_t>(index)},
+                        .archiveFileIndex = index + 1U,
+                        .logicalPath = "Textures/Synthetic-" +
+                                       std::to_string(index) + ".gti",
+                    },
+                .variantIndex = 0U,
+                .format = 0U,
+                .checksum = std::nullopt,
+                .sampleSpace =
+                    airfix::render::TextureSampleSpace::encodedUnclassified,
+                .mipPolicy = airfix::render::GtiMipPolicy::authoredChain,
+                .uploadLevels = {{0U, 1U, 1U, 4U, 4U}},
+                .allocatedMipCount = 1U,
+                .uploadedMipCount = 1U,
+                .decodedRgbaBytes = 4U,
+                .uploadRgbaBytes = 4U,
+                .residentRgbaBytes = 4U,
+            },
+        .uploadLevels = {{1U, 1U, {0x20U, 0x60U, 0xA0U, 0xFFU}}},
+    });
+  }
+  room.requestedTextureMode = mode;
+  room.enhancedTextureCount =
+      mode == airfix::texture::TextureMode::enhanced ? textureCount : 0U;
+  room.classicTextureCount =
+      mode == airfix::texture::TextureMode::classic ? textureCount : 0U;
+  room.textureFallbackCount = 0U;
+  room.decodedRgbaBytes = 4U * textureCount;
+  room.uploadRgbaBytes = 4U * textureCount;
+  room.residentRgbaBytes = 4U * textureCount;
+  room.publishedCpuBytes +=
+      textureCount * (sizeof(airfix::content::LoadedTextureAsset) +
+                      sizeof(airfix::render::GtiUploadLevel) +
+                      sizeof(airfix::assets::RgbaImage) + 4U);
+  const auto submission =
+      airfix::render::buildDrawSubmissionPlan(room.model, textureCount);
+  if (!submission.plan.has_value() || !submission.issues.empty()) {
+    throw std::runtime_error(
+        "synthetic texture room did not build an empty draw plan");
+  }
+  room.submission = *submission.plan;
+  return room;
+}
+
 void require(const bool condition, const std::string &message) {
   if (!condition) {
     throw std::runtime_error(message);
@@ -156,31 +233,26 @@ struct PublicationGateState final {
   RenderPresentationSettings observed;
 };
 
-[[nodiscard]] bool publicationGate(
-    void *const context,
-    const RenderPresentationSettings &candidate) noexcept {
+[[nodiscard]] bool
+publicationGate(void *const context,
+                const RenderPresentationSettings &candidate) noexcept {
   auto &state = *static_cast<PublicationGateState *>(context);
   ++state.callCount;
   state.observed = candidate;
   return state.accept;
 }
 
-void requireApplied(
-    const RenderPresentationSettingsApplyResult &result,
-    const char *const context) {
-  require(
-      result.accepted() && result.changed,
-      std::string(context) + " was not committed");
+void requireApplied(const RenderPresentationSettingsApplyResult &result,
+                    const char *const context) {
+  require(result.accepted() && result.changed,
+          std::string(context) + " was not committed");
 }
 
-void requireRejected(
-    const RenderPresentationSettingsApplyResult &result,
-    const RenderPresentationSettingsApplyIssueKind expected,
-    const char *const context) {
-  require(
-      !result.accepted() && !result.changed &&
-          result.issue == expected,
-      std::string(context) + " reported the wrong failure");
+void requireRejected(const RenderPresentationSettingsApplyResult &result,
+                     const RenderPresentationSettingsApplyIssueKind expected,
+                     const char *const context) {
+  require(!result.accepted() && !result.changed && result.issue == expected,
+          std::string(context) + " reported the wrong failure");
 }
 
 void exerciseMissionCameraRuntime(AirfixD3D11Renderer &renderer) {
@@ -250,84 +322,117 @@ void exerciseMissionCameraRuntime(AirfixD3D11Renderer &renderer) {
           "replacement mission did not publish a fresh camera runtime");
 }
 
-[[nodiscard]] bool completeIdentity(
-    const ScaledTargetIdentity &identity) noexcept {
-  return std::all_of(
-      identity.begin(), identity.end(),
-      [](const void *const value) { return value != nullptr; });
+void exerciseMissionTextureCache(AirfixD3D11Renderer &renderer) {
+  const auto firstRevision = revision(9U);
+  auto firstRoom = syntheticTexturedRoom(
+      firstRevision, airfix::texture::TextureMode::enhanced, 77U);
+  require(!airfix::content::validateMissionWorldRoomPublication(firstRoom,
+                                                                firstRevision)
+               .has_value(),
+          "synthetic Enhanced room failed publication");
+  renderer.installLoadedMissionRoom(std::move(firstRoom), firstRevision);
+  const auto *const firstIdentity =
+      AirfixD3D11RendererTestAccess::missionTextureIdentity(renderer, 0U);
+  require(firstIdentity != nullptr &&
+              AirfixD3D11RendererTestAccess::missionTextureCacheEntryCount(
+                  renderer) == 1U &&
+              AirfixD3D11RendererTestAccess::missionTextureCacheResidentBytes(
+                  renderer) == 4U,
+          "Enhanced texture did not enter the bounded D3D11 cache");
+
+  const auto secondRevision = revision(10U);
+  auto secondRoom = syntheticTexturedRoom(
+      secondRevision, airfix::texture::TextureMode::enhanced, 77U);
+  renderer.installLoadedMissionRoom(std::move(secondRoom), secondRevision);
+  require(AirfixD3D11RendererTestAccess::missionTextureIdentity(renderer, 0U) ==
+                  firstIdentity &&
+              AirfixD3D11RendererTestAccess::missionTextureCacheEntryCount(
+                  renderer) == 1U,
+          "same-generation Enhanced reload did not reuse the GPU view");
+
+  const auto boundedRevision = revision(11U);
+  auto boundedRoom = syntheticTexturedRoom(
+      boundedRevision, airfix::texture::TextureMode::enhanced, 78U, 513U);
+  renderer.installLoadedMissionRoom(std::move(boundedRoom), boundedRevision);
+  require(AirfixD3D11RendererTestAccess::missionTextureCacheEntryCount(
+              renderer) == 512U &&
+              AirfixD3D11RendererTestAccess::missionTextureCacheResidentBytes(
+                  renderer) == 512U * 4U,
+          "Enhanced texture cache did not enforce its entry bound");
+
+  const auto classicRevision = revision(12U);
+  auto classicRoom = syntheticTexturedRoom(
+      classicRevision, airfix::texture::TextureMode::classic, 0U);
+  renderer.installLoadedMissionRoom(std::move(classicRoom), classicRevision);
+  require(AirfixD3D11RendererTestAccess::missionTextureCacheEntryCount(
+              renderer) == 0U &&
+              AirfixD3D11RendererTestAccess::missionTextureCacheResidentBytes(
+                  renderer) == 0U,
+          "Classic reload did not invalidate the Enhanced cache partition");
 }
 
-[[nodiscard]] bool emptyIdentity(
-    const ScaledTargetIdentity &identity) noexcept {
-  return std::all_of(
-      identity.begin(), identity.end(),
-      [](const void *const value) { return value == nullptr; });
+[[nodiscard]] bool
+completeIdentity(const ScaledTargetIdentity &identity) noexcept {
+  return std::all_of(identity.begin(), identity.end(),
+                     [](const void *const value) { return value != nullptr; });
+}
+
+[[nodiscard]] bool
+emptyIdentity(const ScaledTargetIdentity &identity) noexcept {
+  return std::all_of(identity.begin(), identity.end(),
+                     [](const void *const value) { return value == nullptr; });
 }
 
 airfix::render::RenderFrameDiagnostics
-renderAndRequireLayout(
-    AirfixD3D11Renderer &renderer,
-    const RenderPresentationSettings &expected,
-    const char *const context) {
-  require(
-      renderer.renderFrame(true),
-      std::string(context) + " produced no visible GPU output");
+renderAndRequireLayout(AirfixD3D11Renderer &renderer,
+                       const RenderPresentationSettings &expected,
+                       const char *const context) {
+  require(renderer.renderFrame(true),
+          std::string(context) + " produced no visible GPU output");
   const auto diagnostics = renderer.frameDiagnostics();
-  require(
-      diagnostics.has_value(),
-      std::string(context) + " published no frame diagnostics");
+  require(diagnostics.has_value(),
+          std::string(context) + " published no frame diagnostics");
   const auto layout = airfix::render::buildNativeRenderLayout({
       .outputExtent = diagnostics->outputExtent,
       .renderScalePercent = expected.renderScalePercent,
       .scenePresentation = expected.scenePresentation,
-      .verticalFovAdjustmentDegrees =
-          expected.verticalFovAdjustmentDegrees,
+      .verticalFovAdjustmentDegrees = expected.verticalFovAdjustmentDegrees,
   });
-  require(
-      layout.complete() &&
-          diagnostics->renderScalePercent ==
-              expected.renderScalePercent &&
-          diagnostics->renderTargetExtent ==
-              layout.layout->renderTargetExtent() &&
-          AirfixD3D11RendererTestAccess::
-                  lastSceneTextureSamplingPolicy(renderer) ==
-              airfix::render::
-                  sceneTextureSamplingPolicyForProfile(
+  require(layout.complete() &&
+              diagnostics->renderScalePercent == expected.renderScalePercent &&
+              diagnostics->renderTargetExtent ==
+                  layout.layout->renderTargetExtent() &&
+              AirfixD3D11RendererTestAccess::lastSceneTextureSamplingPolicy(
+                  renderer) ==
+                  airfix::render::sceneTextureSamplingPolicyForProfile(
                       expected.visualProfile) &&
-          diagnostics->visualProfile == expected.visualProfile &&
-          diagnostics->sceneTextureSampling ==
-              *airfix::render::
-                  sceneTextureSamplingPolicyForProfile(
+              diagnostics->visualProfile == expected.visualProfile &&
+              diagnostics->sceneTextureSampling ==
+                  *airfix::render::sceneTextureSamplingPolicyForProfile(
                       expected.visualProfile),
-      std::string(context) + " used the wrong render layout");
+          std::string(context) + " used the wrong render layout");
   return *diagnostics;
 }
 
 void testTransactionalSettingsRuntime() {
-  require(
-      SDL_SetAppMetadata(
-          "Airfix D3D11 renderer tests", "0.1.0",
-          "com.tryk016.airfixdogfighter.renderer-tests"),
-      SDL_GetError());
+  require(SDL_SetAppMetadata("Airfix D3D11 renderer tests", "0.1.0",
+                             "com.tryk016.airfixdogfighter.renderer-tests"),
+          SDL_GetError());
   require(SDL_Init(SDL_INIT_VIDEO), SDL_GetError());
   const SdlQuitGuard quitGuard;
 
-  std::unique_ptr<SDL_Window, WindowDeleter> window{
-      SDL_CreateWindow(
-          "Airfix D3D11 renderer tests", 960, 540,
-          SDL_WINDOW_HIDDEN)};
+  std::unique_ptr<SDL_Window, WindowDeleter> window{SDL_CreateWindow(
+      "Airfix D3D11 renderer tests", 960, 540, SDL_WINDOW_HIDDEN)};
   require(window != nullptr, SDL_GetError());
 
   AirfixD3D11Renderer renderer{*window};
   RenderPresentationSettings settings;
-  require(
-      renderer.renderPresentationSettings() == settings,
-      "renderer did not start with canonical presentation settings");
+  require(renderer.renderPresentationSettings() == settings,
+          "renderer did not start with canonical presentation settings");
   auto identity =
       AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer);
-  require(
-      emptyIdentity(identity),
-      "100 percent unexpectedly allocated scaled scene targets");
+  require(emptyIdentity(identity),
+          "100 percent unexpectedly allocated scaled scene targets");
   renderAndRequireLayout(renderer, settings, "initial 100 percent frame");
 
   AirfixWindowsUiRaster productUi{
@@ -360,202 +465,157 @@ void testTransactionalSettingsRuntime() {
       "clearing product UI retained its GPU resources");
 
   settings.renderScalePercent = 50.0F;
-  requireApplied(
-      renderer.applyRenderPresentationSettings(settings),
-      "100 to 50 percent transition");
-  identity =
-      AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer);
-  require(
-      completeIdentity(identity),
-      "50 percent committed without prepared scaled targets");
+  requireApplied(renderer.applyRenderPresentationSettings(settings),
+                 "100 to 50 percent transition");
+  identity = AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer);
+  require(completeIdentity(identity),
+          "50 percent committed without prepared scaled targets");
   renderAndRequireLayout(renderer, settings, "50 percent frame");
 
   auto candidate = settings;
   candidate.renderScalePercent = 200.0F;
-  AirfixD3D11RendererTestAccess::
-      reportSurfaceUnavailableForNextApply(renderer);
-  requireRejected(
-      renderer.applyRenderPresentationSettings(candidate),
-      RenderPresentationSettingsApplyIssueKind::surfaceUnavailable,
-      "surface-unavailable scaled transition");
+  AirfixD3D11RendererTestAccess::reportSurfaceUnavailableForNextApply(renderer);
+  requireRejected(renderer.applyRenderPresentationSettings(candidate),
+                  RenderPresentationSettingsApplyIssueKind::surfaceUnavailable,
+                  "surface-unavailable scaled transition");
   require(
       renderer.renderPresentationSettings() == settings &&
-          AirfixD3D11RendererTestAccess::
-                  scaledSceneTargetIdentity(renderer) ==
+          AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer) ==
               identity,
       "surface-unavailable transition changed the scaled snapshot or bundle");
-  renderAndRequireLayout(
-      renderer, settings, "scaled frame after unavailable-surface rejection");
+  renderAndRequireLayout(renderer, settings,
+                         "scaled frame after unavailable-surface rejection");
 
   const auto beforeFiftyResize = identity;
   require(
-      AirfixD3D11RendererTestAccess::resizeToPixelExtent(
-          renderer, 800, 450),
+      AirfixD3D11RendererTestAccess::resizeToPixelExtent(renderer, 800, 450),
       "50 percent resize was not published");
-  identity =
-      AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer);
-  require(
-      completeIdentity(identity) && identity != beforeFiftyResize &&
-          renderer.renderPresentationSettings() == settings,
-      "50 percent resize did not replace only the scaled bundle");
-  const auto fiftyResizeDiagnostics = renderAndRequireLayout(
-      renderer, settings, "50 percent resized frame");
-  require(
-      fiftyResizeDiagnostics.outputExtent ==
-          airfix::render::OutputPixelExtent{800U, 450U},
-      "50 percent resize used the wrong output extent");
+  identity = AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer);
+  require(completeIdentity(identity) && identity != beforeFiftyResize &&
+              renderer.renderPresentationSettings() == settings,
+          "50 percent resize did not replace only the scaled bundle");
+  const auto fiftyResizeDiagnostics =
+      renderAndRequireLayout(renderer, settings, "50 percent resized frame");
+  require(fiftyResizeDiagnostics.outputExtent ==
+              airfix::render::OutputPixelExtent{800U, 450U},
+          "50 percent resize used the wrong output extent");
 
   const auto beforeFailedResize = identity;
-  AirfixD3D11RendererTestAccess::
-      failNextScaledTargetPreparationAfterColor(renderer, 2U);
+  AirfixD3D11RendererTestAccess::failNextScaledTargetPreparationAfterColor(
+      renderer, 2U);
   require(
-      !AirfixD3D11RendererTestAccess::resizeToPixelExtent(
-          renderer, 1024, 576),
+      !AirfixD3D11RendererTestAccess::resizeToPixelExtent(renderer, 1024, 576),
       "late scaled resize failure was not reported");
   require(
       renderer.renderPresentationSettings() == settings &&
-          AirfixD3D11RendererTestAccess::
-                  scaledSceneTargetIdentity(renderer) ==
+          AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer) ==
               beforeFailedResize,
       "failed scaled resize changed the active snapshot or any target view");
   const auto firstRetryFailureDiagnostics = renderAndRequireLayout(
       renderer, settings, "frame after first automatic resize retry failure");
-  require(
-      firstRetryFailureDiagnostics.outputExtent ==
-              airfix::render::OutputPixelExtent{800U, 450U} &&
-          renderer.renderPresentationSettings() == settings &&
-          AirfixD3D11RendererTestAccess::
-                  scaledSceneTargetIdentity(renderer) ==
-              beforeFailedResize,
-      "first automatic retry changed the old surface or active bundle");
+  require(firstRetryFailureDiagnostics.outputExtent ==
+                  airfix::render::OutputPixelExtent{800U, 450U} &&
+              renderer.renderPresentationSettings() == settings &&
+              AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(
+                  renderer) == beforeFailedResize,
+          "first automatic retry changed the old surface or active bundle");
   const auto backoffDiagnostics = renderAndRequireLayout(
       renderer, settings, "frame skipped by scaled resize backoff");
-  require(
-      backoffDiagnostics.outputExtent ==
-              airfix::render::OutputPixelExtent{800U, 450U} &&
-          renderer.renderPresentationSettings() == settings &&
-          AirfixD3D11RendererTestAccess::
-                  scaledSceneTargetIdentity(renderer) ==
-              beforeFailedResize,
-      "scaled resize retried during its one-frame backoff");
+  require(backoffDiagnostics.outputExtent ==
+                  airfix::render::OutputPixelExtent{800U, 450U} &&
+              renderer.renderPresentationSettings() == settings &&
+              AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(
+                  renderer) == beforeFailedResize,
+          "scaled resize retried during its one-frame backoff");
   const auto retryDiagnostics = renderAndRequireLayout(
       renderer, settings, "frame after scaled resize backoff");
-  identity =
-      AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer);
-  require(
-      retryDiagnostics.outputExtent ==
-              airfix::render::OutputPixelExtent{1024U, 576U} &&
-          completeIdentity(identity) && identity != beforeFailedResize,
-      "pending scaled resize did not retry and publish atomically");
+  identity = AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer);
+  require(retryDiagnostics.outputExtent ==
+                  airfix::render::OutputPixelExtent{1024U, 576U} &&
+              completeIdentity(identity) && identity != beforeFailedResize,
+          "pending scaled resize did not retry and publish atomically");
 
   settings.renderScalePercent = 200.0F;
-  requireApplied(
-      renderer.applyRenderPresentationSettings(settings),
-      "50 to 200 percent transition");
-  identity =
-      AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer);
-  require(
-      completeIdentity(identity),
-      "200 percent committed without prepared scaled targets");
+  requireApplied(renderer.applyRenderPresentationSettings(settings),
+                 "50 to 200 percent transition");
+  identity = AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer);
+  require(completeIdentity(identity),
+          "200 percent committed without prepared scaled targets");
   renderAndRequireLayout(renderer, settings, "200 percent frame");
 
   const auto beforeTwoHundredResize = identity;
   require(
-      AirfixD3D11RendererTestAccess::resizeToPixelExtent(
-          renderer, 640, 360),
+      AirfixD3D11RendererTestAccess::resizeToPixelExtent(renderer, 640, 360),
       "200 percent resize was not published");
-  identity =
-      AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer);
-  require(
-      completeIdentity(identity) && identity != beforeTwoHundredResize &&
-          renderer.renderPresentationSettings() == settings,
-      "200 percent resize did not publish a complete replacement bundle");
-  const auto twoHundredResizeDiagnostics = renderAndRequireLayout(
-      renderer, settings, "200 percent resized frame");
-  require(
-      twoHundredResizeDiagnostics.outputExtent ==
-          airfix::render::OutputPixelExtent{640U, 360U},
-      "200 percent resize used the wrong output extent");
+  identity = AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer);
+  require(completeIdentity(identity) && identity != beforeTwoHundredResize &&
+              renderer.renderPresentationSettings() == settings,
+          "200 percent resize did not publish a complete replacement bundle");
+  const auto twoHundredResizeDiagnostics =
+      renderAndRequireLayout(renderer, settings, "200 percent resized frame");
+  require(twoHundredResizeDiagnostics.outputExtent ==
+              airfix::render::OutputPixelExtent{640U, 360U},
+          "200 percent resize used the wrong output extent");
 
   const auto beforeMinimize = identity;
-  require(
-      AirfixD3D11RendererTestAccess::resizeToPixelExtent(
-          renderer, 0, 0),
-      "zero-extent suspension failed");
-  require(
-      renderer.renderPresentationSettings() == settings &&
-          AirfixD3D11RendererTestAccess::
-                  scaledSceneTargetIdentity(renderer) ==
-              beforeMinimize,
-      "zero-extent suspension discarded settings or scaled resources");
+  require(AirfixD3D11RendererTestAccess::resizeToPixelExtent(renderer, 0, 0),
+          "zero-extent suspension failed");
+  require(renderer.renderPresentationSettings() == settings &&
+              AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(
+                  renderer) == beforeMinimize,
+          "zero-extent suspension discarded settings or scaled resources");
   candidate = settings;
   candidate.renderScalePercent = 50.0F;
-  requireRejected(
-      renderer.applyRenderPresentationSettings(candidate),
-      RenderPresentationSettingsApplyIssueKind::surfaceUnavailable,
-      "minimized scaled transition");
+  requireRejected(renderer.applyRenderPresentationSettings(candidate),
+                  RenderPresentationSettingsApplyIssueKind::surfaceUnavailable,
+                  "minimized scaled transition");
+  require(renderer.renderPresentationSettings() == settings &&
+              AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(
+                  renderer) == beforeMinimize,
+          "minimized rejection changed any scaled target identity");
   require(
-      renderer.renderPresentationSettings() == settings &&
-          AirfixD3D11RendererTestAccess::
-                  scaledSceneTargetIdentity(renderer) ==
-              beforeMinimize,
-      "minimized rejection changed any scaled target identity");
-  require(
-      AirfixD3D11RendererTestAccess::resizeToPixelExtent(
-          renderer, 640, 360),
+      AirfixD3D11RendererTestAccess::resizeToPixelExtent(renderer, 640, 360),
       "restore after zero-extent suspension failed");
   require(
-      AirfixD3D11RendererTestAccess::
-              scaledSceneTargetIdentity(renderer) ==
+      AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer) ==
           beforeMinimize,
       "same-size restore unnecessarily replaced the preserved scaled bundle");
   renderAndRequireLayout(renderer, settings, "restored scaled frame");
 
   settings.renderScalePercent = 100.0F;
-  requireApplied(
-      renderer.applyRenderPresentationSettings(settings),
-      "200 to 100 percent transition");
-  identity =
-      AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer);
-  require(
-      emptyIdentity(identity),
-      "100 percent retained an intermediate scene target");
+  requireApplied(renderer.applyRenderPresentationSettings(settings),
+                 "200 to 100 percent transition");
+  identity = AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer);
+  require(emptyIdentity(identity),
+          "100 percent retained an intermediate scene target");
   renderAndRequireLayout(renderer, settings, "restored 100 percent frame");
 
   candidate = settings;
   candidate.renderScalePercent = 50.0F;
-  requireApplied(
-      renderer.applyRenderPresentationSettings(candidate),
-      "50 percent preparation before apply failure test");
+  requireApplied(renderer.applyRenderPresentationSettings(candidate),
+                 "50 percent preparation before apply failure test");
   settings = candidate;
-  identity =
-      AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer);
+  identity = AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer);
   require(completeIdentity(identity), "50 percent bundle is incomplete");
   renderAndRequireLayout(renderer, settings, "prepared 50 percent frame");
 
   candidate.renderScalePercent = 200.0F;
-  AirfixD3D11RendererTestAccess::
-      failNextScaledTargetPreparationAfterColor(renderer);
+  AirfixD3D11RendererTestAccess::failNextScaledTargetPreparationAfterColor(
+      renderer);
   requireRejected(
       renderer.applyRenderPresentationSettings(candidate),
-      RenderPresentationSettingsApplyIssueKind::
-          targetPreparationFailed,
+      RenderPresentationSettingsApplyIssueKind::targetPreparationFailed,
       "late scaled-target failure");
-  require(
-      renderer.renderPresentationSettings() == settings &&
-          AirfixD3D11RendererTestAccess::
-                  scaledSceneTargetIdentity(renderer) ==
-              identity,
-      "late target failure changed the active snapshot or any target view");
-  renderAndRequireLayout(
-      renderer, settings, "frame after late target failure");
+  require(renderer.renderPresentationSettings() == settings &&
+              AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(
+                  renderer) == identity,
+          "late target failure changed the active snapshot or any target view");
+  renderAndRequireLayout(renderer, settings, "frame after late target failure");
 
-  requireApplied(
-      renderer.applyRenderPresentationSettings(candidate),
-      "retry after one-shot target failure");
+  requireApplied(renderer.applyRenderPresentationSettings(candidate),
+                 "retry after one-shot target failure");
   settings = candidate;
-  identity =
-      AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer);
+  identity = AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer);
   renderAndRequireLayout(renderer, settings, "retried 200 percent frame");
 
   candidate = settings;
@@ -567,141 +627,115 @@ void testTransactionalSettingsRuntime() {
   };
   requireRejected(
       renderer.applyRenderPresentationSettings(candidate, gate),
-      RenderPresentationSettingsApplyIssueKind::
-          publicationGateRejected,
+      RenderPresentationSettingsApplyIssueKind::publicationGateRejected,
       "publication-gated scaled transition");
-  require(
-      gateState.callCount == 1U &&
-          gateState.observed == candidate &&
-          renderer.renderPresentationSettings() == settings &&
-          AirfixD3D11RendererTestAccess::
-                  scaledSceneTargetIdentity(renderer) ==
-              identity,
-      "publication gate rejection changed the active snapshot or target bundle");
-  renderAndRequireLayout(
-      renderer, settings, "frame after publication gate rejection");
+  require(gateState.callCount == 1U && gateState.observed == candidate &&
+              renderer.renderPresentationSettings() == settings &&
+              AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(
+                  renderer) == identity,
+          "publication gate rejection changed the active snapshot or target "
+          "bundle");
+  renderAndRequireLayout(renderer, settings,
+                         "frame after publication gate rejection");
 
   gateState.accept = true;
-  requireApplied(
-      renderer.applyRenderPresentationSettings(candidate, gate),
-      "retry after publication gate rejection");
+  requireApplied(renderer.applyRenderPresentationSettings(candidate, gate),
+                 "retry after publication gate rejection");
   settings = candidate;
   const auto identityAfterGateRetry =
       AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer);
-  require(
-      gateState.callCount == 2U &&
-          gateState.observed == candidate &&
-          completeIdentity(identityAfterGateRetry) &&
-          identityAfterGateRetry != identity,
-      "publication gate retry did not publish the prepared target bundle");
+  require(gateState.callCount == 2U && gateState.observed == candidate &&
+              completeIdentity(identityAfterGateRetry) &&
+              identityAfterGateRetry != identity,
+          "publication gate retry did not publish the prepared target bundle");
   identity = identityAfterGateRetry;
-  renderAndRequireLayout(
-      renderer, settings, "frame after publication gate retry");
+  renderAndRequireLayout(renderer, settings,
+                         "frame after publication gate retry");
 
-  AirfixD3D11RendererTestAccess::
-      failNextScaledTargetPreparationAfterColor(renderer);
+  AirfixD3D11RendererTestAccess::failNextScaledTargetPreparationAfterColor(
+      renderer);
   candidate = settings;
   candidate.visualProfile = airfix::render::VisualProfile::enhanced;
   candidate.scenePresentation =
       airfix::render::ScenePresentationMode::originalFourByThree;
   candidate.diagnosticsOverlayEnabled = true;
   candidate.verticalFovAdjustmentDegrees = 20.0F;
-  requireApplied(
-      renderer.applyRenderPresentationSettings(candidate),
-      "layout, diagnostics, and visual-profile transition");
+  requireApplied(renderer.applyRenderPresentationSettings(candidate),
+                 "layout, diagnostics, and visual-profile transition");
   settings = candidate;
-  require(
-      AirfixD3D11RendererTestAccess::
-              scaledSceneTargetIdentity(renderer) ==
-      identity,
-      "orthogonal settings replaced the scaled target bundle");
+  require(AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer) ==
+              identity,
+          "orthogonal settings replaced the scaled target bundle");
   const auto enhancedDiagnostics = renderAndRequireLayout(
-      renderer, settings,
-      "enhanced Original 4:3 diagnostics frame");
-  const auto enhancedLayout =
-      airfix::render::buildNativeRenderLayout({
-          .outputExtent = enhancedDiagnostics.outputExtent,
-          .renderScalePercent = settings.renderScalePercent,
-          .scenePresentation = settings.scenePresentation,
-      });
+      renderer, settings, "enhanced Original 4:3 diagnostics frame");
+  const auto enhancedLayout = airfix::render::buildNativeRenderLayout({
+      .outputExtent = enhancedDiagnostics.outputExtent,
+      .renderScalePercent = settings.renderScalePercent,
+      .scenePresentation = settings.scenePresentation,
+  });
   require(
       enhancedLayout.complete() &&
-          AirfixD3D11RendererTestAccess::
-                  lastSceneViewport(renderer) ==
-              enhancedLayout.layout->
-                  sceneViewportInRenderTarget() &&
-          AirfixD3D11RendererTestAccess::
-                  lastScenePresentation(renderer) ==
-              airfix::render::ScenePresentationMode::
-                  originalFourByThree &&
-          AirfixD3D11RendererTestAccess::
-              hasDiagnosticsOverlayResources(renderer) &&
+          AirfixD3D11RendererTestAccess::lastSceneViewport(renderer) ==
+              enhancedLayout.layout->sceneViewportInRenderTarget() &&
+          AirfixD3D11RendererTestAccess::lastScenePresentation(renderer) ==
+              airfix::render::ScenePresentationMode::originalFourByThree &&
+          AirfixD3D11RendererTestAccess::hasDiagnosticsOverlayResources(
+              renderer) &&
           renderer.renderPresentationSettings().visualProfile ==
               airfix::render::VisualProfile::enhanced &&
-          renderer.renderPresentationSettings()
-                  .verticalFovAdjustmentDegrees ==
+          renderer.renderPresentationSettings().verticalFovAdjustmentDegrees ==
               20.0F,
-      "Original 4:3, diagnostics overlay, or visual profile was not observed");
+      "Original 4:3, diagnostics overlay, or visual profile was not "
+      "observed");
 
   candidate = settings;
   candidate.diagnosticsOverlayEnabled = false;
-  requireApplied(
-      renderer.applyRenderPresentationSettings(candidate),
-      "diagnostics overlay disable transition");
+  requireApplied(renderer.applyRenderPresentationSettings(candidate),
+                 "diagnostics overlay disable transition");
   settings = candidate;
+  require(AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer) ==
+                  identity &&
+              !AirfixD3D11RendererTestAccess::hasDiagnosticsOverlayResources(
+                  renderer),
+          "diagnostics disable replaced scaled targets or retained overlay "
+          "resources");
+  renderAndRequireLayout(renderer, settings,
+                         "Original 4:3 frame without diagnostics");
   require(
-      AirfixD3D11RendererTestAccess::
-              scaledSceneTargetIdentity(renderer) ==
-          identity &&
-          !AirfixD3D11RendererTestAccess::
-              hasDiagnosticsOverlayResources(renderer),
-      "diagnostics disable replaced scaled targets or retained overlay resources");
-  renderAndRequireLayout(
-      renderer, settings, "Original 4:3 frame without diagnostics");
-  require(
-      !AirfixD3D11RendererTestAccess::
-          hasDiagnosticsOverlayResources(renderer),
+      !AirfixD3D11RendererTestAccess::hasDiagnosticsOverlayResources(renderer),
       "diagnostics overlay resources returned while disabled");
 
   candidate.renderScalePercent = 200.0F;
   requireRejected(
       renderer.applyRenderPresentationSettings(candidate),
-      RenderPresentationSettingsApplyIssueKind::
-          targetPreparationFailed,
+      RenderPresentationSettingsApplyIssueKind::targetPreparationFailed,
       "deferred one-shot target failure");
-  require(
-      renderer.renderPresentationSettings() == settings &&
-          AirfixD3D11RendererTestAccess::
-                  scaledSceneTargetIdentity(renderer) ==
-              identity,
-      "orthogonal settings consumed the seam or changed target identity");
+  require(renderer.renderPresentationSettings() == settings &&
+              AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(
+                  renderer) == identity,
+          "orthogonal settings consumed the seam or changed target identity");
 
   candidate = settings;
-  candidate.renderScalePercent =
-      std::numeric_limits<float>::quiet_NaN();
-  requireRejected(
-      renderer.applyRenderPresentationSettings(candidate),
-      RenderPresentationSettingsApplyIssueKind::invalidSettings,
-      "non-finite settings transition");
-  require(
-      renderer.renderPresentationSettings() == settings &&
-          AirfixD3D11RendererTestAccess::
-                  scaledSceneTargetIdentity(renderer) ==
-              identity,
-      "invalid candidate changed the active settings or scaled bundle");
+  candidate.renderScalePercent = std::numeric_limits<float>::quiet_NaN();
+  requireRejected(renderer.applyRenderPresentationSettings(candidate),
+                  RenderPresentationSettingsApplyIssueKind::invalidSettings,
+                  "non-finite settings transition");
+  require(renderer.renderPresentationSettings() == settings &&
+              AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(
+                  renderer) == identity,
+          "invalid candidate changed the active settings or scaled bundle");
 
   candidate = settings;
   candidate.renderScalePercent = 100.0F;
-  requireApplied(
-      renderer.applyRenderPresentationSettings(candidate),
-      "final direct-render transition");
+  requireApplied(renderer.applyRenderPresentationSettings(candidate),
+                 "final direct-render transition");
   require(
       emptyIdentity(
-          AirfixD3D11RendererTestAccess::
-              scaledSceneTargetIdentity(renderer)),
+          AirfixD3D11RendererTestAccess::scaledSceneTargetIdentity(renderer)),
       "final 100 percent transition retained scaled targets");
   renderAndRequireLayout(renderer, candidate, "final direct frame");
   exerciseMissionCameraRuntime(renderer);
+  exerciseMissionTextureCache(renderer);
 }
 
 } // namespace
@@ -712,8 +746,7 @@ int main() {
     std::cout << "Airfix D3D11 renderer tests passed\n";
     return 0;
   } catch (const std::exception &error) {
-    std::cerr << "Airfix D3D11 renderer tests failed: "
-              << error.what() << '\n';
+    std::cerr << "Airfix D3D11 renderer tests failed: " << error.what() << '\n';
     return 1;
   }
 }
