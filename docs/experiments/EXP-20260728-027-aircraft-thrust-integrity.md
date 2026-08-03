@@ -250,5 +250,5 @@ controlled x87 traces establish tolerances and PRNG sequencing.
 - [Aircraft flight boundary](../re/systems/AIRCRAFT-FLIGHT.md)
 - [Aircraft flight law](../re/systems/AIRCRAFT-FLIGHT-LAW.md)
 - [Static tool cross-check](EXP-20260727-001-static-tool-crosscheck.md)
-- [Aircraft scheduler ABI](EXP-20260724-003-aircraft-scheduler-abi.md)
+- [Confirmed aircraft scheduler boundary](../re/MODULE-MAP.md#confirmed-aircraft-boundary)
 - [Vehicle rest/sleep gate](EXP-20260728-026-vehicle-rest-sleep-gate.md)

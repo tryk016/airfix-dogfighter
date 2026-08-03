@@ -487,7 +487,12 @@ shell for `iphoneos` and `iphonesimulator` with deployment target 16.4 and no
 code signing. The Windows CI job builds the native x64 SDL3/D3D11/XAudio2
 product with Visual Studio and runs its hidden data-less GPU/audio smoke test.
 Pull-request workflows do not read private content configuration or signing
-secrets.
+secrets. Documentation-only pull requests take a conservative fast path that
+still validates the public boundary, internal links, research ledgers, and
+whitespace, while every build-affecting or unclassified path runs the complete
+matrix. Supported portable C/C++ jobs use a pinned compiler cache; a weekly
+complete run and cold-by-default manual dispatch bypass it. See the
+[CI execution policy](docs/ci/CI-EXECUTION-POLICY.md).
 
 Optional private launch inputs, signing, and installation belong to a
 protected, manually approved workflow. Signed IPAs, credentials, profiles,

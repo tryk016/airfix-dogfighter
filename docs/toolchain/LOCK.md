@@ -57,6 +57,18 @@ the upstream license into the build output. Neither SDL sources nor build
 products are vendored into the repository. Portable core and iOS configurations
 do not fetch or build SDL.
 
+## Hosted CI dependencies
+
+| Dependency | Pinned version | Use | License | Official source | Verification |
+|---|---:|---|---|---|---|
+| Mozilla sccache action | commit `fc920bf0ec8de6ee65d409111f7ec508035751ba` (`v0.0.11`) | Install and connect the public object cache to GitHub Actions | Apache-2.0 | [Mozilla-Actions/sccache-action](https://github.com/Mozilla-Actions/sccache-action/releases/tag/v0.0.11) | GitHub reports the exact commit signature as verified; the workflow never follows a moving tag |
+| Mozilla sccache | `v0.17.0` | C/C++ compiler launcher for supported public Ninja/Make jobs | Apache-2.0 | [mozilla/sccache](https://github.com/mozilla/sccache/releases/tag/v0.17.0) | Explicit stable, non-prerelease version selected by the pinned action |
+
+The public workflows grant only `contents: read`. Cache inputs come solely from
+the data-less public checkout. Visual Studio/Xcode jobs do not use the CMake
+compiler launcher, and scheduled/manual cold validation does not install the
+cache action.
+
 ## Portable reverse-engineering tools
 
 **Captured and verified:** 2026-07-27

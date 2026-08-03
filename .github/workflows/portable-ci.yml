@@ -5,23 +5,112 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      cold_build:
+        description: Disable compiler caching for this complete matrix run
+        required: true
+        type: boolean
+        default: true
+  schedule:
+    - cron: "17 4 * * 1"
 
 permissions:
   contents: read
 
 concurrency:
-  group: portable-ci-${{ github.ref }}
+  group: portable-ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  quality-gates:
+    name: public/docs integrity + change policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      full_build: ${{ steps.classify_pr.outputs.full_build || steps.classify_full.outputs.full_build }}
+      reason: ${{ steps.classify_pr.outputs.reason || steps.classify_full.outputs.reason }}
+
+    steps:
+      - name: Check out sources and revision history
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Classify pull-request changes
+        id: classify_pr
+        if: github.event_name == 'pull_request'
+        run: >-
+          python3 tools/ci/classify_ci_changes.py
+          --base "${{ github.event.pull_request.base.sha }}"
+          --head "${{ github.event.pull_request.head.sha }}"
+          --three-dot
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Require complete matrix for non-PR events
+        id: classify_full
+        if: github.event_name != 'pull_request'
+        run: >-
+          python3 tools/ci/classify_ci_changes.py
+          --force-full
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Test CI change policy
+        run: python3 tests/CiChangeClassifierTests.py
+
+      - name: Test public-source boundary
+        run: |
+          python3 tests/PublicBoundaryTests.py
+          python3 tools/ci/check_public_boundary.py .
+
+      - name: Test documentation and ledgers
+        run: python3 tests/DocumentationIntegrityTests.py
+
+      - name: Test deterministic Rizin report normalization
+        run: python3 tests/RizinExportTests.py
+
+      - name: Test AirCraft runtime capture validation
+        run: python3 tests/AircraftRuntimeCaptureValidatorTests.py
+
+      - name: Check pull-request whitespace
+        if: github.event_name == 'pull_request'
+        run: >-
+          git diff --check
+          "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
+
+      - name: Check pushed whitespace
+        if: github.event_name == 'push'
+        run: git diff --check "${{ github.event.before }}" "${{ github.sha }}"
+
+      - name: Check current whitespace
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: git diff --check HEAD^ HEAD
+
   code-intelligence-preset:
     name: clangd preset / ubuntu-24.04
+    needs: quality-gates
+    if: needs.quality-gates.outputs.full_build == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_IGNORE_SERVER_IO_ERROR: "1"
+      SCCACHE_BASEDIRS: ${{ github.workspace }}
 
     steps:
       - name: Check out sources
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install compiler cache
+        if: github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.cold_build != true)
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        with:
+          version: v0.17.0
+
+      - name: Enable CMake compiler launcher
+        if: github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.cold_build != true)
+        run: |
+          echo "CMAKE_C_COMPILER_LAUNCHER=$SCCACHE_PATH" >> "$GITHUB_ENV"
+          echo "CMAKE_CXX_COMPILER_LAUNCHER=$SCCACHE_PATH" >> "$GITHUB_ENV"
 
       - name: Show toolchain
         run: |
@@ -44,17 +133,6 @@ jobs:
           if any(Path(entry["file"]).suffix.lower() in {".m", ".mm", ".metal"} for entry in entries):
               raise SystemExit("portable compilation database contains Apple-only sources")
 
-      - name: Test public-source boundary
-        run: |
-          python3 tests/PublicBoundaryTests.py
-          python3 tools/ci/check_public_boundary.py .
-
-      - name: Test deterministic Rizin report normalization
-        run: python3 tests/RizinExportTests.py
-
-      - name: Test AirCraft runtime capture validation
-        run: python3 tests/AircraftRuntimeCaptureValidatorTests.py
-
       - name: Build code-intelligence preset
         run: cmake --build --preset code-intelligence --parallel
 
@@ -63,6 +141,8 @@ jobs:
 
   build-and-test:
     name: ${{ matrix.os }}
+    needs: quality-gates
+    if: needs.quality-gates.outputs.full_build == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -76,10 +156,27 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: ${{ matrix.timeout_minutes }}
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_IGNORE_SERVER_IO_ERROR: "1"
+      SCCACHE_BASEDIRS: ${{ github.workspace }}
 
     steps:
       - name: Check out sources
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install compiler cache
+        if: runner.os != 'Windows' && github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.cold_build != true)
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        with:
+          version: v0.17.0
+
+      - name: Enable CMake compiler launcher
+        if: runner.os != 'Windows' && github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.cold_build != true)
+        shell: bash
+        run: |
+          echo "CMAKE_C_COMPILER_LAUNCHER=$SCCACHE_PATH" >> "$GITHUB_ENV"
+          echo "CMAKE_CXX_COMPILER_LAUNCHER=$SCCACHE_PATH" >> "$GITHUB_ENV"
 
       - name: Show toolchain
         run: cmake --version
@@ -107,6 +204,8 @@ jobs:
 
   windows-product:
     name: Windows x64 product / D3D11 + XAudio2 smoke
+    needs: quality-gates
+    if: needs.quality-gates.outputs.full_build == 'true'
     runs-on: windows-2025
     timeout-minutes: 15
 
