@@ -488,6 +488,7 @@ loadLegacyAircraftHealthGaugeTextures(
       const render::TextureImportRequest request{
           .assetId = render::TextureAssetId{static_cast<std::uint32_t>(index)},
           .archiveFileIndex = archiveFileIndex,
+          .logicalPath = std::string(specification.logicalPath),
       };
       auto perTextureLimits = limits.gti;
       perTextureLimits.maximumSourceBytes = std::min(
@@ -587,8 +588,9 @@ loadLegacyAircraftHealthGaugeTextures(
 
       render::GtiUploadPreparation preparation;
       try {
-        preparation =
-            render::prepareGtiUpload(request, bytes, perTextureLimits);
+        auto sourcePreparation = render::prepareTextureSource(
+            request, bytes, nullptr, {}, perTextureLimits);
+        preparation = std::move(sourcePreparation.classicGti);
       } catch (const std::bad_alloc &) {
         throw;
       } catch (...) {

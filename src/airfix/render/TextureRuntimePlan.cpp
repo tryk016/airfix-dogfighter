@@ -330,7 +330,8 @@ TextureBindingPlan buildTextureBindingPlanImpl(
             });
             valid = false;
         }
-        else if (entry.status != assets::TextureEntryStatus::unique) {
+        else if (entry.status != assets::TextureEntryStatus::unique ||
+                 !entry.archiveLogicalPath.has_value()) {
             result.issues.push_back({
                 .kind = TextureBindingIssueKind::unresolvedTexture,
                 .entryIndex = entryIndex,
@@ -350,7 +351,6 @@ TextureBindingPlan buildTextureBindingPlanImpl(
             });
             valid = false;
         }
-
         if (materialIt != materialSlots.end() && validRole(entry.role) &&
             roleWasSeen(roles[materialIt->second], entry.role)) {
             result.issues.push_back({
@@ -395,8 +395,20 @@ TextureBindingPlan buildTextureBindingPlanImpl(
             result.imports.push_back({
                 .assetId = assetId,
                 .archiveFileIndex = archiveFileIndex,
+                .logicalPath = *entry.archiveLogicalPath,
             });
             assetIt = assetIds.emplace(archiveFileIndex, assetId).first;
+        }
+        else if (result.imports[assetIt->second.value].logicalPath !=
+                 *entry.archiveLogicalPath) {
+            result.issues.push_back({
+                .kind = TextureBindingIssueKind::unresolvedTexture,
+                .entryIndex = entryIndex,
+                .materialReference = entry.materialReference,
+                .role = entry.role,
+                .upstreamIssue = std::nullopt,
+            });
+            continue;
         }
         assignRole(
             result.materials[materialIt->second], entry.role, assetIt->second);

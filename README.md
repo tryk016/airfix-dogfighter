@@ -72,9 +72,11 @@ model and its safe application rules are defined by
 [ADR-0014](docs/adr/0014-render-presentation-settings.md).
 The independent, presentation-only FOV policy and schema migration are defined
 by [ADR-0016](docs/adr/0016-safe-fov-settings.md).
-The optional owner-local HD texture package remains unimplemented; its
-Classic-safe fallback, security boundary, cache model, and staged integration
-are proposed in
+The optional owner-local HD texture package remains disabled in both products.
+Its public, synthetic-only foundation now includes an accepted-manifest index,
+a root-confined file capability, and a resolver that proves exact Classic GTI
+fallback. PNG/mip preparation, settings, native uploads, and private content
+remain later stages documented in
 [ADR-0019](docs/adr/0019-private-hd-texture-replacements.md).
 
 ## Current state
@@ -119,6 +121,11 @@ Implemented foundations include:
   samplers; lighting, material, shadow, color-space, and post-processing work
   remains staged separately;
 - bounded UDSP, CCF, GTI, and related legacy-format parsing;
+- a disconnected, synthetic-only HD replacement foundation that retains
+  authenticated GTI logical identity, hashes the actual source bytes, accepts
+  only reviewed manifest records, reads the manifest-selected base file through
+  a pinned root capability, verifies its checksum, and routes every miss or
+  failure through the unchanged Classic GTI preparation path;
 - a private AFPACK container, strict validation, atomic installation, recovery,
   rollback, and authenticated content sessions;
 - a native pre-game Windows private-content manager with an AFPACK file
@@ -436,7 +443,7 @@ Read the [architecture](docs/ARCHITECTURE.md), the
 the [Windows platform stack decision](docs/adr/0008-windows-rendering-and-platform-stack.md),
 the [Windows audio decision](docs/adr/0009-windows-xaudio2-audio-backend.md),
 the [authenticated aircraft-audio decision](docs/adr/0011-authenticated-owner-local-aircraft-audio.md),
-the [proposed private HD texture replacement plan](docs/adr/0019-private-hd-texture-replacements.md),
+the [staged private HD texture replacement decision](docs/adr/0019-private-hd-texture-replacements.md),
 the [root-confined private-content capability](docs/adr/0020-root-confined-private-content-capability.md),
 the [audio-system contract](docs/systems/AUDIO.md),
 and the [reverse-engineering workflow](docs/RE-WORKFLOW.md) for the detailed

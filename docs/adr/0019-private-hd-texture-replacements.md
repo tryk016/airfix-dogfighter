@@ -1,6 +1,6 @@
 # ADR-0019: optional private HD texture replacements
 
-- Status: proposed
+- Status: accepted; staged implementation in progress
 - Date: 2026-08-03
 - Deciders: project owner and implementation lead
 
@@ -57,9 +57,9 @@ manifest record.
 
 The project will support an optional, owner-configured HD replacement package
 through a portable `TextureReplacementResolver`, but implementation is
-deliberately staged. This ADR presents the plan only. It does not merge the
-pipeline branch, add the private package to a build, or make Enhanced mode a
-current product claim.
+deliberately staged. Public stages 1-4 are now implemented behind synthetic
+tests. This ADR does not merge the pipeline branch, add the private package to
+a build, or make Enhanced mode a current product claim.
 
 ### Independent setting and effective state
 
@@ -460,7 +460,7 @@ C++20. Native backends only validate and upload an already prepared payload.
 | Initial refactor cost | Medium |
 | Future format support | High |
 
-Proposed. It preserves Classic exactly, keeps private path authority outside
+Selected. It preserves Classic exactly, keeps private path authority outside
 the renderer, and gives both backends one fallback and cache vocabulary.
 
 ## Consequences
@@ -501,7 +501,10 @@ the renderer, and gives both backends one fallback and cache vocabulary.
 4. **Resolver and Classic fallback.** Retain logical path in texture imports,
    hash actual GTI bytes, resolve candidates, and prove that every individual
    failure continues through the byte-identical existing GTI path. Keep
-   effective mode forced to Classic in products.
+   effective mode forced to Classic in products. Implemented: digest-only
+   alternatives are disabled by default, base bytes are authenticated with the
+   manifest checksum, and all failures are fixed path/checksum-free reasons.
+   A successful candidate deliberately stops before PNG decoding.
 5. **RGBA8 PNG preparation.** Select and license-review a PNG-only decoder,
    enforce RGBA8/IHDR and mip-chain contracts, add checked CPU accounting, and
    return `PreparedTextureAsset` without native GPU code.
@@ -573,8 +576,8 @@ visual seams/halos without publishing owner content.
 
 The exact split may change during review, but the expected public surface is:
 
-- `src/airfix/texture/TextureReplacementManifest.hpp/.cpp` -- bounded JSONL
-  records, reviewed-manifest validation, and immutable indexes;
+- `src/airfix/texture/TextureHdManifestIndex.hpp/.cpp` -- bounded JSONL records,
+  reviewed-manifest validation, and immutable accepted-only indexes;
 - `src/airfix/texture/TextureReplacementResolver.hpp/.cpp` -- normalized
   path/SHA lookup and fixed fallback decisions;
 - `src/airfix/texture/PrivateTextureFileStore.hpp`, its platform-owner factory,
@@ -635,10 +638,14 @@ The following remain outside Git and public CI:
 7. [x] Implement stage 3 as the root-confined, generation-bound, path-redacted
        file capability in ADR-0020, behind synthetic files only and with no
        product caller.
-8. [ ] Implement stages 4-5: resolver, byte-identical per-texture GTI fallback,
-       and bounded PNG preparation behind synthetic tests.
-9. [ ] Run the Windows opt-in RGBA8 pilot and private visual comparisons.
-10. [ ] Add persistence and iOS only after the portable fallback matrix is
+8. [x] Implement stage 4: retain authenticated logical identity, hash actual
+       GTI bytes, resolve the manifest-selected base file through ADR-0020,
+       authenticate it, and prove exact per-texture Classic fallback under
+       synthetic tests. Products remain forced to Classic.
+9. [ ] Implement stage 5 bounded PNG RGBA8/IHDR and mip-chain preparation with
+       checked CPU accounting and no native GPU code.
+10. [ ] Run the Windows opt-in RGBA8 pilot and private visual comparisons.
+11. [ ] Add persistence and iOS only after the portable fallback matrix is
        complete and independently reviewed.
-11. [ ] Add streaming and compressed derivatives only after device budgets and
+12. [ ] Add streaming and compressed derivatives only after device budgets and
         per-mip authentication are defined.

@@ -414,8 +414,8 @@ void testGlobalIdsSourceIsolationAndDeduplication() {
     require(
         result.imports ==
             std::vector<TextureImportRequest>{
-                {TextureAssetId{0U}, shared},
-                {TextureAssetId{1U}, other},
+                {TextureAssetId{0U}, shared, "Textures\\Shared.gti"},
+                {TextureAssetId{1U}, other, "Textures\\Other.gti"},
             },
         "global IDs are not dense in canonical archive-file first use");
 

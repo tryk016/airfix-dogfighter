@@ -5649,3 +5649,38 @@ superseded evidence.
   experiments, 408 catalogue rows), 35/35 boundaries, 17/17 direct edges,
   70/70 opcodes, the 779-file public-boundary scan, 232-ref ID uniqueness,
   UTF-8/path/scope checks, and `git diff --check` all pass.
+
+## 2026-08-03 - private HD texture resolver and exact Classic fallback
+
+- Implemented ADR-0019 stage 4 without enabling private content in either
+  product. `TextureImportRequest` now retains the authenticated archive logical
+  path through local/global deduplication, while direct HUD loaders provide the
+  same identity explicitly.
+- Added a non-owning `TextureReplacementResolver` over the accepted-only
+  manifest index and ADR-0020 root capability. It validates generation and
+  logical identity, hashes the actual GTI bytes, requires the manifest source
+  checksum, resolves the exact manifest-selected base path, and verifies the
+  base PNG checksum before returning owned encoded bytes.
+- Digest-only lookup is disabled by default and requires explicit caller
+  policy. Every miss, mismatch, unsafe file, stale generation, limit, I/O, or
+  checksum failure returns a fixed path/checksum-free reason and no private
+  bytes.
+- The shared `prepareTextureSource` boundary proves that no configured resolver
+  and every replacement failure invoke the existing `prepareGtiUpload` with the
+  identical request, GTI span, and limits. All current content loaders pass no
+  resolver, so effective product behavior remains exactly Classic.
+- The dedicated synthetic suite covers normalized path matching, guarded
+  digest alternatives, stale and malformed identities, all file-store failure
+  mappings, base checksum and byte-limit rejection, exact Classic equivalence,
+  and the rule that a replacement candidate is not decoded as GTI. No private
+  image, manifest, path, checksum, original asset, or package root is used.
+- A complete GCC 15.2/Ninja build and all 151/151 CTests pass. A fresh MSVC
+  19.51/Ninja build compiles all 485 portable edges and passes all 149 native
+  CTests; the two sandbox-blocked Python launchers pass directly as 9/9 and
+  8/8. Documentation integrity, 12/12 Rizin exporter tests, synthetic boundary
+  regressions, the 801-file public-boundary scan, and `git diff --check` pass.
+  Clang analyzer/bugprone checks are clean for the new production resolver,
+  and all new C++ files pass the formatting gate.
+  PNG signature, IHDR, RGBA8 dimensions, mip-chain completeness,
+  decoded-memory accounting, cache/settings integration, and native
+  D3D11/Metal upload remain explicit later stages.

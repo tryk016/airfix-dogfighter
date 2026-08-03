@@ -425,6 +425,18 @@ buildMissionWorldRoomTextureBindings(
             failClosed(result);
             return result;
         }
+        if (local->second.value >= localBindings[sourceIndex].imports.size()) {
+            addIssue(
+                result,
+                MissionWorldRoomTextureBindingIssueKind::
+                    textureBindingDependency,
+                sourceIndex,
+                entryIndex);
+            failClosed(result);
+            return result;
+        }
+        const auto& localRequest =
+            localBindings[sourceIndex].imports[local->second.value];
 
         auto global = globalIds.find(archiveFileIndex);
         if (global == globalIds.end()) {
@@ -453,9 +465,22 @@ buildMissionWorldRoomTextureBindings(
             result.imports.push_back({
                 .assetId = globalId,
                 .archiveFileIndex = archiveFileIndex,
+                .logicalPath = localRequest.logicalPath,
             });
             global = globalIds.emplace(
                 archiveFileIndex, globalId).first;
+        }
+        else if (global->second.value >= result.imports.size() ||
+                 result.imports[global->second.value].logicalPath !=
+                     localRequest.logicalPath) {
+            addIssue(
+                result,
+                MissionWorldRoomTextureBindingIssueKind::
+                    textureBindingDependency,
+                sourceIndex,
+                entryIndex);
+            failClosed(result);
+            return result;
         }
         localToGlobal[sourceIndex][local->second.value] = global->second;
     }

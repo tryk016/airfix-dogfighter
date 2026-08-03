@@ -338,8 +338,11 @@ loadLegacyAircraftHudRollingDigitsTexture(
     const render::TextureImportRequest request{
         .assetId = render::TextureAssetId{0U},
         .archiveFileIndex = lookup.fileIndex,
+        .logicalPath = std::string(logicalPath),
     };
-    auto preparation = render::prepareGtiUpload(request, bytes, gtiLimits);
+    auto sourcePreparation =
+        render::prepareTextureSource(request, bytes, nullptr, {}, gtiLimits);
+    auto preparation = std::move(sourcePreparation.classicGti);
     std::vector<std::uint8_t>().swap(bytes);
     if (!preparation.success()) {
       if (preparation.issues.empty()) {

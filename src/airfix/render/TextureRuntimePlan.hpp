@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace airfix::render {
@@ -15,6 +16,11 @@ namespace airfix::render {
 struct TextureImportRequest {
     TextureAssetId assetId;
     std::size_t archiveFileIndex{};
+    // Canonical logical path retained from the authenticated archive lookup.
+    // This is an in-memory content identity only and must never be formatted
+    // into public diagnostics. Empty remains accepted for synthetic/direct
+    // Classic callers that do not attempt replacement resolution.
+    std::string logicalPath;
 
     [[nodiscard]] friend constexpr bool operator==(
         const TextureImportRequest&,

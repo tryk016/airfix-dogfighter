@@ -203,9 +203,15 @@
   the disconnected stage-3 root capability: it pins an absolute owner-selected
   root, resolves each component through native root-relative no-follow opens,
   rejects links/reparse points, special or multiply linked files, enforces
-  generation and byte limits, and exposes only fixed statuses. Resolver/
-  fallback I/O, PNG decoding, cache publication, settings, and Enhanced product
-  mode remain unimplemented. The
+  generation and byte limits, and exposes only fixed statuses. Stage 4 now
+  retains canonical GTI logical identity through global texture binding, hashes
+  the actual GTI bytes, resolves accepted candidates through that pinned root,
+  authenticates the manifest-selected base file, and represents every failure
+  with a fixed redacted fallback reason. Every miss or failure invokes the
+  unchanged GTI preparation with the identical request, bytes, and limits.
+  Digest-only matching requires explicit caller policy and remains disabled in
+  all products. PNG/IHDR and mip decoding, cache publication, settings, and
+  Enhanced product mode remain unimplemented. The
   repository-boundary scanner and synthetic regression suite continue to
   reject private texture roots, raster/GPU texture formats, JSONL/NDJSON
   manifests and backups, and common archives, while the entire owner-local tree
@@ -1422,11 +1428,12 @@
    targets.
 10. Keep ADR-0019's private HD texture mode as a separate staged workstream.
     Public-boundary hardening and the bounded, accepted-only reviewed-manifest
-    parser/index are complete under synthetic tests. Next implement only the
-    root-confined file capability, resolver, and byte-identical per-texture GTI
-    fallback. Do not expose an Enhanced texture selector, add private resources
-    to CMake/CI, or begin streaming/compressed derivatives until those portable
-    boundaries pass independent review.
+    parser/index, root-confined file capability, source resolver, base checksum,
+    and byte-identical per-texture GTI fallback are complete under synthetic
+    tests. Next implement only bounded PNG RGBA8/IHDR and mip-chain preparation
+    with checked CPU accounting. Do not expose an Enhanced texture selector,
+    add private resources to CMake/CI, or begin native upload, streaming, or
+    compressed derivatives until those portable boundaries pass review.
 
 ## Open questions
 
@@ -1438,6 +1445,17 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The private HD texture stage-4 resolver passes a complete Windows GCC
+  15.2/Ninja build with 151/151 CTests. A fresh MSVC 19.51/Ninja build compiles
+  all 485 portable edges and passes all 149 native CTests; CTest could not
+  spawn its two Python interpreters inside the local sandbox, and both scripts
+  then pass directly as 9/9 and 8/8. The five focused resolver/identity suites
+  pass from the MSVC tree. Documentation integrity (117 experiments, 408
+  catalogue rows), 12/12 Rizin exporter tests, synthetic boundary tests, the
+  actual 801-file public-boundary scan, and `git diff --check` pass. Hosted
+  Linux/macOS/Windows and unsigned iOS builds remain the publication gate. The
+  new production resolver is clean under Clang analyzer/bugprone checks, and
+  all new C++ files pass clang-format with warnings as errors.
 - The bounded reviewed HD manifest parser/index passes a complete GCC
   15.2/Ninja build with all 144/144 portable CTests and a complete Visual Studio
   2026 MSVC 19.51/Ninja Windows product build with all 158/158 CTests, including

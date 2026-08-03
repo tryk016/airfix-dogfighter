@@ -29,16 +29,18 @@ void require(const bool condition, const std::string& message) {
     const TextureDependencyRole role,
     const std::size_t archiveFileIndex,
     const TextureEntryStatus status = TextureEntryStatus::unique) {
+    const auto logicalPath =
+        "Textures\\" + std::to_string(archiveFileIndex) + ".gti";
     return {
         .role = role,
         .materialReference = materialReference,
         .materialIndex = 0U,
         .sourceText = {},
         .status = status,
-        .logicalPath = {},
+        .logicalPath = logicalPath,
         .archiveDirectoryIndex = std::nullopt,
         .archiveFileIndex = archiveFileIndex,
-        .archiveLogicalPath = std::nullopt,
+        .archiveLogicalPath = logicalPath,
     };
 }
 
@@ -83,9 +85,11 @@ void testDenseIdsAndCrossRoleDeduplication() {
         "texture binding output has the wrong cardinality");
     require(
         result.imports[0] ==
-            TextureImportRequest{TextureAssetId{0U}, 9000U} &&
+            TextureImportRequest{
+                TextureAssetId{0U}, 9000U, "Textures\\9000.gti"} &&
             result.imports[1] ==
-                TextureImportRequest{TextureAssetId{1U}, 17U},
+                TextureImportRequest{
+                    TextureAssetId{1U}, 17U, "Textures\\17.gti"},
         "asset IDs are not dense in first-use order");
     require(
         result.materials[0].sourceReference == 20U &&
