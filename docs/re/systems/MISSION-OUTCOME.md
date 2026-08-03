@@ -299,9 +299,12 @@ FourCC and payload evidence:
 | `ALMI` | `0x494D4C41` | signed `int32` next mission number |
 
 The result screen also computes/registers local-player statistics, updates
-`SCOR`, and calls `AfChunkContainer::Write(nullptr)`. Those effects are
-deliberately excluded: the remembered-path roster lifecycle, corruption
-recovery, score contract, and safe modern save format are not recovered.
+`SCOR`, and calls `AfChunkContainer::Write(nullptr)`. Those effects remain
+deliberately excluded from the portable mission-outcome consumer. Their
+original static contract and unsafe legacy persistence boundary were recovered
+later by `EV-20260803-002`; see [CAMPAIGN-FLOW.md](CAMPAIGN-FLOW.md) and
+[FMT-ROSTER](../../formats/ROSTER.md). A safe modern campaign schema remains
+unimplemented.
 
 The callback at `[0x00406CE0, 0x00406E14)` confirms Continue after success,
 Retry after failure, and a separate Exit route. The portable consumer returns
@@ -384,9 +387,10 @@ Confirmed selected mode boundaries are:
 - What is the complete dispatcher/process/presentation order when several
   processes, dynamic process operations, and immediate `Spawned` calls
   interact?
-- What is the safe roster lifecycle, schema, corruption recovery, and atomic
-  replacement contract behind `AfChunkContainer::Read/Write`?
-- How are score and registered player statistics calculated and migrated?
+- What versioned portable schema and migration should replace the now-recovered
+  non-transactional roster reader and direct non-atomic writer?
+- What controlled numeric policy should reproduce the statically recovered
+  score conversion/overflow behavior and how should existing totals migrate?
 - What are the network and multiplayer semantics?
 
 These questions block live integration and persistence, not the isolated

@@ -631,6 +631,26 @@
   generalized turn/thrust API.
   Live producer, scheduler, force-law, and player-state wiring remains
   intentionally absent.
+- `EV-20260803-001` closes one conditional AirCraft AI-to-physics subcycle.
+  Numeric task events set modes `1`, `4`, and `3` from a DWORD UID, a vec3 plus
+  room ID, or one byte; `DiscardTask` returns any active mode to zero. The
+  selected mode-1 target-loss path clears the task/target fields and, under
+  explicit finite predicates, leaves raw controls `{50,0,0,-100,-100}`.
+  Its dispatcher tests thrust, pitch, bank, primary attack, then secondary
+  attack, fully processing each present event before the next. Under an
+  explicitly labelled PC53/nearest-even oracle and the reachable prior cache
+  vector `{255,32,32,1,1}`, the signed payloads are `{128,0,0,0,0}`. The
+  pass also corrects the earlier unconditional AI change-suppression model:
+  `HasChanged` uses f32
+  `0x3C23D70A`, while `GetRelative` uses f64
+  `0x3F847AE147AE147B`, so unchanged raw zero still reports changed at
+  PC53/nearest-even. Live PC/RC and imported `_ftol` policy remain unknown.
+  AI writes occur after the current force step; a later force step consumes
+  the fields and the following Euler step consumes those accumulators.
+  Numeric state/layout, ordered dispatch, event-to-field reduction, and this
+  structural phase join are GO. Full behavior, task-wrapper semantics,
+  bit-parity conversion/rigid-body runtime, wall-clock cadence, and
+  cross-producer ordering remain NO-GO.
 - Recovered the scheduler-visible aircraft order:
   `EulerODE -> ResetForceAndTorque -> CalcAuxiliary -> slot45 force
   accumulation -> collision/slot30 -> slot44 refresh`. `EulerODE` consumes
@@ -1629,6 +1649,20 @@ These questions do not block static analysis or the archive work.
   GCC 13.3 and passes 83/83 tests in 26.23 seconds in a fresh isolated
   `Airfix-Dev` WSL clone. The exact-main GitHub Actions publication gate passed
   all six jobs.
+
+- The original single-player frontend/campaign/profile flow is now statically
+  joined under `EV-20260803-002`: startup user load, eight main-menu routes,
+  profile select/create/delete, two Axis/Allied ten-row campaign selectors,
+  selection/briefing/start, pause/result/return, success-only next-row
+  progression, exact result score terms, cumulative stats, `SCOR`, and the
+  remembered roster write. Ghidra 12.1.2 is primary and Rizin 0.9.1
+  independently matches the central function ranges/call graph. The original
+  roster reader is non-transactional and unsafe on malformed extents; its
+  direct `wb` writer is non-atomic and has a short-write success defect. A new
+  bounded valid-file importer and portable campaign model are evidence-ready,
+  while complete frontend parity, difficulty, normal reward rules, safe
+  corruption recovery, a versioned durable schema, platform integration, and
+  bit-identical legacy output remain NO-GO/unimplemented.
 
 ## Blockers
 
