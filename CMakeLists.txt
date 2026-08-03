@@ -258,6 +258,27 @@ else()
     target_compile_options(airfix_assets PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+add_library(airfix_campaign_import
+    src/airfix/campaign/LegacyCampaignStateImport.cpp
+)
+add_library(airfix::campaign_import ALIAS airfix_campaign_import)
+
+target_include_directories(airfix_campaign_import
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+)
+target_compile_features(airfix_campaign_import PUBLIC cxx_std_20)
+target_link_libraries(airfix_campaign_import
+    PUBLIC airfix::assets airfix::campaign
+)
+
+if(MSVC)
+    target_compile_options(airfix_campaign_import PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(airfix_campaign_import PRIVATE
+        -Wall -Wextra -Wpedantic)
+endif()
+
 add_library(airfix_render
     src/airfix/render/CcfRoomDrawAssembly.cpp
     src/airfix/render/MissionWorldRoomDrawAssembly.cpp
@@ -774,6 +795,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::assets)
     add_test(NAME airfix_legacy_roster_importer_tests
         COMMAND airfix_legacy_roster_importer_tests)
+
+    add_executable(airfix_legacy_campaign_state_import_tests
+        tests/LegacyCampaignStateImportTests.cpp)
+    target_link_libraries(airfix_legacy_campaign_state_import_tests
+        PRIVATE airfix::campaign_import)
+    add_test(NAME airfix_legacy_campaign_state_import_tests
+        COMMAND airfix_legacy_campaign_state_import_tests)
 
     add_executable(airfix_asset_resolver_tests tests/AssetResolverTests.cpp)
     target_link_libraries(airfix_asset_resolver_tests PRIVATE airfix::assets)

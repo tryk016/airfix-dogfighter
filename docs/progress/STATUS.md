@@ -1670,8 +1670,11 @@ These questions do not block static analysis or the archive work.
   byte-for-byte. A separate filesystem target now composes that codec with the
   shared durable document pair, selecting current, backup, or the canonical
   empty record and blocking downgrade/unsafe writes within an injected
-  already-partitioned private profile leaf. All pieces remain deliberately
-  unwired. Complete frontend parity, difficulty, normal reward rules, legacy
+  already-partitioned private profile leaf. A separate fail-closed adapter now
+  copies the validated legacy numeric subset to `AFCS`, rejects unsupported
+  `THRD`, and reports omitted identity, portrait, medal, and unknown records so
+  the source remains retained. All pieces remain deliberately unwired.
+  Complete frontend parity, difficulty, normal reward rules, complete profile
   migration, profile identity/medal schema, platform root/lifecycle
   integration, and bit-identical legacy output remain NO-GO/unimplemented.
 

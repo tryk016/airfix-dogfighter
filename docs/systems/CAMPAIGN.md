@@ -1,8 +1,8 @@
 # Campaign and legacy-roster core
 
-The portable core now has three bounded building blocks for the original
-single-player campaign. They are intentionally not connected to a product UI,
-filesystem, or save writer yet.
+The portable core now has bounded parsing, numeric-import, campaign-model,
+codec, and storage building blocks for the original single-player campaign.
+They are intentionally not connected to a product UI or runtime lifecycle yet.
 
 The recovered behavior and its confidence boundary remain authoritative in
 [CAMPAIGN-FLOW](../re/systems/CAMPAIGN-FLOW.md) and
@@ -18,25 +18,26 @@ caller-owned legacy bytes
 LegacyRosterImporter (assets)
         |
         v
-LegacyRoster -- future explicit adapter --> LegacyCampaignSeed
-                                           |
-mission outcome --> LegacyMissionOutcomeConsumer
-        |                                  |
-        +--> ordered progress directive ---+
-                                           v
-                                  LegacyCampaignModel
-                                           |
-                                           v
-                         future semantic state adapter
-                                           |
-                                           v
-                             CampaignStateCodec (AFCS)
-                                           |
-                                           v
-                                CampaignStateStore
-                                           |
-                                           v
-                                DurableDocumentPair
+LegacyRosterImportResult
+        |
+        +--> LegacyCampaignStateImport --> CampaignStateRecord
+        |                                        |
+        |                                        v
+        |                              CampaignStateCodec (AFCS)
+        |                                        |
+        |                                        v
+        |                               CampaignStateStore
+        |                                        |
+        |                                        v
+        |                               DurableDocumentPair
+        |
+        +--> future frontend adapter --> LegacyCampaignSeed
+                                                 |
+mission outcome --> LegacyMissionOutcomeConsumer |
+        |                                        |
+        +--> ordered progress directive ---------+
+                                                 v
+                                        LegacyCampaignModel
 ```
 
 ### `LegacyRosterImporter`
@@ -62,6 +63,24 @@ AFCHUNK framing parser and adds roster-specific rules:
 The importer performs no file I/O and never logs filenames, profile strings,
 record contents, or host paths. It does not emulate the original reader's
 destructive failure paths.
+
+### `LegacyCampaignStateImport`
+
+The dedicated cross-layer adapter accepts only a successful
+`LegacyRosterImportResult` and publishes one schema-1 `CampaignStateRecord`:
+
+- absence remains distinct from stored zero for every numeric field;
+- `THRD` maps only exact `0`/Axis and `1`/Allied values; any other signed value
+  fails closed and publishes an empty result;
+- `AXMI`, `ALMI`, `SCOR`, and all eight neutral counters retain their complete
+  signed 32-bit values without clamping or reinterpretation; and
+- name, portrait, medals, and unknown records are not copied. Four path-free
+  remainder flags tell a future host that the legacy source must be retained.
+
+A rejected parser result is never inspected or partially published. A
+successful numeric conversion is not a declaration that the player profile
+was fully migrated, and this adapter cannot delete, rewrite, or save a legacy
+file.
 
 ### `LegacyCampaignModel`
 
@@ -127,8 +146,8 @@ This slice does not implement:
   equipment, or other reward rules;
 - a legacy roster writer or bit-identical round trip;
 - a versioned portable profile-identity/medal schema;
-- the legacy-to-`AFCS` adapter, profile-directory partitioning, migration,
-  automatic repair, recovery UI, save scheduling, or lifecycle integration;
+- profile-directory partitioning, complete profile migration, automatic
+  repair, recovery UI, save scheduling, or lifecycle integration;
 - automatic conversion from `LegacyRoster` to `LegacyCampaignSeed`;
 - Windows/iOS runtime wiring.
 
@@ -145,6 +164,10 @@ Public tests use synthetic byte vectors only:
   values, repeated medals, unknown descriptors, truncation, root mismatch,
   duplicate singletons, malformed strings/integers/medals, and every configured
   limit;
+- `LegacyCampaignStateImportTests` covers rejected parser results, absence,
+  exact signed extrema and all numeric fields, both typed sides, invalid
+  `THRD`, independent supplemental-data flags, source-retention policy, and a
+  canonical AFCS round trip;
 - `LegacyCampaignModelTests` covers defaults, raw/clamped maxima, both sides,
   locked rows, exact catalogue identifiers, consumer-to-model progression,
   mission-ten clamping, failure preservation, and forged directives.

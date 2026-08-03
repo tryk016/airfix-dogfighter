@@ -96,6 +96,15 @@ This store adds no platform root lookup, profile catalogue, legacy adapter,
 automatic repair, migration, UI, save scheduling, or runtime wiring. The host
 must serialize access to one injected leaf.
 
+The separate `LegacyCampaignStateImport` adapter accepts only a successful,
+bounded root-zero roster import. It copies optional `THRD`, `AXMI`, `ALMI`,
+`SCOR`, and the eight neutral counters into schema 1 without clamping or
+inventing absent values. `THRD` values other than exact Axis `0` or Allied `1`
+fail closed and publish no partial numeric state. Name, portrait, medals, and
+unknown records remain outside AFCS; path-free remainder flags require the
+future host to retain the legacy source whenever such data exists. The adapter
+does not read, write, delete, or declare a complete profile migration.
+
 ## Options considered
 
 ### Reuse and rewrite the legacy root-zero roster
@@ -177,7 +186,7 @@ select or create a player's save location by itself.
 2. [x] Cover exact round trips, signed extrema, presence, corruption, field
        canonicality, limits, and opaque future-schema preservation with
        synthetic tests.
-3. [ ] Define the legacy numeric adapter and explicit incomplete/unsupported
+3. [x] Define the legacy numeric adapter and explicit incomplete/unsupported
        import policy.
 4. [x] Define AFCS current/backup names, inspection, recovery/default behavior,
        and implement the isolated ADR-0018 store adapter.
