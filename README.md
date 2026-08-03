@@ -437,6 +437,7 @@ the [Windows platform stack decision](docs/adr/0008-windows-rendering-and-platfo
 the [Windows audio decision](docs/adr/0009-windows-xaudio2-audio-backend.md),
 the [authenticated aircraft-audio decision](docs/adr/0011-authenticated-owner-local-aircraft-audio.md),
 the [proposed private HD texture replacement plan](docs/adr/0019-private-hd-texture-replacements.md),
+the [root-confined private-content capability](docs/adr/0020-root-confined-private-content-capability.md),
 the [audio-system contract](docs/systems/AUDIO.md),
 and the [reverse-engineering workflow](docs/RE-WORKFLOW.md) for the detailed
 contracts.

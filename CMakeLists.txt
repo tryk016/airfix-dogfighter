@@ -179,9 +179,19 @@ else()
 endif()
 
 add_library(airfix_texture
+    src/airfix/texture/PrivateTextureFileStore.cpp
     src/airfix/texture/TextureHdManifestIndex.cpp
 )
 add_library(airfix::texture ALIAS airfix_texture)
+
+if(WIN32)
+    target_sources(airfix_texture PRIVATE
+        src/airfix/texture/PrivateTextureFileStoreWin32.cpp)
+    target_link_libraries(airfix_texture PRIVATE ntdll)
+else()
+    target_sources(airfix_texture PRIVATE
+        src/airfix/texture/PrivateTextureFileStorePosix.cpp)
+endif()
 
 target_include_directories(airfix_texture
     PUBLIC
@@ -626,6 +636,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::texture)
     add_test(NAME airfix_texture_hd_manifest_index_tests
         COMMAND airfix_texture_hd_manifest_index_tests)
+
+    add_executable(airfix_private_texture_file_store_tests
+        tests/PrivateTextureFileStoreTests.cpp)
+    target_link_libraries(airfix_private_texture_file_store_tests
+        PRIVATE airfix::texture)
+    add_test(NAME airfix_private_texture_file_store_tests
+        COMMAND airfix_private_texture_file_store_tests)
 
     add_executable(airfix_durable_file_tests tests/DurableFileTests.cpp)
     target_link_libraries(airfix_durable_file_tests PRIVATE airfix::io)

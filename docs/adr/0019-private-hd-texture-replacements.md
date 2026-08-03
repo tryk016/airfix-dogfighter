@@ -129,12 +129,13 @@ Original GTI and archive files remain read-only and unchanged.
 
 The platform adapter opens and validates the root once and supplies a bounded
 file-store capability to portable code. Portable code does not concatenate a
-manifest string and then open an unrestricted host path. Windows uses handles
-that reject reparse points and verifies the final handle path remains below
-the configured root. Apple platforms walk relative components from an opened
-root directory with no-follow semantics and require regular files. The first
-implementation rejects symbolic links, junctions, other reparse entries,
-devices, FIFOs, sockets, and directories where a regular file is required.
+manifest string and then open an unrestricted host path. Windows opens each
+component relative to the previously pinned directory handle with reparse
+processing disabled. Apple platforms use the equivalent descriptor-relative
+no-follow walk. The shared first implementation in ADR-0020 rejects symbolic
+links, junctions, other reparse entries, devices, FIFOs, sockets, multiply
+linked files, and directories where a regular file is required. It stores no
+configured root spelling and no product currently calls its platform factory.
 
 ### Manifest index
 
@@ -495,6 +496,8 @@ the renderer, and gives both backends one fallback and cache vocabulary.
 3. **Root-capability adapters.** Add Windows no-reparse and Apple no-follow
    regular-file access behind one testable relative-file interface. Prove
    absolute, traversal, symlink, reparse, type, and stale-generation rejection.
+   This stage is implemented by ADR-0020; it remains disconnected from every
+   product and private package.
 4. **Resolver and Classic fallback.** Retain logical path in texture imports,
    hash actual GTI bytes, resolve candidates, and prove that every individual
    failure continues through the byte-identical existing GTI path. Keep
@@ -574,8 +577,8 @@ The exact split may change during review, but the expected public surface is:
   records, reviewed-manifest validation, and immutable indexes;
 - `src/airfix/texture/TextureReplacementResolver.hpp/.cpp` -- normalized
   path/SHA lookup and fixed fallback decisions;
-- `src/airfix/texture/PrivateTextureFileStore.hpp` plus Windows and Apple
-  adapters -- root-confined regular-file capabilities;
+- `src/airfix/texture/PrivateTextureFileStore.hpp`, its platform-owner factory,
+  and Windows/POSIX adapters -- root-confined regular-file capabilities;
 - `src/airfix/render/PreparedTextureAsset.hpp/.cpp` -- backend-neutral RGBA8 and
   future compressed upload payloads;
 - `src/airfix/render/TextureResidencyManager.hpp/.cpp` -- cache keys,
@@ -629,10 +632,13 @@ The following remain outside Git and public CI:
 6. [x] Implement stage 2 as a bounded reviewed-manifest parser and immutable
        accepted-only index behind data-less synthetic tests. It performs no
        filesystem I/O and the product effective mode remains Classic.
-7. [ ] Implement stages 3-5: root-confined file capability, resolver, and
-       byte-identical per-texture GTI fallback behind synthetic tests.
-8. [ ] Run the Windows opt-in RGBA8 pilot and private visual comparisons.
-9. [ ] Add persistence and iOS only after the portable fallback matrix is
+7. [x] Implement stage 3 as the root-confined, generation-bound, path-redacted
+       file capability in ADR-0020, behind synthetic files only and with no
+       product caller.
+8. [ ] Implement stages 4-5: resolver, byte-identical per-texture GTI fallback,
+       and bounded PNG preparation behind synthetic tests.
+9. [ ] Run the Windows opt-in RGBA8 pilot and private visual comparisons.
+10. [ ] Add persistence and iOS only after the portable fallback matrix is
        complete and independently reviewed.
-10. [ ] Add streaming and compressed derivatives only after device budgets and
+11. [ ] Add streaming and compressed derivatives only after device budgets and
         per-mip authentication are defined.
