@@ -35,6 +35,9 @@ vectors, producer-specific bounds, and timing limits are recorded in
 The follow-up producer, device-priority, synchronous-dispatch, AI-cadence, and
 time-heap ordering proof is recorded in
 [EXP-20260730-067](../../experiments/EXP-20260730-067-native-pitch-bank-producer-ordering.md).
+Its unconditional AI change-suppression statement is superseded by the exact
+five-channel, task-state, x87-policy, and later-physics join in
+[EXP-20260803-113](../../experiments/EXP-20260803-113-aircraft-ai-physics-cycle.md).
 The exact `CcRigidBody` 13-float layout, Euler/derivative/quaternion equations,
 x87 spill schedule, matrix convention, exact-bit vectors, and implementation
 NO-GO are recorded in
@@ -513,9 +516,12 @@ three analog-history globals; see
 
 `AIControls` owns eight channels and four arrays of eight floats. `SetValue`
 and `AddValue` clamp the raw value to `[-100,+100]`. `GetRelative` maps that
-raw interval linearly into the configured per-channel range and caches the
-mapped value. `HasChanged` compares the cached and newly mapped floats by exact
-equality; there is no epsilon or dead zone in this layer.
+raw interval linearly into the configured per-channel range and caches one
+binary32 value. `HasChanged` compares that cache against a retained x87
+candidate without an intervening binary32 store. There is no epsilon or dead
+zone, but the two formulas are not numerically identical: `HasChanged` uses
+binary32 `0x3C23D70A`, while `GetRelative` uses binary64
+`0x3F847AE147AE147B`, and both use binary64 `0.5`.
 
 The AirCraft AI instance contains this object at `+0x364`. Its constructor at
 `0x10009440` and dispatcher at `0x1000C420` establish these exact routes:
@@ -533,20 +539,37 @@ payload. The numeric route is confirmed, but the symbolic names of the
 `AICONTROL` indices themselves remain unknown and are not reconstructed from
 their consumers.
 
-`DispatchAiControlEvents` tests channel 1 before channel 3. When both mapped
-values changed, the complete PITCH
+`DispatchAiControlEvents` tests channels in the complete order thrust 0,
+pitch 1, bank 3, primary attack 5, and secondary attack 6. Every present
 `HasChanged -> GetRelative -> _ftol -> Save -> Process` sequence finishes
-before the equivalent BANK sequence. `GetRelative` updates the cache before
-processing, so an inactive drop is not replayed until the mapped value changes
-again.
+before the next channel is tested. `GetRelative` updates the cache before
+processing, but a later identical raw value is not generally suppressed.
+Under PC53/nearest-even, unchanged raw zero still reports changed in all three
+configured range shapes, while raw `-100` is stable. PC24/nearest-even
+suppresses the tested unchanged finite values; PC24 with another RC and PC53
+or PC64 with any RC do not. An inactive consumer has no special replay path:
+the next producer call follows this same policy-sensitive comparison.
 
 The vehicle's 12 ms refresh invokes `AfAI::Refresh` near its end. AirCraft
 configures the AI interval to exact binary32 `0.1`; the accumulator adds each
 binary32 `dt`, triggers while no longer below that interval, and resets to
 zero rather than subtracting the interval. With uninterrupted `0.012f` steps,
 the ninth refresh triggers after approximately 0.108 seconds. The derived
-step computes controls and then dispatches PITCH before BANK. Those events
-cannot affect force work already completed in the current vehicle refresh.
+step optionally runs a helper every sixth eligible call by code count, computes
+controls, and dispatches the five-channel ordered subsequence above. One
+closed witness starts in numeric mode 1, loses its nonzero target UID, calls
+`AfAI::DiscardTask`, clears target/goal fields, and conditionally leaves raw
+controls `{50,0,0,-100,-100}`. Under an explicit PC53/nearest-even oracle and
+the reachable prior cache vector `{255,32,32,1,1}`, its signed payloads are
+`{128,0,0,0,0}`.
+
+Those events cannot affect force work already completed in the current
+vehicle refresh. Conditional on active later updates and no intervening
+producer, the next refresh first integrates the old accumulators and then
+uses the AI control fields to prepare force/torque; the following refresh
+integrates those accumulators. Weapon events only update persistent firing
+state here; projectile creation belongs to a separately scheduled weapon
+refresh.
 
 No `TURN_SET` AI producer was found in the inspected AirCraft, GroundUnit, or
 WaterUnit paths. No control-law consumer of `+0x450` was found in those
@@ -573,6 +596,10 @@ constants without another confirming source.
   `EVENT_TURN_SET`/`AfVehicle+0x450`;
 - the complete actor-vs-actor slot-29 order outside the shown static/BSP path;
 - the semantic meaning of the `AICONTROL` index enum names;
+- symbolic meanings for AI task values `0x01100001..0x01100003`, numeric
+  modes `1/3/4`, and the target probes used by the selected loss path;
+- the complete AirCraft task wrappers at RVAs `0x0000C780/0x0000C7C0` and
+  all branches in the large periodic/control helpers;
 - the gameplay meanings of several constructor fields even though every tuple
   value is now joined to its exact storage and immediate consumers;
 - world distance, mass, force, and torque units;

@@ -619,6 +619,26 @@
   generalized turn/thrust API.
   Live producer, scheduler, force-law, and player-state wiring remains
   intentionally absent.
+- `EV-20260803-001` closes one conditional AirCraft AI-to-physics subcycle.
+  Numeric task events set modes `1`, `4`, and `3` from a DWORD UID, a vec3 plus
+  room ID, or one byte; `DiscardTask` returns any active mode to zero. The
+  selected mode-1 target-loss path clears the task/target fields and, under
+  explicit finite predicates, leaves raw controls `{50,0,0,-100,-100}`.
+  Its dispatcher tests thrust, pitch, bank, primary attack, then secondary
+  attack, fully processing each present event before the next. Under an
+  explicitly labelled PC53/nearest-even oracle and the reachable prior cache
+  vector `{255,32,32,1,1}`, the signed payloads are `{128,0,0,0,0}`. The
+  pass also corrects the earlier unconditional AI change-suppression model:
+  `HasChanged` uses f32
+  `0x3C23D70A`, while `GetRelative` uses f64
+  `0x3F847AE147AE147B`, so unchanged raw zero still reports changed at
+  PC53/nearest-even. Live PC/RC and imported `_ftol` policy remain unknown.
+  AI writes occur after the current force step; a later force step consumes
+  the fields and the following Euler step consumes those accumulators.
+  Numeric state/layout, ordered dispatch, event-to-field reduction, and this
+  structural phase join are GO. Full behavior, task-wrapper semantics,
+  bit-parity conversion/rigid-body runtime, wall-clock cadence, and
+  cross-producer ordering remain NO-GO.
 - Recovered the scheduler-visible aircraft order:
   `EulerODE -> ResetForceAndTorque -> CalcAuxiliary -> slot45 force
   accumulation -> collision/slot30 -> slot44 refresh`. `EulerODE` consumes

@@ -78,6 +78,16 @@ rebuilds auxiliary state, invokes AirCraft slot 45 to accumulate forces for
 the next integration, resolves static collisions through slot 30, and invokes
 slot 44.
 
+`EV-20260803-001` closes one conditional AI cycle across the module boundary:
+numeric task mode 1 loses its UID target and returns to mode 0, the bounded
+fallback writes raw thrust/pitch/bank/fire controls, and the dispatcher
+synchronously processes the ordered channel subsequence `0,1,3,5,6` into
+`AfVehicle` control fields or persistent weapon state. A later slot-45 step
+reads those fields and the following Euler step consumes its accumulators.
+The same evidence corrects unconditional AI change suppression: retained x87
+comparison uses a binary32 `0.01` while cached mapping uses binary64 `0.01`,
+so portable payloads remain conditional on an explicit PC/RC policy.
+
 `EV-20260724-004` closes the static flight-law body: AirCraft receives a 12 ms
 dependant interval, AfEngine converts it to `0.012f` seconds, all 21 rigid-body
 force/torque call sites and direct state transitions are mapped, and each
