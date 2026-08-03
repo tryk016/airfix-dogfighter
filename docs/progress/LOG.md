@@ -5519,3 +5519,10 @@ superseded evidence.
   observation. The 6-second quality job also confirms that source/workflow
   changes fail closed to the full matrix. A follow-up run will measure warm
   object reuse before merge.
+- The first documentation-only trial exposed a GitHub naming boundary: a
+  skipped strategy matrix reports `matrix.os`, while the main ruleset requires
+  the three concrete platform names. A docs-only Ubuntu compatibility fan-out
+  now publishes those exact statuses only after `full_build=false`; it performs
+  no checkout, build, or test and allocates no Windows/macOS runner. Full runs
+  continue to satisfy the same names through their real platform jobs, with no
+  ruleset bypass.
