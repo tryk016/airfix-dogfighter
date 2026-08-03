@@ -351,8 +351,10 @@
   assistive text from one bounded source, and accepts fail-closed owner-thread
   focus/invoke/decrement/increment actions. A monotonic semantic generation
   rejects delayed same-screen/ABA actions while ignoring preview-only analog
-  samples. The COM `WM_GETOBJECT` provider,
-  Narrator acceptance, glyphs, haptics, live replacement, and physical-device
+  samples. A Windows-only COM provider now attaches through `WM_GETOBJECT`,
+  publishes stable bounded fragments and events, and returns typed actions to
+  the SDL owner thread through a fixed 32-entry queue. Physical Narrator
+  acceptance, glyphs, haptics, live replacement, and physical-device
   persistence acceptance remain.
 - Local Git repository initialized on branch `main`; planning baseline committed
   as `59828ed`.
@@ -1305,11 +1307,10 @@
    batch, sort, deduplicate, replay, or let the value-only consumer execute UI
    or disk effects.
 4. Complete ADR-0015 acceptance around the implemented native text pickers.
-   Connect the implemented bounded Windows semantic tree/action seam to a
-   Windows-only COM provider through the SDL-owned HWND and `WM_GETOBJECT`
-   before claiming Narrator support, then run keyboard/mouse/controller
-   accessibility acceptance. Before
-   supporting live replacement, add a host-owned pause transaction that
+   Run keyboard/mouse/controller and physical Narrator acceptance against the
+   implemented bounded Windows COM provider. Until that passes, do not claim
+   Narrator support. Before supporting live replacement, add a host-owned
+   pause transaction that
    prepares a fresh pair. Then add persistent touch layout/visibility profiles,
    controller glyphs, haptics, and finished menu bindings before touch-only and
    controller-only acceptance on both target iPhones. Never mutate

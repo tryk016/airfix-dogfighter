@@ -197,6 +197,39 @@ target_link_libraries(airfix_windows_ui_semantics PUBLIC
     airfix_windows_settings_panel
 )
 
+add_library(airfix_windows_ui_automation STATIC
+    AirfixWindowsUiAutomation.cpp
+    AirfixWindowsUiAutomation.hpp
+)
+target_include_directories(airfix_windows_ui_automation PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+target_compile_features(airfix_windows_ui_automation PUBLIC cxx_std_20)
+target_compile_definitions(airfix_windows_ui_automation PRIVATE
+    NOMINMAX
+    WIN32_LEAN_AND_MEAN
+)
+if(MSVC)
+    target_compile_options(airfix_windows_ui_automation PRIVATE
+        /W4 /permissive-)
+else()
+    target_compile_options(airfix_windows_ui_automation PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+endif()
+target_link_libraries(airfix_windows_ui_automation
+    PUBLIC
+        airfix_windows_ui_semantics
+    PRIVATE
+        comctl32
+        ole32
+        oleaut32
+        uiautomationcore
+        user32
+)
+
 add_library(airfix_windows_ui_rasterizer STATIC
     AirfixWindowsUiRasterizer.cpp
     AirfixWindowsUiRasterizer.hpp
@@ -365,6 +398,7 @@ target_link_libraries(airfix_windows PRIVATE
     airfix_windows_render_settings_coordinator
     airfix_windows_settings_panel
     airfix_windows_settings_root
+    airfix_windows_ui_automation
     airfix::audio
     airfix::content
     airfix::render
@@ -618,6 +652,33 @@ if(AIRFIX_BUILD_TESTS)
         airfix_windows_ui_semantics)
     add_test(NAME airfix_windows_ui_semantics_tests
         COMMAND airfix_windows_ui_semantics_tests)
+
+    add_executable(airfix_windows_ui_automation_tests
+        AirfixWindowsUiAutomationTests.cpp)
+    target_compile_features(airfix_windows_ui_automation_tests
+        PRIVATE cxx_std_20)
+    target_compile_definitions(airfix_windows_ui_automation_tests PRIVATE
+        NOMINMAX
+        WIN32_LEAN_AND_MEAN
+    )
+    if(MSVC)
+        target_compile_options(airfix_windows_ui_automation_tests PRIVATE
+            /W4 /permissive-)
+    else()
+        target_compile_options(airfix_windows_ui_automation_tests PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+    endif()
+    target_link_libraries(airfix_windows_ui_automation_tests PRIVATE
+        airfix_windows_ui_automation
+        ole32
+        oleaut32
+        uiautomationcore
+        user32)
+    add_test(NAME airfix_windows_ui_automation_tests
+        COMMAND airfix_windows_ui_automation_tests)
 
     add_test(NAME airfix_windows_product_smoke_tests
         COMMAND airfix_windows --smoke-test --render-diagnostics)

@@ -74,8 +74,13 @@ pair from that immutable configuration. Its pause surface now edits the four
 stick-axis calibration records, previews raw and adjusted Q15 values through
 the exact runtime transform, and durably saves a complete AFIP for the next
 launch. Its compact native text picker now projects the shared seven-action
-remap model through keyboard, mouse, and controller input. Live replacement,
-Windows UI Automation, glyphs, and rumble policy remain pending.
+remap model through keyboard, mouse, and controller input. The SDL-owned HWND
+also publishes the same bounded panel through a Windows UI Automation fragment
+provider: stable runtime IDs, screen-space bounds, clipped/offscreen rows,
+read-only values, invoke/focus patterns, and bounded change events never enter
+simulation. UIA actions cross a fixed 32-entry queue and are revalidated by the
+panel's screen/generation guards on the SDL owner thread. Physical Narrator
+acceptance, live replacement, glyphs, and rumble policy remain pending.
 
 The native iOS layer feeds the complete current gameplay-action surface from a
 safe-area-aware UIKit overlay and Apple's Game Controller framework; none of
@@ -326,9 +331,9 @@ uses a separate cancel-first conflict screen, and allows only an explicit
 supported-action swap. The data-less
 `--capture-controller-bindings-panel <output.bmp>` mode renders this exact
 surface from the canonical default profile without reading private storage.
-Selected-device UI, Windows UI Automation, glyphs, digital menu repeat, rumble,
-and physical
-Xbox/PlayStation/generic-controller testing remain pending.
+Selected-device UI, physical Narrator acceptance, glyphs, digital menu repeat,
+rumble, and physical Xbox/PlayStation/generic-controller testing remain
+pending.
 
 ## Input contexts
 
