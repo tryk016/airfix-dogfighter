@@ -284,7 +284,9 @@ else()
     target_compile_options(airfix_render PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-add_library(airfix_io)
+add_library(airfix_io
+    src/airfix/io/DurableDocumentPair.cpp
+)
 add_library(airfix::io ALIAS airfix_io)
 if(WIN32)
     target_sources(airfix_io PRIVATE src/airfix/io/DurableFileWin32.cpp)
@@ -603,6 +605,12 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_durable_file_tests tests/DurableFileTests.cpp)
     target_link_libraries(airfix_durable_file_tests PRIVATE airfix::io)
     add_test(NAME airfix_durable_file_tests COMMAND airfix_durable_file_tests)
+
+    add_executable(airfix_durable_document_pair_tests
+        tests/DurableDocumentPairTests.cpp)
+    target_link_libraries(airfix_durable_document_pair_tests PRIVATE airfix::io)
+    add_test(NAME airfix_durable_document_pair_tests
+        COMMAND airfix_durable_document_pair_tests)
 
     add_executable(airfix_render_settings_codec_tests
         tests/RenderPresentationSettingsCodecTests.cpp)
