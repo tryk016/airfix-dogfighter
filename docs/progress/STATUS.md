@@ -52,8 +52,13 @@
   sampling stage is also implemented: Classic retains the established
   point-sampled scene-texture path and Enhanced uses trilinear 8x anisotropic
   sampling on D3D11 and Metal. UI/diagnostic and final-presentation samplers
-  remain independent. Color-space classification, lighting, materials,
-  shadows, post-processing, and iOS runtime/device acceptance remain pending.
+  remain independent. RGBA8 upload plans now also carry an explicit sample
+  space: existing GTI stays conservatively `encoded-unclassified` and retains
+  the exact UNORM path, while explicitly classified sRGB colour and linear
+  data have matching D3D11/Metal format mappings. Unknown labels fail closed.
+  Actual texture classification, end-to-end linear/sRGB output handling,
+  lighting, materials, shadows, post-processing, and iOS runtime/device
+  acceptance remain pending.
   Hosted iPhoneOS and iPhoneSimulator builds compile the complete Metal path;
   only physical-device visual/timing acceptance remains for this slice.
   A shared allocation-free gameplay-screen projection now composes the

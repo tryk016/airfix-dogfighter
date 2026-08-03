@@ -223,6 +223,7 @@ validTexture(const LoadedLegacyAircraftHudIdentityStatusTexture &texture,
       texture.upload.request.assetId != texture.textureId ||
       texture.upload.request.archiveFileIndex != texture.sourceFileIndex ||
       texture.upload.format != legacyAircraftHudIdentityStatusTextureFormat ||
+      !render::validTextureSampleSpace(texture.upload.sampleSpace) ||
       texture.upload.uploadedMipCount == 0U ||
       texture.upload.allocatedMipCount < texture.upload.uploadedMipCount ||
       texture.upload.uploadLevels.size() != texture.upload.uploadedMipCount ||

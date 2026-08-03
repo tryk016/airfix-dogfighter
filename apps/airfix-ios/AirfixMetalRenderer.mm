@@ -925,7 +925,17 @@ void configurePrivateTextureDescriptor(MTLTextureDescriptor *descriptor,
   const auto &upload = source.upload;
   const auto &base = upload.uploadLevels.front();
   descriptor.textureType = MTLTextureType2D;
-  descriptor.pixelFormat = MTLPixelFormatRGBA8Unorm;
+  switch (airfix::render::rgba8TextureEncoding(upload.sampleSpace)) {
+  case airfix::render::Rgba8TextureEncoding::unorm:
+    descriptor.pixelFormat = MTLPixelFormatRGBA8Unorm;
+    break;
+  case airfix::render::Rgba8TextureEncoding::unormSrgb:
+    descriptor.pixelFormat = MTLPixelFormatRGBA8Unorm_sRGB;
+    break;
+  case airfix::render::Rgba8TextureEncoding::invalid:
+    descriptor.pixelFormat = MTLPixelFormatInvalid;
+    break;
+  }
   descriptor.width = static_cast<NSUInteger>(base.width);
   descriptor.height = static_cast<NSUInteger>(base.height);
   descriptor.depth = 1U;
@@ -1001,6 +1011,7 @@ bool validateTextureAsset(const LoadedTexture &texture,
           static_cast<std::uint32_t>(textureIndex) ||
       upload.request.assetId != textureAssetId(texture) ||
       upload.request.archiveFileIndex != texture.sourceFileIndex ||
+      !airfix::render::validTextureSampleSpace(upload.sampleSpace) ||
       upload.uploadLevels.size() != texture.uploadLevels.size() ||
       upload.uploadLevels.size() != upload.uploadedMipCount ||
       upload.allocatedMipCount == 0U ||

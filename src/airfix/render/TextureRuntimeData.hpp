@@ -37,7 +37,9 @@ struct GtiUploadDataLimits {
 
 struct GtiUploadPreparation {
     // Both payload fields are published together only after the decoded data
-    // has been checked against every field and byte total in the plan.
+    // has been checked against every field and byte total in the plan. This
+    // stage retains encodedUnclassified and makes no colour-classification
+    // decision.
     std::optional<GtiUploadPlan> plan;
     std::vector<assets::RgbaImage> uploadLevels;
     std::vector<GtiUploadDataIssue> issues;

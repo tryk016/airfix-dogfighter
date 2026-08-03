@@ -5412,3 +5412,27 @@ superseded evidence.
   project-generator attempt stalled in compiler identification; its exact
   child processes were stopped, and the successful build used the established
   MSVC/Ninja path with an existing read-only SDL source checkout.
+
+## 2026-08-03 - explicit texture sample-space contract
+
+- Added a backend-neutral RGBA8 sample-space label with three intentional
+  states: encoded/unclassified input, classified sRGB colour, and linear data.
+  The format selector maps these to UNORM or UNORM-sRGB and returns an invalid
+  result for every forged enum value.
+- GTI description and decode remain conservative and publish only
+  `encoded-unclassified`; no original or private texture is reclassified and
+  the current rendered image is unchanged. Authenticated HUD texture owners,
+  room plan comparisons, and Metal preflight now retain or validate the label
+  instead of silently discarding it.
+- D3D11 maps classified RGBA8 uploads to
+  `DXGI_FORMAT_R8G8B8A8_UNORM_SRGB` and all other valid current uploads to
+  `DXGI_FORMAT_R8G8B8A8_UNORM`. Metal carries the corresponding
+  `MTLPixelFormatRGBA8Unorm_sRGB`/`MTLPixelFormatRGBA8Unorm` choice through
+  the same heap descriptor plan. Existing GTI exercises only the unchanged
+  UNORM branch until a later evidence-backed classifier exists.
+- A fresh GCC/Ninja portable build and all 143/143 CTests pass. Visual Studio
+  2026 MSVC 19.51/Ninja also compiles and links the complete SDL3/D3D11/XAudio2
+  product with the native format mapping, and all 157/157 Windows CTests pass.
+  Public-boundary tests and the 755-file scanner also pass. Hosted iOS
+  compilation remains the publication gate for the Objective-C++/Metal
+  spelling and integration.

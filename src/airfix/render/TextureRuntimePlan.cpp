@@ -593,6 +593,7 @@ GtiUploadDescription describeGtiUpload(
         .variantIndex = variantIndex,
         .format = variant.format,
         .checksum = metadata.checksum,
+        .sampleSpace = TextureSampleSpace::encodedUnclassified,
         .mipPolicy = allExact
             ? GtiMipPolicy::authoredChain
             : GtiMipPolicy::generateFromBase,
