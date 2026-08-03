@@ -1659,10 +1659,12 @@ These questions do not block static analysis or the archive work.
   independently matches the central function ranges/call graph. The original
   roster reader is non-transactional and unsafe on malformed extents; its
   direct `wb` writer is non-atomic and has a short-write success defect. A new
-  bounded valid-file importer and portable campaign model are evidence-ready,
-  while complete frontend parity, difficulty, normal reward rules, safe
-  corruption recovery, a versioned durable schema, platform integration, and
-  bit-identical legacy output remain NO-GO/unimplemented.
+  bounded valid-file importer and portable campaign model now implement the
+  evidence-ready subset with synthetic malformed-input and transition tests.
+  They remain deliberately unwired. Complete frontend parity, difficulty,
+  normal reward rules, safe corruption recovery, a versioned durable schema,
+  platform integration, and bit-identical legacy output remain
+  NO-GO/unimplemented.
 
 ## Blockers
 

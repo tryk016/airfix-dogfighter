@@ -1,7 +1,7 @@
 # FMT-ROSTER — player profile and campaign roster
 
 **State:** valid-file framing and known records statically recovered; bounded
-portable parser and legacy writer not implemented
+portable importer implemented; legacy writer not implemented
 
 **Evidence IDs:** `EV-20260721-022`, `EV-20260803-002`
 
@@ -210,6 +210,12 @@ evidence that the original roster had those properties.
 **GO** for implementing a bounded, fail-closed importer for valid files with
 the known records above. Unknown and duplicate records need an explicit
 preservation policy if migration fidelity is required.
+
+The portable implementation is documented in
+[Campaign and legacy-roster core](../systems/CAMPAIGN.md). It accepts root zero,
+rejects duplicate known singleton records, permits repeated `MEDA`, and retains
+unknown records only as ID/size descriptors. This is an explicit safe product
+policy, not a claim about every legacy duplicate or migration case.
 
 **NO-GO** for reproducing legacy corrupt-file behavior. The recovered behavior
 is memory-unsafe and not completely defined without prohibited execution.

@@ -505,6 +505,7 @@ original assets, and AFPACK content must never be public artifacts.
 - [Windows x64 product requirements](docs/design/WINDOWS-X64-REQUIREMENTS.md)
 - [iOS product requirements](docs/design/IOS-PORT-REQUIREMENTS.md)
 - [Private content installation](docs/systems/CONTENT-INSTALL.md)
+- [Campaign and legacy-roster core](docs/systems/CAMPAIGN.md)
 - [Player reconstruction](docs/re/systems/PLAYER-SPAWN.md)
 - [Reverse-engineering workbench](docs/toolchain/RE-WORKBENCH.md)
 - [Current status](docs/progress/STATUS.md)
