@@ -178,6 +178,24 @@ else()
     target_compile_options(airfix_udsp PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+add_library(airfix_texture
+    src/airfix/texture/TextureHdManifestIndex.cpp
+)
+add_library(airfix::texture ALIAS airfix_texture)
+
+target_include_directories(airfix_texture
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+)
+target_compile_features(airfix_texture PUBLIC cxx_std_20)
+target_link_libraries(airfix_texture PUBLIC airfix::crypto airfix::udsp)
+
+if(MSVC)
+    target_compile_options(airfix_texture PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(airfix_texture PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
 add_library(airfix_assets
     src/airfix/assets/AfChunkContainer.cpp
     src/airfix/assets/AssetResolver.cpp
@@ -601,6 +619,13 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_crypto_tests tests/Sha256Tests.cpp)
     target_link_libraries(airfix_crypto_tests PRIVATE airfix::crypto)
     add_test(NAME airfix_crypto_tests COMMAND airfix_crypto_tests)
+
+    add_executable(airfix_texture_hd_manifest_index_tests
+        tests/TextureHdManifestIndexTests.cpp)
+    target_link_libraries(airfix_texture_hd_manifest_index_tests
+        PRIVATE airfix::texture)
+    add_test(NAME airfix_texture_hd_manifest_index_tests
+        COMMAND airfix_texture_hd_manifest_index_tests)
 
     add_executable(airfix_durable_file_tests tests/DurableFileTests.cpp)
     target_link_libraries(airfix_durable_file_tests PRIVATE airfix::io)
