@@ -188,9 +188,17 @@ one process initially runs Autoexec declarations in reverse source order.
 argument word, the native `0x24, 0x26, descriptor-token` call instruction, the
 source-`true` `0x1B, 1` argument producer, and their interpreter projections.
 The portable schedule oracle and five-word recognizer own only those bounded
-rules; the complete VM, live mission lifecycle, dynamic process mutation,
-global dispatch, campaign consumption, persistence, and multiplayer remain
-open. See
+rules. `EV-20260803-003` later maps the complete 70-opcode runtime dispatch,
+NUL-text compiler ingress, database/object/function/process/execution
+ownership, first step, delay, immediate named calls, mutation snapshots,
+reset, and final destruction. It also proves the native gameplay descriptor
+map and six registered default-return-zero no-ops.
+
+This is a static specification, not a runtime implementation. Safe parsing,
+typed pointer replacement, re-entrant destruction, complete interpreter
+integration, global ordering against AI/physics, numerical/time parity, and
+multiplayer remain open. See [AFS-VM](systems/AFS-VM.md),
+[FMT-AFS](../formats/AFS.md), and
 [`MISSION-OUTCOME.md`](systems/MISSION-OUTCOME.md).
 
 ## Confirmed frontend, campaign, and profile-save boundary

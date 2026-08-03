@@ -5605,3 +5605,47 @@ superseded evidence.
   GO/NO-GO decisions. Complete frontend enum/modal parity, difficulty, ordinary
   medals/equipment, `threadend`, safe corrupt-file behavior, and bit-identical
   legacy export remain explicit unknowns.
+
+## 2026-08-03 - AFS mission scripting VM static reconstruction
+
+- Completed a documentation-only static study in an isolated worktree from
+  the `origin/main` snapshot current at experiment start
+  (`1ec27ace154607a99359f39ffa82390e8bc5ab35`). A later campaign-only remote
+  advance was not imported into this isolated branch. No game, script,
+  executable, debugger, or GUI was run; no runtime C++20, renderer, campaign,
+  AI/physics, or CI source changed.
+- Reviewed and reused the existing mission-load, outcome, campaign,
+  Autoexec/source-order, outcome-bytecode, scheduler, trigger, and aircraft
+  evidence before exporting new functions. Private AFS corpus scans were not
+  repeated and no source, logical member, asset, binary, or per-file result is
+  published.
+- Fresh Ghidra Headless 12.1.2 analysis maps the NUL-text source ingress,
+  lexer/parser/compiler, database/object/function ownership, mission
+  Load/Start/Reset/destruction, process and execution structures, local
+  scheduling, native gameplay dispatch, and all 70 VM opcode IDs
+  `0x01–0x46`. Selected exports have zero unresolved addresses.
+- Independent Rizin 0.9.1/rz-ghidra produced 35 normalized path-free reports
+  and matches the central end-exclusive boundaries, instructions, calls,
+  xrefs, offsets, and jump-table targets. Raw SP replay resolved opcode `0x37`
+  as six-to-three component division after an initial reading missed the SP
+  stores at `0x1006A903` and `0x1006A914`; no discrepancy remains.
+- The original parser/runtime trusts source sizes, reads, allocation,
+  compiler mutation, IP/SP, instruction widths, branches, slots, descriptors,
+  arithmetic, text buffers, and time values. Unknown opcodes consume one word
+  and quietly return. FMT-AFS therefore specifies a new bounded,
+  transactional, pointer-free, fail-closed policy rather than unsafe behavior
+  compatibility.
+- `EV-20260803-003` publishes the complete call graph, opcode table, structure
+  maps, exact one-step scheduler, event/action/timer-to-world/outcome diagram,
+  Windows/iOS behavior list, explicit unknowns, and separate GO/NO-GO gates.
+  Safe parser policy, static process model, and local scheduler order are GO;
+  the full interpreter, typed calls/references, global AI/physics order, and
+  numerical/time parity remain NO-GO.
+- Independent raw and closed-diff reviews corrected missing-reference paths,
+  wordcode ownership, call-edge typing, native ID `0x01`, allocation/null
+  branches, `0x46` lifetime, decoder exits, and portable catalogue scope. Final
+  Ghidra, Rizin, and documentation reviews report `P0=P1=P2=P3=0`. Wrapper
+  tests, 12/12 Rizin exporter tests, documentation/link integrity (116
+  experiments, 408 catalogue rows), 35/35 boundaries, 17/17 direct edges,
+  70/70 opcodes, the 779-file public-boundary scan, 232-ref ID uniqueness,
+  UTF-8/path/scope checks, and `git diff --check` all pass.

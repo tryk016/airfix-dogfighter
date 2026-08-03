@@ -158,13 +158,17 @@ All virtual-address ranges use an exclusive end.
 | Function | Range `[start, end)` |
 |---|---:|
 | AFS token/grammar registration | `0x1005D0A0–0x10060AB7` |
-| bounded word-vector append | `0x10061220–0x100612B8` |
+| word-vector append | `0x10061220–0x100612A3` |
 | recursive AFS compiler | `0x100612C0–0x10066A15` |
 | `AfDatabase::NewFunctionType` | `0x10068310–0x10068345` |
 | `SetupAfServerFunctions` | `0x100686C0–0x1006916B` |
 | native descriptor constructor | `0x100698D0–0x10069929` |
 | add-parameter helper | `0x100699C0–0x10069A2B` |
 | AFS interpreter | `0x10069F10–0x1006AC84` |
+
+`EV-20260803-003` later split the older aggregate append extent from padding
+and a separate identity helper at `[0x100612B0,0x100612B7)`. This boundary
+correction does not change the emitted outcome words or their interpretation.
 
 The source-literal registration calls are at `0x1005D425` (`NULL`, tag
 `0x136`), `0x1005D43D` (`true`, tag `0x137`), and `0x1005D455` (`false`, tag

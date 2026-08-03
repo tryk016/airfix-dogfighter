@@ -1664,6 +1664,22 @@ These questions do not block static analysis or the archive work.
   corruption recovery, a versioned durable schema, platform integration, and
   bit-identical legacy output remain NO-GO/unimplemented.
 
+- `EV-20260803-003` / `EXP-20260803-116` now maps the complete static AFS
+  mission-scripting boundary without changing runtime code. Ghidra Headless
+  12.1.2 and independent Rizin 0.9.1 agree on the selected parser/compiler,
+  lifecycle, process, execution, scheduler, and interpreter ranges, calls,
+  xrefs, structures, and the 70-entry `0x01–0x46` dispatch. Local process
+  ordering, immediate named first steps, delay/yield, ordinary
+  process-before-trigger polling, reset, and destruction are recovered.
+  A fail-closed parser policy and static process model are evidence-ready;
+  parser implementation, typed pointer/call replacement, safe re-entrant
+  lifetime, the full interpreter, outer Load/Reset/Start and pause ownership,
+  global AI/physics order, numerical/time parity, multiplayer, and platform
+  integration remain NO-GO/unimplemented. Final independent Ghidra, Rizin, and
+  closed-diff reviews report no open P0–P3 finding; wrapper, documentation,
+  link, public-boundary, path, ID, UTF-8, VA/RVA, opcode, call-edge, and diff
+  validation all pass.
+
 ## Blockers
 
 - None for Phase 1 static analysis.
