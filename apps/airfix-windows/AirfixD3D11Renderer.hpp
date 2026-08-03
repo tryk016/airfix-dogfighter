@@ -150,6 +150,13 @@ public:
   void captureMissionHealthGaugeValidationFrameToBmp(
       const std::filesystem::path &outputPath);
 
+  // Private visual-validation harness. It builds one fixed representative
+  // full-HUD transaction from the installed authenticated texture owners and
+  // draws it with a centred sight. It never publishes those values to the
+  // simulation or ordinary frame loop.
+  void captureMissionHudValidationFrameToBmp(
+      const std::filesystem::path &outputPath);
+
   // Captures the public synthetic scene and developer overlay. This contains
   // no owner content and exists for repeatable renderer diagnostics.
   void

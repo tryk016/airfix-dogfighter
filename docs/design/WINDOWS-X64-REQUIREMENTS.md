@@ -29,7 +29,10 @@ The hidden private validator requires visible D3D11 output without exposing
 the requested logical paths. An explicit one-shot capture mode writes the same
 validated back buffer to a new owner-private BMP for local visual comparison;
 it never overwrites a file, rejects a requested capture extent that differs
-from the physical backbuffer, and keeps all captures outside Git. A
+from the physical backbuffer, and keeps all captures outside Git. A separate
+private full-HUD validation capture builds one representative authenticated
+event and centred sight without publishing its fixed values to simulation or
+ordinary frames. A
 separate public settings-panel capture exercises the real D3D11 composition
 path with a synthetic scene and never opens the private content or preference
 roots. The interactive product has a DPI-aware pause and Display settings

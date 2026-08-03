@@ -700,6 +700,8 @@ int run(const int argumentCount, char *arguments[]) {
       options.captureFrameOutput.has_value() ||
       options.captureOverviewFrameOutput.has_value() ||
       options.captureCrosshairValidationFrameOutput.has_value() ||
+      options.captureHealthGaugeValidationFrameOutput.has_value() ||
+      options.captureHudValidationFrameOutput.has_value() ||
       options.captureDiagnosticFrameOutput.has_value() ||
       options.captureSettingsPanelOutput.has_value() ||
       options.captureControllerCalibrationPanelOutput.has_value() ||
@@ -1110,6 +1112,13 @@ int run(const int argumentCount, char *arguments[]) {
     renderer.captureMissionHealthGaugeValidationFrameToBmp(
         *options.captureHealthGaugeValidationFrameOutput);
     std::cout << "Authenticated private D3D11 health-gauge validation frame "
+                 "captured\n";
+    return 0;
+  }
+  if (options.captureHudValidationFrameOutput.has_value()) {
+    renderer.captureMissionHudValidationFrameToBmp(
+        *options.captureHudValidationFrameOutput);
+    std::cout << "Authenticated private D3D11 full-HUD validation frame "
                  "captured\n";
     return 0;
   }

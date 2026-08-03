@@ -13,7 +13,9 @@ four reset-skipping gates, and one-time reset of the HUD elapsed clock.
 instruments, including their input arithmetic, order, anchors, tint, and use
 of that shared snapshot. `EV-20260801-008` covers the complete authenticated
 HUD render-event transaction, shared clock commit/rollback, six state updates,
-and dormant native-order D3D11/Metal consumers.
+and dormant native-order D3D11/Metal consumers. The later Windows full-HUD
+capture adds no semantic evidence; it only validates that already accepted
+transaction through the real D3D11 backend.
 Ghidra 12.1.2 is the primary decompiler; Rizin 0.9.1
 independently confirms the function boundaries, calls, and instruction order
 in the hash-verified `AirCraft.type` copy with SHA-256
@@ -49,6 +51,8 @@ The two instrument readouts are in
 [EXP-20260801-108](../../experiments/EXP-20260801-108-aircraft-hud-instrument-readouts.md).
 The complete render-event transaction is in
 [EXP-20260801-109](../../experiments/EXP-20260801-109-aircraft-hud-render-event.md).
+The complete Windows visual-validation capture is in
+[EXP-20260803-110](../../experiments/EXP-20260803-110-full-hud-validation-capture.md).
 
 ## Enclosing gates
 
@@ -412,6 +416,13 @@ count is returned. Ordinary frame callbacks do not call either consumer; no
 camera gate, health, instrument, weapon, team, technology, digit, or `_ftol`
 result is manufactured.
 
+Windows additionally exposes a private, one-shot full-HUD validation capture.
+It selects the first authenticated weapon and aircraft icon catalogue entries,
+supplies a fixed representative value set to the existing composer, and draws
+the complete event plus a centred authenticated sight. The command forces the
+path-free diagnostic overlay and a hidden session window. It neither mutates
+the simulation nor makes the ordinary frame callback consume the event.
+
 ## Remaining HUD work
 
 - Recover and connect one coherent live producer for all verified camera
@@ -421,4 +432,6 @@ result is manufactured.
   zero, one, or many refreshes per render event.
 - Accept a live x87 conversion policy before product code quantizes the float
   inputs that crossed native `_ftol`.
-- Validate the composed HUD at the required aspect ratios and safe areas.
+- Validate the composed HUD on both physical iPhones and complete touch-safe-
+  area acceptance. Windows native 16:9, 4K, and ultrawide capture validation is
+  complete; it does not substitute for live producer wiring.

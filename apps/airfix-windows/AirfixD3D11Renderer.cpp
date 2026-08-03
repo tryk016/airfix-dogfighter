@@ -1437,6 +1437,181 @@ public:
     }
   }
 
+  void captureMissionHudValidationFrameToBmp(
+      const std::filesystem::path &outputPath) {
+    if (!missionWorldRoomInstalled() || !mission_->crosshairs.has_value() ||
+        !mission_->healthGauge.has_value() ||
+        !mission_->rollingDigits.has_value() ||
+        !mission_->hudInstruments.has_value() ||
+        !mission_->weaponPanels.has_value() ||
+        !mission_->identityStatus.has_value() || width_ <= 0 || height_ <= 0) {
+      throw std::runtime_error(
+          "private full-HUD validation requires an installed authenticated "
+          "mission and every HUD texture owner");
+    }
+
+    auto captureSettings = settings_;
+    captureSettings.diagnosticsOverlayEnabled = true;
+    if (!applyRenderPresentationSettings(captureSettings, {}).accepted()) {
+      throw std::runtime_error(
+          "private full-HUD validation settings could not be applied");
+    }
+    overlaySuppressed_ = false;
+
+    const auto layout =
+        buildLayout(settings_, static_cast<std::uint32_t>(width_),
+                    static_cast<std::uint32_t>(height_));
+    if (!layout.complete()) {
+      throw std::runtime_error(
+          "private full-HUD validation requires a drawable native layout");
+    }
+
+    const auto *weaponIcon = mission_->weaponPanels->icon(0U);
+    const auto *aircraftIcon = mission_->identityStatus->icon(0U);
+    if (weaponIcon == nullptr || aircraftIcon == nullptr ||
+        mission_->crosshairs->textures.empty()) {
+      throw std::runtime_error(
+          "private full-HUD validation requires non-empty authenticated icon "
+          "catalogues and sight textures");
+    }
+
+    const auto initialHundred =
+        airfix::render::makeLegacyAircraftHudRollingDigitsState(100);
+    const auto initialZero =
+        airfix::render::makeLegacyAircraftHudRollingDigitsState(0);
+    airfix::render::LegacyAircraftHudElapsedClockState clock;
+    if (!clock.advance(0.25F).advanced()) {
+      throw std::runtime_error(
+          "private full-HUD validation could not prepare the elapsed clock");
+    }
+
+    const airfix::content::LegacyAircraftHudRenderEventInput input{
+        .gates =
+            {
+                .activeWindowPresent = false,
+                .cameraAttachedAtEntry = true,
+                .typeHudEnabled = true,
+                .cameraAttachedAfterLayout = true,
+            },
+        .screenWidth = 640U,
+        .screenHeight = 480U,
+        .instruments =
+            {
+                .rightNormalizedValue = 0.25F,
+                .leftNormalizedValue = 0.75F,
+                .leftTintArgb = 0xFF3366CCU,
+                .rightFaceTextureAvailable = true,
+                .leftFaceTextureAvailable = true,
+                .indicatorTextureAvailable = true,
+            },
+        .instrumentReadouts =
+            {
+                .rightDigitStateAvailable = true,
+                .rightDigitState = initialZero,
+                .quantizedVectorMagnitudeTimesHundred = 123,
+                .leftDigitStateAvailable = true,
+                .leftDigitState = initialHundred,
+                .quantizedRemainingRatioPercent = 75,
+                .leftTintArgb = 0xFF3366CCU,
+                .rollingDigitAtlasAvailable = true,
+            },
+        .weaponPanels =
+            {
+                .primaryBackgroundTextureAvailable = true,
+                .secondaryBackgroundTextureAvailable = true,
+                .rollingDigitAtlasAvailable = true,
+                .primary =
+                    {
+                        .weaponPresent = true,
+                        .digitStateAvailable = true,
+                        .digitState = initialHundred,
+                        .quantizedAmmo = 42,
+                        .iconCatalogMatch = true,
+                        .iconTextureAvailable = true,
+                        .iconTextureIndex = weaponIcon->iconIndex,
+                        .quantizedStatusIndex = 0,
+                    },
+                .secondary =
+                    {
+                        .weaponPresent = true,
+                        .digitStateAvailable = true,
+                        .digitState = initialHundred,
+                        .quantizedAmmo = 7,
+                        .iconCatalogMatch = true,
+                        .iconTextureAvailable = true,
+                        .iconTextureIndex = weaponIcon->iconIndex,
+                        .quantizedStatusIndex = 4,
+                    },
+            },
+        .healthGauge =
+            {
+                .displayedHealth = 50.0F,
+                .maximumHealth = 100.0F,
+                .armourMeterTextureAvailable = true,
+                .armourTextureAvailable = true,
+            },
+        .identityStatus =
+            {
+                .aircraftIconCatalogMatch = true,
+                .aircraftIconTextureAvailable = true,
+                .aircraftIconTextureIndex = aircraftIcon->iconIndex,
+                .healthDigitStateAvailable = true,
+                .healthDigitState = initialHundred,
+                .quantizedHealthPercent = 50,
+                .teamId = 1,
+                .technologyStarTextureAvailable = true,
+                .technologyCrossTextureAvailable = true,
+                .technologyDigitStateAvailable = true,
+                .technologyDigitState = initialZero,
+                .quantizedTechnologyLevel = 3,
+                .rollingDigitAtlasAvailable = true,
+            },
+    };
+    const auto hudEvent = airfix::content::buildLegacyAircraftHudRenderEvent(
+        clock, input, *mission_->hudInstruments, *mission_->rollingDigits,
+        *mission_->weaponPanels, *mission_->healthGauge,
+        *mission_->identityStatus, *layout.layout, settings_.uiScalePercent);
+    if (!hudEvent.ready()) {
+      throw std::runtime_error(
+          "private full-HUD validation could not build one complete event");
+    }
+
+    const auto &sightTexture = mission_->crosshairs->textures.front();
+    const float sightSize =
+        static_cast<float>(airfix::content::legacyWeaponCrosshairTextureWidth) *
+        layout.layout->uiScale() * settings_.uiScalePercent / 100.0F;
+    const airfix::render::LegacyWeaponCrosshairSpritePlan sightPlan{
+        .projectedTarget = {},
+        .outputRect =
+            {
+                (static_cast<float>(width_) - sightSize) * 0.5F,
+                (static_cast<float>(height_) - sightSize) * 0.5F,
+                sightSize,
+                sightSize,
+            },
+        .logicalDistanceScale = 1.0F,
+        .insideSceneViewport = true,
+        .withinRecoveredDepthRange = true,
+    };
+    const airfix::content::LegacyWeaponCrosshairBinding sightBinding{
+        .weaponType = airfix::simulation::LegacyWeaponTypeId::machineGun,
+        .role = sightTexture.role,
+        .textureId = sightTexture.textureId,
+        .revision = mission_->crosshairs->revision,
+        .transactionIdentity = mission_->crosshairs->transactionIdentity,
+    };
+    const auto sightSubmission =
+        airfix::content::buildLegacyWeaponCrosshairSpriteSubmission(
+            sightPlan, sightBinding,
+            airfix::content::LegacyWeaponCrosshairVisibilityDecision::draw);
+    if (!sightSubmission.ready() ||
+        !renderFrame(true, &outputPath, nullptr, &*sightSubmission.submission,
+                     nullptr, nullptr, nullptr, nullptr, &*hudEvent.event)) {
+      throw std::runtime_error(
+          "private full-HUD validation produced no visible D3D11 output");
+    }
+  }
+
   void
   capturePublicDiagnosticFrameToBmp(const std::filesystem::path &outputPath) {
     if (missionWorldRoomInstalled()) {
@@ -3747,6 +3922,11 @@ void AirfixD3D11Renderer::captureMissionCrosshairValidationFrameToBmp(
 void AirfixD3D11Renderer::captureMissionHealthGaugeValidationFrameToBmp(
     const std::filesystem::path &outputPath) {
   implementation_->captureMissionHealthGaugeValidationFrameToBmp(outputPath);
+}
+
+void AirfixD3D11Renderer::captureMissionHudValidationFrameToBmp(
+    const std::filesystem::path &outputPath) {
+  implementation_->captureMissionHudValidationFrameToBmp(outputPath);
 }
 
 void AirfixD3D11Renderer::capturePublicDiagnosticFrameToBmp(

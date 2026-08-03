@@ -150,7 +150,13 @@
   publishes their replacements only with the complete event, and resets only
   after total validation; every failure aborts without consuming elapsed time.
   D3D11 and Metal own matching dormant full-event consumers, while ordinary
-  frames remain disconnected. Live slot ownership, changing
+  frames remain disconnected. A private Windows validation capture now joins
+  every authenticated HUD owner, a fixed representative full event, and a
+  centred sight through the real D3D11 path without publishing any value to
+  simulation. Native 1920x1080, 2560x1440, 3840x2160, and 3440x1440 captures
+  preserve physical-resolution rendering, Hor+ scene expansion, the stable UI
+  root, and diagnostics; all images remain outside Git. Live slot ownership,
+  changing
   aim/collision production, explicit visibility policy, ammunition/status
   values, smoothed-health, digit, instrument, aircraft identity, team,
   technology, instrument-readout values and shared-clock producer wiring,
@@ -1355,7 +1361,9 @@
    Original 4:3, safe FOV settings, and the backend-neutral
    world/reference-camera-to-native-output bridge are implemented. Connect
    actual HUD, reticle, weapon, and screen-effect consumers next without
-   inventing their visibility or gameplay rules.
+   inventing their visibility or gameplay rules. The Windows capture-only
+   complete HUD/sight validation is implemented; ordinary frames remain
+   correctly disconnected from fixed validation values.
    Validate the implemented diagnostic overlay on both physical iPhones before
    lighting, materials, shadows, or post-processing.
 10. Keep ADR-0019's private HD texture mode as a separate staged workstream.
