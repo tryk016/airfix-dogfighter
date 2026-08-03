@@ -621,7 +621,7 @@ The following remain outside Git and public CI:
        corpus without copying private records into this repository.
 3. [x] Record the architecture, fallback flow, security boundary, cache model,
        staged implementation, synthetic tests, and expected file changes.
-4. [ ] Land repository-boundary hardening as a separate preparatory change.
+4. [x] Land repository-boundary hardening as a separate preparatory change.
 5. [ ] Implement only stages 2-5 behind data-less synthetic tests and keep
        product effective mode Classic.
 6. [ ] Run the Windows opt-in RGBA8 pilot and private visual comparisons.

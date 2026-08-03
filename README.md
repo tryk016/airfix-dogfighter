@@ -501,7 +501,9 @@ original assets, and AFPACK content must never be public artifacts.
   to a reproducible note or experiment.
 - Preserve faithful behaviour before adding optional enhancements.
 - Before publishing, run the portable tests and
-  `python tools/ci/check_public_boundary.py .`.
+  `python tools/ci/check_public_boundary.py .`. The scanner rejects private
+  content roots, raster/GPU textures, line-oriented manifests, archives,
+  proprietary game formats, and local analysis databases.
 
 No source-code license has been selected yet. Third-party tools and references
 retain their own licences.

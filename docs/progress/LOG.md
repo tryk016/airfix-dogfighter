@@ -5368,3 +5368,21 @@ superseded evidence.
   JSONL/PNG tests, a root-confined file capability, a portable resolver, and
   byte-identical GTI fallback. Windows RGBA8 pilot, durable settings, Metal,
   streaming, and BC7/BC3/ASTC derivatives remain later gates.
+
+## 2026-08-03 - private texture repository-boundary hardening
+
+- Completed ADR-0019's first preparatory gate without implementing HD loading.
+  The public scanner now rejects a `private-textures` directory at any level,
+  common raster and GPU texture formats, JSONL/NDJSON manifests and backup
+  copies, and common archive/disc-image containers. The owner-local root is
+  ignored explicitly; no global image ignore can hide an accidentally pending
+  public file from the scanner.
+- Synthetic regression cases cover the private directory, case-insensitive PNG,
+  ASTC, JSONL, `.jsonl.bak`, ZIP, and compound `tar.gz` paths. Each fixture is
+  removed after its assertion so later checks remain independent. Existing RE
+  database, trace, dump, and aircraft-capture guards remain active.
+- A fresh local GCC 15.2/Ninja build completes 213 build edges and all 143/143
+  portable CTests pass. The dedicated synthetic boundary suite and the
+  753-file repository scan pass, as does `git diff --check`. No original game
+  file, private texture, manifest record, local path, or pipeline implementation
+  entered the change.
