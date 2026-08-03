@@ -419,6 +419,14 @@
 - All five supplied archives and all 1,911 compressed streams pass the new
   parser; original data remains external and read-only.
 - Added three-platform portable CI including native ARM64 `macos-26`.
+- Pull requests now pass through a fail-closed change classifier.
+  Documentation-only changes retain public-boundary, Markdown-link,
+  experiment/function-ledger,
+  deterministic RE-tool, runtime-capture, and whitespace gates while skipping
+  native build runners; every unclassified or build-affecting path retains the
+  full Windows, Linux, macOS, iPhoneOS, and iPhoneSimulator matrix. Portable
+  Ninja/Make builds use pinned `sccache`, with a weekly and cold-by-default
+  manual run that deliberately bypasses the compiler launcher.
 - Generated reproducible LLVM sections/imports/exports reports for all 16 PE
   modules and confirmed the plugin factory ABI names.
 - Changed normal UDSP file opening to read only the header and metadata tail;

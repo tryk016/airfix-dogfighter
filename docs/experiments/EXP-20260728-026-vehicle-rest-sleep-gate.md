@@ -213,5 +213,5 @@ traces and x87 tolerance work.
 - [Aircraft flight boundary](../re/systems/AIRCRAFT-FLIGHT.md)
 - [Aircraft flight law](../re/systems/AIRCRAFT-FLIGHT-LAW.md)
 - [Static tool cross-check](EXP-20260727-001-static-tool-crosscheck.md)
-- [Aircraft scheduler ABI](EXP-20260724-003-aircraft-scheduler-abi.md)
+- [Confirmed aircraft scheduler boundary](../re/MODULE-MAP.md#confirmed-aircraft-boundary)
 - [Camera refresh time contract](EXP-20260728-023-camera-refresh-time-contract.md)

@@ -10,15 +10,48 @@ permissions:
   contents: read
 
 concurrency:
-  group: ios-unsigned-${{ github.ref }}
+  group: ios-unsigned-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
   DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
 
 jobs:
+  policy:
+    name: iOS change policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      full_build: ${{ steps.classify_pr.outputs.full_build || steps.classify_full.outputs.full_build }}
+
+    steps:
+      - name: Check out sources and revision history
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Classify pull-request changes
+        id: classify_pr
+        if: github.event_name == 'pull_request'
+        run: >-
+          python3 tools/ci/classify_ci_changes.py
+          --base "${{ github.event.pull_request.base.sha }}"
+          --head "${{ github.event.pull_request.head.sha }}"
+          --three-dot
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Require complete matrix for non-PR events
+        id: classify_full
+        if: github.event_name != 'pull_request'
+        run: >-
+          python3 tools/ci/classify_ci_changes.py
+          --force-full
+          --github-output "$GITHUB_OUTPUT"
+
   build:
     name: ${{ matrix.sdk }}
+    needs: policy
+    if: needs.policy.outputs.full_build == 'true'
     runs-on: macos-26
     timeout-minutes: 20
     strategy:

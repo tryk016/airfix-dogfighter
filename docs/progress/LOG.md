@@ -5488,3 +5488,34 @@ superseded evidence.
 - Classic GTI behavior is unchanged. Manifest filesystem loading, resolver,
   actual-GTI hashing, per-texture fallback, PNG preparation, settings, caches,
   native uploads, and effective Enhanced mode remain explicitly disconnected.
+
+## 2026-08-03 - conservative CI fast path and compiler cache
+
+- Added a fail-closed, repository-local pull-request classifier. Only a narrow
+  documentation allowlist can skip native builds; empty ranges, comparison
+  errors, control characters, workflow/CMake/source/test/tool changes, and all
+  unknown paths request the complete matrix. No third-party path-filter action
+  or workflow-level `paths-ignore` decision is used.
+- The always-on Ubuntu quality job now owns public-boundary tests and scanning,
+  repository-local Markdown links, unique experiment IDs, the 14-column
+  function catalogue and its two explicit historical unresolved references,
+  deterministic Rizin/runtime-capture validators, and revision-scoped
+  whitespace checks. Two stale scheduler-report links were redirected to the
+  published confirmed scheduler boundary.
+- Pinned `sccache-action` and `sccache` versions accelerate supported public
+  C/C++ Ninja/Make builds and publish cache statistics. Visual Studio/Xcode
+  product generators remain intentionally uncached. A weekly full portable
+  matrix and cold-by-default manual dispatch install no compiler launcher.
+- The recorded pre-change baseline identifies macOS compilation as the dominant
+  19m59s step. A clean local GCC 15.2/Ninja build completes 464 edges and all
+  145/145 CTests pass. Classifier and documentation-integrity tests, actionlint,
+  12 Rizin normalization tests, 9 runtime-capture tests, synthetic boundary
+  tests, the 772-file public scan, and `git diff --check` pass. Hosted warm/cold
+  comparison remains the publication and performance gate.
+- The first hosted full-matrix validation passes on Ubuntu, Windows portable,
+  Windows D3D11/XAudio2, macOS, iPhoneOS, iPhoneSimulator, and the clangd
+  preset. The cache-population run reports 0/303 hits for Ubuntu and macOS and
+  1/303 for clangd; its timings are retained as the controlled empty-cache
+  observation. The 6-second quality job also confirms that source/workflow
+  changes fail closed to the full matrix. A follow-up run will measure warm
+  object reuse before merge.
