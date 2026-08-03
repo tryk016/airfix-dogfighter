@@ -1650,6 +1650,20 @@ These questions do not block static analysis or the archive work.
   `Airfix-Dev` WSL clone. The exact-main GitHub Actions publication gate passed
   all six jobs.
 
+- The original single-player frontend/campaign/profile flow is now statically
+  joined under `EV-20260803-002`: startup user load, eight main-menu routes,
+  profile select/create/delete, two Axis/Allied ten-row campaign selectors,
+  selection/briefing/start, pause/result/return, success-only next-row
+  progression, exact result score terms, cumulative stats, `SCOR`, and the
+  remembered roster write. Ghidra 12.1.2 is primary and Rizin 0.9.1
+  independently matches the central function ranges/call graph. The original
+  roster reader is non-transactional and unsafe on malformed extents; its
+  direct `wb` writer is non-atomic and has a short-write success defect. A new
+  bounded valid-file importer and portable campaign model are evidence-ready,
+  while complete frontend parity, difficulty, normal reward rules, safe
+  corruption recovery, a versioned durable schema, platform integration, and
+  bit-identical legacy output remain NO-GO/unimplemented.
+
 ## Blockers
 
 - None for Phase 1 static analysis.

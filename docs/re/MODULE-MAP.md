@@ -1,9 +1,9 @@
 # Module map
 
 **Build key:** SHA-256 values in `docs/evidence/source-manifest.sha256`  
-**State:** archive, startup/plugin, asset, aircraft control-event, scheduler,
-and first flight/collision call paths recovered; remaining modules await
-targeted reports
+**State:** archive, startup/plugin, asset, frontend/campaign/profile-save,
+aircraft control-event, scheduler, and first flight/collision call paths
+recovered; remaining modules await targeted reports
 
 ## Confirmed static import layers
 
@@ -33,15 +33,15 @@ actual runtime graphics-adapter load. `Dogfighter.exe` does not import
 
 | Module ID | File | Role hypothesis | Confidence | First question |
 |---|---|---|---:|---|
-| `DOGFIGHTER` | `Dogfighter.exe` | v1.01 application/bootstrap shell | 3 | What formal names correspond to the recovered wrapper vtable slots? |
+| `DOGFIGHTER` | `Dogfighter.exe` | v1.01 application/bootstrap and frontend/campaign shell | 3 | What are the complete frontend command enum and modal precedence? |
 | `DOGFIGHTER_ICD` | `Dogfighter.icd` | older protected/compressed executable body | 2 | Is it retained only as a SafeDisc-era artifact after the v1.01 patch? |
-| `AFENGINE` | `AfEngine.dll` | core runtime and service interfaces | 2 | What is its exported bootstrap/update API? |
+| `AFENGINE` | `AfEngine.dll` | core runtime services plus embedded profile container and stat registration | 2 | What are the complete roster record semantics and safe migration rules? |
 | `CC` | `Cc.dll` | scene graph plus CCF/GTI asset runtime | 3 | What are the exact nested mesh/material field contracts? |
 | `UDSPACK` | `UdsPack.dll` | archive open/list/read/decompress | 3 | What are the two remaining unknown directory fields? |
 | `GTDIRECT3D` | `gtDirect3D.dll` | Direct3D renderer adapter | 3 | What abstract renderer interface does it implement? |
 | `GT3DFX` | `gt3DFX.dll` | Glide renderer adapter | 3 | Which entry points match the Direct3D adapter? |
 | `MODE_DOGFIGHT` | `Game/Modes/Dogfight.mode` | dogfight flow/rules | 2 | What mode factory/export registers it? |
-| `MODE_SINGLEPLAYER` | `Game/Modes/Singleplayer.mode` | campaign/mission flow | 2 | How do campaign and save code consume the recovered mission-outcome flags? |
+| `MODE_SINGLEPLAYER` | `Game/Modes/Singleplayer.mode` | selected single-player mission implementation | 2 | Which normal-play producers award medals equipment and thread completion? |
 | `TYPE_AFFX` | `Game/Types/AfFX.type` | effects actor registrations | 2 | Which effects alter simulation versus rendering only? |
 | `TYPE_AIRCRAFT` | `Game/Types/AirCraft.type` | aircraft registration, force/torque, collision, and AI | 3 | What are the physical units, runtime tolerances/traces, combined room-contributor drawing, and dynamic actor-to-instance publication rules? |
 | `TYPE_GROUNDUNIT` | `Game/Types/GroundUnit.type` | ground actor registrations | 2 | Which base actor interface is shared? |
@@ -57,6 +57,8 @@ actual runtime graphics-adapter load. `Dogfighter.exe` does not import
 - Remaining MSVC RTTI, vtables, exception data, and decorated names.
 - Shared-handle teardown coordination across multiple types registered by one
   `.type` module.
+- Persistent difficulty and ordinary medal/weapon/aircraft award producers.
+- Representative roster corpus and golden round trips for any legacy exporter.
 
 ## Confirmed aircraft boundary
 
@@ -190,6 +192,31 @@ rules; the complete VM, live mission lifecycle, dynamic process mutation,
 global dispatch, campaign consumption, persistence, and multiplayer remain
 open. See
 [`MISSION-OUTCOME.md`](systems/MISSION-OUTCOME.md).
+
+## Confirmed frontend, campaign, and profile-save boundary
+
+`EV-20260803-002` joins the existing bootstrap and mission-outcome evidence to
+the original frontend without reconstructing its renderer. Application update
+loads or initializes a user, creates the main menu and profile selector, routes
+the exact main-menu entries, creates the two-side campaign owner through
+command case `0x2B`, and routes command case `6` to pause or mission result.
+
+The campaign owner exposes selection and briefing substates, ten zero-based
+rows per Axis/Allied side, exact mission/briefing command construction, and
+success-only `THRD` plus signed side-maximum progression. The result path then
+reads and removes old `SCOR` before its local-player gate; for a non-null player
+it calculates the statically recovered score terms, calls
+`NfPlayer::RegisterStats`, adds replacement `SCOR`, and attempts a remembered
+roster write.
+
+`NfMain+0x5F8` owns that profile as an embedded `AfChunkContainer`. Its legacy
+reader is non-transactional and insufficiently bounded for malformed files;
+its writer truncates the target directly with `wb`, has no atomic replacement,
+and can falsely accept a short write missing up to eight trailing bytes. This
+is evidence for a new bounded importer and modern durable schema, not permission
+to copy unsafe behavior. See [CAMPAIGN-FLOW.md](systems/CAMPAIGN-FLOW.md),
+[FMT-ROSTER](../formats/ROSTER.md), and
+[EXP-20260803-114](../experiments/EXP-20260803-114-campaign-frontend-roster-flow.md).
 
 ## Report inventory
 
