@@ -139,6 +139,7 @@ add_library(airfix_simulation
     src/airfix/simulation/LegacyMachineGunProjectileCollisionCommit.cpp
     src/airfix/simulation/LegacyMachineGunProjectileRuntime.cpp
     src/airfix/simulation/LegacyMachineGunShotCoordinator.cpp
+    src/airfix/simulation/LegacyCampaignModel.cpp
     src/airfix/simulation/LegacyMissionOutcomeConsumer.cpp
     src/airfix/simulation/LegacyMissionOutcomeState.cpp
     src/airfix/simulation/LegacyProjectileCollisionLoop.cpp
@@ -214,6 +215,7 @@ add_library(airfix_assets
     src/airfix/assets/CcfRoomDrawPlan.cpp
     src/airfix/assets/CcfRoomScene.cpp
     src/airfix/assets/LegacyFormats.cpp
+    src/airfix/assets/LegacyRosterImporter.cpp
     src/airfix/assets/MissionEntryResolver.cpp
     src/airfix/assets/MissionSetup.cpp
     src/airfix/assets/MissionWorldSpatialArena.cpp
@@ -711,6 +713,13 @@ if(AIRFIX_BUILD_TESTS)
     target_link_libraries(airfix_afchunk_tests PRIVATE airfix::assets)
     add_test(NAME airfix_afchunk_tests COMMAND airfix_afchunk_tests)
 
+    add_executable(airfix_legacy_roster_importer_tests
+        tests/LegacyRosterImporterTests.cpp)
+    target_link_libraries(airfix_legacy_roster_importer_tests
+        PRIVATE airfix::assets)
+    add_test(NAME airfix_legacy_roster_importer_tests
+        COMMAND airfix_legacy_roster_importer_tests)
+
     add_executable(airfix_asset_resolver_tests tests/AssetResolverTests.cpp)
     target_link_libraries(airfix_asset_resolver_tests PRIVATE airfix::assets)
     add_test(NAME airfix_asset_resolver_tests COMMAND airfix_asset_resolver_tests)
@@ -1030,6 +1039,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::simulation)
     add_test(NAME airfix_legacy_mission_outcome_consumer_tests
         COMMAND airfix_legacy_mission_outcome_consumer_tests)
+
+    add_executable(airfix_legacy_campaign_model_tests
+        tests/LegacyCampaignModelTests.cpp)
+    target_link_libraries(airfix_legacy_campaign_model_tests
+        PRIVATE airfix::simulation)
+    add_test(NAME airfix_legacy_campaign_model_tests
+        COMMAND airfix_legacy_campaign_model_tests)
 
     add_executable(airfix_legacy_machine_gun_projectile_tests
         tests/LegacyMachineGunProjectileTests.cpp)

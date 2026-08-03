@@ -614,6 +614,11 @@ called campaign-playable:
 | roster parser | **GO for a new bounded valid-file importer; NO-GO for corrupt-file behavioral parity** | framing and known records are closed; legacy malformed behavior is unsafe and incompletely defined |
 | bit-identical legacy write | **NO-GO** | only one authenticated roster sample, no golden round trip/corpus, uncertain duplicate/update ordering, and a flawed non-atomic short-write result prevent a compatibility claim |
 
+The bounded implementation corresponding to the campaign-model and
+valid-roster-importer GO cells is described in
+[Campaign and legacy-roster core](../../systems/CAMPAIGN.md). It remains
+unwired from frontend, disk, score, and product runtime state.
+
 ## Known unknowns and hypotheses
 
 - **Unknown:** complete frontend command/state enumeration and modal priority.
