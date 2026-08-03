@@ -5512,3 +5512,10 @@ superseded evidence.
   12 Rizin normalization tests, 9 runtime-capture tests, synthetic boundary
   tests, the 772-file public scan, and `git diff --check` pass. Hosted warm/cold
   comparison remains the publication and performance gate.
+- The first hosted full-matrix validation passes on Ubuntu, Windows portable,
+  Windows D3D11/XAudio2, macOS, iPhoneOS, iPhoneSimulator, and the clangd
+  preset. The cache-population run reports 0/303 hits for Ubuntu and macOS and
+  1/303 for clangd; its timings are retained as the controlled empty-cache
+  observation. The 6-second quality job also confirms that source/workflow
+  changes fail closed to the full matrix. A follow-up run will measure warm
+  object reuse before merge.

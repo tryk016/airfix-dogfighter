@@ -36,6 +36,27 @@ macOS object reuse and avoiding native runners for documentation-only reviews
 therefore have the highest expected return. These timestamps are the baseline;
 later changes must compare warm and cold runs before removing more coverage.
 
+The first hosted validation of this policy was pull-request run `30818042181`.
+It deliberately started with an empty effective cache: macOS and Ubuntu each
+reported 0 hits and 303 misses, while the independent clangd preset reported
+1 hit and 302 misses. All jobs passed. This gives a controlled cache-population
+run rather than treating runner-to-runner variation as a cache improvement:
+
+| Job | Total | Build step | Cache result |
+|---|---:|---:|---:|
+| always-on quality gates | 6s | not applicable | not applicable |
+| clangd preset / Ubuntu | 2m 37s | 2m 16s | 1 / 303 hits |
+| Ubuntu portable | 2m 52s | 2m 38s | 0 / 303 hits |
+| macOS portable | 3m 58s | 3m 33s | 0 / 303 hits |
+| Windows portable | 7m 00s | 5m 57s | intentionally uncached |
+| Windows D3D11/XAudio2 product | 8m 01s | 6m 38s | intentionally uncached |
+| iPhoneOS | 2m 31s | reported by the unsigned iOS workflow | intentionally uncached |
+| iPhoneSimulator | 2m 26s | reported by the unsigned iOS workflow | intentionally uncached |
+
+The large macOS difference from the baseline occurred with zero cache hits and
+is therefore recorded as hosted-runner variance, not claimed as a cache win.
+A subsequent full pull-request run is the warm-cache measurement.
+
 ## Conservative change classification
 
 Both public workflows always start on pull requests. They do not use a
