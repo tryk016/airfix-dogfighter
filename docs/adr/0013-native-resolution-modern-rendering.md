@@ -175,21 +175,42 @@ The implementation is staged so reconstruction can continue in parallel:
    resource/output handling, adequate depth precision, mipmapping, correct
    texture filtering, anisotropic filtering, MSAA, and appropriate final-image
    anti-aliasing.
-4. **Lighting and materials:** directional, point, and spot lights; adjustable
-   dynamic shadows; a PBR or simplified physically based material model tuned
-   to the game's painted plastic and domestic surfaces; and normal mapping when
-   suitable authored or separately prepared material data exists.
-5. **HDR and atmosphere:** internal HDR rendering, tone mapping, adjustable
+4. **Raster lighting and materials:** backend-neutral directional, point, and
+   spot lights; a PBR or simplified physically based material model tuned to
+   painted plastic and domestic surfaces; and normal mapping only when suitable
+   authored or separately prepared material data exists.
+5. **Raster shadows and reflections:** cascaded shadow maps for the primary
+   directional light, an atlas for selected spot lights, tightly budgeted cube
+   shadows for selected point lights, image-based lighting and reflection
+   probes, and planar reflections only for explicitly justified surfaces.
+   Optional screen-space reflections may supplement High/Ultra but must never
+   be the sole reflection source.
+6. **HDR and atmosphere:** internal HDR rendering, tone mapping, adjustable
    exposure, controlled bloom, fog, atmospheric effects, and ambient occlusion
    when the performance budget permits it.
-6. **Effects and polish:** scalable high-quality particles, smoke, fire,
+7. **Effects and polish:** scalable high-quality particles, smoke, fire,
    explosions, projectile trails, and individually switchable post-processing.
-7. **Performance closure:** platform/device profiling, memory budgets, quality
+8. **Performance closure:** platform/device profiling, memory budgets, quality
    defaults, dynamic render-scale policy where useful, and screenshot/device
    acceptance.
 
 Effects are adopted only when they improve readability or the intended
 model-kit aesthetic. Feature count alone is not a goal.
+
+Ray tracing is not a product requirement and no DXR- or Metal-RT-specific
+backend, acceleration-structure pipeline, denoiser, or RT-only content should
+be added. The shared C++20 scene contract instead publishes lights, materials,
+geometry, and reflection probes once; D3D11/HLSL and Metal execute equivalent
+raster paths. These paths are the primary implementation, not temporary
+fallbacks, because they must scale from iPhone SE 3 through current high-end
+iPhones and Windows systems.
+
+Dynamic shadow and reflection work remains bounded by quality profiles. Low may
+retain only the primary directional shadow and static probes; Medium/High may
+add selected local-light shadows and higher probe quality; Ultra may add the
+costliest justified planar or screen-space effects. `Classic` retains the
+high-resolution faithful material response with Enhanced-only lighting,
+shadow, reflection, and post effects disabled.
 
 ## Performance targets
 
@@ -340,7 +361,11 @@ path while sharing the higher-level rendering contract.
   changing aim/collision state, submit them through D3D11/Metal sprite passes,
   then add the remaining HUD and screen-space effect consumers without
   inventing their policy.
-- [ ] Implement the ordered image-quality stages above, maintaining separate
-  `Classic` and `Enhanced` screenshot baselines.
+- [ ] Implement the ordered raster image-quality stages above: color
+  correctness, dynamic directional/point/spot lighting, plastic-tuned
+  materials, budgeted shadow maps, reflection probes, selected planar
+  reflections, optional SSR/SSAO, and HDR/post-processing. Maintain separate
+  `Classic` and `Enhanced` screenshot baselines; do not add a ray-tracing
+  dependency.
 - [x] Keep all original and converted assets and owner-derived captures outside
   Git, public CI, caches, and release artifacts.
