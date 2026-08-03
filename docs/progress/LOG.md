@@ -5519,3 +5519,41 @@ superseded evidence.
   observation. The 6-second quality job also confirms that source/workflow
   changes fail closed to the full matrix. A follow-up run will measure warm
   object reuse before merge.
+## 2026-08-03 - bounded AirCraft AI-to-physics cycle
+
+- `EV-20260803-001` / `EXP-20260803-113` closes one conditional mode-1
+  target-loss cycle without implementing runtime C++20. A failed target
+  resolution calls `AfAI::DiscardTask`, changes numeric mode `1 -> 0`, clears
+  the bounded target fields, and under explicit finite predicates leaves raw
+  channel values `{50,0,0,-100,-100}`.
+- Ghidra Headless 12.1.2 and independent Rizin 0.9.1 agree on the exact
+  AirCraft/AfEngine function boundaries, task payload widths, vtable entries,
+  control sources, and synchronous event order: thrust, pitch, bank, primary
+  attack, then secondary attack. Under a named PC53/nearest-even oracle and
+  the reachable prior cache vector `{255,32,32,1,1}`, the five signed payloads
+  are `{128,0,0,0,0}`; branch-time PC/RC remains unobserved.
+- The evidence corrects the earlier unconditional unchanged-value suppression
+  model. `AIControls::HasChanged` uses binary32 `0x3C23D70A` without a
+  candidate f32 spill, while `GetRelative` uses binary64
+  `0x3F847AE147AE147B` and stores a binary32 cache. At PC53/nearest-even,
+  unchanged raw zero still reports changed in the configured thrust, axis,
+  and attack ranges.
+- The phase join is now explicit: AI writes occur after the current force
+  work; the next active force step can read those controls only after Euler
+  consumes the older accumulators, and the following Euler step consumes the
+  newly prepared force/torque. Weapon events stop at persistent firing state;
+  projectile scheduling remains separate. Numeric states/layout, ordered
+  dispatch, field reducers, and structural phase order are GO. Full behavior,
+  derived task wrappers, native bit parity, wall-clock cadence,
+  cross-producer ordering, and a runtime rigid-body port remain NO-GO.
+- Targeted Ghidra and Rizin reports, both wrapper suites, all 12 Rizin exporter
+  tests, synthetic public-boundary tests, and the actual 760-file scan pass.
+  The 380-row/14-column function catalogue retains only its two known
+  historical missing CC references; all new Rizin ranges and required IDs are
+  present. Changed links, added-line local-path scanning, and
+  `git diff --check` pass. A fresh fetch followed by a scan of all 216
+  available refs and reachable object paths finds no collision for the
+  reserved EXP/EV IDs; all six working-tree paths containing them are the
+  intended report and ledgers. Independent review's one P1 cache-precondition
+  finding is fixed with the reachable vector `{255,32,32,1,1}`; final
+  re-review reports `GO` with no open P0-P3.
