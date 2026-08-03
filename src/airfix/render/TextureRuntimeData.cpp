@@ -72,6 +72,65 @@ void addIssue(
     return false;
 }
 
+[[nodiscard]] std::optional<GtiUploadPreparation>
+makeHdUpload(const TextureImportRequest& request,
+             texture::PreparedTextureAsset&& prepared) {
+    if (prepared.levels.empty() ||
+        prepared.levels.size() > std::numeric_limits<std::uint32_t>::max() ||
+        prepared.decodedRgbaBytes == 0U) {
+        return std::nullopt;
+    }
+
+    GtiUploadPlan plan{
+        .request = request,
+        .variantIndex = 0U,
+        .format = 0U,
+        .checksum = std::nullopt,
+        .sampleSpace = TextureSampleSpace::encodedUnclassified,
+        .mipPolicy = GtiMipPolicy::authoredChain,
+        .uploadLevels = {},
+        .allocatedMipCount = static_cast<std::uint32_t>(prepared.levels.size()),
+        .uploadedMipCount = static_cast<std::uint32_t>(prepared.levels.size()),
+        .decodedRgbaBytes = prepared.decodedRgbaBytes,
+        .uploadRgbaBytes = prepared.decodedRgbaBytes,
+        .residentRgbaBytes = prepared.decodedRgbaBytes,
+    };
+    plan.uploadLevels.reserve(prepared.levels.size());
+    std::vector<assets::RgbaImage> images;
+    images.reserve(prepared.levels.size());
+
+    std::uint64_t accountedBytes = 0U;
+    for (auto& level : prepared.levels) {
+        std::uint64_t imageBytes = 0U;
+        if (!checkedMultiply(level.bytesPerRow, level.height, imageBytes) ||
+            imageBytes != level.rgba8.size() ||
+            !checkedAdd(accountedBytes, imageBytes, accountedBytes) ||
+            level.level != plan.uploadLevels.size()) {
+            return std::nullopt;
+        }
+        plan.uploadLevels.push_back({
+            .level = level.level,
+            .width = level.width,
+            .height = level.height,
+            .bytesPerRow = level.bytesPerRow,
+            .rgbaBytes = imageBytes,
+        });
+        images.push_back({
+            .width = level.width,
+            .height = level.height,
+            .pixels = std::move(level.rgba8),
+        });
+    }
+    if (accountedBytes != prepared.decodedRgbaBytes) {
+        return std::nullopt;
+    }
+    return GtiUploadPreparation{
+        .plan = std::move(plan),
+        .uploadLevels = std::move(images),
+        .issues = {},
+    };
+}
+
 } // namespace
 
 GtiUploadPreparation prepareGtiUpload(
@@ -273,6 +332,48 @@ TextureSourcePreparation prepareTextureSource(
     }
 
     result.classicGti = prepareGtiUpload(request, gtiBytes, limits);
+    return result;
+}
+
+TextureUploadSourcePreparation prepareTextureUploadSource(
+    const TextureImportRequest& request,
+    const std::span<const std::uint8_t> gtiBytes,
+    const texture::TextureReplacementResolver* const resolver,
+    const texture::PrivateTextureFileStore* const files,
+    const texture::TextureReplacementLookupPolicy replacementPolicy,
+    const GtiUploadDataLimits& gtiLimits,
+    const texture::TextureHdPngPreparationLimits& pngLimits) {
+    TextureUploadSourcePreparation result;
+    if (resolver != nullptr && files != nullptr) {
+        auto resolution =
+            resolver->resolve(request.logicalPath, gtiBytes, replacementPolicy);
+        result.resolverFallback = resolution.fallbackReason;
+        result.sourceDigestComputed = resolution.sourceDigestComputed;
+        result.sourceGtiSha256 = resolution.sourceGtiSha256;
+        result.replacementGeneration = resolver->generation();
+        if (resolution.replacementReady()) {
+            auto png = texture::prepareTextureHdPng(
+                resolution.candidate, *files, pngLimits);
+            if (png.success()) {
+                auto upload = makeHdUpload(request, std::move(*png.asset));
+                if (upload.has_value()) {
+                    result.selectedMode = texture::TextureMode::enhanced;
+                    result.resolverFallback =
+                        texture::TextureReplacementFallbackReason::none;
+                    result.upload = std::move(*upload);
+                    return result;
+                }
+                result.pngPreparationFallback = texture::
+                    TextureHdPngPreparationIssueKind::preparationFailure;
+            }
+            else {
+                result.pngPreparationFallback = png.issue.kind;
+            }
+        }
+    }
+
+    result.selectedMode = texture::TextureMode::classic;
+    result.upload = prepareGtiUpload(request, gtiBytes, gtiLimits);
     return result;
 }
 

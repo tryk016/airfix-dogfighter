@@ -121,10 +121,13 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
   std::optional<std::filesystem::path> captureControllerCalibrationPanelOutput;
   std::optional<std::filesystem::path> captureControllerBindingsPanelOutput;
   std::optional<std::filesystem::path> importAfPackSource;
+  std::optional<std::filesystem::path> texturePackRoot;
+  std::optional<std::string> texturePackManifest;
   std::optional<AirfixWindowsCaptureSize> captureSize;
   bool scenePresentationSeen = false;
   bool visualProfileSeen = false;
   bool renderDiagnosticsSeen = false;
+  bool textureModeSeen = false;
 
   for (std::size_t index = 0U; index < arguments.size(); ++index) {
     const auto option = arguments[index];
@@ -178,6 +181,29 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
       renderDiagnosticsSeen = true;
       options.renderOverrides.diagnosticsOverlayEnabled =
           option == "--render-diagnostics";
+    } else if (option == "--texture-mode") {
+      if (textureModeSeen) {
+        invalidCommandLine();
+      }
+      textureModeSeen = true;
+      const auto value = requireValue(arguments, index);
+      if (value == "classic") {
+        options.textureMode = airfix::texture::TextureMode::classic;
+      } else if (value == "enhanced") {
+        options.textureMode = airfix::texture::TextureMode::enhanced;
+      } else {
+        invalidCommandLine();
+      }
+    } else if (option == "--texture-pack-root") {
+      if (texturePackRoot.has_value()) {
+        invalidCommandLine();
+      }
+      texturePackRoot = std::filesystem::path(requireValue(arguments, index));
+    } else if (option == "--texture-pack-manifest") {
+      if (texturePackManifest.has_value()) {
+        invalidCommandLine();
+      }
+      texturePackManifest = std::string(requireValue(arguments, index));
     } else if (option == "--import-afpack") {
       if (importAfPackSource.has_value()) {
         invalidCommandLine();
@@ -336,12 +362,17 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
   const bool hasAnyMissionOption = setup.has_value() || level.has_value() ||
                                    playerObject.has_value() ||
                                    startIndex.has_value();
+  const bool hasAnyTextureOption = textureModeSeen ||
+                                   texturePackRoot.has_value() ||
+                                   texturePackManifest.has_value();
+  const bool hasTexturePackPair =
+      texturePackRoot.has_value() && texturePackManifest.has_value();
   const bool hasContentSpecificOption =
       hasAnyMissionOption || captureFrameOutput.has_value() ||
       captureOverviewFrameOutput.has_value() ||
       captureCrosshairValidationFrameOutput.has_value() ||
       captureHealthGaugeValidationFrameOutput.has_value() ||
-      captureHudValidationFrameOutput.has_value();
+      captureHudValidationFrameOutput.has_value() || hasAnyTextureOption;
   const bool hasAnyCapture =
       captureFrameOutput.has_value() ||
       captureOverviewFrameOutput.has_value() ||
@@ -375,6 +406,13 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
         captureControllerCalibrationPanelOutput.has_value() ||
         captureControllerBindingsPanelOutput.has_value())) ||
       (hasAnyMissionOption && !hasMissionPair) ||
+      (hasAnyTextureOption && (!hasContentSelection || !hasMissionPair ||
+                               options.validateContentOnly)) ||
+      (texturePackRoot.has_value() != texturePackManifest.has_value()) ||
+      (options.textureMode == airfix::texture::TextureMode::enhanced &&
+       !hasTexturePackPair) ||
+      (options.textureMode == airfix::texture::TextureMode::classic &&
+       hasTexturePackPair) ||
       (captureFrameOutput.has_value() &&
        (options.validateContentOnly || !hasMissionPair)) ||
       (captureOverviewFrameOutput.has_value() &&
@@ -422,6 +460,12 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
         .levelLogicalPath = std::move(*level),
         .playerObjectLogicalPath = std::move(playerObject),
         .requestedStartIndex = startIndex.value_or(0U),
+    };
+  }
+  if (hasTexturePackPair) {
+    options.texturePack = AirfixWindowsTexturePackLocation{
+        .root = std::move(*texturePackRoot),
+        .manifestRelativePath = std::move(*texturePackManifest),
     };
   }
   options.captureFrameOutput = std::move(captureFrameOutput);

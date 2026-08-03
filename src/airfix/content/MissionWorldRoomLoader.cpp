@@ -457,6 +457,40 @@ mapPlanIssue(const render::GtiUploadIssueKind kind) noexcept {
            left.residentRgbaBytes == right.residentRgbaBytes;
 }
 
+[[nodiscard]] bool validPreparedReplacementUpload(
+    const render::TextureImportRequest &request,
+    const render::GtiUploadPreparation &preparation) noexcept {
+    if (!preparation.success()) {
+        return false;
+    }
+    const auto &plan = *preparation.plan;
+    if (plan.request != request ||
+        plan.sampleSpace != render::TextureSampleSpace::encodedUnclassified ||
+        plan.mipPolicy != render::GtiMipPolicy::authoredChain ||
+        plan.uploadLevels.empty() ||
+        plan.uploadLevels.size() != preparation.uploadLevels.size() ||
+        plan.uploadLevels.size() != plan.allocatedMipCount ||
+        plan.uploadLevels.size() != plan.uploadedMipCount ||
+        plan.decodedRgbaBytes == 0U ||
+        plan.decodedRgbaBytes != plan.uploadRgbaBytes ||
+        plan.decodedRgbaBytes != plan.residentRgbaBytes) {
+        return false;
+    }
+
+    std::uint64_t accountedBytes = 0U;
+    for (std::size_t index = 0U; index < plan.uploadLevels.size(); ++index) {
+        const auto &level = plan.uploadLevels[index];
+        const auto &image = preparation.uploadLevels[index];
+        if (level.level != index || level.width != image.width ||
+            level.height != image.height ||
+            level.rgbaBytes != image.pixels.size() ||
+            !checkedMissionWorldRoomByteAdd(accountedBytes, level.rgbaBytes)) {
+            return false;
+        }
+    }
+    return accountedBytes == plan.decodedRgbaBytes;
+}
+
 void addTextureIssue(MissionWorldRoomLoadResult &result,
                      const MissionWorldRoomLoadIssueKind kind,
                      const render::TextureImportRequest &request,
@@ -484,7 +518,9 @@ loadMissionWorldRoom(VerifiedContentSession &session,
                      const MissionWorldRoomLoadRequest &externalRequest,
                      const MissionWorldRoomLoadLimits &externalLimits,
                      const std::stop_token stopToken,
-                     MissionWorldRoomLoadProgressCallback progress) {
+                     MissionWorldRoomLoadProgressCallback progress,
+                     const MissionWorldRoomTextureReplacementContext
+                         &textureReplacement) {
     MissionWorldRoomLoadResult result;
     try {
         const auto expectedIdentity = session.transactionIdentity();
@@ -507,6 +543,10 @@ loadMissionWorldRoom(VerifiedContentSession &session,
 
         const MissionWorldRoomLoadLimits limits = externalLimits;
         if (!validateLimits(limits)) {
+            addIssue(result, MissionWorldRoomLoadIssueKind::invalidLimits);
+            return result;
+        }
+        if (!textureReplacement.valid()) {
             addIssue(result, MissionWorldRoomLoadIssueKind::invalidLimits);
             return result;
         }
@@ -1731,6 +1771,10 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             .playerActorCollision = std::nullopt,
             .submission = {},
             .textures = {},
+            .requestedTextureMode = textureReplacement.requestedMode,
+            .enhancedTextureCount = 0U,
+            .classicTextureCount = 0U,
+            .textureFallbackCount = 0U,
             .semanticCcfSourceCount = descriptors.size(),
             .uniqueCcfSourceCount = cachedCcfs.size(),
             .uniqueCcfSourceFootprintBytes = uniqueCcfFootprintBytes,
@@ -1897,11 +1941,31 @@ loadMissionWorldRoom(VerifiedContentSession &session,
                 return result;
             }
 
-            render::GtiUploadPreparation preparation;
+            auto pngLimits = textureReplacement.pngPerTexture;
+            pngLimits.maximumDecodedRgbaBytes = std::min(
+                pngLimits.maximumDecodedRgbaBytes,
+                clampToSize(std::min(
+                    {remaining(limits.maximumDecodedRgbaBytes,
+                               decodedRgbaBytes),
+                     remaining(limits.maximumUploadRgbaBytes, uploadRgbaBytes),
+                     remaining(limits.maximumResidentRgbaBytes,
+                               residentRgbaBytes),
+                     remaining(limits.maximumPublishedCpuBytes,
+                               publishedCpuBytes)})));
+
+            render::TextureUploadSourcePreparation sourcePreparation;
             try {
-                auto sourcePreparation = render::prepareTextureSource(
-                    import, gtiBytes, nullptr, {}, perAssetLimits);
-                preparation = std::move(sourcePreparation.classicGti);
+                sourcePreparation = render::prepareTextureUploadSource(
+                    import, gtiBytes,
+                    textureReplacement.requestedMode ==
+                            texture::TextureMode::enhanced
+                        ? textureReplacement.resolver
+                        : nullptr,
+                    textureReplacement.requestedMode ==
+                            texture::TextureMode::enhanced
+                        ? textureReplacement.files
+                        : nullptr,
+                    textureReplacement.lookupPolicy, perAssetLimits, pngLimits);
             } catch (const std::bad_alloc &) {
                 throw;
             } catch (...) {
@@ -1911,26 +1975,89 @@ loadMissionWorldRoom(VerifiedContentSession &session,
                     import, render::GtiUploadDataIssueKind::decodeFailure);
                 return result;
             }
-            std::vector<std::uint8_t>().swap(gtiBytes);
-            if (!preparation.success()) {
+            if (!sourcePreparation.success()) {
                 addTextureIssue(
                     result,
                     MissionWorldRoomLoadIssueKind::texturePreparationFailure,
                     import,
-                    preparation.issues.empty()
+                    sourcePreparation.upload.issues.empty()
                         ? std::optional{render::GtiUploadDataIssueKind::
                                             decodeFailure}
-                        : std::optional{preparation.issues.front().kind});
+                        : std::optional{
+                              sourcePreparation.upload.issues.front().kind});
                 return result;
             }
-            if (!sameUploadPlan(plannedUpload, *preparation.plan)) {
+            if ((sourcePreparation.selectedMode ==
+                     texture::TextureMode::classic &&
+                 !sameUploadPlan(plannedUpload,
+                                 *sourcePreparation.upload.plan)) ||
+                (sourcePreparation.selectedMode ==
+                     texture::TextureMode::enhanced &&
+                 !validPreparedReplacementUpload(import,
+                                                 sourcePreparation.upload))) {
                 addTextureIssue(
                     result,
                     MissionWorldRoomLoadIssueKind::texturePreparationFailure,
                     import, render::GtiUploadDataIssueKind::planMismatch);
                 return result;
             }
-            const auto &upload = *preparation.plan;
+
+            auto accountPrepared = [&](const render::GtiUploadPlan &upload,
+                                       std::uint64_t &prospective) noexcept {
+                prospective = publishedCpuBytes;
+                return upload.decodedRgbaBytes <=
+                           remaining(limits.maximumDecodedRgbaBytes,
+                                     decodedRgbaBytes) &&
+                       upload.uploadRgbaBytes <=
+                           remaining(limits.maximumUploadRgbaBytes,
+                                     uploadRgbaBytes) &&
+                       upload.residentRgbaBytes <=
+                           remaining(limits.maximumResidentRgbaBytes,
+                                     residentRgbaBytes) &&
+                       accountPublished(prospective, upload.uploadLevels.size(),
+                                        sizeof(render::GtiUploadLevel),
+                                        limits.maximumPublishedCpuBytes) &&
+                       accountPublished(prospective, upload.uploadLevels.size(),
+                                        sizeof(assets::RgbaImage),
+                                        limits.maximumPublishedCpuBytes) &&
+                       checkedMissionWorldRoomByteAdd(
+                           prospective, upload.decodedRgbaBytes) &&
+                       prospective <= limits.maximumPublishedCpuBytes;
+            };
+
+            std::uint64_t actualProspectivePublished = 0U;
+            if (!accountPrepared(*sourcePreparation.upload.plan,
+                                 actualProspectivePublished) &&
+                sourcePreparation.selectedMode ==
+                    texture::TextureMode::enhanced) {
+                sourcePreparation.selectedMode = texture::TextureMode::classic;
+                sourcePreparation.pngPreparationFallback = texture::
+                    TextureHdPngPreparationIssueKind::decodedByteLimitExceeded;
+                sourcePreparation.upload =
+                    render::prepareGtiUpload(import, gtiBytes, perAssetLimits);
+                if (!sourcePreparation.upload.success() ||
+                    !sameUploadPlan(plannedUpload,
+                                    *sourcePreparation.upload.plan)) {
+                    addTextureIssue(
+                        result,
+                        MissionWorldRoomLoadIssueKind::
+                            texturePreparationFailure,
+                        import, render::GtiUploadDataIssueKind::planMismatch);
+                    return result;
+                }
+            }
+            std::vector<std::uint8_t>().swap(gtiBytes);
+
+            if (!accountPrepared(*sourcePreparation.upload.plan,
+                                 actualProspectivePublished)) {
+                addTextureIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::publishedCpuLimitExceeded,
+                    import);
+                return result;
+            }
+
+            const auto &upload = *sourcePreparation.upload.plan;
             if (!checkedMissionWorldRoomByteAdd(decodedRgbaBytes,
                                                 upload.decodedRgbaBytes) ||
                 !checkedMissionWorldRoomByteAdd(uploadRgbaBytes,
@@ -1941,13 +2068,34 @@ loadMissionWorldRoom(VerifiedContentSession &session,
                          MissionWorldRoomLoadIssueKind::integerOverflow);
                 return result;
             }
-            publishedCpuBytes = prospectivePublished;
+            publishedCpuBytes = actualProspectivePublished;
+            const auto selectedMode = sourcePreparation.selectedMode;
+            const bool sourceDigestComputed =
+                sourcePreparation.sourceDigestComputed;
             candidate.textures.push_back({
                 .assetId = import.assetId,
                 .sourceFileIndex = import.archiveFileIndex,
-                .upload = std::move(*preparation.plan),
-                .uploadLevels = std::move(preparation.uploadLevels),
+                .sourceMode = selectedMode,
+                .replacementGeneration =
+                    sourcePreparation.replacementGeneration,
+                .sourceGtiSha256 =
+                    sourceDigestComputed
+                        ? std::optional{sourcePreparation.sourceGtiSha256}
+                        : std::nullopt,
+                .upload = std::move(*sourcePreparation.upload.plan),
+                .uploadLevels =
+                    std::move(sourcePreparation.upload.uploadLevels),
             });
+            if (selectedMode == texture::TextureMode::enhanced) {
+                ++candidate.enhancedTextureCount;
+            }
+            else {
+                ++candidate.classicTextureCount;
+                if (textureReplacement.requestedMode ==
+                    texture::TextureMode::enhanced) {
+                    ++candidate.textureFallbackCount;
+                }
+            }
             if (!report(result, stopToken, guardedProgress,
                         MissionWorldRoomLoadPhase::loadingTextures, index + 1U,
                         binding.imports.size())) {

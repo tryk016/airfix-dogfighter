@@ -1436,12 +1436,13 @@
     Public-boundary hardening and the bounded, accepted-only reviewed-manifest
     parser/index, root-confined file capability, source resolver, base checksum,
     byte-identical per-texture GTI fallback, and bounded PNG RGBA8/mip-chain
-    preparation are complete under synthetic tests. Next implement the
-    Windows-only session opt-in pilot: explicit private root/mode arguments,
-    D3D11 RGBA8 upload, reload-only activation, and a conservative bounded
-    cache. Do not expose a persistent Enhanced selector, add private resources
-    to CMake/CI, or begin streaming/compressed derivatives until that pilot
-    passes private visual comparison and public fallback tests.
+    preparation are complete. The Windows-only session opt-in pilot now adds
+    explicit private root/mode arguments, reload-only activation, D3D11 RGBA8
+    upload, exact per-texture fallback, and a 512-entry/256 MiB generation-aware
+    cache. Private 1920x1080 acceptance loaded all 34 mission textures through
+    Enhanced with no fallback. Next add a persistent requested/effective model
+    and iOS pilot only after review; do not add private resources to CMake/CI or
+    begin streaming/compressed derivatives yet.
 
 ## Open questions
 
@@ -1453,6 +1454,18 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The Windows session-only HD texture pilot passes its synthetic parser,
+  package, resolver, loader/publication, CLI, and D3D11 cache tests. The public
+  manifest parser now follows the schema-valid `mixed` representative-category
+  rule and accepts the complete owner-local reviewed index. A private
+  authenticated 1920x1080 mission comparison loaded 34 Enhanced textures, zero
+  Classic textures, and zero fallbacks; both captures and every private input
+  remain outside Git. The complete MSVC product passes 167/167 tests and the
+  complete portable C++20 build passes 152/152. Synthetic boundary tests, the
+  811-file public scan, documentation integrity (119 experiments/408 catalogue
+  rows), 12/12 Rizin normalization, CI-classifier tests, and `git diff --check`
+  pass. Hosted Linux/macOS/Windows, clangd, and unsigned iOS remain the final
+  publication gate.
 - The private HD texture stage-5 preparer passes complete GCC 15.2/Ninja and
   MSVC 19.51/Ninja portable builds with 152/152 CTests in each tree. A full
   MSVC Windows-product build passes 166/166 CTests, including D3D11/XAudio2,

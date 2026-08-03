@@ -38,6 +38,8 @@ enum class MissionWorldRoomPublicationIssueKind : std::uint8_t {
     placedCollisionIncomplete,
     placedCollisionRoomCountMismatch,
     placedCollisionSourceIndexOutOfRange,
+    textureModeSummaryMismatch,
+    textureReplacementProvenanceMismatch,
     publishedCpuBytesMismatch,
     semanticCcfSourceCountZero,
     semanticCcfSourceCountMismatch,

@@ -2,6 +2,7 @@
 
 #include "AirfixEmbeddedShader.hpp"
 
+#include "airfix/archive/UdspArchive.hpp"
 #include "airfix/content/LegacyAircraftHealthGaugeSubmission.hpp"
 #include "airfix/content/LegacyAircraftHudIdentityStatusSubmission.hpp"
 #include "airfix/content/LegacyAircraftHudInstrumentsSubmission.hpp"
@@ -359,6 +360,10 @@ gameplayCameraInitializeInput(
 } // namespace
 
 class AirfixD3D11Renderer::Implementation final {
+  static constexpr std::size_t maximumMissionTextureCacheEntries = 512U;
+  static constexpr std::uint64_t maximumMissionTextureCacheBytes =
+      256U * 1024U * 1024U;
+
   struct MeshResources {
     ComPtr<ID3D11Buffer> vertices;
     ComPtr<ID3D11Buffer> indices;
@@ -394,6 +399,39 @@ class AirfixD3D11Renderer::Implementation final {
     }
   };
 
+  struct MissionTextureCacheKey final {
+    airfix::texture::TextureMode sourceMode{
+        airfix::texture::TextureMode::classic};
+    std::uint64_t replacementGeneration{};
+    airfix::crypto::Sha256Digest sourceGtiSha256{};
+    std::string normalizedLogicalPath;
+    DXGI_FORMAT format{DXGI_FORMAT_UNKNOWN};
+    airfix::render::GtiMipPolicy mipPolicy{
+        airfix::render::GtiMipPolicy::authoredChain};
+    std::uint32_t allocatedMipCount{};
+    std::uint32_t uploadedMipCount{};
+
+    [[nodiscard]] friend bool
+    operator==(const MissionTextureCacheKey &,
+               const MissionTextureCacheKey &) = default;
+  };
+
+  struct MissionTextureCacheEntry final {
+    MissionTextureCacheKey key;
+    ComPtr<ID3D11ShaderResourceView> view;
+    std::uint64_t residentBytes{};
+  };
+
+  struct MissionTexturePreparation final {
+    std::vector<ComPtr<ID3D11ShaderResourceView>> views;
+    std::vector<bool> cacheOwned;
+    std::vector<MissionTextureCacheEntry> cache;
+    std::uint64_t cacheResidentBytes{};
+    airfix::texture::TextureMode partitionMode{
+        airfix::texture::TextureMode::classic};
+    std::uint64_t partitionGeneration{};
+  };
+
   struct MissionResources {
     airfix::content::LoadedMissionWorldRoom room;
     std::optional<airfix::content::LoadedLegacyWeaponCrosshairTextureSet>
@@ -415,6 +453,7 @@ class AirfixD3D11Renderer::Implementation final {
     std::shared_ptr<airfix::render::PlayerActorPoseRuntime> poseRuntime;
     std::vector<MeshResources> meshes;
     std::vector<ComPtr<ID3D11ShaderResourceView>> textures;
+    std::vector<bool> textureCacheOwned;
     std::vector<ComPtr<ID3D11ShaderResourceView>> crosshairTextures;
     std::vector<ComPtr<ID3D11ShaderResourceView>> healthGaugeTextures;
     std::vector<ComPtr<ID3D11ShaderResourceView>> rollingDigitTextures;
@@ -449,6 +488,7 @@ class AirfixD3D11Renderer::Implementation final {
             playerPoseRuntime,
         std::vector<MeshResources> &&meshResources,
         std::vector<ComPtr<ID3D11ShaderResourceView>> &&textureResources,
+        std::vector<bool> &&textureCacheOwnership,
         std::vector<ComPtr<ID3D11ShaderResourceView>>
             &&crosshairTextureResources,
         std::vector<ComPtr<ID3D11ShaderResourceView>>
@@ -473,6 +513,7 @@ class AirfixD3D11Renderer::Implementation final {
           poseRuntime(std::move(playerPoseRuntime)),
           meshes(std::move(meshResources)),
           textures(std::move(textureResources)),
+          textureCacheOwned(std::move(textureCacheOwnership)),
           crosshairTextures(std::move(crosshairTextureResources)),
           healthGaugeTextures(std::move(healthGaugeTextureResources)),
           rollingDigitTextures(std::move(rollingDigitTextureResources)),
@@ -720,6 +761,23 @@ public:
            productUiExtent_.width != 0U && productUiExtent_.height != 0U;
   }
 
+  [[nodiscard]] std::size_t
+  missionTextureCacheEntryCountForTesting() const noexcept {
+    return missionTextureCache_.size();
+  }
+
+  [[nodiscard]] std::uint64_t
+  missionTextureCacheResidentBytesForTesting() const noexcept {
+    return missionTextureCacheResidentBytes_;
+  }
+
+  [[nodiscard]] const void *
+  missionTextureIdentityForTesting(const std::size_t index) const noexcept {
+    return mission_ != nullptr && index < mission_->textures.size()
+               ? mission_->textures[index].Get()
+               : nullptr;
+  }
+
   void installLoadedMissionRoom(
       airfix::content::LoadedMissionWorldRoom &&room,
       const airfix::content::ContentRevision &expectedRevision) {
@@ -799,8 +857,8 @@ public:
     }
     if (crosshairs.has_value() &&
         (!crosshairs->valid() || crosshairs->revision != expectedRevision)) {
-      throw std::runtime_error(
-          "authenticated weapon crosshair set failed its publication contract");
+      throw std::runtime_error("authenticated weapon crosshair set "
+                               "failed its publication contract");
     }
     if (healthGauge.has_value() &&
         (!healthGauge->valid() || healthGauge->revision != expectedRevision)) {
@@ -840,8 +898,8 @@ public:
     if (posePlan.status ==
         airfix::render::PlayerActorPoseRuntimePreparationStatus::
             resourceLimit) {
-      throw std::runtime_error(
-          "authenticated mission pose runtime exceeds its bounded resources");
+      throw std::runtime_error("authenticated mission pose runtime "
+                               "exceeds its bounded resources");
     }
     auto posePreparation = airfix::render::preparePlayerActorPoseRuntime(
         room.playerActorBinding, room.playerActorInstanceProvenance,
@@ -867,7 +925,8 @@ public:
     }
 
     auto meshes = createGeometryResources(room.model);
-    auto textures = createMissionTextures(room.textures);
+    auto texturePreparation =
+        createMissionTextures(room.textures, room.requestedTextureMode);
     auto crosshairTextures =
         crosshairs.has_value()
             ? createWeaponCrosshairTextures(*crosshairs)
@@ -893,9 +952,9 @@ public:
             ? createAircraftHudIdentityStatusTextures(*identityStatus)
             : std::vector<ComPtr<ID3D11ShaderResourceView>>{};
 
-    // Full validation and GPU preparation must complete before mission-owned
-    // collision storage is moved. The active mission remains untouched on
-    // every failure before the final no-fail publication.
+    // Full validation and GPU preparation must complete before
+    // mission-owned collision storage is moved. The active mission remains
+    // untouched on every failure before the final no-fail publication.
     auto cameraRuntimeBuild =
         airfix::render::LegacyGameplayCameraMissionRuntime::create(
             std::move(room.spatialArena),
@@ -931,11 +990,16 @@ public:
         std::move(rollingDigits), std::move(hudInstruments),
         std::move(weaponPanels), std::move(identityStatus),
         std::move(cameraMissionRuntime), std::move(posePreparation.runtime),
-        std::move(meshes), std::move(textures), std::move(crosshairTextures),
+        std::move(meshes), std::move(texturePreparation.views),
+        std::move(texturePreparation.cacheOwned), std::move(crosshairTextures),
         std::move(healthGaugeTextures), std::move(rollingDigitTextures),
         std::move(hudInstrumentTextures), std::move(weaponPanelTextures),
         std::move(identityStatusTextures), referenceCameraCanvas,
         referenceHorizontalFovDegrees);
+    missionTextureCache_.swap(texturePreparation.cache);
+    missionTextureCacheResidentBytes_ = texturePreparation.cacheResidentBytes;
+    missionTextureCacheMode_ = texturePreparation.partitionMode;
+    missionTextureCacheGeneration_ = texturePreparation.partitionGeneration;
     mission_ = std::move(candidate);
   }
 
@@ -1036,9 +1100,9 @@ public:
       if (mission_->cameraMissionRuntime == nullptr) {
         return false;
       }
-      // Exactly one read lease owns the camera packet for the entire frame.
-      // A bounded acquisition miss drops this frame; private gameplay never
-      // falls back to the immutable bootstrap camera.
+      // Exactly one read lease owns the camera packet for the entire
+      // frame. A bounded acquisition miss drops this frame; private
+      // gameplay never falls back to the immutable bootstrap camera.
       gameplayCameraLease = mission_->cameraMissionRuntime->tryAcquire();
       if (!gameplayCameraLease.has_value() || !gameplayCameraLease->valid() ||
           gameplayCameraLease->packet() == nullptr) {
@@ -1127,8 +1191,9 @@ public:
     const auto &model = gameplay ? mission_->room.model : scene_.model;
     const auto &submission = gameplay ? mission_->room.submission : plan_;
     const auto &meshes = gameplay ? mission_->meshes : meshResources_;
-    // One lease covers the complete encoded frame. A missed acquisition keeps
-    // the immutable authored pose, matching the Metal consumer contract.
+    // One lease covers the complete encoded frame. A missed acquisition
+    // keeps the immutable authored pose, matching the Metal consumer
+    // contract.
     std::optional<airfix::render::DynamicInstancePoseLease> poseLease;
     if (gameplay && mission_->poseRuntime != nullptr) {
       poseLease = mission_->poseRuntime->tryAcquire();
@@ -1149,8 +1214,9 @@ public:
       if (cameraOverride != nullptr) {
         const auto instanceIndex =
             static_cast<std::size_t>(command.instanceIndex);
-        // The capture-only cutaway hides exterior-facing room-shell polygons.
-        // Placed objects and the player keep the normal two-sided state.
+        // The capture-only cutaway hides exterior-facing room-shell
+        // polygons. Placed objects and the player keep the normal
+        // two-sided state.
         const bool roomShell =
             instanceIndex < mission_->room.instanceProvenance.size() &&
             mission_->room.instanceProvenance[instanceIndex]
@@ -1287,8 +1353,8 @@ public:
       try {
         drawDiagnosticsOverlay(frameStarted);
       } catch (...) {
-        // Developer instrumentation is best-effort and cannot suppress a
-        // valid game frame or influence deterministic simulation.
+        // Developer instrumentation is best-effort and cannot suppress
+        // a valid game frame or influence deterministic simulation.
         overlaySuppressed_ = true;
         releaseDiagnosticsOverlayResources();
       }
@@ -1363,16 +1429,16 @@ public:
       const std::filesystem::path &outputPath) {
     if (!missionWorldRoomInstalled() || !mission_->crosshairs.has_value() ||
         width_ <= 0 || height_ <= 0) {
-      throw std::runtime_error(
-          "private crosshair validation requires an installed authenticated "
-          "mission and sight set");
+      throw std::runtime_error("private crosshair validation requires an "
+                               "installed authenticated "
+                               "mission and sight set");
     }
     const auto layout =
         buildLayout(settings_, static_cast<std::uint32_t>(width_),
                     static_cast<std::uint32_t>(height_));
     if (!layout.complete()) {
-      throw std::runtime_error(
-          "private crosshair validation requires a drawable native layout");
+      throw std::runtime_error("private crosshair validation requires a "
+                               "drawable native layout");
     }
     const auto &textures = *mission_->crosshairs;
     const auto &texture = textures.textures.front();
@@ -1405,8 +1471,8 @@ public:
             airfix::content::LegacyWeaponCrosshairVisibilityDecision::draw);
     if (!submission.ready() ||
         !renderFrame(true, &outputPath, nullptr, &*submission.submission)) {
-      throw std::runtime_error(
-          "private crosshair validation produced no visible D3D11 output");
+      throw std::runtime_error("private crosshair validation produced no "
+                               "visible D3D11 output");
     }
   }
 
@@ -1458,9 +1524,9 @@ public:
         !mission_->hudInstruments.has_value() ||
         !mission_->weaponPanels.has_value() ||
         !mission_->identityStatus.has_value() || width_ <= 0 || height_ <= 0) {
-      throw std::runtime_error(
-          "private full-HUD validation requires an installed authenticated "
-          "mission and every HUD texture owner");
+      throw std::runtime_error("private full-HUD validation requires an "
+                               "installed authenticated "
+                               "mission and every HUD texture owner");
     }
 
     auto captureSettings = settings_;
@@ -1475,17 +1541,17 @@ public:
         buildLayout(settings_, static_cast<std::uint32_t>(width_),
                     static_cast<std::uint32_t>(height_));
     if (!layout.complete()) {
-      throw std::runtime_error(
-          "private full-HUD validation requires a drawable native layout");
+      throw std::runtime_error("private full-HUD validation requires a "
+                               "drawable native layout");
     }
 
     const auto *weaponIcon = mission_->weaponPanels->icon(0U);
     const auto *aircraftIcon = mission_->identityStatus->icon(0U);
     if (weaponIcon == nullptr || aircraftIcon == nullptr ||
         mission_->crosshairs->textures.empty()) {
-      throw std::runtime_error(
-          "private full-HUD validation requires non-empty authenticated icon "
-          "catalogues and sight textures");
+      throw std::runtime_error("private full-HUD validation requires "
+                               "non-empty authenticated icon "
+                               "catalogues and sight textures");
     }
 
     const auto initialHundred =
@@ -1494,8 +1560,8 @@ public:
         airfix::render::makeLegacyAircraftHudRollingDigitsState(0);
     airfix::render::LegacyAircraftHudElapsedClockState clock;
     if (!clock.advance(0.25F).advanced()) {
-      throw std::runtime_error(
-          "private full-HUD validation could not prepare the elapsed clock");
+      throw std::runtime_error("private full-HUD validation could not "
+                               "prepare the elapsed clock");
     }
 
     const airfix::content::LegacyAircraftHudRenderEventInput input{
@@ -1585,8 +1651,8 @@ public:
         *mission_->weaponPanels, *mission_->healthGauge,
         *mission_->identityStatus, *layout.layout, settings_.uiScalePercent);
     if (!hudEvent.ready()) {
-      throw std::runtime_error(
-          "private full-HUD validation could not build one complete event");
+      throw std::runtime_error("private full-HUD validation could not "
+                               "build one complete event");
     }
 
     const auto &sightTexture = mission_->crosshairs->textures.front();
@@ -1771,7 +1837,8 @@ private:
           gameplayCamera->pose().projection().horizontalFovDegrees();
     } else if (mission_ != nullptr) {
       // Target preparation outside a render frame cannot borrow the SPSC
-      // consumer endpoint. Gameplay frames always provide the leased packet.
+      // consumer endpoint. Gameplay frames always provide the leased
+      // packet.
       config.referenceCameraCanvas = mission_->referenceCameraCanvas;
       config.referenceHorizontalFovDegrees =
           mission_->referenceHorizontalFovDegrees;
@@ -1919,9 +1986,14 @@ private:
     }
     total = saturatingAdd(total, textureBytes(fallbackTexture_.Get()));
     if (gameplay && mission_) {
-      for (const auto &texture : mission_->textures) {
-        total = saturatingAdd(total, textureBytes(texture.Get()));
+      for (std::size_t index = 0U; index < mission_->textures.size(); ++index) {
+        if (index >= mission_->textureCacheOwned.size() ||
+            !mission_->textureCacheOwned[index]) {
+          total = saturatingAdd(total,
+                                textureBytes(mission_->textures[index].Get()));
+        }
       }
+      total = saturatingAdd(total, missionTextureCacheResidentBytes_);
       for (const auto &texture : mission_->crosshairTextures) {
         total = saturatingAdd(total, textureBytes(texture.Get()));
       }
@@ -3326,16 +3398,106 @@ private:
     return view;
   }
 
-  [[nodiscard]] std::vector<ComPtr<ID3D11ShaderResourceView>>
-  createMissionTextures(
-      const std::vector<airfix::content::LoadedTextureAsset> &sources) const {
-    std::vector<ComPtr<ID3D11ShaderResourceView>> result;
-    result.reserve(sources.size());
+  [[nodiscard]] std::optional<MissionTextureCacheKey> missionTextureCacheKey(
+      const airfix::content::LoadedTextureAsset &source) const {
+    if (source.replacementGeneration == 0U ||
+        !source.sourceGtiSha256.has_value() ||
+        source.upload.request.logicalPath.empty()) {
+      return std::nullopt;
+    }
+    try {
+      return MissionTextureCacheKey{
+          .sourceMode = source.sourceMode,
+          .replacementGeneration = source.replacementGeneration,
+          .sourceGtiSha256 = *source.sourceGtiSha256,
+          .normalizedLogicalPath = airfix::udsp::normalizeLogicalPath(
+              source.upload.request.logicalPath, 4096U),
+          .format = d3dRgba8TextureFormat(source.upload.sampleSpace),
+          .mipPolicy = source.upload.mipPolicy,
+          .allocatedMipCount = source.upload.allocatedMipCount,
+          .uploadedMipCount = source.upload.uploadedMipCount,
+      };
+    } catch (...) {
+      return std::nullopt;
+    }
+  }
+
+  [[nodiscard]] MissionTexturePreparation createMissionTextures(
+      const std::vector<airfix::content::LoadedTextureAsset> &sources,
+      const airfix::texture::TextureMode requestedMode) const {
+    MissionTexturePreparation result;
+    result.partitionMode = requestedMode;
+    for (const auto &source : sources) {
+      if (requestedMode == airfix::texture::TextureMode::enhanced) {
+        if (source.replacementGeneration == 0U) {
+          throw std::runtime_error(
+              "Enhanced mission texture has no package generation");
+        }
+        if (result.partitionGeneration == 0U) {
+          result.partitionGeneration = source.replacementGeneration;
+        } else if (result.partitionGeneration != source.replacementGeneration) {
+          throw std::runtime_error(
+              "mission texture package generations are inconsistent");
+        }
+      }
+    }
+
+    if (missionTextureCacheMode_ == requestedMode &&
+        missionTextureCacheGeneration_ == result.partitionGeneration) {
+      result.cache = missionTextureCache_;
+      result.cacheResidentBytes = missionTextureCacheResidentBytes_;
+    }
+    result.views.reserve(sources.size());
+    result.cacheOwned.reserve(sources.size());
     for (std::size_t index = 0U; index < sources.size(); ++index) {
-      if (sources[index].assetId.value != index) {
+      const auto &source = sources[index];
+      if (source.assetId.value != index) {
         throw std::runtime_error("mission textures do not use dense asset IDs");
       }
-      result.push_back(createUploadedTexture(sources[index]));
+
+      auto key = missionTextureCacheKey(source);
+      if (key.has_value()) {
+        const auto found =
+            std::find_if(result.cache.begin(), result.cache.end(),
+                         [&](const MissionTextureCacheEntry &entry) {
+                           return entry.key == *key;
+                         });
+        if (found != result.cache.end()) {
+          auto retained = std::move(*found);
+          result.cache.erase(found);
+          result.cache.push_back(std::move(retained));
+          result.views.push_back(result.cache.back().view);
+          result.cacheOwned.push_back(true);
+          continue;
+        }
+      }
+
+      auto view = createUploadedTexture(source);
+      bool cacheOwned = false;
+      if (key.has_value() && source.upload.residentRgbaBytes != 0U &&
+          source.upload.residentRgbaBytes <= maximumMissionTextureCacheBytes) {
+        while (
+            !result.cache.empty() &&
+            (result.cache.size() >= maximumMissionTextureCacheEntries ||
+             result.cacheResidentBytes > maximumMissionTextureCacheBytes -
+                                             source.upload.residentRgbaBytes)) {
+          result.cacheResidentBytes -= result.cache.front().residentBytes;
+          result.cache.erase(result.cache.begin());
+        }
+        if (result.cache.size() < maximumMissionTextureCacheEntries &&
+            result.cacheResidentBytes <= maximumMissionTextureCacheBytes -
+                                             source.upload.residentRgbaBytes) {
+          result.cache.push_back({
+              .key = std::move(*key),
+              .view = view,
+              .residentBytes = source.upload.residentRgbaBytes,
+          });
+          result.cacheResidentBytes += source.upload.residentRgbaBytes;
+          cacheOwned = true;
+        }
+      }
+      result.views.push_back(std::move(view));
+      result.cacheOwned.push_back(cacheOwned);
     }
     return result;
   }
@@ -3374,8 +3536,8 @@ private:
     for (std::size_t index = 0U; index < sources.textures.size(); ++index) {
       const auto &source = sources.textures[index];
       if (source.textureId.value != index) {
-        throw std::runtime_error(
-            "aircraft health gauge textures do not use dense HUD-local IDs");
+        throw std::runtime_error("aircraft health gauge textures do "
+                                 "not use dense HUD-local IDs");
       }
       result.push_back(createUploadedTexture(source));
     }
@@ -3395,8 +3557,8 @@ private:
     for (std::size_t index = 0U; index < sources.textures.size(); ++index) {
       const auto &source = sources.textures[index];
       if (source.textureId.value != index) {
-        throw std::runtime_error(
-            "aircraft rolling digit atlas does not use dense HUD-local IDs");
+        throw std::runtime_error("aircraft rolling digit atlas does "
+                                 "not use dense HUD-local IDs");
       }
       result.push_back(createUploadedTexture(source));
     }
@@ -3408,8 +3570,8 @@ private:
       const airfix::content::LoadedLegacyAircraftHudInstrumentTextureSet
           &sources) const {
     if (!sources.valid()) {
-      throw std::runtime_error(
-          "aircraft HUD instrument textures failed their upload contract");
+      throw std::runtime_error("aircraft HUD instrument textures failed "
+                               "their upload contract");
     }
     std::vector<ComPtr<ID3D11ShaderResourceView>> result;
     result.reserve(sources.textures.size());
@@ -3429,16 +3591,16 @@ private:
       const airfix::content::LoadedLegacyAircraftHudWeaponPanelTextureSet
           &sources) const {
     if (!sources.valid()) {
-      throw std::runtime_error(
-          "aircraft HUD weapon panel textures failed their upload contract");
+      throw std::runtime_error("aircraft HUD weapon panel textures "
+                               "failed their upload contract");
     }
     std::vector<ComPtr<ID3D11ShaderResourceView>> result;
     result.reserve(sources.textures.size());
     for (std::size_t index = 0U; index < sources.textures.size(); ++index) {
       const auto &source = sources.textures[index];
       if (source.textureId.value != index) {
-        throw std::runtime_error(
-            "aircraft HUD weapon panels do not use dense HUD-local IDs");
+        throw std::runtime_error("aircraft HUD weapon panels do not "
+                                 "use dense HUD-local IDs");
       }
       result.push_back(createUploadedTexture(source));
     }
@@ -3450,8 +3612,8 @@ private:
       const airfix::content::LoadedLegacyAircraftHudIdentityStatusTextureSet
           &sources) const {
     if (!sources.valid()) {
-      throw std::runtime_error(
-          "aircraft HUD identity/status textures failed their upload contract");
+      throw std::runtime_error("aircraft HUD identity/status textures "
+                               "failed their upload contract");
     }
     std::vector<ComPtr<ID3D11ShaderResourceView>> result;
     result.reserve(sources.textures.size());
@@ -3784,6 +3946,10 @@ private:
   ComPtr<ID3D11Texture2D> productUiTexture_;
   ComPtr<ID3D11ShaderResourceView> productUiShaderResource_;
   std::vector<MeshResources> meshResources_;
+  std::vector<MissionTextureCacheEntry> missionTextureCache_;
+  std::optional<airfix::texture::TextureMode> missionTextureCacheMode_;
+  std::uint64_t missionTextureCacheGeneration_{};
+  std::uint64_t missionTextureCacheResidentBytes_{};
   std::unique_ptr<MissionResources> mission_;
   std::array<GpuTimestampQueries, 4U> gpuTimestampQueries_;
   std::size_t nextGpuTimestampQuery_{};
@@ -3876,6 +4042,21 @@ bool AirfixD3D11Renderer::hasDiagnosticsOverlayResourcesForTesting()
 bool AirfixD3D11Renderer::hasProductUiOverlayResourcesForTesting()
     const noexcept {
   return implementation_->hasProductUiOverlayResourcesForTesting();
+}
+
+std::size_t
+AirfixD3D11Renderer::missionTextureCacheEntryCountForTesting() const noexcept {
+  return implementation_->missionTextureCacheEntryCountForTesting();
+}
+
+std::uint64_t AirfixD3D11Renderer::missionTextureCacheResidentBytesForTesting()
+    const noexcept {
+  return implementation_->missionTextureCacheResidentBytesForTesting();
+}
+
+const void *AirfixD3D11Renderer::missionTextureIdentityForTesting(
+    const std::size_t index) const noexcept {
+  return implementation_->missionTextureIdentityForTesting(index);
 }
 
 void AirfixD3D11Renderer::installLoadedMissionRoom(

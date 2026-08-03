@@ -7,6 +7,7 @@
 #include "AirfixWindowsRenderSettingsCoordinator.hpp"
 #include "AirfixWindowsRenderSettingsPanel.hpp"
 #include "AirfixWindowsSettingsRoot.hpp"
+#include "AirfixWindowsTexturePack.hpp"
 #include "AirfixWindowsUiAutomation.hpp"
 #include "AirfixWindowsUiRasterizer.hpp"
 #include "AirfixXAudio2Backend.hpp"
@@ -459,11 +460,13 @@ struct LoadedPrivateContent final {
 [[nodiscard]] LoadedPrivateContent loadPrivateContent(
     const std::filesystem::path &contentRoot,
     const std::optional<airfix::windows::AirfixWindowsMissionOptions> &mission,
-    airfix::windows::AirfixXAudio2Backend &audio) {
+    airfix::windows::AirfixXAudio2Backend &audio,
+    const airfix::content::MissionWorldRoomTextureReplacementContext
+        &textureReplacement) {
   auto inspection = airfix::afpack::inspectActiveContent(contentRoot);
   if (inspection.status() != airfix::afpack::ActiveContentStatus::ready) {
-    throw std::runtime_error(
-        "the private Windows content root has no authenticated active AFPACK");
+    throw std::runtime_error("the private Windows content root has no "
+                             "authenticated active AFPACK");
   }
   auto session = airfix::content::VerifiedContentSession::adopt(
       std::move(inspection).takeReadyLease());
@@ -511,7 +514,8 @@ struct LoadedPrivateContent final {
         .uvPolicy = airfix::render::UvPolicy::preserveRaw,
     };
     auto loadedRoom = airfix::content::loadMissionWorldRoom(
-        session, *manifest.manifest, roomRequest);
+        session, *manifest.manifest, roomRequest, {}, {}, {},
+        textureReplacement);
     if (!loadedRoom.success() || !loadedRoom.room.has_value() ||
         loadedRoom.room->revision != revision ||
         session.revision() != revision) {
@@ -538,8 +542,8 @@ struct LoadedPrivateContent final {
         !loadedHealthGauge.textures->belongsTo(session) ||
         loadedHealthGauge.textures->revision != revision ||
         session.revision() != revision) {
-      throw std::runtime_error(
-          "authenticated aircraft health gauge textures could not be loaded");
+      throw std::runtime_error("authenticated aircraft health gauge "
+                               "textures could not be loaded");
     }
     aircraftHealthGaugeTextures = std::move(*loadedHealthGauge.textures);
 
@@ -550,8 +554,8 @@ struct LoadedPrivateContent final {
         !loadedRollingDigits.textures->belongsTo(session) ||
         loadedRollingDigits.textures->revision != revision ||
         session.revision() != revision) {
-      throw std::runtime_error(
-          "authenticated aircraft rolling digit atlas could not be loaded");
+      throw std::runtime_error("authenticated aircraft rolling digit "
+                               "atlas could not be loaded");
     }
     aircraftHudRollingDigitTextures = std::move(*loadedRollingDigits.textures);
 
@@ -586,9 +590,9 @@ struct LoadedPrivateContent final {
         !loadedHudIdentityStatus.textures->belongsTo(session) ||
         loadedHudIdentityStatus.textures->revision != revision ||
         session.revision() != revision) {
-      throw std::runtime_error(
-          "authenticated aircraft HUD identity/status textures could not be "
-          "loaded");
+      throw std::runtime_error("authenticated aircraft HUD "
+                               "identity/status textures could not be "
+                               "loaded");
     }
     aircraftHudIdentityStatusTextures =
         std::move(*loadedHudIdentityStatus.textures);
@@ -758,8 +762,8 @@ int run(const int argumentCount, char *arguments[]) {
       reportSettingsLoad(load);
     } catch (...) {
       // Paths and platform error text are deliberately not exposed here.
-      // An unavailable profile is nonfatal and cannot partially change the
-      // canonical defaults.
+      // An unavailable profile is nonfatal and cannot partially change
+      // the canonical defaults.
       persistenceContext.settingsDirectory.reset();
       std::cerr << "Render settings: storage-unavailable\n";
     }
@@ -940,8 +944,8 @@ int run(const int argumentCount, char *arguments[]) {
               snapshot.items.begin() + snapshot.itemCount,
               [item](const auto &candidate) { return candidate.item == item; });
           if (found == snapshot.items.begin() + snapshot.itemCount) {
-            throw std::runtime_error(
-                "public controller-calibration capture item is unavailable");
+            throw std::runtime_error("public controller-calibration "
+                                     "capture item is unavailable");
           }
           (void)panel->consumePointer({
               .xPixels = found->bounds.x + found->bounds.width * 0.5F,
@@ -1027,18 +1031,46 @@ int run(const int argumentCount, char *arguments[]) {
   }
 
   std::optional<LoadedPrivateContent> privateContent;
+  std::unique_ptr<airfix::windows::AirfixWindowsTexturePackSession>
+      texturePackSession;
+  airfix::content::MissionWorldRoomTextureReplacementContext textureReplacement;
+  if (options.textureMode == airfix::texture::TextureMode::enhanced) {
+    auto opened = airfix::windows::openAirfixWindowsTexturePack(
+        options.texturePack->root, options.texturePack->manifestRelativePath);
+    if (opened.success()) {
+      texturePackSession = std::move(opened.session);
+      textureReplacement = {
+          .requestedMode = airfix::texture::TextureMode::enhanced,
+          .resolver = &texturePackSession->resolver(),
+          .files = &texturePackSession->files(),
+          .lookupPolicy = {},
+          .pngPerTexture = {},
+      };
+      std::cout << "Private HD texture package: ready; mission reload policy "
+                   "active\n";
+    } else {
+      std::cerr << "Private HD texture package unavailable ("
+                << airfix::windows::texturePackStatusCategory(opened.status)
+                << "); using Classic for this session\n";
+    }
+  }
   std::optional<airfix::simulation::PlayerSpawnPose> playerSpawnPose;
   airfix::runtime::PlayerActorPoseRuntimeEndpoint playerActorPoseRuntime;
   std::weak_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>
       gameplayCameraMissionRuntime;
   if (activeContentRoot.has_value()) {
-    privateContent.emplace(
-        loadPrivateContent(*activeContentRoot, options.mission, audio));
+    privateContent.emplace(loadPrivateContent(
+        *activeContentRoot, options.mission, audio, textureReplacement));
   }
   if (privateContent.has_value() && privateContent->missionRoom.has_value()) {
+    std::cout << "Mission textures: enhanced="
+              << privateContent->missionRoom->enhancedTextureCount
+              << " classic=" << privateContent->missionRoom->classicTextureCount
+              << " fallback="
+              << privateContent->missionRoom->textureFallbackCount << '\n';
     if (!privateContent->weaponCrosshairTextures.has_value()) {
-      throw std::runtime_error(
-          "authenticated Windows mission has no weapon crosshair textures");
+      throw std::runtime_error("authenticated Windows mission has no "
+                               "weapon crosshair textures");
     }
     if (!privateContent->aircraftHealthGaugeTextures.has_value()) {
       throw std::runtime_error("authenticated Windows mission has no aircraft "
@@ -1130,14 +1162,15 @@ int run(const int argumentCount, char *arguments[]) {
   }
   if (options.validateContentOnly) {
     if (options.mission.has_value() && !renderer.renderFrame(true)) {
-      throw std::runtime_error(
-          "authenticated Windows mission produced no visible D3D11 output");
+      throw std::runtime_error("authenticated Windows mission produced "
+                               "no visible D3D11 output");
     }
     std::cout
         << (options.mission.has_value()
                 ? "Authenticated private mission, rendering resources, and "
                   "aircraft audio validation passed\n"
-                : "Authenticated private aircraft audio validation passed\n");
+                : "Authenticated private aircraft audio validation "
+                  "passed\n");
     return 0;
   }
 
@@ -1210,10 +1243,10 @@ int run(const int argumentCount, char *arguments[]) {
 
   if (renderer.missionWorldRoomInstalled() && playerSpawnPose.has_value() &&
       !gameplayCameraMissionRuntime.expired()) {
-    // Windows commits the authenticated room, audio clips, frozen spawn pose,
-    // pose runtime, and replacement-safe gameplay-camera runtime as one
-    // startup transaction. Supplying changing camera inputs remains a later
-    // trace-driven milestone.
+    // Windows commits the authenticated room, audio clips, frozen spawn
+    // pose, pose runtime, and replacement-safe gameplay-camera runtime as
+    // one startup transaction. Supplying changing camera inputs remains a
+    // later trace-driven milestone.
     session.setContentState(airfix::runtime::ContentState::ready);
   }
   airfix::windows::AirfixSdlInputAdapter input{controllerInputConfiguration};
@@ -1255,8 +1288,8 @@ int run(const int argumentCount, char *arguments[]) {
         (!uiAutomationAvailable || uiAutomation.publish(*semantics.tree));
     if (!raster.complete() || !renderer.setProductUiRaster(*raster.raster) ||
         !semanticsPublished) {
-      throw std::runtime_error(
-          "Windows product UI raster and semantics could not be published");
+      throw std::runtime_error("Windows product UI raster and semantics "
+                               "could not be published");
     }
     publishedPanelSnapshot = snapshot;
   };
@@ -1506,10 +1539,11 @@ int run(const int argumentCount, char *arguments[]) {
           std::cerr << "Windows deterministic input consumer halted after "
                        "an invalid state transition\n";
         }
-        // Do not call gameplayCameraMissionRuntime.tryAdvance() from this
-        // 60 Hz input loop. The recovered camera consumes the complete
-        // trace-driven AirCraft producer state on its independent 12 ms
-        // cadence; guessing that contract here would break parity.
+        // Do not call gameplayCameraMissionRuntime.tryAdvance() from
+        // this 60 Hz input loop. The recovered camera consumes the
+        // complete trace-driven AirCraft producer state on its
+        // independent 12 ms cadence; guessing that contract here would
+        // break parity.
       }
       inputAccumulator -= inputStepNanoseconds;
     }

@@ -69,6 +69,28 @@ else()
     )
 endif()
 
+add_library(airfix_windows_texture_pack STATIC
+    AirfixWindowsTexturePack.cpp
+    AirfixWindowsTexturePack.hpp
+)
+target_include_directories(airfix_windows_texture_pack PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+target_compile_features(airfix_windows_texture_pack PUBLIC cxx_std_20)
+if(MSVC)
+    target_compile_options(airfix_windows_texture_pack PRIVATE
+        /W4 /permissive-)
+else()
+    target_compile_options(airfix_windows_texture_pack PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+endif()
+target_link_libraries(airfix_windows_texture_pack PUBLIC
+    airfix::texture
+)
+
 add_library(airfix_windows_settings_root STATIC
     AirfixWindowsSettingsRoot.cpp
     AirfixWindowsSettingsRoot.hpp
@@ -398,6 +420,7 @@ target_link_libraries(airfix_windows PRIVATE
     airfix_windows_render_settings_coordinator
     airfix_windows_settings_panel
     airfix_windows_settings_root
+    airfix_windows_texture_pack
     airfix_windows_ui_automation
     airfix::audio
     airfix::content
@@ -445,6 +468,25 @@ if(AIRFIX_BUILD_TESTS)
         airfix_windows_command_line)
     add_test(NAME airfix_windows_command_line_tests
         COMMAND airfix_windows_command_line_tests)
+
+    add_executable(airfix_windows_texture_pack_tests
+        AirfixWindowsTexturePackTests.cpp)
+    target_compile_features(airfix_windows_texture_pack_tests
+        PRIVATE cxx_std_20)
+    if(MSVC)
+        target_compile_options(airfix_windows_texture_pack_tests
+            PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(airfix_windows_texture_pack_tests PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+    endif()
+    target_link_libraries(airfix_windows_texture_pack_tests PRIVATE
+        airfix_windows_texture_pack)
+    add_test(NAME airfix_windows_texture_pack_tests
+        COMMAND airfix_windows_texture_pack_tests)
 
     add_executable(airfix_windows_settings_root_tests
         AirfixWindowsSettingsRootTests.cpp)

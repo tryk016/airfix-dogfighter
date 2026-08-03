@@ -1,6 +1,7 @@
 #pragma once
 
 #include "airfix/render/RenderPresentationSettings.hpp"
+#include "airfix/texture/TextureMode.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -31,6 +32,15 @@ struct AirfixWindowsMissionOptions final {
              const AirfixWindowsMissionOptions &) = default;
 };
 
+struct AirfixWindowsTexturePackLocation final {
+  std::filesystem::path root;
+  std::string manifestRelativePath;
+
+  [[nodiscard]] friend bool
+  operator==(const AirfixWindowsTexturePackLocation &,
+             const AirfixWindowsTexturePackLocation &) = default;
+};
+
 struct AirfixWindowsCommandLineOptions final {
   bool smokeTest{};
   bool validateContentOnly{};
@@ -40,6 +50,9 @@ struct AirfixWindowsCommandLineOptions final {
   std::optional<std::filesystem::path> contentRoot;
   std::optional<std::filesystem::path> importAfPackSource;
   std::optional<AirfixWindowsMissionOptions> mission;
+  airfix::texture::TextureMode textureMode{
+      airfix::texture::TextureMode::classic};
+  std::optional<AirfixWindowsTexturePackLocation> texturePack;
   std::optional<std::filesystem::path> captureFrameOutput;
   std::optional<std::filesystem::path> captureOverviewFrameOutput;
   std::optional<std::filesystem::path> captureCrosshairValidationFrameOutput;
@@ -82,6 +95,9 @@ parseAirfixWindowsCommandLine(std::span<const std::string_view> arguments);
          "--content-root <path> [--setup <logical-path> "
          "--level <logical-path> [--player-object <logical-path>] "
          "[--start-index <uint32>] "
+         "[--texture-mode <classic|enhanced> "
+         "[--texture-pack-root <path> "
+         "--texture-pack-manifest <relative-jsonl>]] "
          "[--capture-frame <private-output.bmp> | "
          "--capture-overview-frame <private-output.bmp> | "
          "--capture-crosshair-validation-frame <private-output.bmp> | "
@@ -91,6 +107,9 @@ parseAirfixWindowsCommandLine(std::span<const std::string_view> arguments);
          "--installed-content [--setup <logical-path> "
          "--level <logical-path> [--player-object <logical-path>] "
          "[--start-index <uint32>] "
+         "[--texture-mode <classic|enhanced> "
+         "[--texture-pack-root <path> "
+         "--texture-pack-manifest <relative-jsonl>]] "
          "[--capture-frame <private-output.bmp> | "
          "--capture-overview-frame <private-output.bmp> | "
          "--capture-crosshair-validation-frame <private-output.bmp> | "

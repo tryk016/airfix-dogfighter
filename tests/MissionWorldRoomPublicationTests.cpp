@@ -485,6 +485,7 @@ void testPublishedCpuByteAccountingBoundary() {
     {
         auto room = validPlayerRoom();
         room.textures.resize(1U);
+        room.classicTextureCount = 1U;
         room.textures[0].upload.uploadLevels.resize(2U);
         room.textures[0].uploadLevels.resize(2U);
         room.textures[0].uploadLevels[0].pixels.resize(3U);

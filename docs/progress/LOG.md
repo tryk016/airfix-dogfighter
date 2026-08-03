@@ -5721,3 +5721,30 @@ superseded evidence.
   D3D11/XAudio2 and both product smokes. Clang analyzer/bugprone review has no
   open finding; exact upstream/staged license hashes match. Hosted
   Linux/macOS/Windows and unsigned iOS remain the publication gate.
+
+## 2026-08-03 - Windows session-only HD texture pilot
+
+- Connected ADR-0019's accepted-only resolver and bounded PNG mip preparer to
+  the portable mission room transaction. Each Enhanced failure falls back to
+  the unchanged authenticated GTI path; complete room publication validates
+  mode, generation, source identity, and aggregate counts.
+- Added an explicit Windows-only session contract for Enhanced mode. The root
+  and relative reviewed manifest are never persisted or logged, invalid
+  packages safely start the mission in Classic, and a mode change requires a
+  mission reload.
+- Added immutable D3D11 RGBA8 mip uploads behind a transactional,
+  generation-partitioned cache capped at 512 entries and 256 MiB. Its key also
+  includes source/logical identity, GPU format, and mip policy; Classic clears
+  the Enhanced partition.
+- Corrected one parser rule to match the public schema: representative `mixed`
+  category is valid independently from the concrete source-category array. A
+  synthetic regression covers it without retaining private data.
+- A private read-only 1920x1080 comparison loaded 34 Enhanced mission textures,
+  zero Classic textures, and zero fallbacks. Captures, logs, manifest, PNGs,
+  and configured roots remain owner-local and outside Git.
+- The complete MSVC product build passes 167/167 tests and the complete
+  portable C++20 build passes 152/152. Public-boundary regressions and the
+  811-file scan, documentation integrity (119 experiments/408 catalogue rows),
+  12/12 Rizin normalization, CI-classifier tests, and `git diff --check` pass.
+  Hosted Linux/macOS/Windows, clangd, and unsigned iOS remain the publication
+  gate.

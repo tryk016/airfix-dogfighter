@@ -1009,6 +1009,9 @@ WorldRoomLoadResult loadWorldRoom(
             candidate.textures.push_back({
                 .assetId = import.assetId,
                 .sourceFileIndex = import.archiveFileIndex,
+                .sourceMode = texture::TextureMode::classic,
+                .replacementGeneration = 0U,
+                .sourceGtiSha256 = std::nullopt,
                 .upload = std::move(*preparation.plan),
                 .uploadLevels = std::move(preparation.uploadLevels),
             });

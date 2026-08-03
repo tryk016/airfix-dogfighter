@@ -72,14 +72,15 @@ model and its safe application rules are defined by
 [ADR-0014](docs/adr/0014-render-presentation-settings.md).
 The independent, presentation-only FOV policy and schema migration are defined
 by [ADR-0016](docs/adr/0016-safe-fov-settings.md).
-The optional owner-local HD texture package remains disabled in both products.
-Its public, synthetic-only foundation now includes an accepted-manifest index,
-a root-confined file capability, and a resolver that proves exact Classic GTI
-fallback. A disconnected portable preparer now also validates memory-only
-RGBA8 PNG decoding, the complete declared mip chain, straight-alpha metadata,
-and bounded encoded/decoded memory before returning backend-neutral levels.
-Settings, native uploads, caches, and private content remain later stages; no
-product can select Enhanced textures yet. The staged contract is documented in
+The optional owner-local HD texture package now has a Windows session-only
+pilot. Classic remains the default; an explicit launch can validate a private
+reviewed manifest, resolve each authenticated GTI independently, upload a
+complete RGBA8 mip chain through D3D11, and use exact per-texture Classic
+fallback without aborting the mission. A bounded generation-aware cache avoids
+duplicate uploads. The package, manifest, images, configured paths, persistent
+selector, iOS integration, streaming, and compressed GPU derivatives remain
+outside the public repository or later stages. The staged contract is
+documented in
 [ADR-0019](docs/adr/0019-private-hd-texture-replacements.md).
 
 ## Current state
@@ -124,11 +125,12 @@ Implemented foundations include:
   samplers; lighting, material, shadow, color-space, and post-processing work
   remains staged separately;
 - bounded UDSP, CCF, GTI, and related legacy-format parsing;
-- a disconnected, synthetic-only HD replacement foundation that retains
-  authenticated GTI logical identity, hashes the actual source bytes, accepts
-  only reviewed manifest records, reads the manifest-selected base file through
-  a pinned root capability, verifies its checksum, and routes every miss or
-  failure through the unchanged Classic GTI preparation path;
+- a portable HD replacement boundary that retains authenticated GTI logical
+  identity, hashes actual source bytes, accepts only reviewed records, validates
+  manifest-selected PNG RGBA8 mip chains through a pinned root capability, and
+  routes every miss or failure through unchanged Classic GTI preparation; the
+  Windows pilot exposes this only through explicit session arguments and a
+  conservative D3D11 cache;
 - a private AFPACK container, strict validation, atomic installation, recovery,
   rollback, and authenticated content sessions;
 - a native pre-game Windows private-content manager with an AFPACK file
@@ -409,6 +411,26 @@ HUD transaction and centred sight with fixed, representative presentation
 values. It does not publish those values to simulation or enable HUD drawing
 in ordinary frames. Captures contain derived proprietary imagery and must stay
 private and outside Git.
+
+The Windows HD pilot is an explicit per-process option for an already complete
+private mission launch:
+
+```powershell
+AirfixDogfighter.exe --installed-content `
+  --setup <setup-logical-path> `
+  --level <level-logical-path> `
+  [--player-object <player-object-logical-path>] `
+  --texture-mode enhanced `
+  --texture-pack-root <private-texture-root> `
+  --texture-pack-manifest <relative-reviewed-manifest.jsonl>
+```
+
+The manifest argument must remain relative to the private root. Invalid,
+missing, unsafe, stale, oversized, or corrupt package data produces only a
+fixed redacted status and falls back texture-by-texture to authenticated GTI;
+one replacement cannot abort an otherwise valid mission. Omit all three HD
+arguments for guaranteed Classic operation. The mode is not persisted, and a
+change requires a mission restart/reload.
 
 Loose WAV files and the original installation directory are not accepted by
 the application.
