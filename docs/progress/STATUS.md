@@ -176,7 +176,7 @@
   exchange. Local 1920x1080, 100%-scale Classic and Enhanced captures verify
   the full room, textured placed scene, player aircraft, and diagnostics
   overlay; the derived images remain private and outside Git.
-- Proposed ADR-0019 plans an optional owner-local HD texture package without
+- ADR-0019 plans an optional owner-local HD texture package without
   changing Classic GTI behavior. It records the required accepted-only
   manifest index, logical-path plus source-SHA identity, root-confined file
   capabilities, per-texture fallback, independent requested/effective mode,
@@ -185,7 +185,10 @@
   locally as 1,833 logical textures, 1,689 accepted unique results, and 16,304
   mip files. No manifest, image, checksum, logical path, local root, or
   pipeline branch content was copied into this repository. Integration remains
-  unimplemented; repository-boundary hardening is the first preparatory gate.
+  unimplemented. The first preparatory gate is now complete: the public-boundary
+  scanner and synthetic regression suite reject private texture roots,
+  raster/GPU texture formats, JSONL/NDJSON manifests and backups, and common
+  archives, while the entire owner-local tree is ignored at repository root.
 - ADR-0014 defines one cross-platform render-presentation settings transaction.
   Its portable C++20 foundation is implemented: render scale, Hor+/Original
   4:3, safe FOV, UI scale, diagnostics, and the Classic/Enhanced selector form
@@ -1356,7 +1359,7 @@
    Validate the implemented diagnostic overlay on both physical iPhones before
    lighting, materials, shadows, or post-processing.
 10. Keep ADR-0019's private HD texture mode as a separate staged workstream.
-    Land the public-boundary scanner hardening first, then implement only the
+    Public-boundary scanner hardening is complete. Next implement only the
     bounded reviewed-manifest index, root-confined file capability, resolver,
     and per-texture GTI fallback under synthetic tests. Do not expose an
     Enhanced texture selector, add private resources to CMake/CI, or begin

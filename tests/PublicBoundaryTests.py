@@ -40,6 +40,7 @@ def assert_blocked(root: Path, relative: str, expected: str) -> None:
             f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
     run("git", "rm", "--cached", "--", relative, cwd=root)
+    target.unlink()
 
 
 def main() -> int:
@@ -64,6 +65,41 @@ def main() -> int:
             root,
             "analysis/ghidra-appdata/preferences",
             "forbidden local-analysis directory",
+        )
+        assert_blocked(
+            root,
+            "private-textures/manifests/corpus.jsonl",
+            "forbidden source directory",
+        )
+        assert_blocked(
+            root,
+            "docs/accidental-texture.PNG",
+            "forbidden file type",
+        )
+        assert_blocked(
+            root,
+            "docs/accidental-derived.astc",
+            "forbidden file type",
+        )
+        assert_blocked(
+            root,
+            "docs/accidental-corpus.jsonl",
+            "forbidden file type",
+        )
+        assert_blocked(
+            root,
+            "docs/accidental-corpus.jsonl.bak",
+            "forbidden file type",
+        )
+        assert_blocked(
+            root,
+            "archives/private-textures.zip",
+            "forbidden file type",
+        )
+        assert_blocked(
+            root,
+            "archives/private-textures.tar.gz",
+            "forbidden file type",
         )
         assert_blocked(root, "notes/function.bndb", "forbidden file type")
         assert_blocked(root, "notes/session.trace32", "forbidden file type")

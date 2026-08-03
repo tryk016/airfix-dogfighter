@@ -46,6 +46,9 @@ __pycache__/
 /original/
 /private-fixtures/
 
+# Optional owner-local HD texture package and all of its derivatives
+/private-textures/
+
 # Generated inventories
 /artifacts/
 
