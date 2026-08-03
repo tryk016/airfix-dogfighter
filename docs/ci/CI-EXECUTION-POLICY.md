@@ -55,7 +55,22 @@ run rather than treating runner-to-runner variation as a cache improvement:
 
 The large macOS difference from the baseline occurred with zero cache hits and
 is therefore recorded as hosted-runner variance, not claimed as a cache win.
-A subsequent full pull-request run is the warm-cache measurement.
+The subsequent full pull-request run `30818778413` changed documentation only,
+while the pull request as a whole still contained workflow and tool changes.
+The classifier therefore correctly retained the full matrix and provided the
+warm-cache measurement:
+
+| Job | Empty-cache build | Warm build | Warm cache | Build-step reduction |
+|---|---:|---:|---:|---:|
+| clangd preset / Ubuntu | 2m 16s | 1m 23s | 153 / 303 hits (50%) | 39% |
+| Ubuntu portable | 2m 38s | 1m 13s | 184 / 303 hits (61%) | 54% |
+| macOS portable | 3m 33s | 55s | 224 / 303 hits (74%) | 74% |
+
+All three cache reports contained zero errors. The complete warm validation,
+including intentionally uncached Windows portable and D3D11/XAudio2 products,
+passed; the matching iPhoneOS and iPhoneSimulator workflow `30818778210` also
+passed. These measurements justify retaining the cache while preserving the
+cold schedule and conservative classification boundary.
 
 ## Conservative change classification
 

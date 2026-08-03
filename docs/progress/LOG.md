@@ -5517,8 +5517,14 @@ superseded evidence.
   preset. The cache-population run reports 0/303 hits for Ubuntu and macOS and
   1/303 for clangd; its timings are retained as the controlled empty-cache
   observation. The 6-second quality job also confirms that source/workflow
-  changes fail closed to the full matrix. A follow-up run will measure warm
-  object reuse before merge.
+  changes fail closed to the full matrix.
+- The warm follow-up retains the full matrix because the pull request still
+  contains workflow/tool changes. It reports 50%, 61%, and 74% hit rates with
+  zero cache errors for clangd, Ubuntu, and macOS respectively. Their build
+  steps fall by 39%, 54%, and 74% relative to the empty-cache run. Both Windows
+  products and both unsigned iOS destinations pass again without compiler
+  caching.
+
 ## 2026-08-03 - bounded AirCraft AI-to-physics cycle
 
 - `EV-20260803-001` / `EXP-20260803-113` closes one conditional mode-1
@@ -5557,6 +5563,7 @@ superseded evidence.
   intended report and ledgers. Independent review's one P1 cache-precondition
   finding is fixed with the reachable vector `{255,32,32,1,1}`; final
   re-review reports `GO` with no open P0-P3.
+
 ## 2026-08-03 - original campaign, frontend, and roster flow
 
 - Completed a documentation-only static study in an isolated worktree. Ghidra
