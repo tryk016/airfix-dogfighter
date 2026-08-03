@@ -83,6 +83,19 @@ void requireSuccess(const HRESULT result, const char *operation) {
   return std::nullopt;
 }
 
+[[nodiscard]] DXGI_FORMAT
+d3dRgba8TextureFormat(const airfix::render::TextureSampleSpace sampleSpace) {
+  switch (airfix::render::rgba8TextureEncoding(sampleSpace)) {
+  case airfix::render::Rgba8TextureEncoding::unorm:
+    return DXGI_FORMAT_R8G8B8A8_UNORM;
+  case airfix::render::Rgba8TextureEncoding::unormSrgb:
+    return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+  case airfix::render::Rgba8TextureEncoding::invalid:
+    throw std::runtime_error("texture sample space is invalid");
+  }
+  throw std::runtime_error("texture sample-space mapping is incomplete");
+}
+
 [[nodiscard]] UINT checkedByteWidth(const std::size_t elementCount,
                                     const std::size_t elementSize,
                                     const char *resourceName) {
@@ -3235,7 +3248,7 @@ private:
     textureDescription.Height = checkedUint(baseImage.height, "texture height");
     textureDescription.MipLevels = upload.allocatedMipCount;
     textureDescription.ArraySize = 1U;
-    textureDescription.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    textureDescription.Format = d3dRgba8TextureFormat(upload.sampleSpace);
     textureDescription.SampleDesc = {1U, 0U};
     textureDescription.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 
@@ -3275,7 +3288,7 @@ private:
       }
 
       UINT formatSupport = 0U;
-      requireSuccess(device_->CheckFormatSupport(DXGI_FORMAT_R8G8B8A8_UNORM,
+      requireSuccess(device_->CheckFormatSupport(textureDescription.Format,
                                                  &formatSupport),
                      "ID3D11Device::CheckFormatSupport(texture autogen)");
       constexpr UINT requiredSupport =

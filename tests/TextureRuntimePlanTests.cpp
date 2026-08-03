@@ -15,6 +15,9 @@ namespace {
 using namespace airfix::assets;
 using namespace airfix::render;
 
+static_assert(noexcept(validTextureSampleSpace({})));
+static_assert(noexcept(rgba8TextureEncoding({})));
+
 void require(const bool condition, const std::string& message) {
     if (!condition) {
         throw std::runtime_error(message);
@@ -440,7 +443,8 @@ void testVariantPriorityAndExactAuthoredChain() {
         "valid exact GTI chain was rejected");
     const auto& plan = *result.plan;
     require(plan.request == request && plan.variantIndex == 4U &&
-                plan.format == 8U && plan.checksum == 0xAABBCCDDU,
+                plan.format == 8U && plan.checksum == 0xAABBCCDDU &&
+                plan.sampleSpace == TextureSampleSpace::encodedUnclassified,
         "variant priority or upload identity is incorrect");
     require(plan.mipPolicy == GtiMipPolicy::authoredChain &&
                 plan.allocatedMipCount == 3U &&
@@ -457,6 +461,27 @@ void testVariantPriorityAndExactAuthoredChain() {
                 plan.uploadRgbaBytes == 84U &&
                 plan.residentRgbaBytes == 84U,
         "exact authored-chain byte totals are incorrect");
+}
+
+void testExplicitTextureSampleSpaceEncoding() {
+    require(validTextureSampleSpace(TextureSampleSpace::encodedUnclassified) &&
+                rgba8TextureEncoding(
+                    TextureSampleSpace::encodedUnclassified) ==
+                    Rgba8TextureEncoding::unorm,
+        "unclassified encoded samples did not retain conservative UNORM");
+    require(validTextureSampleSpace(TextureSampleSpace::srgbColor) &&
+                rgba8TextureEncoding(TextureSampleSpace::srgbColor) ==
+                    Rgba8TextureEncoding::unormSrgb,
+        "explicit sRGB colour did not select the sRGB encoding");
+    require(validTextureSampleSpace(TextureSampleSpace::linearData) &&
+                rgba8TextureEncoding(TextureSampleSpace::linearData) ==
+                    Rgba8TextureEncoding::unorm,
+        "linear data did not retain non-sRGB UNORM encoding");
+
+    const auto forged = static_cast<TextureSampleSpace>(0xFFU);
+    require(!validTextureSampleSpace(forged) &&
+                rgba8TextureEncoding(forged) == Rgba8TextureEncoding::invalid,
+        "unknown sample space did not fail closed");
 }
 
 void testAnomalousChainUsesBaseAndNaturalResidentChain() {
@@ -662,6 +687,7 @@ int main() {
         testUpstreamResolutionContractIsFailClosed();
         testBindingLimitsAreAtomic();
         testVariantPriorityAndExactAuthoredChain();
+        testExplicitTextureSampleSpaceEncoding();
         testAnomalousChainUsesBaseAndNaturalResidentChain();
         testUnsupportedAndInvalidMetadataAreFailClosed();
         testUploadLimitsAndOverflowAreFailClosed();

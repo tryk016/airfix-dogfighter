@@ -153,6 +153,7 @@ sourceFootprint(const udsp::FileEntry &entry) noexcept {
       texture.upload.request.assetId != texture.textureId ||
       texture.upload.request.archiveFileIndex != texture.sourceFileIndex ||
       texture.upload.format != legacyAircraftHudRollingDigitsTextureFormat ||
+      !render::validTextureSampleSpace(texture.upload.sampleSpace) ||
       texture.upload.uploadedMipCount == 0U ||
       texture.upload.allocatedMipCount < texture.upload.uploadedMipCount ||
       texture.upload.uploadLevels.size() != texture.upload.uploadedMipCount ||

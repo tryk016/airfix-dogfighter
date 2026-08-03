@@ -221,6 +221,7 @@ mapPlanIssue(const render::GtiUploadIssueKind kind) noexcept {
   return left.request == right.request &&
          left.variantIndex == right.variantIndex &&
          left.format == right.format && left.checksum == right.checksum &&
+         left.sampleSpace == right.sampleSpace &&
          left.mipPolicy == right.mipPolicy &&
          left.uploadLevels == right.uploadLevels &&
          left.allocatedMipCount == right.allocatedMipCount &&
@@ -242,6 +243,7 @@ validTexture(const LoadedLegacyAircraftHealthGaugeTexture &texture,
       texture.upload.request.assetId != texture.textureId ||
       texture.upload.request.archiveFileIndex != texture.sourceFileIndex ||
       texture.upload.format != legacyAircraftHealthGaugeTextureFormat ||
+      !render::validTextureSampleSpace(texture.upload.sampleSpace) ||
       texture.upload.uploadedMipCount == 0U ||
       texture.upload.allocatedMipCount < texture.upload.uploadedMipCount ||
       texture.upload.uploadLevels.size() != texture.upload.uploadedMipCount ||

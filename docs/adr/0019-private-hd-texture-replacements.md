@@ -622,10 +622,14 @@ The following remain outside Git and public CI:
 3. [x] Record the architecture, fallback flow, security boundary, cache model,
        staged implementation, synthetic tests, and expected file changes.
 4. [x] Land repository-boundary hardening as a separate preparatory change.
-5. [ ] Implement only stages 2-5 behind data-less synthetic tests and keep
+5. [x] Establish the shared RGBA8 sample-space/encoding contract without
+       classifying legacy GTI or private replacements. Unclassified input stays
+       UNORM, explicit sRGB and linear-data labels have native D3D11/Metal
+       mappings, and unknown labels fail closed.
+6. [ ] Implement only stages 2-5 behind data-less synthetic tests and keep
        product effective mode Classic.
-6. [ ] Run the Windows opt-in RGBA8 pilot and private visual comparisons.
-7. [ ] Add persistence and iOS only after the portable fallback matrix is
+7. [ ] Run the Windows opt-in RGBA8 pilot and private visual comparisons.
+8. [ ] Add persistence and iOS only after the portable fallback matrix is
        complete and independently reviewed.
-8. [ ] Add streaming and compressed derivatives only after device budgets and
+9. [ ] Add streaming and compressed derivatives only after device budgets and
        per-mip authentication are defined.

@@ -82,6 +82,40 @@ enum class GtiMipPolicy : std::uint8_t {
     generateFromBase,
 };
 
+// Describes how decoded RGBA8 channel values must be interpreted when sampled
+// by a GPU. Legacy GTI decoding cannot infer colour semantics from the
+// container alone, so its conservative default remains encodedUnclassified.
+// A future content classifier or private replacement resolver must make an
+// explicit decision before selecting an sRGB view.
+enum class TextureSampleSpace : std::uint8_t {
+    encodedUnclassified,
+    srgbColor,
+    linearData,
+};
+
+enum class Rgba8TextureEncoding : std::uint8_t {
+    invalid,
+    unorm,
+    unormSrgb,
+};
+
+[[nodiscard]] constexpr Rgba8TextureEncoding rgba8TextureEncoding(
+    const TextureSampleSpace sampleSpace) noexcept {
+    switch (sampleSpace) {
+    case TextureSampleSpace::encodedUnclassified:
+    case TextureSampleSpace::linearData:
+        return Rgba8TextureEncoding::unorm;
+    case TextureSampleSpace::srgbColor:
+        return Rgba8TextureEncoding::unormSrgb;
+    }
+    return Rgba8TextureEncoding::invalid;
+}
+
+[[nodiscard]] constexpr bool validTextureSampleSpace(
+    const TextureSampleSpace sampleSpace) noexcept {
+    return rgba8TextureEncoding(sampleSpace) != Rgba8TextureEncoding::invalid;
+}
+
 struct GtiUploadLevel {
     std::uint32_t level{};
     std::uint32_t width{};
@@ -99,6 +133,7 @@ struct GtiUploadPlan {
     std::size_t variantIndex{};
     std::uint32_t format{};
     std::optional<std::uint32_t> checksum;
+    TextureSampleSpace sampleSpace{TextureSampleSpace::encodedUnclassified};
     GtiMipPolicy mipPolicy{GtiMipPolicy::authoredChain};
     // CPU-decoded levels copied to the backend. Generated levels deliberately
     // have no upload record.
@@ -148,7 +183,9 @@ struct GtiUploadDescription {
 };
 
 // Produces backend-neutral RGBA8 upload metadata only. It performs no archive
-// I/O and makes no sRGB, premultiplication, or vertical-orientation decision.
+// I/O and retains encodedUnclassified because GTI metadata does not prove
+// colour semantics. It makes no premultiplication or vertical-orientation
+// decision.
 [[nodiscard]] GtiUploadDescription describeGtiUpload(
     const TextureImportRequest& request,
     const assets::GtiMetadata& metadata,

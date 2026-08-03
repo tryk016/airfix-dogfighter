@@ -447,6 +447,7 @@ mapPlanIssue(const render::GtiUploadIssueKind kind) noexcept {
     return left.request == right.request &&
            left.variantIndex == right.variantIndex &&
            left.format == right.format && left.checksum == right.checksum &&
+           left.sampleSpace == right.sampleSpace &&
            left.mipPolicy == right.mipPolicy &&
            left.uploadLevels == right.uploadLevels &&
            left.allocatedMipCount == right.allocatedMipCount &&

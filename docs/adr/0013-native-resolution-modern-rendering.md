@@ -320,8 +320,14 @@ path while sharing the higher-level rendering contract.
   the established point/mip-point path and Enhanced selects trilinear 8x
   anisotropic filtering on D3D11 and Metal, independently of UI and final
   presentation sampling.
+- [x] Add an explicit backend-neutral RGBA8 sample-space contract. Legacy GTI
+  remains conservatively `encoded-unclassified`; only an upstream explicit
+  classification may select sRGB colour or linear-data views. D3D11 and Metal
+  map those labels to matching UNORM/sRGB resource formats and reject unknown
+  labels without changing any current texture.
 - [ ] Complete the remaining sampling/color stage: explicit texture
-  classification, linear/sRGB handling, MSAA, and final-image anti-aliasing.
+  classification, end-to-end linear/sRGB output handling, MSAA, and
+  final-image anti-aliasing.
 - [ ] Complete physical-device backbuffer/render-target and diagnostic
   acceptance on iPhone SE 3 and iPhone 17 Pro Max.
 - [x] Connect the shared projection bridge to the recovered final weapon-
