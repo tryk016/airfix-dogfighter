@@ -1361,10 +1361,12 @@
    downstream result/progression consumer unwired until representative
    bytecode, a bounded VM, the `Load`/`Start` lifecycle, mutation during
    refresh, and global dispatcher/presentation order are proven. Then recover
-   the roster lifecycle, score/stat contract, schema, corruption recovery, and
-   semantic save schema and recovery policy before reusing the implemented
-   ADR-0018 atomic document-pair boundary for `THRD`/`AXMI`/`ALMI`/`SCOR`
-   storage. The shared byte transaction alone is not save-game migration.
+   the remaining score/stat producers and corruption behavior before wiring
+   them. The bounded `AFCS` schema now covers the recovered numeric state, but
+   its legacy adapter, current/backup selection, default/recovery policy, and
+   lifecycle must still be specified before reusing the implemented ADR-0018
+   atomic document-pair boundary. Neither the codec nor the shared byte
+   transaction alone is save-game migration.
    Preserve one already-ordered outcome call per transition; do not
    batch, sort, deduplicate, replay, or let the value-only consumer execute UI
    or disk effects.
@@ -1661,10 +1663,13 @@ These questions do not block static analysis or the archive work.
   direct `wb` writer is non-atomic and has a short-write success defect. A new
   bounded valid-file importer and portable campaign model now implement the
   evidence-ready subset with synthetic malformed-input and transition tests.
-  They remain deliberately unwired. Complete frontend parity, difficulty,
-  normal reward rules, safe corruption recovery, a versioned durable schema,
-  platform integration, and bit-identical legacy output remain
-  NO-GO/unimplemented.
+  The canonical 112-byte `AFCS` schema-1 codec now preserves optional
+  `THRD`/`AXMI`/`ALMI`/`SCOR` plus the eight neutral cumulative counters,
+  rejects noncanonical current content, and preserves valid future schemas
+  byte-for-byte. All three pieces remain deliberately unwired. Complete
+  frontend parity, difficulty, normal reward rules, safe store recovery,
+  legacy migration, profile identity/medal schema, platform integration, and
+  bit-identical legacy output remain NO-GO/unimplemented.
 
 ## Blockers
 

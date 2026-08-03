@@ -1,6 +1,6 @@
 # Campaign and legacy-roster core
 
-The portable core now has two bounded building blocks for the original
+The portable core now has three bounded building blocks for the original
 single-player campaign. They are intentionally not connected to a product UI,
 filesystem, or save writer yet.
 
@@ -27,7 +27,13 @@ mission outcome --> LegacyMissionOutcomeConsumer
                                   LegacyCampaignModel
                                            |
                                            v
-                              future versioned save codec
+                         future semantic state adapter
+                                           |
+                                           v
+                             CampaignStateCodec (AFCS)
+                                           |
+                                           v
+                         future campaign store adapter
                                            |
                                            v
                                 DurableDocumentPair
@@ -82,6 +88,21 @@ add/replace/keep directives also fail without mutating the input state. This is
 the portable product policy; it does not claim parity with malformed native
 state.
 
+### `CampaignStateCodec`
+
+`AFCS` is the versioned product document for the recovered numeric campaign
+subset. Schema 1 stores optional typed `THRD`, raw `AXMI`/`ALMI`, `SCOR`, and
+the eight neutral signed cumulative counters in one deterministic 112-byte
+little-endian envelope. It preserves absence separately from zero, rejects
+noncanonical current-schema content, and retains a bounded, digest-valid
+higher schema byte-for-byte without interpreting it.
+
+The codec owns no file or directory name and performs no I/O. It therefore
+does not yet decide how a legacy import becomes an `AFCS` record, which copy
+of a current/backup pair wins, when a frontend saves, or how an error is shown.
+The exact format and its forward-compatibility boundary are defined by
+[ADR-0021](../adr/0021-versioned-campaign-state-document.md).
+
 ## Deliberate non-goals
 
 This slice does not implement:
@@ -90,14 +111,16 @@ This slice does not implement:
 - score arithmetic, x87 conversion policy, cumulative-stat updates, medals,
   equipment, or other reward rules;
 - a legacy roster writer or bit-identical round trip;
-- the versioned portable profile/campaign schema;
-- filesystem locations, migration, recovery UI, or lifecycle integration;
+- a versioned portable profile-identity/medal schema;
+- the legacy-to-`AFCS` adapter, filesystem store, migration, recovery UI, or
+  lifecycle integration;
 - automatic conversion from `LegacyRoster` to `LegacyCampaignSeed`;
 - Windows/iOS runtime wiring.
 
-The future portable schema must use
-[ADR-0018](../adr/0018-shared-durable-document-pair.md) for its byte
-transaction. It must not copy the original direct `wb` writer.
+A future campaign store must combine the `AFCS` codec with
+[ADR-0018](../adr/0018-shared-durable-document-pair.md) only after its
+selection, default, recovery, downgrade, and lifecycle policy is specified.
+It must not copy the original direct `wb` writer.
 
 ## Validation
 
@@ -110,6 +133,9 @@ Public tests use synthetic byte vectors only:
 - `LegacyCampaignModelTests` covers defaults, raw/clamped maxima, both sides,
   locked rows, exact catalogue identifiers, consumer-to-model progression,
   mission-ten clamping, failure preservation, and forged directives.
+- `CampaignStateCodecTests` covers deterministic canonical encoding, optional
+  presence, signed extrema, envelope and field corruption, configured and
+  absolute size limits, semantic rejection, and opaque future preservation.
 
 No original roster, profile name, portrait, medal corpus, local path, or game
 binary is required by the build or tests.

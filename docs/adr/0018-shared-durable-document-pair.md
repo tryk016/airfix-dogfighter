@@ -14,10 +14,12 @@ candidate, and resolve an ambiguous replacement by exact readback. The two
 implementations had evolved independently and duplicated the safety-critical
 directory, entry-type, cleanup, rotation, and commit-unknown logic.
 
-The future campaign/save system also needs an atomic modern boundary, but its
-legacy `THRD`, `AXMI`, `ALMI`, and `SCOR` schemas and lifecycle remain
-unrecovered. Sharing the proven byte transaction must not manufacture those
-formats or imply that save-game migration is implemented.
+The future campaign/save system also needs an atomic modern boundary. The
+legacy numeric records and ordinary roster lifecycle were recovered after this
+decision; [ADR-0021](0021-versioned-campaign-state-document.md) now specifies
+their bounded product codec. Sharing the proven byte transaction still must
+not manufacture a store policy or imply that legacy migration, profile
+identity, rewards, or frontend integration is implemented.
 
 ## Decision
 
@@ -117,8 +119,9 @@ whether those bytes are meaningful, forward-only, or replaceable.
   leaf. It does not make path-based standard-library directory operations a
   security boundary against an untrusted process that can replace parent-tree
   entries concurrently.
-- The transaction does not implement save-game schemas, campaign state,
-  iOS lifecycle integration, cloud synchronization, or cross-process locking.
+- The transaction does not implement campaign semantics, store selection and
+  defaults, legacy adapters, iOS lifecycle integration, cloud synchronization,
+  or cross-process locking.
 
 ## Verification
 
@@ -146,7 +149,7 @@ compilation gates.
 1. [x] Add the shared codec-neutral read and document-pair commit layer.
 2. [x] Route AFRS and AFIP through it without changing their public behavior.
 3. [x] Add direct synthetic current/backup/partial fault-injection coverage.
-4. [ ] Recover and specify campaign/save schemas independently before using
-       this mechanism for `THRD`, `AXMI`, `ALMI`, or `SCOR`.
+4. [x] Recover the numeric campaign subset and independently specify and
+       implement its bounded `AFCS` codec in ADR-0021.
 5. [ ] Add the platform save-game lifecycle only after the semantic store and
        recovery policy exist.

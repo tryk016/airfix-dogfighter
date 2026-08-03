@@ -1,5 +1,6 @@
 #pragma once
 
+#include "airfix/campaign/CampaignState.hpp"
 #include "airfix/simulation/LegacyMissionOutcomeState.hpp"
 
 #include <cstdint>
@@ -17,12 +18,9 @@ enum class LegacyMissionPrimaryAction : std::uint8_t {
   continueCampaign,
 };
 
-// Matches the native THRD payload while keeping serialized FourCC/chunk
-// concerns outside the pure consumer.
-enum class LegacyCampaignSide : std::uint8_t {
-  axis = 0,
-  allied = 1,
-};
+// Retains the reconstruction-era API name while sharing one typed side with
+// the portable campaign-state schema.
+using LegacyCampaignSide = campaign::CampaignSide;
 
 enum class LegacyCampaignMaximumUpdateKind : std::uint8_t {
   none = 0,

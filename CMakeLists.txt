@@ -43,6 +43,24 @@ else()
     target_compile_options(airfix_crypto PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+add_library(airfix_campaign
+    src/airfix/campaign/CampaignStateCodec.cpp
+)
+add_library(airfix::campaign ALIAS airfix_campaign)
+
+target_include_directories(airfix_campaign
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+)
+target_compile_features(airfix_campaign PUBLIC cxx_std_20)
+target_link_libraries(airfix_campaign PUBLIC airfix::crypto)
+
+if(MSVC)
+    target_compile_options(airfix_campaign PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(airfix_campaign PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
 add_library(airfix_runtime
     src/airfix/runtime/AppSession.cpp
     src/airfix/runtime/PlayerAircraftPresentationCoordinator.cpp
@@ -154,7 +172,8 @@ target_include_directories(airfix_simulation
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
 )
 target_compile_features(airfix_simulation PUBLIC cxx_std_20)
-target_link_libraries(airfix_simulation PUBLIC airfix::audio airfix::input)
+target_link_libraries(airfix_simulation
+    PUBLIC airfix::audio airfix::campaign airfix::input)
 
 if(MSVC)
     target_compile_options(airfix_simulation PRIVATE /W4 /permissive-)
@@ -631,6 +650,13 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_crypto_tests tests/Sha256Tests.cpp)
     target_link_libraries(airfix_crypto_tests PRIVATE airfix::crypto)
     add_test(NAME airfix_crypto_tests COMMAND airfix_crypto_tests)
+
+    add_executable(airfix_campaign_state_codec_tests
+        tests/CampaignStateCodecTests.cpp)
+    target_link_libraries(airfix_campaign_state_codec_tests
+        PRIVATE airfix::campaign)
+    add_test(NAME airfix_campaign_state_codec_tests
+        COMMAND airfix_campaign_state_codec_tests)
 
     add_executable(airfix_texture_hd_manifest_index_tests
         tests/TextureHdManifestIndexTests.cpp)
