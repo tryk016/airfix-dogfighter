@@ -361,6 +361,15 @@ AirfixDogfighter.exe --installed-content `
   --capture-overview-frame <private-output.bmp> `
   --capture-size 1920x1080 `
   --render-scale 100
+
+AirfixDogfighter.exe --installed-content `
+  --setup <setup-logical-path> `
+  --level <level-logical-path> `
+  [--player-object <player-object-logical-path>] `
+  [--start-index <uint32>] `
+  --capture-hud-validation-frame <private-output.bmp> `
+  --capture-size 1920x1080 `
+  --render-scale 100
 ```
 
 The lower-level `afpack-install`, `--content-root`, and
@@ -385,8 +394,12 @@ check. `--capture-frame` retains the current gameplay camera.
 complete placed-model bounds, enables the diagnostic overlay, and applies a
 room-shell-only cutaway so exterior faces do not hide the interior. It never
 publishes that camera to simulation and does not change normal gameplay
-culling. Captures contain derived proprietary imagery and must stay private
-and outside Git.
+culling. `--capture-hud-validation-frame` exercises the complete authenticated
+HUD transaction and centred sight with fixed, representative presentation
+values. It does not publish those values to simulation or enable HUD drawing
+in ordinary frames. Captures contain derived proprietary imagery and must stay
+private and outside Git.
+
 Loose WAV files and the original installation directory are not accepted by
 the application.
 

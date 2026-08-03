@@ -115,6 +115,7 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
   std::optional<std::filesystem::path> captureOverviewFrameOutput;
   std::optional<std::filesystem::path> captureCrosshairValidationFrameOutput;
   std::optional<std::filesystem::path> captureHealthGaugeValidationFrameOutput;
+  std::optional<std::filesystem::path> captureHudValidationFrameOutput;
   std::optional<std::filesystem::path> captureDiagnosticFrameOutput;
   std::optional<std::filesystem::path> captureSettingsPanelOutput;
   std::optional<std::filesystem::path> captureControllerCalibrationPanelOutput;
@@ -268,6 +269,17 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
       if (extension != ".bmp" && extension != ".BMP") {
         invalidCommandLine();
       }
+    } else if (option == "--capture-hud-validation-frame") {
+      if (captureHudValidationFrameOutput.has_value()) {
+        invalidCommandLine();
+      }
+      captureHudValidationFrameOutput =
+          std::filesystem::path(requireValue(arguments, index));
+      const auto extension =
+          captureHudValidationFrameOutput->extension().string();
+      if (extension != ".bmp" && extension != ".BMP") {
+        invalidCommandLine();
+      }
     } else if (option == "--capture-diagnostic-frame") {
       if (captureDiagnosticFrameOutput.has_value()) {
         invalidCommandLine();
@@ -328,12 +340,14 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
       hasAnyMissionOption || captureFrameOutput.has_value() ||
       captureOverviewFrameOutput.has_value() ||
       captureCrosshairValidationFrameOutput.has_value() ||
-      captureHealthGaugeValidationFrameOutput.has_value();
+      captureHealthGaugeValidationFrameOutput.has_value() ||
+      captureHudValidationFrameOutput.has_value();
   const bool hasAnyCapture =
       captureFrameOutput.has_value() ||
       captureOverviewFrameOutput.has_value() ||
       captureCrosshairValidationFrameOutput.has_value() ||
       captureHealthGaugeValidationFrameOutput.has_value() ||
+      captureHudValidationFrameOutput.has_value() ||
       captureDiagnosticFrameOutput.has_value() ||
       captureSettingsPanelOutput.has_value() ||
       captureControllerCalibrationPanelOutput.has_value() ||
@@ -369,6 +383,8 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
        (options.validateContentOnly || !hasMissionPair)) ||
       (captureHealthGaugeValidationFrameOutput.has_value() &&
        (options.validateContentOnly || !hasMissionPair)) ||
+      (captureHudValidationFrameOutput.has_value() &&
+       (options.validateContentOnly || !hasMissionPair)) ||
       (captureDiagnosticFrameOutput.has_value() &&
        (hasAnyMissionOption || options.validateContentOnly)) ||
       (captureSettingsPanelOutput.has_value() &&
@@ -391,6 +407,7 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
             captureCrosshairValidationFrameOutput.has_value()) +
         static_cast<unsigned>(
             captureHealthGaugeValidationFrameOutput.has_value()) +
+        static_cast<unsigned>(captureHudValidationFrameOutput.has_value()) +
         static_cast<unsigned>(captureDiagnosticFrameOutput.has_value()) +
         static_cast<unsigned>(captureSettingsPanelOutput.has_value()) +
         static_cast<unsigned>(
@@ -413,6 +430,8 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
       std::move(captureCrosshairValidationFrameOutput);
   options.captureHealthGaugeValidationFrameOutput =
       std::move(captureHealthGaugeValidationFrameOutput);
+  options.captureHudValidationFrameOutput =
+      std::move(captureHudValidationFrameOutput);
   options.captureDiagnosticFrameOutput =
       std::move(captureDiagnosticFrameOutput);
   options.captureSettingsPanelOutput = std::move(captureSettingsPanelOutput);
@@ -441,6 +460,12 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
     options.renderOverrides.diagnosticsOverlayEnabled = true;
   }
   if (options.captureHealthGaugeValidationFrameOutput.has_value()) {
+    if (options.renderOverrides.diagnosticsOverlayEnabled == false) {
+      invalidCommandLine();
+    }
+    options.renderOverrides.diagnosticsOverlayEnabled = true;
+  }
+  if (options.captureHudValidationFrameOutput.has_value()) {
     if (options.renderOverrides.diagnosticsOverlayEnabled == false) {
       invalidCommandLine();
     }

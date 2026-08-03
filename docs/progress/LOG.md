@@ -5386,3 +5386,29 @@ superseded evidence.
   753-file repository scan pass, as does `git diff --check`. No original game
   file, private texture, manifest record, local path, or pipeline implementation
   entered the change.
+
+## 2026-08-03 - full-HUD Windows validation capture
+
+- Added an explicit owner-private `--capture-hud-validation-frame` mode. It
+  requires a complete authenticated mission/HUD transaction, selects icon
+  indices only from installed catalogues, builds one fixed representative
+  atomic HUD event plus a centred sight, and draws them through the existing
+  D3D11 consumers. The values and rolling-state updates remain local to the
+  capture; the ordinary frame API and interactive loop stay disconnected.
+- The command-line boundary requires BMP output, a complete mission, enabled
+  path-free diagnostics, and mutual exclusion from every other capture. The
+  new mode and the pre-existing health-gauge capture both use a hidden
+  session-only SDL window. Synthetic parser tests cover accepted and rejected
+  requests.
+- Real owner-local captures complete at exact 1920x1080, 2560x1440,
+  3840x2160, and 3440x1440 physical output/render-target extents with render
+  scale 100%, Enhanced presentation, and Hor+. Visual inspection of 16:9 and
+  ultrawide output confirms horizontal scene expansion and a sharp, stable HUD
+  root. All BMPs and source content remain outside Git.
+- A fresh-worktree Visual Studio 2026 MSVC 19.51/Ninja build compiles the full
+  SDL3/D3D11/XAudio2 product and all test targets. All 157/157 CTests pass,
+  including the command-line parser, complete HUD transaction, D3D11 renderer,
+  UI Automation, and both data-less product smokes. The first Visual Studio
+  project-generator attempt stalled in compiler identification; its exact
+  child processes were stopped, and the successful build used the established
+  MSVC/Ninja path with an existing read-only SDL source checkout.

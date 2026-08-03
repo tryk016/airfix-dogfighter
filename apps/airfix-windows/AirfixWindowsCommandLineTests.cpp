@@ -56,6 +56,7 @@ void testEmptyAndSmokeModes() {
               !defaultOptions.captureOverviewFrameOutput &&
               !defaultOptions.captureCrosshairValidationFrameOutput &&
               !defaultOptions.captureHealthGaugeValidationFrameOutput &&
+              !defaultOptions.captureHudValidationFrameOutput &&
               !defaultOptions.captureSettingsPanelOutput &&
               !defaultOptions.captureControllerCalibrationPanelOutput &&
               !defaultOptions.captureControllerBindingsPanelOutput,
@@ -331,6 +332,10 @@ void testValidationAndRejections() {
       std::array{"--content-root"sv, "private-pack"sv,
                  "--capture-crosshair-validation-frame"sv, "frame.bmp"sv},
       "crosshair validation capture without a mission must fail closed");
+  requireRejected(
+      std::array{"--content-root"sv, "private-pack"sv,
+                 "--capture-hud-validation-frame"sv, "frame.bmp"sv},
+      "full-HUD validation capture without a mission must fail closed");
   requireRejected(std::array{"--content-root"sv, "private-pack"sv,
                              "--capture-size"sv, "3840x2160"sv},
                   "capture size without frame capture must fail closed");
@@ -407,6 +412,11 @@ void testValidationAndRejections() {
       "crosshair validation and disabled diagnostics must conflict");
   requireRejected(std::array{"--content-root"sv, "private-pack"sv, "--setup"sv,
                              "mission.afs"sv, "--level"sv, "mission.level"sv,
+                             "--capture-hud-validation-frame"sv, "hud.bmp"sv,
+                             "--no-render-diagnostics"sv},
+                  "full-HUD validation and disabled diagnostics must conflict");
+  requireRejected(std::array{"--content-root"sv, "private-pack"sv, "--setup"sv,
+                             "mission.afs"sv, "--level"sv, "mission.level"sv,
                              "--capture-frame"sv, "frame.bmp"sv,
                              "--capture-overview-frame"sv, "overview.bmp"sv},
                   "private capture modes must remain mutually exclusive");
@@ -416,6 +426,12 @@ void testValidationAndRejections() {
                  "--capture-overview-frame"sv, "overview.bmp"sv,
                  "--capture-crosshair-validation-frame"sv, "crosshair.bmp"sv},
       "overview and crosshair validation captures must remain exclusive");
+  requireRejected(
+      std::array{"--content-root"sv, "private-pack"sv, "--setup"sv,
+                 "mission.afs"sv, "--level"sv, "mission.level"sv,
+                 "--capture-health-gauge-validation-frame"sv, "health.bmp"sv,
+                 "--capture-hud-validation-frame"sv, "hud.bmp"sv},
+      "individual and full-HUD validation captures must remain exclusive");
   requireRejected(std::array{"--content-root"sv, "private-pack"sv, "--setup"sv,
                              "mission.afs"sv, "--level"sv, "mission.level"sv,
                              "--capture-frame"sv, "frame.bmp"sv,
@@ -525,6 +541,34 @@ void testPrivateHealthGaugeValidationCaptureRequest() {
           "private health-gauge validation capture request was not retained");
 }
 
+void testPrivateHudValidationCaptureRequest() {
+  const std::array arguments{
+      "--content-root"sv,
+      "private-pack"sv,
+      "--setup"sv,
+      "mission.afs"sv,
+      "--level"sv,
+      "mission.level"sv,
+      "--capture-hud-validation-frame"sv,
+      "full-hud.BMP"sv,
+      "--capture-size"sv,
+      "1920x1080"sv,
+  };
+  const auto options = parse(arguments);
+  require(options.mission.has_value() &&
+              options.captureHudValidationFrameOutput ==
+                  std::filesystem::path("full-hud.BMP") &&
+              options.captureSize ==
+                  airfix::windows::AirfixWindowsCaptureSize{1920U, 1080U} &&
+              options.renderOverrides.diagnosticsOverlayEnabled == true &&
+              !options.captureFrameOutput &&
+              !options.captureOverviewFrameOutput &&
+              !options.captureCrosshairValidationFrameOutput &&
+              !options.captureHealthGaugeValidationFrameOutput &&
+              !options.validateContentOnly,
+          "private full-HUD validation capture request was not retained");
+}
+
 void testPublicDiagnosticCaptureRequest() {
   const std::array arguments{
       "--capture-diagnostic-frame"sv,
@@ -622,6 +666,7 @@ int main() {
     testPrivateOverviewCaptureRequest();
     testPrivateCrosshairValidationCaptureRequest();
     testPrivateHealthGaugeValidationCaptureRequest();
+    testPrivateHudValidationCaptureRequest();
     testPublicDiagnosticCaptureRequest();
     testPublicSettingsPanelCaptureRequest();
     testPublicControllerCalibrationPanelCaptureRequest();

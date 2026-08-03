@@ -44,6 +44,7 @@ struct AirfixWindowsCommandLineOptions final {
   std::optional<std::filesystem::path> captureOverviewFrameOutput;
   std::optional<std::filesystem::path> captureCrosshairValidationFrameOutput;
   std::optional<std::filesystem::path> captureHealthGaugeValidationFrameOutput;
+  std::optional<std::filesystem::path> captureHudValidationFrameOutput;
   std::optional<std::filesystem::path> captureDiagnosticFrameOutput;
   std::optional<std::filesystem::path> captureSettingsPanelOutput;
   std::optional<std::filesystem::path> captureControllerCalibrationPanelOutput;
@@ -84,7 +85,8 @@ parseAirfixWindowsCommandLine(std::span<const std::string_view> arguments);
          "[--capture-frame <private-output.bmp> | "
          "--capture-overview-frame <private-output.bmp> | "
          "--capture-crosshair-validation-frame <private-output.bmp> | "
-         "--capture-health-gauge-validation-frame <private-output.bmp>] "
+         "--capture-health-gauge-validation-frame <private-output.bmp> | "
+         "--capture-hud-validation-frame <private-output.bmp>] "
          "[--capture-size <width>x<height>]] | "
          "--installed-content [--setup <logical-path> "
          "--level <logical-path> [--player-object <logical-path>] "
@@ -92,7 +94,8 @@ parseAirfixWindowsCommandLine(std::span<const std::string_view> arguments);
          "[--capture-frame <private-output.bmp> | "
          "--capture-overview-frame <private-output.bmp> | "
          "--capture-crosshair-validation-frame <private-output.bmp> | "
-         "--capture-health-gauge-validation-frame <private-output.bmp>] "
+         "--capture-health-gauge-validation-frame <private-output.bmp> | "
+         "--capture-hud-validation-frame <private-output.bmp>] "
          "[--capture-size <width>x<height>]] | "
          "--validate-content-root <path> [--setup <logical-path> "
          "--level <logical-path> [--player-object <logical-path>] "
