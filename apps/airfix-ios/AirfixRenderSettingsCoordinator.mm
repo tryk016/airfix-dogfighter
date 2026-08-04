@@ -91,6 +91,13 @@ constexpr std::uint64_t kMaximumPreparationRetryMilliseconds = 2'000U;
 
 @implementation AirfixRenderSettingsCoordinator
 
+- (void)notifyDelegateOfActiveSettings {
+    NSAssert(NSThread.isMainThread,
+        @"Render settings notifications are main-thread confined");
+    id<AirfixRenderSettingsCoordinatorDelegate> delegate = self.delegate;
+    [delegate renderSettingsCoordinatorDidPublishActiveSettings:self];
+}
+
 - (instancetype)initWithRenderer:(AirfixMetalRenderer*)renderer {
     NSParameterAssert(renderer != nil);
     self = [super init];
@@ -133,12 +140,14 @@ constexpr std::uint64_t kMaximumPreparationRetryMilliseconds = 2'000U;
             AirfixMetalRenderer* renderer = strongSelf->_renderer;
             if (!resolved.accepted() || renderer == nil) {
                 strongSelf->_startupResolved = YES;
+                [strongSelf notifyDelegateOfActiveSettings];
                 [strongSelf finishCurrentAndStartPending];
                 return;
             }
             if ([renderer renderPresentationSettings] ==
                 resolved.settings) {
                 strongSelf->_startupResolved = YES;
+                [strongSelf notifyDelegateOfActiveSettings];
                 [strongSelf finishCurrentAndStartPending];
                 return;
             }
@@ -468,6 +477,7 @@ constexpr std::uint64_t kMaximumPreparationRetryMilliseconds = 2'000U;
         }
         _activeTicket.reset();
         _startupResolved = YES;
+        [self notifyDelegateOfActiveSettings];
         [self
             completeActiveTicket:ticket
             result:AirfixRenderSettingsApplyResultApplied];

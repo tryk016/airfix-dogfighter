@@ -15,6 +15,8 @@
 #include "airfix/content/WorldRoomPublicationGate.hpp"
 #include "airfix/package/AfPackInstaller.hpp"
 #include "airfix/package/AfPackRecovery.hpp"
+#include "airfix/texture/TextureModeState.hpp"
+#include "airfix/texture/TexturePackInstallation.hpp"
 
 #include <algorithm>
 #include <array>
@@ -55,6 +57,52 @@ struct StoredInspectionOutcome final {
       airfix::afpack::ActiveContentStatus::noContent};
   std::optional<airfix::content::ContentRevision> activeRevision;
 };
+
+typedef NS_ENUM(NSInteger, AirfixDocumentPickerPurpose) {
+  AirfixDocumentPickerPurposeNone,
+  AirfixDocumentPickerPurposeContentPackage,
+  AirfixDocumentPickerPurposeTexturePackage,
+};
+
+[[nodiscard]] AirfixTexturePackageAvailability publicTextureAvailability(
+    const airfix::texture::TexturePackageAvailability availability) noexcept {
+  switch (availability) {
+  case airfix::texture::TexturePackageAvailability::notConfigured:
+    return AirfixTexturePackageAvailabilityNotConfigured;
+  case airfix::texture::TexturePackageAvailability::validating:
+    return AirfixTexturePackageAvailabilityValidating;
+  case airfix::texture::TexturePackageAvailability::ready:
+    return AirfixTexturePackageAvailabilityReady;
+  case airfix::texture::TexturePackageAvailability::unavailable:
+    return AirfixTexturePackageAvailabilityUnavailable;
+  }
+  return AirfixTexturePackageAvailabilityUnavailable;
+}
+
+[[nodiscard]] airfix::texture::TexturePackageAvailability
+textureAvailabilityForInspection(
+    const airfix::texture::InstalledTexturePackInspection &inspection) noexcept {
+  switch (inspection.status) {
+  case airfix::texture::InstalledTexturePackStatus::ready:
+    return airfix::texture::TexturePackageAvailability::ready;
+  case airfix::texture::InstalledTexturePackStatus::notConfigured:
+    return airfix::texture::TexturePackageAvailability::notConfigured;
+  case airfix::texture::InstalledTexturePackStatus::invalidConfiguration:
+  case airfix::texture::InstalledTexturePackStatus::persistenceBlocked:
+  case airfix::texture::InstalledTexturePackStatus::packageUnavailable:
+  case airfix::texture::InstalledTexturePackStatus::allocationFailure:
+  case airfix::texture::InstalledTexturePackStatus::internalFailure:
+    return airfix::texture::TexturePackageAvailability::unavailable;
+  }
+  return airfix::texture::TexturePackageAvailability::unavailable;
+}
+
+[[nodiscard]] airfix::texture::TextureMode textureMode(
+    const AirfixMissionTextureMode mode) noexcept {
+  return mode == AirfixMissionTextureModeEnhanced
+             ? airfix::texture::TextureMode::enhanced
+             : airfix::texture::TextureMode::classic;
+}
 
 [[nodiscard]] StoredInspectionOutcome storeInspectedContent(
     std::optional<airfix::afpack::ActiveContentInspection> &inspectionSlot,
@@ -336,12 +384,19 @@ NSString *canonicalTransactionIdentifier(void) {
   // handle; neither object is ever moved to the main/render threads.
   std::optional<airfix::afpack::ActiveContentInspection> _inspection;
   std::optional<airfix::content::VerifiedContentSession> _verifiedSession;
+  std::unique_ptr<airfix::texture::TexturePackSession> _texturePackSession;
 
   // Access only from the main thread. stop_source cancellation itself is
   // thread-safe and its token is copied into the serialized worker.
   std::stop_source _loadStop;
   airfix::content::WorldRoomPublicationGate _roomPublicationGate;
   std::optional<RememberedMissionRequest> _rememberedMissionRequest;
+  airfix::texture::TextureMode _requestedTextureMode;
+  airfix::texture::TexturePackageAvailability _textureAvailability;
+  std::optional<airfix::texture::ActiveMissionTextureState>
+      _activeMissionTextureState;
+  std::optional<airfix::texture::ActiveMissionTextureState>
+      _loadingMissionTextureState;
 
   // Opaque identities are confined to the main thread. Blocks retain the
   // identities they started with, so pointer equality cannot wrap or alias a
@@ -355,17 +410,32 @@ NSString *canonicalTransactionIdentifier(void) {
 @property(nonatomic, strong) UILabel *statusLabel;
 @property(nonatomic, strong) UIProgressView *progressView;
 @property(nonatomic, strong) UIButton *importButton;
+@property(nonatomic, strong) UIButton *textureImportButton;
 @property(nonatomic, strong) UIButton *rollbackButton;
 @property(nonatomic, readwrite) AirfixContentReadiness readiness;
+@property(nonatomic, readwrite)
+    AirfixTexturePackageAvailability texturePackageAvailability;
 @property(nonatomic) BOOL busy;
 @property(nonatomic) BOOL rollbackEligible;
 @property(nonatomic) BOOL started;
 @property(nonatomic) BOOL pickerPresented;
+@property(nonatomic) AirfixDocumentPickerPurpose pickerPurpose;
 @property(nonatomic) BOOL inspectWhenIdle;
 
 - (void)cancelMissionLoadClearingRevision:(BOOL)clearRevision;
 - (void)invalidateContentOperationLifecycle;
 - (void)startRememberedMissionLoadIfPossible;
+- (void)publishTextureAvailability:
+    (airfix::texture::TexturePackageAvailability)availability;
+- (void)reloadMissionForTextureStateIfNeeded;
+- (void)beginTextureInstallFromURL:(NSURL *)selectedURL;
+- (void)beginTextureOperationWithText:(NSString *)text;
+- (void)completeInspectionWithErrorText:(NSString *)text
+                      operationIdentity:(NSObject *)operationIdentity
+                      lifecycleIdentity:(NSObject *)lifecycleIdentity;
+- (void)finishTextureOperationWithAvailability:
+            (airfix::texture::TexturePackageAvailability)availability
+                                         text:(NSString *)text;
 @end
 
 @implementation AirfixContentCoordinator
@@ -378,6 +448,11 @@ NSString *canonicalTransactionIdentifier(void) {
   }
   _presentingViewController = viewController;
   _readiness = AirfixContentReadinessMissing;
+  _texturePackageAvailability =
+      AirfixTexturePackageAvailabilityNotConfigured;
+  _requestedTextureMode = airfix::texture::TextureMode::classic;
+  _textureAvailability =
+      airfix::texture::TexturePackageAvailability::notConfigured;
   _lifecycleIdentity = [NSObject new];
   _missionRequestIdentity = [NSObject new];
   _workQueue = dispatch_queue_create("com.tryk016.airfixdogfighter.content",
@@ -394,12 +469,15 @@ NSString *canonicalTransactionIdentifier(void) {
   // queue first; the later automatic C++ ivar destructors then see empties.
   auto *const inspection = &_inspection;
   auto *const session = &_verifiedSession;
+  auto *const textureSession = &_texturePackSession;
   if (dispatch_get_specific(&kContentWorkQueueSpecificKey) ==
       &kContentWorkQueueSpecificKey) {
     clearWorkerContent(*inspection, *session);
+    textureSession->reset();
   } else {
     dispatch_sync(_workQueue, ^{
       clearWorkerContent(*inspection, *session);
+      textureSession->reset();
     });
   }
 }
@@ -439,6 +517,22 @@ NSString *canonicalTransactionIdentifier(void) {
       forControlEvents:UIControlEventTouchUpInside];
   self.importButton = import;
 
+  UIButton *textureImport = [UIButton buttonWithType:UIButtonTypeSystem];
+  [textureImport setTitle:@"Import HD Textures"
+                 forState:UIControlStateNormal];
+  textureImport.titleLabel.font =
+      [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
+  textureImport.titleLabel.adjustsFontForContentSizeCategory = YES;
+  textureImport.titleLabel.numberOfLines = 0;
+  textureImport.titleLabel.lineBreakMode = NSLineBreakByWordWrapping;
+  textureImport.titleLabel.textAlignment = NSTextAlignmentCenter;
+  textureImport.accessibilityHint =
+      @"Choose a private reviewed HD texture package folder";
+  [textureImport addTarget:self
+                    action:@selector(textureImportPressed:)
+          forControlEvents:UIControlEventTouchUpInside];
+  self.textureImportButton = textureImport;
+
   UIButton *rollback = [UIButton buttonWithType:UIButtonTypeSystem];
   [rollback setTitle:@"Restore Previous Package" forState:UIControlStateNormal];
   rollback.titleLabel.font =
@@ -455,7 +549,8 @@ NSString *canonicalTransactionIdentifier(void) {
   self.rollbackButton = rollback;
 
   UIStackView *buttons =
-      [[UIStackView alloc] initWithArrangedSubviews:@[ import, rollback ]];
+      [[UIStackView alloc]
+          initWithArrangedSubviews:@[ import, textureImport, rollback ]];
   buttons.axis = UILayoutConstraintAxisVertical;
   buttons.spacing = 10.0;
   buttons.alignment = UIStackViewAlignmentFill;
@@ -475,6 +570,7 @@ NSString *canonicalTransactionIdentifier(void) {
     [stack.trailingAnchor constraintEqualToAnchor:container.trailingAnchor],
     [progress.widthAnchor constraintGreaterThanOrEqualToConstant:220.0],
     [import.heightAnchor constraintGreaterThanOrEqualToConstant:44.0],
+    [textureImport.heightAnchor constraintGreaterThanOrEqualToConstant:44.0],
     [rollback.heightAnchor constraintGreaterThanOrEqualToConstant:44.0],
   ]];
   self.controlsView = container;
@@ -495,11 +591,63 @@ NSString *canonicalTransactionIdentifier(void) {
            @"Mission room publication gate is main-thread confined");
   _loadStop.request_stop();
   _loadStop = std::stop_source{};
+  _loadingMissionTextureState.reset();
   if (clearRevision) {
     _roomPublicationGate.clearActiveRevision();
+    _activeMissionTextureState.reset();
   } else {
     _roomPublicationGate.invalidate();
   }
+}
+
+- (void)requestMissionTextureMode:(AirfixMissionTextureMode)requestedMode {
+  NSAssert(NSThread.isMainThread,
+           @"Mission texture policy is main-thread confined");
+  const auto selected = textureMode(requestedMode);
+  if (_requestedTextureMode == selected) {
+    return;
+  }
+  _requestedTextureMode = selected;
+  [self reloadMissionForTextureStateIfNeeded];
+}
+
+- (void)publishTextureAvailability:
+    (const airfix::texture::TexturePackageAvailability)availability {
+  NSAssert(NSThread.isMainThread,
+           @"Texture package availability is main-thread confined");
+  _textureAvailability = availability;
+  self.texturePackageAvailability = publicTextureAvailability(availability);
+  id<AirfixContentCoordinatorDelegate> delegate = self.delegate;
+  if ([delegate respondsToSelector:
+                    @selector(contentCoordinator:
+                        didChangeTexturePackageAvailability:)]) {
+    [delegate contentCoordinator:self
+        didChangeTexturePackageAvailability:self.texturePackageAvailability];
+  }
+  [self reloadMissionForTextureStateIfNeeded];
+}
+
+- (void)reloadMissionForTextureStateIfNeeded {
+  NSAssert(NSThread.isMainThread,
+           @"Mission texture reload decisions are main-thread confined");
+  const auto resolved = airfix::texture::resolveTextureModeState(
+      _requestedTextureMode, _textureAvailability,
+      _activeMissionTextureState);
+  if (!resolved.complete()) {
+    return;
+  }
+  const airfix::texture::ActiveMissionTextureState target{
+      .requestedMode = resolved.state->requestedMode,
+      .effectiveMode = resolved.state->effectiveMode,
+  };
+  const bool loadingDifferent =
+      _loadingMissionTextureState.has_value() &&
+      *_loadingMissionTextureState != target;
+  if (!resolved.state->missionReloadRequired && !loadingDifferent) {
+    return;
+  }
+  [self cancelMissionLoadClearingRevision:NO];
+  [self startRememberedMissionLoadIfPossible];
 }
 
 - (void)invalidateContentOperationLifecycle {
@@ -545,13 +693,39 @@ NSString *canonicalTransactionIdentifier(void) {
     return;
   }
   self.pickerPresented = YES;
+  self.pickerPurpose = AirfixDocumentPickerPurposeContentPackage;
   self.importButton.enabled = NO;
+  self.textureImportButton.enabled = NO;
   self.rollbackButton.hidden = YES;
   self.rollbackButton.enabled = NO;
   UIDocumentPickerViewController *picker =
       [[UIDocumentPickerViewController alloc]
           initForOpeningContentTypes:@[ UTTypeData ]
                               asCopy:NO];
+  picker.delegate = self;
+  picker.allowsMultipleSelection = NO;
+  picker.modalPresentationStyle = UIModalPresentationFormSheet;
+  [self.presentingViewController presentViewController:picker
+                                              animated:YES
+                                            completion:nil];
+}
+
+- (void)textureImportPressed:(UIButton *)sender {
+  (void)sender;
+  if (self.busy || self.presentingViewController == nil ||
+      self.presentingViewController.presentedViewController != nil) {
+    return;
+  }
+  self.pickerPresented = YES;
+  self.pickerPurpose = AirfixDocumentPickerPurposeTexturePackage;
+  self.importButton.enabled = NO;
+  self.textureImportButton.enabled = NO;
+  self.rollbackButton.hidden = YES;
+  self.rollbackButton.enabled = NO;
+  UIDocumentPickerViewController *picker =
+      [[UIDocumentPickerViewController alloc]
+          initForOpeningContentTypes:@[ UTTypeFolder ]
+                              asCopy:YES];
   picker.delegate = self;
   picker.allowsMultipleSelection = NO;
   picker.modalPresentationStyle = UIModalPresentationFormSheet;
@@ -572,21 +746,33 @@ NSString *canonicalTransactionIdentifier(void) {
     didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
   (void)controller;
   NSURL *selected = urls.firstObject;
+  const AirfixDocumentPickerPurpose purpose = self.pickerPurpose;
   self.pickerPresented = NO;
+  self.pickerPurpose = AirfixDocumentPickerPurposeNone;
   if (selected == nil || self.busy) {
     self.importButton.enabled = !self.busy;
+    self.textureImportButton.enabled = !self.busy;
     self.rollbackButton.hidden = !self.rollbackEligible;
     self.rollbackButton.enabled = self.rollbackEligible && !self.busy;
     return;
   }
-  [self beginInstallFromURL:selected];
+  if (purpose == AirfixDocumentPickerPurposeTexturePackage) {
+    [self beginTextureInstallFromURL:selected];
+  } else if (purpose == AirfixDocumentPickerPurposeContentPackage) {
+    [self beginInstallFromURL:selected];
+  } else {
+    self.importButton.enabled = YES;
+    self.textureImportButton.enabled = YES;
+  }
 }
 
 - (void)documentPickerWasCancelled:
     (UIDocumentPickerViewController *)controller {
   (void)controller;
   self.pickerPresented = NO;
+  self.pickerPurpose = AirfixDocumentPickerPurposeNone;
   self.importButton.enabled = !self.busy;
+  self.textureImportButton.enabled = !self.busy;
   self.rollbackButton.hidden = !self.rollbackEligible;
   self.rollbackButton.enabled = self.rollbackEligible && !self.busy;
 }
@@ -624,6 +810,7 @@ NSString *canonicalTransactionIdentifier(void) {
     requirePrivateDirectory(contentPath);
     cleanupOwnedFiles(contentPath / "staging", "import-", ".afpack.partial");
     cleanupOwnedFiles(contentPath, "active-", ".afac.partial");
+    requirePrivateDirectory(parentPath / "texture-packs");
   } catch (...) {
     return nil;
   }
@@ -640,9 +827,37 @@ NSString *canonicalTransactionIdentifier(void) {
   self.progressView.progress = 0.0F;
   self.progressView.hidden = YES;
   self.importButton.enabled = NO;
+  self.textureImportButton.enabled = NO;
   self.rollbackButton.hidden = YES;
   self.rollbackButton.enabled = NO;
   [self setReadinessAndNotify:AirfixContentReadinessValidating];
+}
+
+- (void)beginTextureOperationWithText:(NSString *)text {
+  NSAssert(NSThread.isMainThread,
+           @"Texture package operations are main-thread confined");
+  self.busy = YES;
+  _operationStop = std::stop_source{};
+  _operationIdentity = [NSObject new];
+  self.statusLabel.text = text;
+  self.progressView.progress = 0.0F;
+  self.progressView.hidden = YES;
+  self.importButton.enabled = NO;
+  self.textureImportButton.enabled = NO;
+  self.rollbackButton.hidden = YES;
+  self.rollbackButton.enabled = NO;
+  _textureAvailability =
+      airfix::texture::TexturePackageAvailability::validating;
+  self.texturePackageAvailability =
+      AirfixTexturePackageAvailabilityValidating;
+  id<AirfixContentCoordinatorDelegate> delegate = self.delegate;
+  if ([delegate respondsToSelector:
+                    @selector(contentCoordinator:
+                        didChangeTexturePackageAvailability:)]) {
+    [delegate contentCoordinator:self
+        didChangeTexturePackageAvailability:
+            AirfixTexturePackageAvailabilityValidating];
+  }
 }
 
 - (BOOL)consumeTerminalOperationIdentity:(NSObject *)operationIdentity
@@ -676,6 +891,7 @@ NSString *canonicalTransactionIdentifier(void) {
                              UIApplication.sharedApplication.applicationState ==
                                  UIApplicationStateActive;
   self.importButton.enabled = !canInspectNow;
+  self.textureImportButton.enabled = !canInspectNow;
   if (canInspectNow) {
     NSObject *const currentLifecycleIdentity = _lifecycleIdentity;
     __weak AirfixContentCoordinator *weakSelf = self;
@@ -708,6 +924,19 @@ NSString *canonicalTransactionIdentifier(void) {
   [self finishOperationWithErrorText:text];
 }
 
+- (void)completeInspectionWithErrorText:(NSString *)text
+                      operationIdentity:(NSObject *)operationIdentity
+                      lifecycleIdentity:(NSObject *)lifecycleIdentity {
+  if (![self consumeTerminalOperationIdentity:operationIdentity
+                            lifecycleIdentity:lifecycleIdentity]) {
+    return;
+  }
+  [self publishTextureAvailability:
+            airfix::texture::TexturePackageAvailability::unavailable];
+  self.inspectWhenIdle = NO;
+  [self finishOperationWithErrorText:text];
+}
+
 - (void)finishOperationWithInspectionStatus:
     (airfix::afpack::ActiveContentStatus)status {
   NSAssert(NSThread.isMainThread,
@@ -716,6 +945,7 @@ NSString *canonicalTransactionIdentifier(void) {
   self.busy = NO;
   self.progressView.hidden = YES;
   self.importButton.enabled = YES;
+  self.textureImportButton.enabled = YES;
 
   self.rollbackEligible =
       status == airfix::afpack::ActiveContentStatus::rollbackAvailable;
@@ -754,6 +984,7 @@ NSString *canonicalTransactionIdentifier(void) {
   self.statusLabel.text = text;
   self.progressView.hidden = YES;
   self.importButton.enabled = YES;
+  self.textureImportButton.enabled = YES;
   self.rollbackButton.hidden = YES;
   self.rollbackButton.enabled = NO;
   [self setReadinessAndNotify:AirfixContentReadinessRejected];
@@ -765,6 +996,25 @@ NSString *canonicalTransactionIdentifier(void) {
       [self beginInspection];
     });
   }
+}
+
+- (void)finishTextureOperationWithAvailability:
+            (const airfix::texture::TexturePackageAvailability)availability
+                                         text:(NSString *)text {
+  NSAssert(NSThread.isMainThread,
+           @"Texture package completion is main-thread confined");
+  self.busy = NO;
+  self.statusLabel.text = text;
+  self.progressView.hidden = YES;
+  self.importButton.enabled = YES;
+  self.textureImportButton.enabled = YES;
+  self.rollbackButton.hidden = !self.rollbackEligible;
+  self.rollbackButton.enabled = self.rollbackEligible;
+  if (_activeMissionTextureState.has_value()) {
+    [self cancelMissionLoadClearingRevision:NO];
+  }
+  [self publishTextureAvailability:availability];
+  [self startRememberedMissionLoadIfPossible];
 }
 
 - (void)setReadinessAndNotify:(AirfixContentReadiness)readiness {
@@ -882,11 +1132,15 @@ NSString *canonicalTransactionIdentifier(void) {
   NSAssert(NSThread.isMainThread,
            @"Mission room publication commits are main-thread confined");
   try {
-    return _roomPublicationGate.consume(
-               airfix::ios::missionWorldRoomPublicationTicket(snapshot),
-               airfix::ios::missionWorldRoomResultRevision(snapshot))
-               ? YES
-               : NO;
+    if (!_roomPublicationGate.consume(
+            airfix::ios::missionWorldRoomPublicationTicket(snapshot),
+            airfix::ios::missionWorldRoomResultRevision(snapshot))) {
+      return NO;
+    }
+    _activeMissionTextureState =
+        airfix::ios::missionWorldRoomTextureState(snapshot);
+    _loadingMissionTextureState.reset();
+    return YES;
   } catch (...) {
     return NO;
   }
@@ -897,11 +1151,13 @@ NSString *canonicalTransactionIdentifier(void) {
   NSAssert(NSThread.isMainThread,
            @"Mission room publication failures are main-thread confined");
   try {
-    return _roomPublicationGate.abandon(
-               airfix::ios::missionWorldRoomPublicationTicket(snapshot),
-               airfix::ios::missionWorldRoomResultRevision(snapshot))
-               ? YES
-               : NO;
+    if (!_roomPublicationGate.abandon(
+            airfix::ios::missionWorldRoomPublicationTicket(snapshot),
+            airfix::ios::missionWorldRoomResultRevision(snapshot))) {
+      return NO;
+    }
+    _loadingMissionTextureState.reset();
+    return YES;
   } catch (...) {
     return NO;
   }
@@ -920,6 +1176,19 @@ NSString *canonicalTransactionIdentifier(void) {
   }
 
   const auto request = *_rememberedMissionRequest;
+  const auto textureModeResolution =
+      airfix::texture::resolveTextureModeState(
+          _requestedTextureMode, _textureAvailability,
+          _activeMissionTextureState);
+  if (!textureModeResolution.complete()) {
+    self.statusLabel.text =
+        @"The mission texture policy could not be resolved.";
+    return;
+  }
+  const airfix::texture::ActiveMissionTextureState missionTextureState{
+      .requestedMode = textureModeResolution.state->requestedMode,
+      .effectiveMode = textureModeResolution.state->effectiveMode,
+  };
   const auto expectedRevision = *_roomPublicationGate.activeRevision();
   const auto ticket = _roomPublicationGate.begin(expectedRevision);
   if (!ticket.has_value()) {
@@ -933,6 +1202,7 @@ NSString *canonicalTransactionIdentifier(void) {
     }
     return;
   }
+  _loadingMissionTextureState = missionTextureState;
 
   _loadStop = std::stop_source{};
   const auto stopToken = _loadStop.get_token();
@@ -961,6 +1231,7 @@ NSString *canonicalTransactionIdentifier(void) {
                                         *ticket, ticket->expectedRevision)) {
             return;
           }
+          coordinator->_loadingMissionTextureState.reset();
           coordinator.progressView.hidden = YES;
           coordinator.statusLabel.text =
               @"The requested mission could not be prepared.";
@@ -1006,9 +1277,23 @@ NSString *canonicalTransactionIdentifier(void) {
             .basis = {},
             .uvPolicy = airfix::render::UvPolicy::preserveRaw,
         };
+        airfix::content::MissionWorldRoomTextureReplacementContext
+            textureReplacement;
+        if (missionTextureState.effectiveMode ==
+            airfix::texture::TextureMode::enhanced) {
+          if (strongSelf->_texturePackSession == nullptr) {
+            publishFailure();
+            return;
+          }
+          textureReplacement = {
+              .requestedMode = airfix::texture::TextureMode::enhanced,
+              .resolver = &strongSelf->_texturePackSession->resolver(),
+              .files = &strongSelf->_texturePackSession->files(),
+          };
+        }
         auto result = airfix::content::loadMissionWorldRoom(
             *strongSelf->_verifiedSession, *manifestResult.manifest,
-            loadRequest, {}, stopToken);
+            loadRequest, {}, stopToken, {}, textureReplacement);
 
         if (!strongSelf->_verifiedSession.has_value() ||
             strongSelf->_verifiedSession->revision() != revisionBeforeLoad ||
@@ -1127,7 +1412,8 @@ NSString *canonicalTransactionIdentifier(void) {
                 std::move(*rollingDigitsResult.textures),
                 std::move(*hudInstrumentsResult.textures),
                 std::move(*hudWeaponPanelsResult.textures),
-                std::move(*hudIdentityStatusResult.textures));
+                std::move(*hudIdentityStatusResult.textures),
+                missionTextureState);
         dispatch_async(dispatch_get_main_queue(), ^{
           AirfixContentCoordinator *coordinator = weakSelf;
           if (coordinator == nil || !coordinator->_roomPublicationGate.accepts(
@@ -1143,8 +1429,10 @@ NSString *canonicalTransactionIdentifier(void) {
                   respondsToSelector:@selector(
                                          contentCoordinator:
                                          didLoadMissionWorldRoomSnapshot:)]) {
-            (void)coordinator->_roomPublicationGate.abandon(*ticket,
-                                                            resultRevision);
+            if (coordinator->_roomPublicationGate.abandon(*ticket,
+                                                          resultRevision)) {
+              coordinator->_loadingMissionTextureState.reset();
+            }
             coordinator.statusLabel.text =
                 @"The mission renderer is unavailable.";
             if ([currentDelegate
@@ -1178,6 +1466,8 @@ NSString *canonicalTransactionIdentifier(void) {
     return;
   }
   [self cancelMissionLoadClearingRevision:YES];
+  [self publishTextureAvailability:
+            airfix::texture::TexturePackageAvailability::validating];
   [self beginOperationWithText:@"Checking private game content..."];
   const std::stop_token stopToken = _operationStop.get_token();
   NSObject *const operationIdentity = _operationIdentity;
@@ -1190,13 +1480,22 @@ NSString *canonicalTransactionIdentifier(void) {
     }
     [&] {
       clearWorkerContent(strongSelf->_inspection, strongSelf->_verifiedSession);
+      strongSelf->_texturePackSession.reset();
       try {
         NSURL *rootURL = [strongSelf prepareContentRoot];
         if (rootURL == nil) {
           throw std::runtime_error("application support is unavailable");
         }
+        const auto contentRoot = fileSystemPath(rootURL);
+        auto textureInspection =
+            airfix::texture::inspectInstalledTexturePack(
+                contentRoot.parent_path() / "texture-packs");
+        const auto textureAvailability =
+            textureAvailabilityForInspection(textureInspection);
+        strongSelf->_texturePackSession =
+            std::move(textureInspection.session);
         auto inspected = airfix::afpack::inspectActiveContent(
-            fileSystemPath(rootURL), {}, stopToken,
+            contentRoot, {}, stopToken,
             [weakSelf, operationIdentity, lifecycleIdentity](
                 const airfix::afpack::RecoveryProgress &progress) {
               AirfixContentCoordinator *coordinator = weakSelf;
@@ -1223,34 +1522,35 @@ NSString *canonicalTransactionIdentifier(void) {
           } else {
             coordinator->_roomPublicationGate.clearActiveRevision();
           }
+          [coordinator publishTextureAvailability:textureAvailability];
           [coordinator finishOperationWithInspectionStatus:outcome.status];
         });
       } catch (const airfix::afpack::RecoveryCancelled &) {
         dispatch_async(dispatch_get_main_queue(), ^{
-          [weakSelf
-              completeOperationWithErrorText:
+          AirfixContentCoordinator *coordinator = weakSelf;
+          [coordinator
+              completeInspectionWithErrorText:
                   @"Content check was paused. It will retry in the foreground."
                            operationIdentity:operationIdentity
-                           lifecycleIdentity:lifecycleIdentity
-                          inspectAfterFinish:NO];
+                           lifecycleIdentity:lifecycleIdentity];
         });
       } catch (const std::exception &) {
         dispatch_async(dispatch_get_main_queue(), ^{
-          [weakSelf
-              completeOperationWithErrorText:
+          AirfixContentCoordinator *coordinator = weakSelf;
+          [coordinator
+              completeInspectionWithErrorText:
                   @"Content could not be checked. Try again in the foreground."
                            operationIdentity:operationIdentity
-                           lifecycleIdentity:lifecycleIdentity
-                          inspectAfterFinish:NO];
+                           lifecycleIdentity:lifecycleIdentity];
         });
       } catch (...) {
         dispatch_async(dispatch_get_main_queue(), ^{
-          [weakSelf
-              completeOperationWithErrorText:
+          AirfixContentCoordinator *coordinator = weakSelf;
+          [coordinator
+              completeInspectionWithErrorText:
                   @"Content could not be checked. Try again in the foreground."
                            operationIdentity:operationIdentity
-                           lifecycleIdentity:lifecycleIdentity
-                          inspectAfterFinish:NO];
+                           lifecycleIdentity:lifecycleIdentity];
         });
       }
     }();
@@ -1460,6 +1760,115 @@ NSString *canonicalTransactionIdentifier(void) {
           });
         }
       }
+    }();
+
+    AirfixContentCoordinator *const releaseOnMain = strongSelf;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      (void)releaseOnMain;
+    });
+  });
+}
+
+- (void)beginTextureInstallFromURL:(NSURL *)selectedURL {
+  if (self.busy || selectedURL == nil) {
+    return;
+  }
+  [self cancelMissionLoadClearingRevision:NO];
+  [self beginTextureOperationWithText:@"Validating private HD textures..."];
+  NSObject *const operationIdentity = _operationIdentity;
+  NSObject *const lifecycleIdentity = _lifecycleIdentity;
+  NSString *const transaction = canonicalTransactionIdentifier();
+  const std::string packageDirectoryName =
+      std::string("pack-") + transaction.UTF8String;
+  __weak AirfixContentCoordinator *weakSelf = self;
+  dispatch_async(_workQueue, ^{
+    AirfixContentCoordinator *strongSelf = weakSelf;
+    if (strongSelf == nil) {
+      return;
+    }
+    [&] {
+      std::filesystem::path textureRoot;
+      bool installed = false;
+      auto availability =
+          airfix::texture::TexturePackageAvailability::unavailable;
+      strongSelf->_texturePackSession.reset();
+      try {
+        NSURL *contentRootURL = [strongSelf prepareContentRoot];
+        if (contentRootURL == nil) {
+          throw std::runtime_error("application support is unavailable");
+        }
+        textureRoot =
+            fileSystemPath(contentRootURL).parent_path() / "texture-packs";
+        airfix::texture::TexturePackInstallResult installResult;
+        auto *const installResultSlot = &installResult;
+        {
+          ScopedSecurityAccess scopedAccess(selectedURL);
+          NSFileCoordinator *fileCoordinator =
+              [[NSFileCoordinator alloc] initWithFilePresenter:nil];
+          __block std::exception_ptr installFailure;
+          NSError *coordinationError = nil;
+          [fileCoordinator
+              coordinateWritingItemAtURL:selectedURL
+                                  options:NSFileCoordinatorWritingForMoving
+                                    error:&coordinationError
+                               byAccessor:^(NSURL *coordinatedURL) {
+                                 try {
+                                   *installResultSlot = airfix::texture::
+                                       installImportedTexturePack(
+                                           textureRoot,
+                                           fileSystemPath(coordinatedURL),
+                                           packageDirectoryName);
+                                 } catch (...) {
+                                   installFailure = std::current_exception();
+                                 }
+                               }];
+          if (installFailure != nullptr) {
+            std::rethrow_exception(installFailure);
+          }
+          if (coordinationError != nil) {
+            throw std::runtime_error("folder coordination failed");
+          }
+        }
+        installed = installResult.success();
+        if (installed) {
+          strongSelf->_texturePackSession =
+              std::move(installResult.session);
+          availability = airfix::texture::TexturePackageAvailability::ready;
+        }
+      } catch (...) {
+        // Fixed public status below; no private path, manifest name, checksum,
+        // or exception string crosses back to UIKit.
+      }
+
+      if (!installed && !textureRoot.empty()) {
+        auto recovered =
+            airfix::texture::inspectInstalledTexturePack(textureRoot);
+        availability = textureAvailabilityForInspection(recovered);
+        strongSelf->_texturePackSession = std::move(recovered.session);
+      }
+
+      dispatch_async(dispatch_get_main_queue(), ^{
+        AirfixContentCoordinator *coordinator = weakSelf;
+        if (coordinator == nil ||
+            ![coordinator
+                consumeTerminalOperationIdentity:operationIdentity
+                               lifecycleIdentity:lifecycleIdentity]) {
+          return;
+        }
+        NSString *message = nil;
+        if (installed) {
+          message = @"Private HD textures are validated and ready.";
+        } else if (availability ==
+                   airfix::texture::TexturePackageAvailability::ready) {
+          message = @"The selected HD package was rejected. The previous "
+                    @"validated package remains ready.";
+        } else {
+          message = @"The selected HD texture package is unavailable or "
+                    @"invalid. Classic GTI textures remain available.";
+        }
+        [coordinator finishTextureOperationWithAvailability:availability
+                                                       text:message];
+      });
     }();
 
     AirfixContentCoordinator *const releaseOnMain = strongSelf;

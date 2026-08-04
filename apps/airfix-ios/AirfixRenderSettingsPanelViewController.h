@@ -25,7 +25,9 @@ NS_ASSUME_NONNULL_BEGIN
         delegate;
 
 - (instancetype)initWithCoordinator:
-    (AirfixRenderSettingsCoordinator *)coordinator NS_DESIGNATED_INITIALIZER;
+                    (AirfixRenderSettingsCoordinator *)coordinator
+    enhancedTexturesAvailable:(BOOL)enhancedTexturesAvailable
+    NS_DESIGNATED_INITIALIZER;
 - (instancetype)initWithNibName:(nullable NSString *)nibNameOrNil
                          bundle:(nullable NSBundle *)nibBundleOrNil
     NS_UNAVAILABLE;

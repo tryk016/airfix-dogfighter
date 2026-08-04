@@ -141,6 +141,7 @@ target_link_libraries(airfix_ios PRIVATE
     airfix::runtime
     airfix::settings
     airfix::simulation
+    airfix::texture_store
     "-framework AVFAudio"
     "-framework Foundation"
     "-framework UIKit"

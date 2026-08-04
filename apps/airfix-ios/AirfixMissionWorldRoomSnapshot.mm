@@ -23,10 +23,12 @@ struct SnapshotStorage final {
       airfix::content::LoadedLegacyAircraftHudWeaponPanelTextureSet
           &&loadedWeaponPanels,
       airfix::content::LoadedLegacyAircraftHudIdentityStatusTextureSet
-          &&loadedIdentityStatus)
+          &&loadedIdentityStatus,
+      const airfix::texture::ActiveMissionTextureState loadedTextureState)
       : ticket(std::move(publicationTicket)),
         resultRevision(loadedRoom.revision),
         playerSpawnPose(loadedRoom.playerSpawnPose),
+        textureState(loadedTextureState),
         room(std::move(loadedRoom)), audioClips(std::move(loadedAudioClips)),
         crosshairs(std::move(loadedCrosshairs)),
         healthGauge(std::move(loadedHealthGauge)),
@@ -38,6 +40,7 @@ struct SnapshotStorage final {
   airfix::content::WorldRoomPublicationTicket ticket;
   airfix::content::ContentRevision resultRevision;
   airfix::simulation::PlayerSpawnPose playerSpawnPose;
+  airfix::texture::ActiveMissionTextureState textureState;
   std::optional<airfix::content::LoadedMissionWorldRoom> room;
   std::optional<airfix::content::LoadedLegacyAircraftAudioClips> audioClips;
   std::optional<airfix::content::LoadedLegacyWeaponCrosshairTextureSet>
@@ -149,7 +152,21 @@ AirfixMissionWorldRoomSnapshot *makeMissionWorldRoomSnapshot(
     content::LoadedLegacyAircraftHudRollingDigitsTextureSet &&rollingDigits,
     content::LoadedLegacyAircraftHudInstrumentTextureSet &&hudInstruments,
     content::LoadedLegacyAircraftHudWeaponPanelTextureSet &&weaponPanels,
-    content::LoadedLegacyAircraftHudIdentityStatusTextureSet &&identityStatus) {
+    content::LoadedLegacyAircraftHudIdentityStatusTextureSet &&identityStatus,
+    const texture::ActiveMissionTextureState textureState) {
+  const bool validRequestedMode =
+      textureState.requestedMode == texture::TextureMode::classic ||
+      textureState.requestedMode == texture::TextureMode::enhanced;
+  const bool validEffectiveMode =
+      textureState.effectiveMode == texture::TextureMode::classic ||
+      textureState.effectiveMode == texture::TextureMode::enhanced;
+  if (!validRequestedMode || !validEffectiveMode ||
+      (textureState.requestedMode == texture::TextureMode::classic &&
+       textureState.effectiveMode != texture::TextureMode::classic) ||
+      room.requestedTextureMode != textureState.effectiveMode) {
+    throw std::invalid_argument(
+        "mission texture state failed its publication contract");
+  }
   if (content::validateMissionWorldRoomPublication(room,
                                                    ticket.expectedRevision)
           .has_value()) {
@@ -203,7 +220,7 @@ AirfixMissionWorldRoomSnapshot *makeMissionWorldRoomSnapshot(
       std::move(ticket), std::move(room), std::move(audioClips),
       std::move(crosshairs), std::move(healthGauge), std::move(rollingDigits),
       std::move(hudInstruments), std::move(weaponPanels),
-      std::move(identityStatus));
+      std::move(identityStatus), textureState);
   AirfixMissionWorldRoomSnapshot *const snapshot =
       [[AirfixMissionWorldRoomSnapshot alloc]
           initWithRequestSerial:requestSerial
@@ -393,6 +410,17 @@ std::optional<simulation::PlayerSpawnPose> missionWorldRoomPlayerSpawnPose(
     return std::nullopt;
   }
   return storage->playerSpawnPose;
+}
+
+texture::ActiveMissionTextureState missionWorldRoomTextureState(
+    AirfixMissionWorldRoomSnapshot *const snapshot) noexcept {
+  if (snapshot == nil) {
+    return {};
+  }
+  auto *const storage =
+      static_cast<SnapshotStorage *>([snapshot airfix_privateStorage]);
+  return storage == nullptr ? texture::ActiveMissionTextureState{}
+                            : storage->textureState;
 }
 
 } // namespace airfix::ios

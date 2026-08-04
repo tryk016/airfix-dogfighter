@@ -101,6 +101,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
 
 @interface AirfixGameViewController () <
     AirfixContentCoordinatorDelegate, AirfixIOSInputCoordinatorDelegate,
+    AirfixRenderSettingsCoordinatorDelegate,
     AirfixRenderSettingsPanelViewControllerDelegate,
     AirfixControllerCalibrationPanelViewControllerDelegate> {
   airfix::runtime::AppSession _session;
@@ -182,6 +183,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   if (self.renderer != nil) {
     self.renderSettingsCoordinator = [[AirfixRenderSettingsCoordinator alloc]
         initWithRenderer:self.renderer];
+    self.renderSettingsCoordinator.delegate = self;
   }
 
   UILabel *label = [[UILabel alloc] initWithFrame:CGRectZero];
@@ -663,7 +665,10 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
 
   AirfixRenderSettingsPanelViewController *panel =
       [[AirfixRenderSettingsPanelViewController alloc]
-          initWithCoordinator:self.renderSettingsCoordinator];
+          initWithCoordinator:self.renderSettingsCoordinator
+          enhancedTexturesAvailable:
+              self.contentCoordinator.texturePackageAvailability ==
+              AirfixTexturePackageAvailabilityReady];
   panel.delegate = self;
   [self addChildViewController:panel];
   panel.view.translatesAutoresizingMaskIntoConstraints = NO;
@@ -884,6 +889,19 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
     return;
   }
   [self closeRenderSettingsPanel];
+}
+
+- (void)renderSettingsCoordinatorDidPublishActiveSettings:
+    (AirfixRenderSettingsCoordinator *)coordinator {
+  if (coordinator != self.renderSettingsCoordinator) {
+    return;
+  }
+  const auto settings = [coordinator activeSettings];
+  [self.contentCoordinator
+      requestMissionTextureMode:
+          settings.textureMode == airfix::texture::TextureMode::enhanced
+              ? AirfixMissionTextureModeEnhanced
+              : AirfixMissionTextureModeClassic];
 }
 
 - (void)controllerCalibrationPanelViewControllerDidFinish:
