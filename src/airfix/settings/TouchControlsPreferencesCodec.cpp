@@ -17,10 +17,11 @@ constexpr std::size_t fieldHeaderBytes = 4U;
 constexpr std::uint16_t handednessField = 1U;
 constexpr std::uint16_t densityField = 2U;
 constexpr std::uint16_t restingOpacityField = 3U;
+constexpr std::uint16_t visibilityModeField = 4U;
 constexpr std::size_t canonicalDocumentBytes =
-    headerBytes + (fieldHeaderBytes + 1U) * 3U;
+    headerBytes + (fieldHeaderBytes + 1U) * 4U;
 
-static_assert(canonicalDocumentBytes == 63U);
+static_assert(canonicalDocumentBytes == 68U);
 
 [[noreturn]] void fail(const TouchControlsPreferencesCodecErrorKind kind,
                        const std::optional<std::uint32_t> schemaVersion,
@@ -101,6 +102,7 @@ std::vector<std::uint8_t> encodeTouchControlsPreferencesDocument(
   appendField(output, handednessField, record.handedness);
   appendField(output, densityField, record.density);
   appendField(output, restingOpacityField, record.restingOpacityPercent);
+  appendField(output, visibilityModeField, record.visibilityMode);
 
   if (output.size() != canonicalDocumentBytes) {
     throw std::logic_error("AFTC encoder produced a noncanonical size");
@@ -159,13 +161,20 @@ DecodedTouchControlsPreferencesDocument decodeTouchControlsPreferencesDocument(
         .exactBytes = {bytes.begin(), bytes.end()},
     };
   }
-  if (schemaVersion != input::touchControlsPreferencesRecordSchemaVersion) {
+  if (schemaVersion != input::touchControlsPreferencesRecordSchemaVersion &&
+      schemaVersion !=
+          input::legacyTouchControlsPreferencesRecordSchemaVersion) {
     fail(TouchControlsPreferencesCodecErrorKind::invalidSchemaVersion,
          schemaVersion, "AFTC semantic schema version is unsupported");
   }
 
+  const std::uint16_t lastField =
+      schemaVersion == input::legacyTouchControlsPreferencesRecordSchemaVersion
+          ? restingOpacityField
+          : visibilityModeField;
+
   input::TouchControlsPreferencesRecord record;
-  std::array<bool, restingOpacityField + 1U> seen{};
+  std::array<bool, visibilityModeField + 1U> seen{};
   std::uint16_t previousField = 0U;
   std::size_t offset = headerBytes;
   while (offset < bytes.size()) {
@@ -184,7 +193,7 @@ DecodedTouchControlsPreferencesDocument decodeTouchControlsPreferencesDocument(
       fail(TouchControlsPreferencesCodecErrorKind::nonCanonicalFieldOrder,
            schemaVersion, "AFTC fields are not in canonical order");
     }
-    if (field == 0U || field > restingOpacityField) {
+    if (field == 0U || field > lastField) {
       fail(TouchControlsPreferencesCodecErrorKind::unknownField, schemaVersion,
            "AFTC contains an unknown current-schema field");
     }
@@ -212,13 +221,15 @@ DecodedTouchControlsPreferencesDocument decodeTouchControlsPreferencesDocument(
     case restingOpacityField:
       record.restingOpacityPercent = bytes[offset];
       break;
+    case visibilityModeField:
+      record.visibilityMode = bytes[offset];
+      break;
     default:
       throw std::logic_error("validated AFTC field is unreachable");
     }
     offset += size;
   }
-  for (std::uint16_t field = handednessField; field <= restingOpacityField;
-       ++field) {
+  for (std::uint16_t field = handednessField; field <= lastField; ++field) {
     if (!seen[field]) {
       fail(TouchControlsPreferencesCodecErrorKind::missingField, schemaVersion,
            "AFTC is missing a required field");
@@ -232,7 +243,10 @@ DecodedTouchControlsPreferencesDocument decodeTouchControlsPreferencesDocument(
     fail(TouchControlsPreferencesCodecErrorKind::invalidSemanticRecord,
          schemaVersion, "AFTC semantic record is invalid");
   }
-  return record;
+  return DecodedCurrentTouchControlsPreferencesRecord{
+      .record = record,
+      .sourceSchemaVersion = schemaVersion,
+  };
 }
 
 } // namespace airfix::settings

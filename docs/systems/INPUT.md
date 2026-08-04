@@ -252,15 +252,20 @@ left-handed layout that mirrors every rectangle inside the same offset safe
 area without changing any semantic action identifier. Unsupported schemas,
 forged enum values, non-finite rectangles, and empty safe bounds fail closed.
 Every geometry profile change cancels active touches before UIKit publishes new
-frames. The separate [AFTC V1 preference](../formats/AFTC.md) stores
-handedness, automatic/compact density, and resting overlay strength in the
+frames. The separate [AFTC V2 preference](../formats/AFTC.md) stores
+handedness, automatic/compact density, resting overlay strength, and the
+controller-visibility policy in the
 private Application Support
 settings leaf. The strength range is `50-100%`; it scales only resting
 background fills, leaving labels, accent borders, active feedback, and capture
 geometry unchanged. An opacity-only update therefore retains active ownership.
 The native editor saves durably before publishing one coherent preference
-snapshot. Visibility, automatic controller-driven hiding, and free placement
-are not yet exposed.
+snapshot. V1 loads migrate to the automatic-hide V2 default and request an
+explicit repair save without writing during startup. During active gameplay,
+automatic mode hides the overlay when a controller connects; `setHidden:`
+first cancels every touch, and controller disconnect still synthesizes release
+and pauses before touch gameplay can resume. Always-visible mode supports
+hybrid input. Free placement is not yet exposed.
 
 The current overlay deliberately uses a vertical throttle rail with a broad
 horizontal handle. Stick, throttle, look region, and buttons use translucent

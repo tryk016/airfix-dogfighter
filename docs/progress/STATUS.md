@@ -1420,12 +1420,14 @@
    prepares a fresh pair. The platform-neutral touch-layout geometry/profile V1
    now preserves the default UIKit layout, supports automatic/forced compact
    density and semantic-preserving left-handed mirroring, and cancels active
-   touches before relayout. Its separate private AFTC V1 document and
-   recovery-safe iOS editor now persist handedness, density, and a `50-100%`
-   resting-background strength without dimming labels/borders or resizing
-   capture targets. Next add a recovery-safe
-   visibility/automatic-controller-hide policy, followed by controller glyphs,
-   haptics, and finished menu bindings before touch-only and
+   touches before relayout. Its separate private AFTC V2 document and
+   recovery-safe iOS editor now persist handedness, density, a `50-100%`
+   resting-background strength, and automatic-controller-hide/always-visible
+   policy without storing device metadata. V1 loads migrate safely and request
+   an explicit repair save. Connecting a controller during active gameplay
+   hides through the existing cancel-all boundary; disconnect still releases
+   and pauses before touch controls may return. Next add controller glyphs,
+   haptics, free placement, and finished menu bindings before touch-only and
    controller-only acceptance on both target iPhones. Never mutate
    position-indexed active router state in place or accept a live caller's
    unauthenticated mission claim.
@@ -1496,13 +1498,20 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- Touch preferences V2 add a portable visibility decision, exact AFTC V1-to-V2
+  migration, repair detection, and an iOS Auto-hide/Always visible setting.
+  Automatic mode shows controls only during active gameplay without a connected
+  controller. A connect hides through `AirfixTouchControlsView::setHidden`,
+  which neutralizes every held touch first; disconnect retains the existing
+  reset-and-pause path. Focused semantic, codec, migration, repair, and durable
+  store tests pass locally; hosted Objective-C++ builds remain the native gate.
 - The isolated AirCraft AI controls slice builds two new C++20 test targets.
   Focused validation passes the exact state-layout/range/mapping vectors and
   the immediate five-event dispatcher contract, including the recovered
   `{128,0,0,0,0}` witness and callback-visible per-route sequencing. Full
   portable and hosted validation remains the publication gate; live x87,
   `_ftol`, scheduler, and runtime integration claims remain excluded.
-- Private touch preferences V1 add the strict bounded AFTC codec, shared
+- Private touch preferences V1 introduced the strict bounded AFTC codec, shared
   current/backup durable store, future-schema downgrade protection, and an iOS
   pause panel for handedness, automatic/compact density, and `50-100%` resting
   overlay strength. Publication saves first and then atomically applies the

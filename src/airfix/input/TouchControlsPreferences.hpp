@@ -11,11 +11,18 @@ inline constexpr std::uint8_t minimumTouchControlsRestingOpacityPercent = 50U;
 inline constexpr std::uint8_t maximumTouchControlsRestingOpacityPercent = 100U;
 inline constexpr std::uint8_t defaultTouchControlsRestingOpacityPercent = 100U;
 
+enum class TouchControlsVisibilityMode : std::uint8_t {
+  automaticControllerHide,
+  alwaysVisible,
+};
+
 struct TouchControlsPreferences final {
   TouchControlsLayoutProfile layout{};
   // Scales resting background fills only. Labels, semantic accent borders,
   // capture geometry, and active-state emphasis remain fully legible.
   std::uint8_t restingOpacityPercent{defaultTouchControlsRestingOpacityPercent};
+  TouchControlsVisibilityMode visibilityMode{
+      TouchControlsVisibilityMode::automaticControllerHide};
 
   [[nodiscard]] friend constexpr bool
   operator==(const TouchControlsPreferences &,
@@ -26,6 +33,7 @@ enum class TouchControlsPreferencesIssueKind : std::uint8_t {
   unsupportedSchema,
   invalidLayoutProfile,
   restingOpacityOutOfRange,
+  invalidVisibilityMode,
 };
 
 struct TouchControlsPreferencesIssue final {
@@ -37,13 +45,16 @@ struct TouchControlsPreferencesIssue final {
 validateTouchControlsPreferences(
     const TouchControlsPreferences &preferences) noexcept;
 
-inline constexpr std::uint32_t touchControlsPreferencesRecordSchemaVersion = 1U;
+inline constexpr std::uint32_t touchControlsPreferencesRecordSchemaVersion = 2U;
+inline constexpr std::uint32_t
+    legacyTouchControlsPreferencesRecordSchemaVersion = 1U;
 
 struct TouchControlsPreferencesRecord final {
   std::uint32_t schemaVersion{touchControlsPreferencesRecordSchemaVersion};
   std::uint8_t handedness{};
   std::uint8_t density{};
   std::uint8_t restingOpacityPercent{defaultTouchControlsRestingOpacityPercent};
+  std::uint8_t visibilityMode{};
 
   [[nodiscard]] friend constexpr bool
   operator==(const TouchControlsPreferencesRecord &,
@@ -75,5 +86,22 @@ makeTouchControlsPreferencesRecord(
 [[nodiscard]] TouchControlsPreferencesFromRecordResult
 touchControlsPreferencesFromRecord(
     const TouchControlsPreferencesRecord &record) noexcept;
+
+struct TouchControlsVisibilityContext final {
+  bool gameplayActive{};
+  bool controllerConnected{};
+};
+
+enum class TouchControlsVisibilityDecision : std::uint8_t {
+  hidden,
+  visible,
+};
+
+// Resolves only presentation visibility. A hidden decision never changes the
+// latched absolute throttle value; the native view neutralizes every held
+// touch before applying it. Invalid preferences fail closed with nullopt.
+[[nodiscard]] std::optional<TouchControlsVisibilityDecision>
+resolveTouchControlsVisibility(const TouchControlsPreferences &preferences,
+                               TouchControlsVisibilityContext context) noexcept;
 
 } // namespace airfix::input

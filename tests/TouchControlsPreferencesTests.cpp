@@ -31,12 +31,15 @@ void testDefaultsAndCustomRoundTrip() {
               .density = airfix::input::TouchControlsDensity::compact,
           },
       .restingOpacityPercent = 50U,
+      .visibilityMode =
+          airfix::input::TouchControlsVisibilityMode::alwaysVisible,
   };
   const auto customRecord =
       airfix::input::makeTouchControlsPreferencesRecord(custom);
   require(customRecord.complete() && customRecord.record->handedness == 1U &&
               customRecord.record->density == 1U &&
-              customRecord.record->restingOpacityPercent == 50U,
+              customRecord.record->restingOpacityPercent == 50U &&
+              customRecord.record->visibilityMode == 1U,
           "custom record mapping is incorrect");
   const auto customDecoded =
       airfix::input::touchControlsPreferencesFromRecord(*customRecord.record);
@@ -65,7 +68,7 @@ void testInvalidValuesFailClosed() {
   }
 
   auto record = airfix::input::TouchControlsPreferencesRecord{};
-  record.schemaVersion = 2U;
+  record.schemaVersion = 3U;
   require(
       airfix::input::touchControlsPreferencesFromRecord(record).issue->kind ==
           airfix::input::TouchControlsPreferencesIssueKind::unsupportedSchema,
@@ -78,6 +81,48 @@ void testInvalidValuesFailClosed() {
   record.density = 0xFFU;
   require(!airfix::input::touchControlsPreferencesFromRecord(record).complete(),
           "forged density record was accepted");
+  record = {};
+  record.visibilityMode = 0xFFU;
+  require(
+      airfix::input::touchControlsPreferencesFromRecord(record).issue->kind ==
+          airfix::input::TouchControlsPreferencesIssueKind::
+              invalidVisibilityMode,
+      "forged visibility mode was accepted");
+
+  preferences = {};
+  preferences.visibilityMode =
+      static_cast<airfix::input::TouchControlsVisibilityMode>(0xFFU);
+  require(airfix::input::validateTouchControlsPreferences(preferences)->kind ==
+              airfix::input::TouchControlsPreferencesIssueKind::
+                  invalidVisibilityMode,
+          "forged visibility preference was accepted");
+}
+
+void testVisibilityPolicy() {
+  using airfix::input::TouchControlsVisibilityDecision;
+  airfix::input::TouchControlsPreferences preferences;
+  const auto resolve = [&](const bool active, const bool connected) {
+    return airfix::input::resolveTouchControlsVisibility(
+        preferences,
+        {.gameplayActive = active, .controllerConnected = connected});
+  };
+  require(resolve(false, false) == TouchControlsVisibilityDecision::hidden &&
+              resolve(false, true) == TouchControlsVisibilityDecision::hidden,
+          "inactive gameplay exposed touch controls");
+  require(resolve(true, false) == TouchControlsVisibilityDecision::visible &&
+              resolve(true, true) == TouchControlsVisibilityDecision::hidden,
+          "automatic controller-hide policy changed");
+
+  preferences.visibilityMode =
+      airfix::input::TouchControlsVisibilityMode::alwaysVisible;
+  require(resolve(true, false) == TouchControlsVisibilityDecision::visible &&
+              resolve(true, true) == TouchControlsVisibilityDecision::visible,
+          "always-visible policy changed");
+
+  preferences.visibilityMode =
+      static_cast<airfix::input::TouchControlsVisibilityMode>(0xFFU);
+  require(!resolve(true, false).has_value(),
+          "invalid visibility policy did not fail closed");
 }
 
 } // namespace
@@ -86,6 +131,7 @@ int main() {
   try {
     testDefaultsAndCustomRoundTrip();
     testInvalidValuesFailClosed();
+    testVisibilityPolicy();
     std::cout << "Touch controls preferences tests passed\n";
     return 0;
   } catch (const std::exception &error) {

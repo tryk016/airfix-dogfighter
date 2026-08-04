@@ -44,9 +44,9 @@ inspectDocument(const std::span<const std::uint8_t> bytes, void *) noexcept {
             decoded)) {
       return io::DurableDocumentDisposition::futurePreserve;
     }
-    const auto &record =
-        std::get<input::TouchControlsPreferencesRecord>(decoded);
-    if (input::touchControlsPreferencesFromRecord(record).complete()) {
+    const auto &current =
+        std::get<DecodedCurrentTouchControlsPreferencesRecord>(decoded);
+    if (input::touchControlsPreferencesFromRecord(current.record).complete()) {
       return io::DurableDocumentDisposition::valid;
     }
   } catch (...) {
@@ -107,19 +107,20 @@ statusForDocumentRead(const io::DurableDocumentFileStatus status) noexcept {
       };
       return result;
     }
-    const auto &record =
-        std::get<input::TouchControlsPreferencesRecord>(decoded);
-    const auto semantic = input::touchControlsPreferencesFromRecord(record);
+    const auto &current =
+        std::get<DecodedCurrentTouchControlsPreferencesRecord>(decoded);
+    const auto semantic =
+        input::touchControlsPreferencesFromRecord(current.record);
     if (!semantic.complete()) {
       result.diagnostic = {
           .status = TouchControlsPreferencesFileStatus::malformed,
-          .schemaVersion = record.schemaVersion,
+          .schemaVersion = current.sourceSchemaVersion,
       };
       return result;
     }
     result.diagnostic = {
         .status = TouchControlsPreferencesFileStatus::valid,
-        .schemaVersion = record.schemaVersion,
+        .schemaVersion = current.sourceSchemaVersion,
     };
     result.preferences = *semantic.preferences;
     return result;
