@@ -679,6 +679,16 @@
   structural phase join are GO. Full behavior, task-wrapper semantics,
   bit-parity conversion/rigid-body runtime, wall-clock cadence, and
   cross-producer ordering remain NO-GO.
+- The recovered `AIControls` layout and five-event AirCraft dispatcher now
+  have an isolated portable C++20 implementation. Compile-time assertions
+  preserve the four eight-float arrays and exact `0x80`-byte layout. The
+  dispatcher preserves `thrust -> pitch -> bank -> primary -> secondary` and
+  completes `cache -> Save -> Process` synchronously for each changed channel
+  before inspecting the next. Exact-bit vector tests cover all three range
+  shapes, the `{128,0,0,0,0}` witness, repeated raw zero, callback mutation,
+  invalid configuration, and numeric-environment rejection. It remains an
+  explicit PC53/round-to-nearest-even oracle and is not connected to the live
+  12 ms scheduler, Q15 input, task wrappers, vehicle owner, or rigid body.
 - Recovered the scheduler-visible aircraft order:
   `EulerODE -> ResetForceAndTorque -> CalcAuxiliary -> slot45 force
   accumulation -> collision/slot30 -> slot44 refresh`. `EulerODE` consumes
@@ -1373,7 +1383,10 @@
    typed decoder, and that owner without adding a batch or scheduler. The
    pitch/bank-only one-event step separately accepts already-formed analog/AI
    events and preserves caller order without a queue, producer cache, replay,
-   or source identity.
+   or source identity. The recovered eight-channel `AIControls` value object
+   and exact five-route AI dispatcher are now also implemented as an isolated
+   policy-gated oracle; they still own no task evaluation, producer cadence,
+   cross-source ordering, or vehicle/weapon integration.
    The game-owned static x87-writer search is complete, but external-library
    behavior, RC, exception state, and the actual consumer-thread CW/SW remain
    unobserved. Keep all control reducers and that owner unwired from
@@ -1483,6 +1496,12 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The isolated AirCraft AI controls slice builds two new C++20 test targets.
+  Focused validation passes the exact state-layout/range/mapping vectors and
+  the immediate five-event dispatcher contract, including the recovered
+  `{128,0,0,0,0}` witness and callback-visible per-route sequencing. Full
+  portable and hosted validation remains the publication gate; live x87,
+  `_ftol`, scheduler, and runtime integration claims remain excluded.
 - Private touch preferences V1 add the strict bounded AFTC codec, shared
   current/backup durable store, future-schema downgrade protection, and an iOS
   pause panel for handedness, automatic/compact density, and `50-100%` resting

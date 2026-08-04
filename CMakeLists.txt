@@ -166,6 +166,8 @@ endif()
 
 add_library(airfix_simulation
     src/airfix/simulation/LegacyAfsMissionOutcomeCall.cpp
+    src/airfix/simulation/LegacyAircraftAiControlDispatcher.cpp
+    src/airfix/simulation/LegacyAircraftAiControls.cpp
     src/airfix/simulation/LegacyAircraftAudioCoordinator.cpp
     src/airfix/simulation/LegacyAircraftControlCommandReducer.cpp
     src/airfix/simulation/LegacyAircraftControlCommandStep.cpp
@@ -1125,6 +1127,22 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::simulation)
     add_test(NAME airfix_legacy_aircraft_thrust_state_tests
         COMMAND airfix_legacy_aircraft_thrust_state_tests)
+
+    add_executable(airfix_legacy_aircraft_ai_controls_tests
+        tests/LegacyAircraftAiControlsTests.cpp)
+    target_link_libraries(airfix_legacy_aircraft_ai_controls_tests
+        PRIVATE airfix::simulation)
+    add_test(NAME airfix_legacy_aircraft_ai_controls_tests
+        COMMAND airfix_legacy_aircraft_ai_controls_tests)
+
+    add_executable(airfix_legacy_aircraft_ai_control_dispatcher_tests
+        tests/LegacyAircraftAiControlDispatcherTests.cpp)
+    target_link_libraries(
+        airfix_legacy_aircraft_ai_control_dispatcher_tests
+        PRIVATE airfix::simulation)
+    add_test(
+        NAME airfix_legacy_aircraft_ai_control_dispatcher_tests
+        COMMAND airfix_legacy_aircraft_ai_control_dispatcher_tests)
 
     add_executable(airfix_legacy_aircraft_thrust_event_reducer_tests
         tests/LegacyAircraftThrustEventReducerTests.cpp)
