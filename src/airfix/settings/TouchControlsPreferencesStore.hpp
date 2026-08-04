@@ -48,9 +48,13 @@ struct TouchControlsPreferencesLoadResult final {
 
 [[nodiscard]] constexpr bool touchControlsPreferencesNeedsRepair(
     const TouchControlsPreferencesLoadResult &load) noexcept {
-  if (load.persistenceBlocked ||
-      load.source == TouchControlsPreferencesLoadSource::current) {
+  if (load.persistenceBlocked) {
     return false;
+  }
+  if (load.source == TouchControlsPreferencesLoadSource::current) {
+    return load.current.schemaVersion.has_value() &&
+           *load.current.schemaVersion !=
+               input::touchControlsPreferencesRecordSchemaVersion;
   }
   if (load.source == TouchControlsPreferencesLoadSource::backup) {
     return true;

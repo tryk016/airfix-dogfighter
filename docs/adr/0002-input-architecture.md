@@ -41,14 +41,15 @@ a forced compact density, and mirrors geometry (but never semantic action IDs)
 for left-handed play. A profile or safe-area change first cancels active touches
 so a finger cannot retain ownership of a control that moved underneath it.
 
-Persist the selected V1 handedness and density plus a bounded resting-opacity
-percentage in a separate private
+Persist handedness, density, a bounded resting-opacity percentage, and the
+controller-visibility policy in a separate private
 [`touch-controls.aftc`](../formats/AFTC.md) document. AFTC uses the
 shared durable current/backup publication policy, rejects malformed current
 schemas, preserves intact future schemas without downgrade, and defaults safely
 when absent. The iOS pause surface owns a recovery-safe editor; a successful
-change is durable before it is applied to the active overlay. Visibility,
-automatic controller-driven hiding, and free placement remain later policies.
+change is durable before it is applied to the active overlay. Schema V2
+migrates V1 to automatic controller hiding without a load-time write. Free
+placement remains a later policy.
 
 The default visual language uses a vertical aircraft throttle with a broad
 horizontal handle and translucent, dark-backed controls with persistent accent
@@ -125,6 +126,12 @@ context and remapping, and cannot express an absolute touch throttle cleanly.
   active touch ownership before relayout. Mirroring never changes action IDs.
 - An opacity-only publication does not move capture rectangles or release
   control ownership. A combined snapshot is validated and applied coherently.
+- Automatic visibility is evaluated only for active gameplay. Connecting a
+  controller hides the overlay through the view's cancellation boundary, so
+  every held touch is neutralized before presentation changes. Disconnect
+  retains the existing synthesize-release-and-pause policy; the overlay returns
+  only after explicit resume. `Always visible` remains available for hybrid
+  input.
 - AFTC is private app state, not an original game resource, and must never carry
   host paths, device identities, or controller metadata.
 - Controller prompts require a last-active-source service.
@@ -162,5 +169,7 @@ context and remapping, and cannot express an absolute touch throttle cleanly.
 8. [ ] Run phone/tablet/controller usability and lifecycle tests.
 9. [x] Add the private durable AFTC document, recovery-safe handedness/density
    editor, and bounded resting-opacity policy.
-10. [ ] Add recovery-safe visibility/automatic controller-hide policy and free
-    placement only after last-active-source and recovery input are proven.
+10. [x] Add recovery-safe visibility/automatic controller-hide policy with a
+    V1-to-V2 migration and an always-visible override.
+11. [ ] Add free placement only after last-active-source and recovery input are
+    proven.

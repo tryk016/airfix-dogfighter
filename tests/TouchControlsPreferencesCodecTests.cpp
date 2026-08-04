@@ -61,6 +61,8 @@ void requireCodecError(
               .density = airfix::input::TouchControlsDensity::compact,
           },
       .restingOpacityPercent = 70U,
+      .visibilityMode =
+          airfix::input::TouchControlsVisibilityMode::alwaysVisible,
   });
   require(built.complete(), "test AFTC record is invalid");
   return *built.record;
@@ -70,20 +72,31 @@ void testCanonicalRoundTripAndTruncation() {
   const auto record = testRecord();
   const auto bytes =
       airfix::settings::encodeTouchControlsPreferencesDocument(record);
-  require(bytes.size() == 63U &&
+  require(bytes.size() == 68U &&
               std::string(bytes.begin(), bytes.begin() + 4) == "AFTC",
           "AFTC canonical envelope changed");
   const auto decoded =
       airfix::settings::decodeTouchControlsPreferencesDocument(bytes);
-  require(std::holds_alternative<airfix::input::TouchControlsPreferencesRecord>(
-              decoded) &&
-              std::get<airfix::input::TouchControlsPreferencesRecord>(
-                  decoded) == record,
-          "AFTC semantic round-trip changed fields");
-  require(airfix::settings::encodeTouchControlsPreferencesDocument(
-              std::get<airfix::input::TouchControlsPreferencesRecord>(
-                  decoded)) == bytes,
-          "AFTC byte round-trip is not deterministic");
+  require(
+      std::holds_alternative<
+          airfix::settings::DecodedCurrentTouchControlsPreferencesRecord>(
+          decoded) &&
+          std::get<
+              airfix::settings::DecodedCurrentTouchControlsPreferencesRecord>(
+              decoded)
+                  .record == record &&
+          !std::get<
+               airfix::settings::DecodedCurrentTouchControlsPreferencesRecord>(
+               decoded)
+               .migrated(),
+      "AFTC semantic round-trip changed fields");
+  require(
+      airfix::settings::encodeTouchControlsPreferencesDocument(
+          std::get<
+              airfix::settings::DecodedCurrentTouchControlsPreferencesRecord>(
+              decoded)
+              .record) == bytes,
+      "AFTC byte round-trip is not deterministic");
 
   for (std::size_t size = 0U; size < bytes.size(); ++size) {
     const std::vector<std::uint8_t> truncated(
@@ -144,7 +157,7 @@ void testEnvelopeAndFieldFailures() {
       },
       airfix::settings::TouchControlsPreferencesCodecErrorKind::duplicateField);
   auto unknown = canonical;
-  putU16(unknown, 53U, 4U);
+  putU16(unknown, 53U, 5U);
   repairEnvelope(unknown);
   requireCodecError(
       [&] {
@@ -152,7 +165,7 @@ void testEnvelopeAndFieldFailures() {
       },
       airfix::settings::TouchControlsPreferencesCodecErrorKind::unknownField);
   auto missing = canonical;
-  missing.resize(58U);
+  missing.resize(63U);
   repairEnvelope(missing);
   requireCodecError(
       [&] {
@@ -160,7 +173,7 @@ void testEnvelopeAndFieldFailures() {
       },
       airfix::settings::TouchControlsPreferencesCodecErrorKind::missingField);
   auto invalidSize = canonical;
-  putU16(invalidSize, 60U, 2U);
+  putU16(invalidSize, 65U, 2U);
   invalidSize.push_back(0U);
   repairEnvelope(invalidSize);
   requireCodecError(
@@ -175,7 +188,7 @@ void testEnvelopeAndFieldFailures() {
 void testSemanticAndFutureSchemas() {
   const auto canonical =
       airfix::settings::encodeTouchControlsPreferencesDocument(testRecord());
-  for (const auto offset : {52U, 57U}) {
+  for (const auto offset : {52U, 57U, 67U}) {
     auto invalid = canonical;
     invalid[offset] = 0xFFU;
     repairEnvelope(invalid);
@@ -199,7 +212,7 @@ void testSemanticAndFutureSchemas() {
           invalidSemanticRecord);
 
   auto future = canonical;
-  putU32(future, 8U, 2U);
+  putU32(future, 8U, 3U);
   future.push_back(0xA5U);
   repairEnvelope(future);
   const auto decoded =
@@ -211,8 +224,42 @@ void testSemanticAndFutureSchemas() {
   const auto &opaque =
       std::get<airfix::settings::OpaqueFutureTouchControlsPreferencesRecord>(
           decoded);
-  require(opaque.schemaVersion == 2U && opaque.exactBytes == future,
+  require(opaque.schemaVersion == 3U && opaque.exactBytes == future,
           "future AFTC bytes were not preserved exactly");
+}
+
+void testLegacySchemaMigration() {
+  auto legacy =
+      airfix::settings::encodeTouchControlsPreferencesDocument(testRecord());
+  legacy.resize(63U);
+  putU32(legacy, 8U,
+         airfix::input::legacyTouchControlsPreferencesRecordSchemaVersion);
+  repairEnvelope(legacy);
+
+  const auto decoded =
+      airfix::settings::decodeTouchControlsPreferencesDocument(legacy);
+  require(std::holds_alternative<
+              airfix::settings::DecodedCurrentTouchControlsPreferencesRecord>(
+              decoded),
+          "legacy AFTC did not migrate to a current record");
+  const auto &current =
+      std::get<airfix::settings::DecodedCurrentTouchControlsPreferencesRecord>(
+          decoded);
+  require(current.migrated() &&
+              current.sourceSchemaVersion ==
+                  airfix::input::
+                      legacyTouchControlsPreferencesRecordSchemaVersion &&
+              current.record.schemaVersion ==
+                  airfix::input::touchControlsPreferencesRecordSchemaVersion &&
+              current.record.visibilityMode == 0U,
+          "legacy AFTC migration metadata or default changed");
+  const auto preferences =
+      airfix::input::touchControlsPreferencesFromRecord(current.record);
+  require(preferences.complete() &&
+              preferences.preferences->visibilityMode ==
+                  airfix::input::TouchControlsVisibilityMode::
+                      automaticControllerHide,
+          "legacy AFTC did not select the safe automatic visibility default");
 }
 
 } // namespace
@@ -222,6 +269,7 @@ int main() {
     testCanonicalRoundTripAndTruncation();
     testEnvelopeAndFieldFailures();
     testSemanticAndFutureSchemas();
+    testLegacySchemaMigration();
     std::cout << "Touch controls preferences codec tests passed\n";
     return 0;
   } catch (const std::exception &error) {

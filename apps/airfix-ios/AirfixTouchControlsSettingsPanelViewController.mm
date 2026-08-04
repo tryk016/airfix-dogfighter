@@ -19,6 +19,7 @@ typedef NS_ENUM(NSUInteger, AirfixTouchSettingsRow) {
   AirfixTouchSettingsRowHandedness = 0U,
   AirfixTouchSettingsRowDensity,
   AirfixTouchSettingsRowOpacity,
+  AirfixTouchSettingsRowVisibility,
   AirfixTouchSettingsRowReset,
   AirfixTouchSettingsRowSave,
   AirfixTouchSettingsRowClose,
@@ -76,6 +77,7 @@ typedef NS_ENUM(NSUInteger, AirfixTouchSettingsRow) {
 @property(nonatomic, strong) UISegmentedControl *densityControl;
 @property(nonatomic, strong) UISlider *opacitySlider;
 @property(nonatomic, strong) UILabel *opacityValueLabel;
+@property(nonatomic, strong) UISegmentedControl *visibilityControl;
 @property(nonatomic, strong) UILabel *statusLabel;
 @property(nonatomic, strong) UIButton *resetButton;
 @property(nonatomic, strong) UIButton *saveButton;
@@ -123,7 +125,8 @@ typedef NS_ENUM(NSUInteger, AirfixTouchSettingsRow) {
       NSLocalizedString(
           @"Choose the side and density of the flight overlay. Overlay "
            "strength changes resting backgrounds only; labels, borders, "
-           "active feedback and touch targets stay clear.",
+           "active feedback and touch targets stay clear. Auto-hide removes "
+           "the overlay while a controller is connected.",
           nil),
       UIFontTextStyleFootnote, UIColor.secondaryLabelColor);
   explanation.textAlignment = NSTextAlignmentCenter;
@@ -188,6 +191,24 @@ typedef NS_ENUM(NSUInteger, AirfixTouchSettingsRow) {
   UIStackView *opacityRow =
       makeRow(NSLocalizedString(@"Overlay strength", nil), opacityControl);
 
+  UISegmentedControl *visibility = [[UISegmentedControl alloc] initWithItems:@[
+    NSLocalizedString(@"Auto-hide", nil),
+    NSLocalizedString(@"Always visible", nil),
+  ]];
+  visibility.translatesAutoresizingMaskIntoConstraints = NO;
+  visibility.accessibilityLabel =
+      NSLocalizedString(@"Touch overlay with controller", nil);
+  visibility.accessibilityHint = NSLocalizedString(
+      @"Choose whether touch controls hide while a controller is connected.",
+      nil);
+  visibility.accessibilityIdentifier = @"airfix.settings.touch.visibility";
+  [visibility addTarget:self
+                 action:@selector(visibilityChanged:)
+       forControlEvents:UIControlEventValueChanged];
+  self.visibilityControl = visibility;
+  UIStackView *visibilityRow =
+      makeRow(NSLocalizedString(@"With controller", nil), visibility);
+
   UIButton *reset = [UIButton buttonWithType:UIButtonTypeSystem];
   [reset setTitle:NSLocalizedString(@"Reset defaults", nil)
          forState:UIControlStateNormal];
@@ -240,6 +261,7 @@ typedef NS_ENUM(NSUInteger, AirfixTouchSettingsRow) {
     handednessRow,
     densityRow,
     opacityRow,
+    visibilityRow,
     actions,
     status,
   ]];
@@ -277,6 +299,7 @@ typedef NS_ENUM(NSUInteger, AirfixTouchSettingsRow) {
   _focusRows[AirfixTouchSettingsRowHandedness] = handednessRow;
   _focusRows[AirfixTouchSettingsRowDensity] = densityRow;
   _focusRows[AirfixTouchSettingsRowOpacity] = opacityRow;
+  _focusRows[AirfixTouchSettingsRowVisibility] = visibilityRow;
   _focusRows[AirfixTouchSettingsRowReset] = reset;
   _focusRows[AirfixTouchSettingsRowSave] = save;
   _focusRows[AirfixTouchSettingsRowClose] = close;
@@ -310,6 +333,14 @@ typedef NS_ENUM(NSUInteger, AirfixTouchSettingsRow) {
   [self refreshControls];
 }
 
+- (void)visibilityChanged:(UISegmentedControl *)sender {
+  _draft.visibilityMode =
+      sender.selectedSegmentIndex == 1
+          ? airfix::input::TouchControlsVisibilityMode::alwaysVisible
+          : airfix::input::TouchControlsVisibilityMode::automaticControllerHide;
+  [self refreshControls];
+}
+
 - (void)refreshControls {
   self.handednessControl.selectedSegmentIndex =
       _draft.layout.handedness ==
@@ -322,6 +353,11 @@ typedef NS_ENUM(NSUInteger, AirfixTouchSettingsRow) {
   self.opacitySlider.value = _draft.restingOpacityPercent;
   self.opacityValueLabel.text =
       [NSString stringWithFormat:@"%u%%", _draft.restingOpacityPercent];
+  self.visibilityControl.selectedSegmentIndex =
+      _draft.visibilityMode ==
+              airfix::input::TouchControlsVisibilityMode::alwaysVisible
+          ? 1
+          : 0;
   AirfixTouchControlsPreferencesCoordinator *coordinator = _coordinator;
   const BOOL available = coordinator != nil &&
                          coordinator.persistenceAvailable &&
@@ -431,6 +467,10 @@ typedef NS_ENUM(NSUInteger, AirfixTouchSettingsRow) {
     self.opacitySlider.value += direction < 0 ? -kOpacityStep : kOpacityStep;
     [self opacityChanged:self.opacitySlider];
     break;
+  case AirfixTouchSettingsRowVisibility:
+    self.visibilityControl.selectedSegmentIndex = direction < 0 ? 0 : 1;
+    [self visibilityChanged:self.visibilityControl];
+    break;
   case AirfixTouchSettingsRowReset:
   case AirfixTouchSettingsRowSave:
   case AirfixTouchSettingsRowClose:
@@ -443,6 +483,7 @@ typedef NS_ENUM(NSUInteger, AirfixTouchSettingsRow) {
   switch (_selectedRow) {
   case AirfixTouchSettingsRowHandedness:
   case AirfixTouchSettingsRowDensity:
+  case AirfixTouchSettingsRowVisibility:
     [self adjustSelectedValue:1];
     break;
   case AirfixTouchSettingsRowOpacity:

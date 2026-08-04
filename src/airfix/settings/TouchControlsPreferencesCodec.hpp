@@ -62,14 +62,29 @@ struct OpaqueFutureTouchControlsPreferencesRecord final {
              const OpaqueFutureTouchControlsPreferencesRecord &) = default;
 };
 
+struct DecodedCurrentTouchControlsPreferencesRecord final {
+  input::TouchControlsPreferencesRecord record;
+  std::uint32_t sourceSchemaVersion{};
+
+  [[nodiscard]] constexpr bool migrated() const noexcept {
+    return sourceSchemaVersion !=
+           input::touchControlsPreferencesRecordSchemaVersion;
+  }
+
+  [[nodiscard]] friend constexpr bool operator==(
+      const DecodedCurrentTouchControlsPreferencesRecord &,
+      const DecodedCurrentTouchControlsPreferencesRecord &) noexcept = default;
+};
+
 using DecodedTouchControlsPreferencesDocument =
-    std::variant<input::TouchControlsPreferencesRecord,
+    std::variant<DecodedCurrentTouchControlsPreferencesRecord,
                  OpaqueFutureTouchControlsPreferencesRecord>;
 
 // AFTC is a bounded canonical little-endian envelope. The digest covers the
 // prefix and every field byte, excluding only the digest slot. Current fields
-// are mandatory, unique, one byte wide, and strictly ordered. An intact future
-// schema is retained byte-for-byte so older builds cannot downgrade it.
+// are mandatory, unique, one byte wide, and strictly ordered. Schema 1 is
+// migrated in memory to schema 2 with automatic controller hiding. An intact
+// future schema is retained byte-for-byte so older builds cannot downgrade it.
 [[nodiscard]] DecodedTouchControlsPreferencesDocument
 decodeTouchControlsPreferencesDocument(
     std::span<const std::uint8_t> bytes,

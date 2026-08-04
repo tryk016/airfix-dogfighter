@@ -168,6 +168,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
 - (void)startInputCoordinatorIfReady;
 - (void)refreshPausedMissionReadiness;
 - (void)resumeGameplay;
+- (void)refreshTouchControlsVisibility;
 - (void)updateDiagnosticsLabelWithInputDiagnostics:
     (AirfixInputDiagnostics *)diagnostics;
 - (void)handleAudioForcedPause:(airfix::ios::AirfixIOSAudioPauseReason)reason;
@@ -620,6 +621,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
                       repairRequired:repairRequired];
         strongSelf.touchControlsSettingsButton.enabled =
             strongSelf.touchControlsPreferencesCoordinator != nil;
+        [strongSelf refreshTouchControlsVisibility];
       }];
 }
 
@@ -1050,8 +1052,35 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
 
   _audioBackend->setActive(true);
   self.resumeButton.hidden = YES;
-  self.touchControlsView.hidden = NO;
+  [self refreshTouchControlsVisibility];
   self.statusLabel.text = @"Airfix Dogfighter reconstruction\nGameplay running";
+}
+
+- (void)refreshTouchControlsVisibility {
+  NSAssert(NSThread.isMainThread, @"Touch-control visibility belongs to main");
+  AirfixTouchControlsView *view = self.touchControlsView;
+  AirfixTouchControlsPreferencesCoordinator *preferencesCoordinator =
+      self.touchControlsPreferencesCoordinator;
+  if (view == nil || preferencesCoordinator == nil) {
+    view.hidden = YES;
+    return;
+  }
+
+  const BOOL gameplayActive =
+      _session.lifecycleState() == airfix::runtime::LifecycleState::running &&
+      _session.contentState() == airfix::runtime::ContentState::ready &&
+      ![self isSettingsPanelOpen] && self.inputPipelineReady &&
+      self.simulationPipelineReady && self.inputCoordinator.isOperational &&
+      self.renderer.missionWorldRoomInstalled && !((MTKView *)self.view).paused;
+  const auto decision = airfix::input::resolveTouchControlsVisibility(
+      [preferencesCoordinator activePreferences], {
+        .gameplayActive = static_cast<bool>(gameplayActive),
+        .controllerConnected = static_cast<bool>(
+            self.inputCoordinator.controllerState.isConnected),
+      });
+  view.hidden =
+      !decision.has_value() ||
+      *decision != airfix::input::TouchControlsVisibilityDecision::visible;
 }
 
 - (void)renderSettingsPanelViewControllerDidFinish:
@@ -1581,6 +1610,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
     return;
   }
   (void)state;
+  [self refreshTouchControlsVisibility];
 }
 
 - (void)inputCoordinator:(AirfixIOSInputCoordinator *)coordinator
