@@ -1,7 +1,8 @@
 # ADR-0002: Semantic actions with touch and controller adapters
 
 **Status:** Accepted; portable router, controller-profile core, native startup
-installation seams, and touch-layout geometry/profile V1 implemented
+installation seams, touch-layout geometry/profile V1, and private durable touch
+preferences V1 implemented
 
 **Date:** 2026-07-21
 
@@ -40,18 +41,23 @@ a forced compact density, and mirrors geometry (but never semantic action IDs)
 for left-handed play. A profile or safe-area change first cancels active touches
 so a finger cannot retain ownership of a control that moved underneath it.
 
-This first profile is an in-memory geometry contract, not durable user settings.
-Visibility, opacity, free placement, serialization/migration, menu ownership,
-and safe recovery controls remain separate follow-up work.
+Persist the selected V1 handedness and density plus a bounded resting-opacity
+percentage in a separate private
+[`touch-controls.aftc`](../formats/AFTC.md) document. AFTC uses the
+shared durable current/backup publication policy, rejects malformed current
+schemas, preserves intact future schemas without downgrade, and defaults safely
+when absent. The iOS pause surface owns a recovery-safe editor; a successful
+change is durable before it is applied to the active overlay. Visibility,
+automatic controller-driven hiding, and free placement remain later policies.
 
 The default visual language uses a vertical aircraft throttle with a broad
 horizontal handle and translucent, dark-backed controls with persistent accent
 borders. Resting controls leave the scene readable; touch/held state raises
 fill and border emphasis without moving the capture rectangle. Text receives a
 dark shadow because scene luminance is uncontrolled. Do not use full-screen
-blur or make color the only state signal. A future opacity preference must be
-bounded by an accessibility-safe minimum and must not shrink the independent
-44-point capture targets.
+blur or make color the only state signal. The V1 `50-100%` overlay-strength
+preference scales resting background fills only. It never reduces text, accent
+borders, active-state emphasis, or the independent 44-point capture targets.
 
 ## Options considered
 
@@ -117,6 +123,10 @@ context and remapping, and cannot express an absolute touch throttle cleanly.
   capture, and accessibility projection.
 - Changing handedness or density is a main-thread transaction that releases all
   active touch ownership before relayout. Mirroring never changes action IDs.
+- An opacity-only publication does not move capture rectangles or release
+  control ownership. A combined snapshot is validated and applied coherently.
+- AFTC is private app state, not an original game resource, and must never carry
+  host paths, device identities, or controller metadata.
 - Controller prompts require a last-active-source service.
 - Lifecycle transitions and device loss are part of input correctness, not app
   shell edge cases.
@@ -150,5 +160,7 @@ context and remapping, and cannot express an absolute touch throttle cleanly.
    pair; an input context enum is not authorization.
 7. [ ] Validate whether an Apple bridge is required for haptics/glyph metadata.
 8. [ ] Run phone/tablet/controller usability and lifecycle tests.
-9. [ ] Add a private durable touch-layout/visibility document, migration,
-   settings UI, opacity/visibility policy, and recovery-safe layout editing.
+9. [x] Add the private durable AFTC document, recovery-safe handedness/density
+   editor, and bounded resting-opacity policy.
+10. [ ] Add recovery-safe visibility/automatic controller-hide policy and free
+    placement only after last-active-source and recovery input are proven.

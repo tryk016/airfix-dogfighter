@@ -2,7 +2,7 @@
 
 #import <QuartzCore/QuartzCore.h>
 
-#include "airfix/input/TouchControlsLayout.hpp"
+#include "airfix/input/TouchControlsPreferences.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -109,6 +109,12 @@ typedef NS_ENUM(NSInteger, AirfixAccessibilityControl) {
 
 [[nodiscard]] UIColor *secondaryAccentColor(const CGFloat alpha) {
   return [UIColor colorWithRed:1.0 green:0.76 blue:0.20 alpha:alpha];
+}
+
+[[nodiscard]] CGFloat
+scaledRestingAlpha(const CGFloat base,
+                   const std::uint8_t opacityPercent) noexcept {
+  return base * static_cast<CGFloat>(opacityPercent) / 100.0;
 }
 
 [[nodiscard]] NSString *buttonTitle(const AirfixTouchButton button) {
@@ -259,6 +265,7 @@ elementForButton(const AirfixTouchButton button) noexcept {
   NSUInteger _axisGeneration;
 
   airfix::input::TouchControlsLayoutProfile _layoutProfile;
+  std::uint8_t _restingOpacityPercent;
 
   NSArray<AirfixTouchAccessibilityElement *> *_controlAccessibilityElements;
 }
@@ -571,6 +578,29 @@ elementForButton(const AirfixTouchButton button) noexcept {
   [self setNeedsLayout];
 }
 
+- (BOOL)applyPreferences:
+    (const airfix::input::TouchControlsPreferences &)preferences {
+  NSAssert(NSThread.isMainThread,
+           @"Touch-control preferences must change on the main thread");
+  if (!NSThread.isMainThread ||
+      airfix::input::validateTouchControlsPreferences(preferences)
+          .has_value()) {
+    return NO;
+  }
+
+  const BOOL layoutChanged = _layoutProfile != preferences.layout;
+  if (layoutChanged) {
+    [self cancelAllTouches];
+  }
+  _layoutProfile = preferences.layout;
+  _restingOpacityPercent = preferences.restingOpacityPercent;
+  if (layoutChanged) {
+    [self setNeedsLayout];
+  }
+  [self updateVisualState];
+  return YES;
+}
+
 - (void)configureTouchControls {
   self.backgroundColor = UIColor.clearColor;
   self.opaque = NO;
@@ -578,6 +608,8 @@ elementForButton(const AirfixTouchButton button) noexcept {
   self.isAccessibilityElement = NO;
 
   _layoutProfile = {};
+  _restingOpacityPercent =
+      airfix::input::defaultTouchControlsRestingOpacityPercent;
 
   _stickBaseView = [[UIView alloc] initWithFrame:CGRectZero];
   _stickHorizontalGuideView = [[UIView alloc] initWithFrame:CGRectZero];
@@ -1782,11 +1814,15 @@ elementForButton(const AirfixTouchButton button) noexcept {
   const BOOL stickActive =
       _stickTouch != nil || _bankValue != 0 || _pitchValue != 0;
   _stickBaseView.backgroundColor =
-      stickActive ? panelColor(0.72) : panelColor(0.48);
+      stickActive
+          ? panelColor(0.72)
+          : panelColor(scaledRestingAlpha(0.48, _restingOpacityPercent));
   _stickBaseView.layer.borderColor =
       flightAccentColor(stickActive ? 1.0 : 0.78).CGColor;
   _stickKnobView.backgroundColor =
-      stickActive ? flightAccentColor(0.92) : panelColor(0.76);
+      stickActive
+          ? flightAccentColor(0.92)
+          : panelColor(scaledRestingAlpha(0.76, _restingOpacityPercent));
 
   CGFloat horizontal =
       static_cast<CGFloat>(_bankValue) / static_cast<CGFloat>(kQ15Maximum);
@@ -1818,14 +1854,19 @@ elementForButton(const AirfixTouchButton button) noexcept {
                                    inset - thumbCenterY));
   }
   _throttleTrackView.backgroundColor =
-      _throttleTouch != nil ? panelColor(0.78) : panelColor(0.52);
+      _throttleTouch != nil
+          ? panelColor(0.78)
+          : panelColor(scaledRestingAlpha(0.52, _restingOpacityPercent));
   _throttleThumbView.backgroundColor =
-      _throttleTouch != nil ? flightAccentColor(0.94) : panelColor(0.84);
+      _throttleTouch != nil
+          ? flightAccentColor(0.94)
+          : panelColor(scaledRestingAlpha(0.84, _restingOpacityPercent));
 
   const BOOL lookActive =
       _lookTouch != nil || _lookXValue != 0 || _lookYValue != 0;
   _lookRegionView.backgroundColor =
-      lookActive ? panelColor(0.28) : panelColor(0.12);
+      lookActive ? panelColor(0.28)
+                 : panelColor(scaledRestingAlpha(0.12, _restingOpacityPercent));
   _lookRegionView.layer.borderColor =
       flightAccentColor(lookActive ? 0.66 : 0.20).CGColor;
 
@@ -1835,13 +1876,22 @@ elementForButton(const AirfixTouchButton button) noexcept {
         _buttonPressed[index] ||
         (button == AirfixTouchButtonWeaponNext && _weaponGestureActive);
     UIColor *accent = flightAccentColor(active ? 0.96 : 0.76);
-    UIColor *resting = panelColor(0.52);
+    UIColor *resting =
+        panelColor(scaledRestingAlpha(0.52, _restingOpacityPercent));
     if (button == AirfixTouchButtonPrimaryFire) {
       accent = fireAccentColor(active ? 1.0 : 0.82);
-      resting = [UIColor colorWithRed:0.20 green:0.065 blue:0.035 alpha:0.56];
+      resting = [UIColor
+          colorWithRed:0.20
+                 green:0.065
+                  blue:0.035
+                 alpha:scaledRestingAlpha(0.56, _restingOpacityPercent)];
     } else if (button == AirfixTouchButtonSecondaryFire) {
       accent = secondaryAccentColor(active ? 1.0 : 0.82);
-      resting = [UIColor colorWithRed:0.20 green:0.13 blue:0.025 alpha:0.56];
+      resting = [UIColor
+          colorWithRed:0.20
+                 green:0.13
+                  blue:0.025
+                 alpha:scaledRestingAlpha(0.56, _restingOpacityPercent)];
     }
     _buttonViews[index].backgroundColor = active ? accent : resting;
     _buttonViews[index].layer.borderColor =

@@ -2,9 +2,10 @@
 
 **Status:** portable core, controller-profile V1, safe native startup seams,
 native gameplay transport, Windows/iOS calibration/remap/save UI, bounded
-binding remapping, and touch-layout geometry/profile V1 implemented; durable
-touch visibility/layout settings, live replacement, Windows UI Automation,
-haptics, glyphs, and device acceptance pending
+binding remapping, touch-layout geometry/profile V1, and private durable iOS
+touch layout/opacity settings implemented; touch visibility, live controller
+profile replacement, Windows UI Automation acceptance, haptics, glyphs, and
+device acceptance pending
 
 **Priority:** P0 for the Windows x64 and iOS vertical slices
 
@@ -250,9 +251,16 @@ short or narrow safe areas. Callers may force compact density or select a
 left-handed layout that mirrors every rectangle inside the same offset safe
 area without changing any semantic action identifier. Unsupported schemas,
 forged enum values, non-finite rectangles, and empty safe bounds fail closed.
-Every profile change cancels active touches before UIKit publishes new frames.
-This is the tested layout foundation only: the application does not yet persist
-the selection or expose visibility, opacity, free placement, or an editor.
+Every geometry profile change cancels active touches before UIKit publishes new
+frames. The separate [AFTC V1 preference](../formats/AFTC.md) stores
+handedness, automatic/compact density, and resting overlay strength in the
+private Application Support
+settings leaf. The strength range is `50-100%`; it scales only resting
+background fills, leaving labels, accent borders, active feedback, and capture
+geometry unchanged. An opacity-only update therefore retains active ownership.
+The native editor saves durably before publishing one coherent preference
+snapshot. Visibility, automatic controller-driven hiding, and free placement
+are not yet exposed.
 
 The current overlay deliberately uses a vertical throttle rail with a broad
 horizontal handle. Stick, throttle, look region, and buttons use translucent
@@ -260,8 +268,6 @@ dark fills plus stable accent borders; active controls increase fill/border
 emphasis and keep their capture geometry fixed. Labels retain a dark shadow for
 readability over bright and dark rooms. This gives the requested unobtrusive
 game-overlay appearance without a blur pass or a full-screen translucent layer.
-User-adjustable opacity remains a later persisted setting with an enforced
-legibility floor.
 
 `AirfixGameControllerAdapter` assigns one extended controller and maps both
 sticks, both triggers, all four D-pad directions, shoulders, face buttons, optional
@@ -288,8 +294,10 @@ excluded from neutral-gate blocking and is restored only after the required two
 safe ticks. Foreground activation and room publication never resume gameplay;
 the player must explicitly use pause/menu.
 
-The iOS pause surface now offers Display settings and Controller settings as
-separate controller-selectable panels. The safe-area controller flow edits all
+The iOS pause surface now offers Display settings, Controller settings, and
+Touch controls as separate controller-selectable panels. The touch panel edits
+handedness, automatic/compact density, and overlay strength by touch or
+controller while gameplay remains paused. The safe-area controller flow edits all
 four standardized stick axes, exposes per-axis inner deadzone, outer
 saturation, sensitivity, linear/squared/cubic response, inversion and reset,
 and refreshes a value-only raw/adjusted Q15 preview at 15 Hz. It also lists the
@@ -307,10 +315,10 @@ path, checksum, controller identity, GUID or Bluetooth address. Settings panels
 remain in the validated menu context, so a valid custom profile need not
 contain modal/control-editor bindings.
 
-This completes calibration/remap/save transport and the deterministic touch
-geometry foundation, not control-system acceptance. Durable touch
-layout/visibility settings, prompt glyphs, haptics, finished touch/controller
-menus, and physical validation of
+This completes calibration/remap/save transport, deterministic touch geometry,
+and private layout/opacity persistence, not control-system acceptance. Touch
+visibility/automatic hide policy, prompt glyphs, haptics, finished
+touch/controller menus, and physical validation of
 Application Support protection, save/force-quit/relaunch and lifecycle recovery
 on both target iPhones remain pending.
 

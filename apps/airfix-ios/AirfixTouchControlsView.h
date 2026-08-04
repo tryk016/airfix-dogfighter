@@ -2,6 +2,10 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+#include "airfix/input/TouchControlsPreferences.hpp"
+#endif
+
 NS_ASSUME_NONNULL_BEGIN
 
 typedef NS_ENUM(NSInteger, AirfixTouchAxis) {
@@ -60,6 +64,14 @@ typedef NS_ENUM(NSInteger, AirfixTouchControlsDensity) {
 // mirrors geometry only; it never swaps input action identifiers.
 @property(nonatomic) AirfixTouchControlsHandedness layoutHandedness;
 @property(nonatomic) AirfixTouchControlsDensity layoutDensity;
+
+#ifdef __cplusplus
+// Applies one validated preference snapshot atomically on main. A geometry
+// change first neutralizes every held control; opacity-only changes leave
+// ownership and capture geometry intact.
+- (BOOL)applyPreferences:
+    (const airfix::input::TouchControlsPreferences &)preferences;
+#endif
 
 // Main-thread only. Releases every captured/accessible held control and
 // publishes neutral stick, camera-look, throttle-delta, and button state. The

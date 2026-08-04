@@ -1407,9 +1407,12 @@
    prepares a fresh pair. The platform-neutral touch-layout geometry/profile V1
    now preserves the default UIKit layout, supports automatic/forced compact
    density and semantic-preserving left-handed mirroring, and cancels active
-   touches before relayout. Next add its private durable settings document,
-   visibility/opacity policy and recovery-safe editor, followed by controller
-   glyphs, haptics, and finished menu bindings before touch-only and
+   touches before relayout. Its separate private AFTC V1 document and
+   recovery-safe iOS editor now persist handedness, density, and a `50-100%`
+   resting-background strength without dimming labels/borders or resizing
+   capture targets. Next add a recovery-safe
+   visibility/automatic-controller-hide policy, followed by controller glyphs,
+   haptics, and finished menu bindings before touch-only and
    controller-only acceptance on both target iPhones. Never mutate
    position-indexed active router state in place or accept a live caller's
    unauthenticated mission claim.
@@ -1480,6 +1483,14 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- Private touch preferences V1 add the strict bounded AFTC codec, shared
+  current/backup durable store, future-schema downgrade protection, and an iOS
+  pause panel for handedness, automatic/compact density, and `50-100%` resting
+  overlay strength. Publication saves first and then atomically applies the
+  validated snapshot; geometry changes neutralize held controls, while
+  opacity-only changes preserve capture ownership. Synthetic semantic, codec,
+  corruption, recovery, repair, and store tests pass locally; hosted iOS
+  Objective-C++ builds remain the native publication gate.
 - The touch-layout geometry/profile V1 adds a platform-neutral C++20 safe-area
   model, automatic/forced compact density, semantic-preserving left-handed
   mirroring, enlarged capture geometry for the broad throttle handle, and

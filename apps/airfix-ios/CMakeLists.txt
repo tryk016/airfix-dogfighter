@@ -94,6 +94,8 @@ add_executable(airfix_ios MACOSX_BUNDLE
     AirfixIOSRenderSettingsStore.mm
     AirfixIOSSettingsStoreSupport.hpp
     AirfixIOSSettingsStoreSupport.mm
+    AirfixIOSTouchControlsPreferencesStore.h
+    AirfixIOSTouchControlsPreferencesStore.mm
     AirfixMetalRenderer.h
     AirfixMetalRenderer.mm
     AirfixRenderSettingsCoordinator.h
@@ -103,6 +105,10 @@ add_executable(airfix_ios MACOSX_BUNDLE
     AirfixShaders.metal
     AirfixTouchControlsView.h
     AirfixTouchControlsView.mm
+    AirfixTouchControlsPreferencesCoordinator.h
+    AirfixTouchControlsPreferencesCoordinator.mm
+    AirfixTouchControlsSettingsPanelViewController.h
+    AirfixTouchControlsSettingsPanelViewController.mm
 )
 
 configure_file(
