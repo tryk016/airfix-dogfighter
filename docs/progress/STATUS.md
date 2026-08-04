@@ -215,21 +215,26 @@
   enforces exact IHDR/dimensions, CRC/decode, straight-alpha metadata,
   base/mip-zero identity, fixed redacted failures, and checked encoded/in-flight/
   decoded CPU budgets. Only the base is cryptographically authenticated by the
-  current schema; non-zero mips are labelled structural-only. Cache
-  publication, settings, native upload, and Enhanced product mode remain
-  unimplemented. The
+  current schema; non-zero mips are labelled structural-only. Windows now also
+  has bounded D3D11 publication/cache and a private acceptance pass. AFRS
+  schema 4 persists the requested texture mode, schema 1-3 migrate to Classic,
+  and a separate path-free runtime state resolves package availability,
+  effective mode, fallback, and reload requirements. Generic native UI,
+  in-process mission reload, Metal upload, and streaming remain unimplemented.
+  The
   repository-boundary scanner and synthetic regression suite continue to
   reject private texture roots, raster/GPU texture formats, JSONL/NDJSON
   manifests and backups, and common archives, while the entire owner-local tree
   is ignored at repository root.
 - ADR-0014 defines one cross-platform render-presentation settings transaction.
   Its portable C++20 foundation is implemented: render scale, Hor+/Original
-  4:3, safe FOV, UI scale, diagnostics, and the Classic/Enhanced selector form
-  one validated snapshot; sparse overrides reject atomically; a deterministic
-  delta identifies target/layout/UI/overlay/profile work; and a versioned
-  semantic schema-3 record migrates schema 1 to exact zero FOV plus 100% UI
-  scale, migrates schema 2 to exact 100% UI scale, and fails closed on future
-  schemas or malformed values. A second portable
+  4:3, safe FOV, UI scale, diagnostics, visual profile, and requested texture
+  mode form one validated snapshot; sparse overrides reject atomically; a
+  deterministic delta identifies target/layout/UI/overlay/profile/texture
+  request work; and a versioned semantic schema-4 record migrates schema 1 to
+  exact zero FOV plus 100% UI scale and Classic textures, schema 2 to exact
+  100% UI scale and Classic textures, and schema 3 to Classic textures. It
+  fails closed on future schemas or malformed values. A second portable
   layer now prepares immutable active/candidate states against exact
   view/device/extent/generation stamps, validates stale candidates, owns an
   optional copyable target lease, and supplies bounded 0, 1, 2, 4, ...,
@@ -1440,9 +1445,12 @@
     explicit private root/mode arguments, reload-only activation, D3D11 RGBA8
     upload, exact per-texture fallback, and a 512-entry/256 MiB generation-aware
     cache. Private 1920x1080 acceptance loaded all 34 mission textures through
-    Enhanced with no fallback. Next add a persistent requested/effective model
-    and iOS pilot only after review; do not add private resources to CMake/CI or
-    begin streaming/compressed derivatives yet.
+    Enhanced with no fallback. The portable requested/effective model and AFRS
+    schema-4 persistence are now complete, and Windows startup resolves the
+    durable preference against a session-local package locator with safe
+    Classic fallback. Next add generic native UI and an atomic in-process
+    mission reload, then begin the iOS owner-import/Metal pilot; do not add
+    private resources to CMake/CI or begin streaming/compressed derivatives.
 
 ## Open questions
 
@@ -1454,6 +1462,17 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The durable texture-mode slice passes a clean MSVC 19.51/Ninja Windows
+  product build and all 168/168 CTests, including D3D11/XAudio2 product smokes.
+  Its synthetic coverage includes AFRS schema-1/2/3 migration, schema-4 golden
+  bytes and Enhanced round-trip, forged state rejection, requested/effective
+  fallback, reload policy, and persisted-preference command-line composition.
+  A clean GNU 15.2/Ninja portable build completes all 492 edges and passes
+  153/153 CTests. Public-boundary regressions and the 813-file scan,
+  documentation integrity (119 experiments/408 catalogue rows), 12/12 Rizin
+  normalization, CI-classifier
+  tests, and `git diff --check` pass. Hosted Linux/macOS/Windows, clangd, and
+  unsigned iOS are the remaining publication gates for this branch.
 - The Windows session-only HD texture pilot passes its synthetic parser,
   package, resolver, loader/publication, CLI, and D3D11 cache tests. The public
   manifest parser now follows the schema-valid `mixed` representative-category

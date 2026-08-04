@@ -52,7 +52,9 @@ struct RenderPresentationSettingsMenuApplyTicket final {
 // The model deliberately knows nothing about UIKit, persistence formats,
 // renderer resources, or private texture content. VisualProfile::enhanced is
 // the existing presentation-policy preview selector; it is not an HD-texture
-// availability signal.
+// availability signal. A requested TextureMode is retained byte-for-field but
+// deliberately has no editor until a product coordinator owns the required
+// atomic mission reload.
 class RenderPresentationSettingsMenuModel final {
 public:
   // Invalid applied settings fail closed and do not create a model.

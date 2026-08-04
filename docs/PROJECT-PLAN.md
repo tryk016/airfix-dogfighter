@@ -396,8 +396,10 @@ Hor+, Original 4:3 layout math, safe-area/UI fitting, input transforms, and the
 required aspect-ratio tests are implemented. The shared `0..25` degree
 vertical-FOV increase is now a durable setting on Windows and iOS; it expands
 only the logical projection and composes with recovered camera FOV. A separate
-75-150% native UI-content scale now persists in AFRS schema 3, migrates schema
-1/2 to exact 100%, and changes neither the root safe-area transform nor scene
+75-150% native UI-content scale now persists in AFRS. Semantic schema 4 also
+stores the independent requested texture mode; schema 1/2 migrate to exact
+100% UI scale and Classic textures, while schema 3 migrates to Classic
+textures. Neither setting changes the root safe-area transform nor scene
 targets/projection.
 The recovered world-to-reference-screen projection now composes with that
 layout through one allocation-free native-output bridge. It validates the

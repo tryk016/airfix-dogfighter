@@ -47,11 +47,11 @@ void testEmptyAndSmokeModes() {
               !defaultOptions.useInstalledContent &&
               !defaultOptions.manageInstalledContent &&
               !defaultOptions.importAfPackSource && !defaultOptions.mission &&
-              defaultOptions.textureMode == TextureMode::classic &&
               !defaultOptions.texturePack && !defaultOptions.captureSize &&
               !defaultOptions.renderOverrides.renderScalePercent &&
               !defaultOptions.renderOverrides.scenePresentation &&
               !defaultOptions.renderOverrides.visualProfile &&
+              !defaultOptions.renderOverrides.textureMode &&
               !defaultOptions.renderOverrides.diagnosticsOverlayEnabled &&
               !defaultOptions.renderOverrides.verticalFovAdjustmentDegrees &&
               !defaultOptions.captureDiagnosticFrameOutput &&
@@ -93,7 +93,8 @@ void testTexturePackSessionOptions() {
       "manifests/reviewed.jsonl"sv,
   };
   const auto enhancedOptions = parse(enhanced);
-  require(enhancedOptions.textureMode == TextureMode::enhanced &&
+  require(enhancedOptions.renderOverrides.textureMode ==
+                  TextureMode::enhanced &&
               enhancedOptions.texturePack.has_value() &&
               enhancedOptions.texturePack->root ==
                   std::filesystem::path("owner-textures") &&
@@ -106,9 +107,25 @@ void testTexturePackSessionOptions() {
       "mission.level"sv,       "--texture-mode"sv, "classic"sv,
   };
   const auto classicOptions = parse(classic);
-  require(classicOptions.textureMode == TextureMode::classic &&
+  require(classicOptions.renderOverrides.textureMode == TextureMode::classic &&
               !classicOptions.texturePack,
           "explicit Classic texture mode was not retained");
+
+  const std::array persistedEnhancedLocator{
+      "--installed-content"sv,
+      "--setup"sv,
+      "mission.afs"sv,
+      "--level"sv,
+      "mission.level"sv,
+      "--texture-pack-root"sv,
+      "owner-textures"sv,
+      "--texture-pack-manifest"sv,
+      "manifests/reviewed.jsonl"sv,
+  };
+  const auto persistedOptions = parse(persistedEnhancedLocator);
+  require(!persistedOptions.renderOverrides.textureMode.has_value() &&
+              persistedOptions.texturePack.has_value(),
+          "package locator could not serve a persisted Enhanced request");
 }
 
 void testPresentationOptions() {

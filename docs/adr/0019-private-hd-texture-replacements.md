@@ -57,10 +57,12 @@ manifest record.
 
 The project supports an optional, owner-configured HD replacement package
 through a portable `TextureReplacementResolver`, with implementation kept
-deliberately staged. Public stages 1-5 and the Windows session-only stage-6
-pilot are implemented. The pilot has no persistent selector and does not make
-Enhanced a cross-platform product claim. This ADR does not merge the pipeline
-branch or add the private package to a build, bundle, Git, or CI.
+deliberately staged. Public stages 1-6 and the portable portion of stage 7 are
+implemented. AFRS now persists the requested mode and Windows resolves it
+against session-local package availability, but generic native UI, atomic
+in-process mission reload, and the Metal pilot remain later work. This does not
+make Enhanced a cross-platform product claim. This ADR does not merge the
+pipeline branch or add the private package to a build, bundle, Git, or CI.
 
 ### Independent setting and effective state
 
@@ -106,18 +108,24 @@ prepared before publication; failure preserves the old room and old effective
 mode. A later cache may reduce reload work, but it must not turn mode changes
 into partial in-place mutation.
 
-The implemented Windows pilot is intentionally narrower: Classic is the
-default, `--texture-mode enhanced` is valid only with an explicit private root
-and relative reviewed-manifest path, and the choice lasts for one process. A
-package-open failure starts the requested mission in Classic with a fixed,
-path-free status. Changing the mode means restarting/reloading the mission.
-Nothing is persisted and iOS remains Classic-only.
+The implemented Windows product remains deliberately bounded. Classic is the
+default. AFRS persists only the requested mode; an explicit `--texture-mode`
+is a session override and is never written back. The private root and relative
+reviewed-manifest path remain explicit session-local configuration and are
+never stored in AFRS. A locator may accompany a persisted Enhanced preference
+without repeating the mode override. Package-open failure starts the requested
+mission in Classic with a fixed, path-free status. Changing the requested mode
+does not mutate the active snapshot and requires restarting/reloading the
+mission. iOS remains Classic-only.
 
-When implemented, `RenderPresentationSettings` gains `TextureMode` through an
-explicit schema migration. Existing schema-1/2/3 records migrate to Classic.
-A future-schema record remains opaque and downgrade-protected. The configured
+`RenderPresentationSettings` now carries the requested `TextureMode` through
+AFRS semantic schema 4. Existing schema-1/2/3 records migrate to Classic. A
+future-schema record remains opaque and downgrade-protected. The configured
 private package root is platform-local content configuration, not a field in
-the portable presentation record.
+the portable presentation record. `TextureModeRuntimeState` independently
+resolves requested mode, coarse package availability, effective mode, Classic
+fallback, and whether an already active mission snapshot requires reload; it
+rejects forged enums and impossible Classic/Enhanced active-state pairs.
 
 ### Package configuration and ownership
 
@@ -539,9 +547,11 @@ the renderer, and gives both backends one fallback and cache vocabulary.
    `--texture-mode enhanced`, D3D11 RGBA8 uploads, an initial bounded cache, and
    private capture comparison. A mission reload remains mandatory. No
    persistent UI claim yet.
-7. **Persistent cross-platform setting.** Migrate the presentation record,
-   add requested/effective availability state, generic UI copy, and atomic
-   mode-switch reload. Missing packages recover to Classic.
+7. **Persistent cross-platform setting.** The schema-4 durable request,
+   schema-1/2/3 Classic migration, requested/effective availability state, and
+   Windows startup resolution are implemented. Generic native UI copy and the
+   atomic in-process mode-switch reload remain; missing packages already
+   recover to Classic without mutating the active mission.
 8. **Metal pilot and device budgets.** Add owner-imported Application Support
    storage, Metal RGBA8 uploads under the existing aggregate ledger, then
    profile iPhone SE 3 and iPhone 17 Pro Max before choosing quality caps.
@@ -674,7 +684,9 @@ The following remain outside Git and public CI:
 10. [x] Run the Windows session-only RGBA8 pilot and private visual comparison.
         A 1920x1080 authenticated mission loaded 34 Enhanced textures with no
         Classic fallback; the owner-local captures remain outside Git.
-11. [ ] Add persistence and iOS only after the portable fallback matrix is
-       complete and independently reviewed.
-12. [ ] Add streaming and compressed derivatives only after device budgets and
+11. [x] Add the portable persistent requested/effective state and schema-4
+        migration after the fallback matrix and Windows pilot review.
+12. [ ] Add generic native UI, atomic in-process mission reload, and the iOS
+        owner-import/Metal pilot.
+13. [ ] Add streaming and compressed derivatives only after device budgets and
         per-mip authentication are defined.

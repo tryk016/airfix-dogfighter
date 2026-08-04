@@ -67,8 +67,10 @@ IEEE-754 binary32 UI-scale percentage:
 
 - schema 1 migrates with safe FOV `0.0F` and UI scale `100.0F`;
 - schema 2 migrates with UI scale `100.0F`;
-- schema 3 is canonical; and
-- schema 4 and later remain opaque and block downgrade writes.
+- schema 3 is this ADR's canonical UI-scale record; and
+- ADR-0019 subsequently advances the current record to schema 4 with requested
+  texture mode, migrating schema 1-3 to Classic while schema 5 and later remain
+  opaque and block downgrade writes.
 
 The setting is durable on Windows and iOS. The settings panel previews its
 draft value immediately; Cancel restores the applied value, and Apply uses the

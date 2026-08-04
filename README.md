@@ -72,15 +72,18 @@ model and its safe application rules are defined by
 [ADR-0014](docs/adr/0014-render-presentation-settings.md).
 The independent, presentation-only FOV policy and schema migration are defined
 by [ADR-0016](docs/adr/0016-safe-fov-settings.md).
-The optional owner-local HD texture package now has a Windows session-only
-pilot. Classic remains the default; an explicit launch can validate a private
-reviewed manifest, resolve each authenticated GTI independently, upload a
-complete RGBA8 mip chain through D3D11, and use exact per-texture Classic
-fallback without aborting the mission. A bounded generation-aware cache avoids
-duplicate uploads. The package, manifest, images, configured paths, persistent
-selector, iOS integration, streaming, and compressed GPU derivatives remain
-outside the public repository or later stages. The staged contract is
-documented in
+The optional owner-local HD texture package now has a Windows pilot and a
+portable durable requested/effective-mode contract. Classic remains the safe
+default; AFRS schema 4 stores only the requested `TextureMode`, while package
+availability and the active mission's effective mode remain separate runtime
+state. Windows can validate an explicitly located private reviewed manifest,
+resolve each authenticated GTI independently, upload a complete RGBA8 mip
+chain through D3D11, and use exact per-texture Classic fallback without
+aborting the mission. Mode changes never mutate a running mission and require
+a controlled reload. A bounded generation-aware cache avoids duplicate
+uploads. Package paths, manifests, images, iOS integration, streaming, and
+compressed GPU derivatives remain outside the public repository or later
+stages. The staged contract is documented in
 [ADR-0019](docs/adr/0019-private-hd-texture-replacements.md).
 
 ## Current state

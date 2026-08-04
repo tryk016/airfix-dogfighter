@@ -39,12 +39,14 @@ settings(const float scale = 100.0F,
              ScenePresentationMode::widescreenHorPlus,
          const VisualProfile profile = VisualProfile::classic,
          const bool diagnostics = false,
-         const float verticalFovAdjustment = 0.0F,
-         const float uiScale = 100.0F) {
+         const float verticalFovAdjustment = 0.0F, const float uiScale = 100.0F,
+         const airfix::texture::TextureMode textureMode =
+             airfix::texture::TextureMode::classic) {
   return {
       .renderScalePercent = scale,
       .scenePresentation = presentation,
       .visualProfile = profile,
+      .textureMode = textureMode,
       .diagnosticsOverlayEnabled = diagnostics,
       .verticalFovAdjustmentDegrees = verticalFovAdjustment,
       .uiScalePercent = uiScale,
@@ -75,6 +77,10 @@ void testCreationAcceptsAllBoundaryCombinations() {
       VisualProfile::classic,
       VisualProfile::enhanced,
   };
+  constexpr airfix::texture::TextureMode textureModes[]{
+      airfix::texture::TextureMode::classic,
+      airfix::texture::TextureMode::enhanced,
+  };
   constexpr bool diagnosticStates[]{false, true};
   constexpr float fovAdjustments[]{0.0F, 25.0F};
   constexpr float uiScales[]{75.0F, 150.0F};
@@ -82,25 +88,28 @@ void testCreationAcceptsAllBoundaryCombinations() {
   for (const float scale : scales) {
     for (const auto presentation : presentations) {
       for (const auto profile : profiles) {
-        for (const bool diagnostics : diagnosticStates) {
-          for (const float fov : fovAdjustments) {
-            for (const float uiScale : uiScales) {
-              const auto applied =
-                  settings(scale, presentation, profile, diagnostics, fov,
-                           uiScale);
-              const auto created =
-                  RenderPresentationSettingsMenuModel::create(applied);
-              require(created.has_value(),
-                      "valid boundary combination was rejected");
-              require(created->appliedSettings() == applied &&
-                          created->draftSettings() == applied,
-                      "created snapshots differ from applied");
-              require(!created->dirty() &&
-                          created->delta() == RenderPresentationSettingsDelta{} &&
-                          !created->canApply() && created->canCancel() &&
-                          created->phase() ==
-                              RenderPresentationSettingsMenuPhase::idle,
-                      "created model is not clean and idle");
+        for (const auto textureMode : textureModes) {
+          for (const bool diagnostics : diagnosticStates) {
+            for (const float fov : fovAdjustments) {
+              for (const float uiScale : uiScales) {
+                const auto applied =
+                    settings(scale, presentation, profile, diagnostics, fov,
+                             uiScale, textureMode);
+                const auto created =
+                    RenderPresentationSettingsMenuModel::create(applied);
+                require(created.has_value(),
+                        "valid boundary combination was rejected");
+                require(created->appliedSettings() == applied &&
+                            created->draftSettings() == applied,
+                        "created snapshots differ from applied");
+                require(!created->dirty() &&
+                            created->delta() ==
+                                RenderPresentationSettingsDelta{} &&
+                            !created->canApply() && created->canCancel() &&
+                            created->phase() ==
+                                RenderPresentationSettingsMenuPhase::idle,
+                        "created model is not clean and idle");
+              }
             }
           }
         }
@@ -132,6 +141,11 @@ void testCreationRejectsEveryInvalidAppliedClass() {
   invalid.visualProfile = static_cast<VisualProfile>(0xFFU);
   require(!RenderPresentationSettingsMenuModel::create(invalid).has_value(),
           "forged profile created a model");
+
+  invalid = settings();
+  invalid.textureMode = static_cast<airfix::texture::TextureMode>(0xFFU);
+  require(!RenderPresentationSettingsMenuModel::create(invalid).has_value(),
+          "forged texture mode created a model");
 
   for (const float fov : {
            std::numeric_limits<float>::quiet_NaN(),
@@ -238,14 +252,12 @@ void testTypedEditsAreAtomicAndProduceExactDelta() {
 
   const auto invalidFov = menu.setVerticalFovAdjustmentDegrees(
       std::numeric_limits<float>::quiet_NaN());
-  require(
-      invalidFov.status ==
-              RenderPresentationSettingsMenuEditStatus::invalidSettings &&
-          invalidFov.issue.has_value() &&
-          invalidFov.issue->kind ==
-              RenderPresentationSettingsIssueKind::
-                  nonFiniteVerticalFovAdjustment,
-      "invalid vertical-FOV edit reported the wrong issue");
+  require(invalidFov.status ==
+                  RenderPresentationSettingsMenuEditStatus::invalidSettings &&
+              invalidFov.issue.has_value() &&
+              invalidFov.issue->kind == RenderPresentationSettingsIssueKind::
+                                            nonFiniteVerticalFovAdjustment,
+          "invalid vertical-FOV edit reported the wrong issue");
   require(menu.draftSettings() == beforeInvalid &&
               menu.delta() == beforeInvalidDelta,
           "invalid vertical-FOV edit partially mutated the model");
@@ -322,38 +334,30 @@ void testFovEditBoundariesAndInvalidClassesAreAtomic() {
   const InvalidFov invalidValues[]{
       {
           std::numeric_limits<float>::quiet_NaN(),
-          RenderPresentationSettingsIssueKind::
-              nonFiniteVerticalFovAdjustment,
+          RenderPresentationSettingsIssueKind::nonFiniteVerticalFovAdjustment,
       },
       {
           std::numeric_limits<float>::infinity(),
-          RenderPresentationSettingsIssueKind::
-              nonFiniteVerticalFovAdjustment,
+          RenderPresentationSettingsIssueKind::nonFiniteVerticalFovAdjustment,
       },
       {
           std::nextafter(0.0F, -1.0F),
-          RenderPresentationSettingsIssueKind::
-              verticalFovAdjustmentOutOfRange,
+          RenderPresentationSettingsIssueKind::verticalFovAdjustmentOutOfRange,
       },
       {
           std::nextafter(25.0F, std::numeric_limits<float>::infinity()),
-          RenderPresentationSettingsIssueKind::
-              verticalFovAdjustmentOutOfRange,
+          RenderPresentationSettingsIssueKind::verticalFovAdjustmentOutOfRange,
       },
   };
   for (const auto &invalid : invalidValues) {
     const auto before = menu.draftSettings();
     const auto beforeDelta = menu.delta();
-    const auto result =
-        menu.setVerticalFovAdjustmentDegrees(invalid.value);
-    require(
-        result.status ==
-                RenderPresentationSettingsMenuEditStatus::invalidSettings &&
-            result.issue.has_value() &&
-            result.issue->kind == invalid.issue,
-        "invalid vertical-FOV class reported the wrong result");
-    require(menu.draftSettings() == before &&
-                menu.delta() == beforeDelta,
+    const auto result = menu.setVerticalFovAdjustmentDegrees(invalid.value);
+    require(result.status ==
+                    RenderPresentationSettingsMenuEditStatus::invalidSettings &&
+                result.issue.has_value() && result.issue->kind == invalid.issue,
+            "invalid vertical-FOV class reported the wrong result");
+    require(menu.draftSettings() == before && menu.delta() == beforeDelta,
             "invalid vertical-FOV class partially mutated the model");
   }
 }
