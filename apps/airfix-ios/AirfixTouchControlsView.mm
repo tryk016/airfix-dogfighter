@@ -2,6 +2,8 @@
 
 #import <QuartzCore/QuartzCore.h>
 
+#include "airfix/input/TouchControlsLayout.hpp"
+
 #include <algorithm>
 #include <cmath>
 
@@ -137,21 +139,50 @@ typedef NS_ENUM(NSInteger, AirfixAccessibilityControl) {
   return @"";
 }
 
-[[nodiscard]] CGRect frameClampedToBounds(CGRect frame,
-                                          const CGRect bounds) noexcept {
-  if (CGRectIsEmpty(bounds) || CGRectIsNull(bounds)) {
-    return CGRectZero;
-  }
+[[nodiscard]] CGRect
+cgRect(const airfix::input::TouchControlRect &rect) noexcept {
+  return CGRectMake(static_cast<CGFloat>(rect.x), static_cast<CGFloat>(rect.y),
+                    static_cast<CGFloat>(rect.width),
+                    static_cast<CGFloat>(rect.height));
+}
 
-  frame.size.width = std::min(std::max<CGFloat>(0.0, frame.size.width),
-                              CGRectGetWidth(bounds));
-  frame.size.height = std::min(std::max<CGFloat>(0.0, frame.size.height),
-                               CGRectGetHeight(bounds));
-  frame.origin.x = std::clamp(frame.origin.x, CGRectGetMinX(bounds),
-                              CGRectGetMaxX(bounds) - CGRectGetWidth(frame));
-  frame.origin.y = std::clamp(frame.origin.y, CGRectGetMinY(bounds),
-                              CGRectGetMaxY(bounds) - CGRectGetHeight(frame));
-  return frame;
+[[nodiscard]] airfix::input::TouchControlRect
+touchRect(const CGRect rect) noexcept {
+  return {
+      .x = static_cast<float>(CGRectGetMinX(rect)),
+      .y = static_cast<float>(CGRectGetMinY(rect)),
+      .width = static_cast<float>(CGRectGetWidth(rect)),
+      .height = static_cast<float>(CGRectGetHeight(rect)),
+  };
+}
+
+[[nodiscard]] airfix::input::TouchControlElement
+elementForButton(const AirfixTouchButton button) noexcept {
+  using airfix::input::TouchControlElement;
+  switch (button) {
+  case AirfixTouchButtonThrottleIncrease:
+    return TouchControlElement::throttleIncrease;
+  case AirfixTouchButtonThrottleDecrease:
+    return TouchControlElement::throttleDecrease;
+  case AirfixTouchButtonPrimaryFire:
+    return TouchControlElement::primaryFire;
+  case AirfixTouchButtonSecondaryFire:
+    return TouchControlElement::secondaryFire;
+  case AirfixTouchButtonWeaponNext:
+    return TouchControlElement::weaponNext;
+  case AirfixTouchButtonRearView:
+    return TouchControlElement::rearView;
+  case AirfixTouchButtonCameraCycle:
+    return TouchControlElement::cameraCycle;
+  case AirfixTouchButtonCameraRecenter:
+    return TouchControlElement::cameraRecenter;
+  case AirfixTouchButtonMissionStatus:
+    return TouchControlElement::missionStatus;
+  case AirfixTouchButtonPause:
+  case AirfixTouchButtonCount:
+    return TouchControlElement::pause;
+  }
+  return TouchControlElement::pause;
 }
 
 } // namespace
@@ -227,6 +258,8 @@ typedef NS_ENUM(NSInteger, AirfixAccessibilityControl) {
   NSUInteger _interactionGeneration;
   NSUInteger _axisGeneration;
 
+  airfix::input::TouchControlsLayoutProfile _layoutProfile;
+
   NSArray<AirfixTouchAccessibilityElement *> *_controlAccessibilityElements;
 }
 
@@ -248,8 +281,6 @@ typedef NS_ENUM(NSInteger, AirfixAccessibilityControl) {
                    button:(AirfixTouchButton)button
                 startName:(NSString *)startName
                  stopName:(NSString *)stopName;
-- (void)enforceMinimumCaptureSize:(CGRect *)captureFrame
-                           within:(CGRect)safeBounds;
 - (void)updateAccessibilityFrames;
 - (BOOL)pointEligibleForCameraLook:(CGPoint)point;
 
@@ -475,11 +506,78 @@ typedef NS_ENUM(NSInteger, AirfixAccessibilityControl) {
   return self;
 }
 
+- (AirfixTouchControlsHandedness)layoutHandedness {
+  return _layoutProfile.handedness ==
+                 airfix::input::TouchControlsHandedness::leftHanded
+             ? AirfixTouchControlsHandednessLeft
+             : AirfixTouchControlsHandednessRight;
+}
+
+- (void)setLayoutHandedness:(AirfixTouchControlsHandedness)layoutHandedness {
+  NSAssert(NSThread.isMainThread,
+           @"Touch-control layout must change on the main thread");
+  if (!NSThread.isMainThread) {
+    return;
+  }
+
+  airfix::input::TouchControlsHandedness candidate;
+  switch (layoutHandedness) {
+  case AirfixTouchControlsHandednessRight:
+    candidate = airfix::input::TouchControlsHandedness::rightHanded;
+    break;
+  case AirfixTouchControlsHandednessLeft:
+    candidate = airfix::input::TouchControlsHandedness::leftHanded;
+    break;
+  default:
+    return;
+  }
+  if (_layoutProfile.handedness == candidate) {
+    return;
+  }
+  [self cancelAllTouches];
+  _layoutProfile.handedness = candidate;
+  [self setNeedsLayout];
+}
+
+- (AirfixTouchControlsDensity)layoutDensity {
+  return _layoutProfile.density == airfix::input::TouchControlsDensity::compact
+             ? AirfixTouchControlsDensityCompact
+             : AirfixTouchControlsDensityAutomatic;
+}
+
+- (void)setLayoutDensity:(AirfixTouchControlsDensity)layoutDensity {
+  NSAssert(NSThread.isMainThread,
+           @"Touch-control layout must change on the main thread");
+  if (!NSThread.isMainThread) {
+    return;
+  }
+
+  airfix::input::TouchControlsDensity candidate;
+  switch (layoutDensity) {
+  case AirfixTouchControlsDensityAutomatic:
+    candidate = airfix::input::TouchControlsDensity::automatic;
+    break;
+  case AirfixTouchControlsDensityCompact:
+    candidate = airfix::input::TouchControlsDensity::compact;
+    break;
+  default:
+    return;
+  }
+  if (_layoutProfile.density == candidate) {
+    return;
+  }
+  [self cancelAllTouches];
+  _layoutProfile.density = candidate;
+  [self setNeedsLayout];
+}
+
 - (void)configureTouchControls {
   self.backgroundColor = UIColor.clearColor;
   self.opaque = NO;
   self.multipleTouchEnabled = YES;
   self.isAccessibilityElement = NO;
+
+  _layoutProfile = {};
 
   _stickBaseView = [[UIView alloc] initWithFrame:CGRectZero];
   _stickHorizontalGuideView = [[UIView alloc] initWithFrame:CGRectZero];
@@ -492,20 +590,20 @@ typedef NS_ENUM(NSInteger, AirfixAccessibilityControl) {
   _lookRegionView = [[UIView alloc] initWithFrame:CGRectZero];
   _lookRegionLabel = [[UILabel alloc] initWithFrame:CGRectZero];
 
-  _stickBaseView.backgroundColor = panelColor(0.62);
+  _stickBaseView.backgroundColor = panelColor(0.48);
   _stickBaseView.layer.borderColor = flightAccentColor(0.78).CGColor;
   _stickBaseView.layer.borderWidth = 2.0;
   _stickHorizontalGuideView.backgroundColor = flightAccentColor(0.30);
   _stickVerticalGuideView.backgroundColor = flightAccentColor(0.30);
-  _stickKnobView.backgroundColor = panelColor(0.96);
+  _stickKnobView.backgroundColor = panelColor(0.76);
   _stickKnobView.layer.borderColor = flightAccentColor(0.96).CGColor;
   _stickKnobView.layer.borderWidth = 2.0;
 
-  _throttleTrackView.backgroundColor = panelColor(0.82);
+  _throttleTrackView.backgroundColor = panelColor(0.52);
   _throttleTrackView.layer.borderColor = flightAccentColor(0.78).CGColor;
   _throttleTrackView.layer.borderWidth = 1.5;
   _throttleFillView.backgroundColor = flightAccentColor(0.56);
-  _throttleThumbView.backgroundColor = flightAccentColor(0.96);
+  _throttleThumbView.backgroundColor = panelColor(0.84);
   _throttleThumbView.layer.borderColor = UIColor.whiteColor.CGColor;
   _throttleThumbView.layer.borderWidth = 1.5;
   _throttleLabel.text = @"THR";
@@ -542,6 +640,10 @@ typedef NS_ENUM(NSInteger, AirfixAccessibilityControl) {
     label.adjustsFontSizeToFitWidth = YES;
     label.minimumScaleFactor = 0.55;
     label.numberOfLines = 1;
+    label.layer.shadowColor = UIColor.blackColor.CGColor;
+    label.layer.shadowOpacity = 0.85F;
+    label.layer.shadowRadius = 1.5;
+    label.layer.shadowOffset = CGSizeMake(0.0, 1.0);
     [view addSubview:label];
     [self addSubview:view];
     _buttonViews[index] = view;
@@ -881,22 +983,24 @@ typedef NS_ENUM(NSInteger, AirfixAccessibilityControl) {
     safeBounds = self.bounds;
   }
 
-  const CGFloat safeWidth = CGRectGetWidth(safeBounds);
-  const CGFloat safeHeight = CGRectGetHeight(safeBounds);
-  const BOOL compact = safeHeight <= 375.0 || safeWidth < 760.0;
-  const CGFloat margin = compact ? 12.0 : 20.0;
-  const CGFloat gap = compact ? 8.0 : 12.0;
-  const CGFloat standardButton = compact ? 44.0 : 52.0;
+  const auto layout = airfix::input::buildTouchControlsLayout(
+      touchRect(safeBounds), _layoutProfile);
+  if (!layout.ready()) {
+    return;
+  }
 
-  CGFloat stickDiameter = compact ? 96.0 : 124.0;
-  stickDiameter =
-      std::min(stickDiameter, std::max<CGFloat>(88.0, safeHeight * 0.36));
+  using airfix::input::TouchControlElement;
+  const BOOL compact = layout.compact ? YES : NO;
+  const CGRect stickFrame =
+      cgRect(layout.visualFrame(TouchControlElement::flightStick));
+  const CGRect throttleFrame =
+      cgRect(layout.visualFrame(TouchControlElement::throttle));
+  const CGRect primaryFrame =
+      cgRect(layout.visualFrame(TouchControlElement::primaryFire));
+  const CGRect secondaryFrame =
+      cgRect(layout.visualFrame(TouchControlElement::secondaryFire));
+
   const CGFloat knobDiameter = compact ? 38.0 : 48.0;
-  CGRect stickFrame =
-      CGRectMake(CGRectGetMinX(safeBounds) + margin,
-                 CGRectGetMaxY(safeBounds) - margin - stickDiameter,
-                 stickDiameter, stickDiameter);
-  stickFrame = frameClampedToBounds(stickFrame, safeBounds);
   _stickBaseView.frame = stickFrame;
   _stickBaseView.layer.cornerRadius = CGRectGetWidth(stickFrame) * 0.5;
   const CGFloat guideInset = compact ? 14.0 : 18.0;
@@ -909,98 +1013,24 @@ typedef NS_ENUM(NSInteger, AirfixAccessibilityControl) {
       std::max<CGFloat>(0.0, CGRectGetHeight(stickFrame) - 2.0 * guideInset));
   _stickKnobView.bounds = CGRectMake(0.0, 0.0, knobDiameter, knobDiameter);
   _stickKnobView.layer.cornerRadius = knobDiameter * 0.5;
-  _stickTravelRadius = std::max<CGFloat>(
-      1.0, (CGRectGetWidth(stickFrame) - knobDiameter) * 0.5 - 5.0);
+  _stickTravelRadius = static_cast<CGFloat>(layout.stickTravelRadius);
 
-  const CGFloat missionWidth = compact ? 76.0 : 96.0;
-  CGRect missionFrame = CGRectMake(CGRectGetMinX(safeBounds) + margin,
-                                   CGRectGetMinY(safeBounds) + margin,
-                                   missionWidth, standardButton);
-  missionFrame = frameClampedToBounds(missionFrame, safeBounds);
-
-  const CGFloat throttleTop = CGRectGetMaxY(missionFrame) + gap;
-  const CGFloat availableThrottleHeight =
-      CGRectGetMinY(stickFrame) - gap - throttleTop;
-  const CGFloat throttleHeight =
-      std::clamp(compact ? 118.0 : 160.0, kMinimumTargetSize,
-                 std::max(kMinimumTargetSize, availableThrottleHeight));
-  CGRect throttleFrame =
-      CGRectMake(CGRectGetMinX(safeBounds) + margin, throttleTop,
-                 standardButton, throttleHeight);
-  throttleFrame = frameClampedToBounds(throttleFrame, safeBounds);
   _throttleTrackView.frame = throttleFrame;
-  _throttleTrackView.layer.cornerRadius = standardButton * 0.5;
+  _throttleTrackView.layer.cornerRadius = CGRectGetWidth(throttleFrame) * 0.5;
 
-  CGRect throttleIncreaseFrame =
-      CGRectMake(CGRectGetMaxX(throttleFrame) + gap,
-                 CGRectGetMinY(throttleFrame), standardButton, standardButton);
-  CGRect throttleDecreaseFrame =
-      CGRectMake(CGRectGetMaxX(throttleFrame) + gap,
-                 CGRectGetMaxY(throttleFrame) - standardButton, standardButton,
-                 standardButton);
-  throttleIncreaseFrame =
-      frameClampedToBounds(throttleIncreaseFrame, safeBounds);
-  throttleDecreaseFrame =
-      frameClampedToBounds(throttleDecreaseFrame, safeBounds);
-
-  const CGFloat primarySize = compact ? 72.0 : 88.0;
-  const CGFloat secondarySize = compact ? 56.0 : 68.0;
-  const CGFloat utilitySize = compact ? 50.0 : 58.0;
-  CGRect primaryFrame =
-      CGRectMake(CGRectGetMaxX(safeBounds) - margin - primarySize,
-                 CGRectGetMaxY(safeBounds) - margin - primarySize, primarySize,
-                 primarySize);
-  primaryFrame = frameClampedToBounds(primaryFrame, safeBounds);
-  CGRect secondaryFrame =
-      CGRectMake(CGRectGetMinX(primaryFrame) - gap - secondarySize,
-                 CGRectGetMaxY(primaryFrame) - secondarySize, secondarySize,
-                 secondarySize);
-  CGRect weaponFrame = CGRectMake(
-      CGRectGetMinX(secondaryFrame) - gap - utilitySize,
-      CGRectGetMaxY(primaryFrame) - utilitySize, utilitySize, utilitySize);
-  CGRect rearFrame = CGRectMake(CGRectGetMinX(weaponFrame) - gap - utilitySize,
-                                CGRectGetMaxY(primaryFrame) - utilitySize,
-                                utilitySize, utilitySize);
-  secondaryFrame = frameClampedToBounds(secondaryFrame, safeBounds);
-  weaponFrame = frameClampedToBounds(weaponFrame, safeBounds);
-  rearFrame = frameClampedToBounds(rearFrame, safeBounds);
-
-  const CGFloat pauseSize = compact ? 48.0 : 52.0;
-  const CGFloat recenterWidth = compact ? 50.0 : 58.0;
-  const CGFloat cameraWidth = compact ? 58.0 : 68.0;
-  CGRect pauseFrame =
-      CGRectMake(CGRectGetMaxX(safeBounds) - margin - pauseSize,
-                 CGRectGetMinY(safeBounds) + margin, pauseSize, pauseSize);
-  CGRect recenterFrame =
-      CGRectMake(CGRectGetMinX(pauseFrame) - gap - recenterWidth,
-                 CGRectGetMinY(pauseFrame), recenterWidth, pauseSize);
-  CGRect cameraFrame =
-      CGRectMake(CGRectGetMinX(recenterFrame) - gap - cameraWidth,
-                 CGRectGetMinY(pauseFrame), cameraWidth, pauseSize);
-  pauseFrame = frameClampedToBounds(pauseFrame, safeBounds);
-  recenterFrame = frameClampedToBounds(recenterFrame, safeBounds);
-  cameraFrame = frameClampedToBounds(cameraFrame, safeBounds);
-
-  const CGRect visualFrames[kButtonCount] = {
-      throttleIncreaseFrame, throttleDecreaseFrame,
-      primaryFrame,          secondaryFrame,
-      weaponFrame,           rearFrame,
-      cameraFrame,           recenterFrame,
-      missionFrame,          pauseFrame,
-  };
   for (NSUInteger index = 0U; index < kButtonCount; ++index) {
-    _buttonViews[index].frame = visualFrames[index];
+    const auto element =
+        elementForButton(static_cast<AirfixTouchButton>(index));
+    const CGRect visualFrame = cgRect(layout.visualFrame(element));
+    _buttonViews[index].frame = visualFrame;
     _buttonLabels[index].frame =
         CGRectInset(_buttonViews[index].bounds, 5.0, 4.0);
     _buttonLabels[index].font = [UIFont systemFontOfSize:(compact ? 12.0 : 14.0)
                                                   weight:UIFontWeightBold];
     _buttonViews[index].layer.cornerRadius =
-        std::min<CGFloat>(14.0, CGRectGetHeight(visualFrames[index]) * 0.28);
+        std::min<CGFloat>(14.0, CGRectGetHeight(visualFrame) * 0.28);
     _buttonViews[index].layer.borderWidth = 1.5;
-    _buttonCaptureFrames[index] = CGRectIntersection(
-        safeBounds, CGRectInset(visualFrames[index], -2.0, -2.0));
-    [self enforceMinimumCaptureSize:&_buttonCaptureFrames[index]
-                             within:safeBounds];
+    _buttonCaptureFrames[index] = cgRect(layout.captureFrame(element));
   }
   _buttonViews[buttonIndex(AirfixTouchButtonPrimaryFire)].layer.cornerRadius =
       CGRectGetHeight(primaryFrame) * 0.5;
@@ -1011,28 +1041,11 @@ typedef NS_ENUM(NSInteger, AirfixAccessibilityControl) {
                         weight:UIFontWeightBlack];
 
   _stickCaptureFrame =
-      CGRectIntersection(safeBounds, CGRectInset(stickFrame, -8.0, -8.0));
+      cgRect(layout.captureFrame(TouchControlElement::flightStick));
   _throttleCaptureFrame =
-      CGRectIntersection(safeBounds, CGRectInset(throttleFrame, -3.0, -3.0));
-  [self enforceMinimumCaptureSize:&_stickCaptureFrame within:safeBounds];
-  [self enforceMinimumCaptureSize:&_throttleCaptureFrame within:safeBounds];
-
-  const CGFloat topOfLook =
-      std::max(CGRectGetMaxY(cameraFrame), CGRectGetMaxY(missionFrame)) + gap;
-  const CGFloat bottomOfLook =
-      std::min(CGRectGetMinY(primaryFrame), CGRectGetMinY(stickFrame)) - gap;
-  const CGFloat leftOfLook =
-      std::max(CGRectGetMaxX(throttleIncreaseFrame) + gap,
-               CGRectGetMinX(safeBounds) + safeWidth * (compact ? 0.39 : 0.34));
-  const CGFloat rightOfLook = CGRectGetMaxX(safeBounds) - margin;
-  if (rightOfLook - leftOfLook >= kMinimumTargetSize &&
-      bottomOfLook - topOfLook >= kMinimumTargetSize) {
-    _lookCaptureFrame =
-        CGRectMake(leftOfLook, topOfLook, rightOfLook - leftOfLook,
-                   bottomOfLook - topOfLook);
-  } else {
-    _lookCaptureFrame = CGRectZero;
-  }
+      cgRect(layout.captureFrame(TouchControlElement::throttle));
+  _lookCaptureFrame =
+      cgRect(layout.captureFrame(TouchControlElement::cameraLook));
   _lookRegionView.frame = _lookCaptureFrame;
   _lookRegionLabel.frame = CGRectMake(
       8.0, 8.0,
@@ -1040,14 +1053,11 @@ typedef NS_ENUM(NSInteger, AirfixAccessibilityControl) {
       20.0);
   _lookRegionLabel.font = [UIFont systemFontOfSize:(compact ? 10.0 : 12.0)
                                             weight:UIFontWeightSemibold];
-  _lookTravelRadius = std::max<CGFloat>(
-      44.0, std::min<CGFloat>(compact ? 76.0 : 96.0,
-                              std::min(CGRectGetWidth(_lookCaptureFrame),
-                                       CGRectGetHeight(_lookCaptureFrame)) *
-                                  0.45));
+  _lookTravelRadius = static_cast<CGFloat>(layout.lookTravelRadius);
 
   const CGFloat throttleInset = compact ? 8.0 : 10.0;
-  const CGFloat thumbSize = compact ? 30.0 : 34.0;
+  const CGFloat thumbWidth = compact ? 56.0 : 66.0;
+  const CGFloat thumbHeight = compact ? 28.0 : 32.0;
   const CGFloat usableThrottleHeight = std::max<CGFloat>(
       1.0, CGRectGetHeight(_throttleTrackView.bounds) - 2.0 * throttleInset);
   const CGFloat throttleUnit =
@@ -1055,10 +1065,10 @@ typedef NS_ENUM(NSInteger, AirfixAccessibilityControl) {
   const CGFloat thumbCenterY = CGRectGetMaxY(_throttleTrackView.bounds) -
                                throttleInset -
                                throttleUnit * usableThrottleHeight;
-  _throttleThumbView.bounds = CGRectMake(0.0, 0.0, thumbSize, thumbSize);
+  _throttleThumbView.bounds = CGRectMake(0.0, 0.0, thumbWidth, thumbHeight);
   _throttleThumbView.center =
       CGPointMake(CGRectGetMidX(_throttleTrackView.bounds), thumbCenterY);
-  _throttleThumbView.layer.cornerRadius = thumbSize * 0.5;
+  _throttleThumbView.layer.cornerRadius = compact ? 7.0 : 8.0;
   _throttleFillView.frame = CGRectMake(
       CGRectGetMidX(_throttleTrackView.bounds) - 3.0, thumbCenterY, 6.0,
       std::max<CGFloat>(0.0, CGRectGetMaxY(_throttleTrackView.bounds) -
@@ -1073,23 +1083,6 @@ typedef NS_ENUM(NSInteger, AirfixAccessibilityControl) {
 
   [self updateAccessibilityFrames];
   [self updateVisualState];
-}
-
-- (void)enforceMinimumCaptureSize:(CGRect *)captureFrame
-                           within:(CGRect)safeBounds {
-  if (captureFrame == nullptr || CGRectIsEmpty(safeBounds)) {
-    return;
-  }
-  CGRect frame = *captureFrame;
-  const CGFloat width =
-      std::min(CGRectGetWidth(safeBounds),
-               std::max(kMinimumTargetSize, CGRectGetWidth(frame)));
-  const CGFloat height =
-      std::min(CGRectGetHeight(safeBounds),
-               std::max(kMinimumTargetSize, CGRectGetHeight(frame)));
-  frame = CGRectMake(CGRectGetMidX(frame) - width * 0.5,
-                     CGRectGetMidY(frame) - height * 0.5, width, height);
-  *captureFrame = frameClampedToBounds(frame, safeBounds);
 }
 
 - (void)updateAccessibilityFrames {
@@ -1268,14 +1261,13 @@ typedef NS_ENUM(NSInteger, AirfixAccessibilityControl) {
         __weak UITouch *weakTouch = touch;
         dispatch_after(
             dispatch_time(DISPATCH_TIME_NOW,
-                          static_cast<int64_t>(
-                              kWeaponSelectionHoldDuration * NSEC_PER_SEC)),
+                          static_cast<int64_t>(kWeaponSelectionHoldDuration *
+                                               NSEC_PER_SEC)),
             dispatch_get_main_queue(), ^{
               AirfixTouchControlsView *strongSelf = weakSelf;
               UITouch *strongTouch = weakTouch;
               if (strongSelf == nil || strongTouch == nil ||
-                  strongSelf->_interactionGeneration !=
-                      interactionGeneration ||
+                  strongSelf->_interactionGeneration != interactionGeneration ||
                   !strongSelf->_weaponGestureActive ||
                   strongSelf->_buttonTouches[index] != strongTouch) {
                 return;
@@ -1432,7 +1424,7 @@ typedef NS_ENUM(NSInteger, AirfixAccessibilityControl) {
     [self publishStickBank:0
                      pitch:0
                  forceBank:YES
-               forcePitch:YES
+                forcePitch:YES
               ownedByTouch:nil];
     if (_interactionGeneration != interactionGeneration) {
       return;
@@ -1790,11 +1782,11 @@ typedef NS_ENUM(NSInteger, AirfixAccessibilityControl) {
   const BOOL stickActive =
       _stickTouch != nil || _bankValue != 0 || _pitchValue != 0;
   _stickBaseView.backgroundColor =
-      stickActive ? panelColor(0.82) : panelColor(0.62);
+      stickActive ? panelColor(0.72) : panelColor(0.48);
   _stickBaseView.layer.borderColor =
       flightAccentColor(stickActive ? 1.0 : 0.78).CGColor;
   _stickKnobView.backgroundColor =
-      stickActive ? flightAccentColor(0.96) : panelColor(0.96);
+      stickActive ? flightAccentColor(0.92) : panelColor(0.76);
 
   CGFloat horizontal =
       static_cast<CGFloat>(_bankValue) / static_cast<CGFloat>(kQ15Maximum);
@@ -1826,7 +1818,9 @@ typedef NS_ENUM(NSInteger, AirfixAccessibilityControl) {
                                    inset - thumbCenterY));
   }
   _throttleTrackView.backgroundColor =
-      _throttleTouch != nil ? panelColor(0.96) : panelColor(0.82);
+      _throttleTouch != nil ? panelColor(0.78) : panelColor(0.52);
+  _throttleThumbView.backgroundColor =
+      _throttleTouch != nil ? flightAccentColor(0.94) : panelColor(0.84);
 
   const BOOL lookActive =
       _lookTouch != nil || _lookXValue != 0 || _lookYValue != 0;
@@ -1840,14 +1834,14 @@ typedef NS_ENUM(NSInteger, AirfixAccessibilityControl) {
     const BOOL active =
         _buttonPressed[index] ||
         (button == AirfixTouchButtonWeaponNext && _weaponGestureActive);
-    UIColor *accent = flightAccentColor(active ? 0.96 : 0.72);
-    UIColor *resting = panelColor(0.84);
+    UIColor *accent = flightAccentColor(active ? 0.96 : 0.76);
+    UIColor *resting = panelColor(0.52);
     if (button == AirfixTouchButtonPrimaryFire) {
       accent = fireAccentColor(active ? 1.0 : 0.82);
-      resting = [UIColor colorWithRed:0.20 green:0.065 blue:0.035 alpha:0.88];
+      resting = [UIColor colorWithRed:0.20 green:0.065 blue:0.035 alpha:0.56];
     } else if (button == AirfixTouchButtonSecondaryFire) {
       accent = secondaryAccentColor(active ? 1.0 : 0.82);
-      resting = [UIColor colorWithRed:0.20 green:0.13 blue:0.025 alpha:0.88];
+      resting = [UIColor colorWithRed:0.20 green:0.13 blue:0.025 alpha:0.56];
     }
     _buttonViews[index].backgroundColor = active ? accent : resting;
     _buttonViews[index].layer.borderColor =
@@ -1863,9 +1857,8 @@ typedef NS_ENUM(NSInteger, AirfixAccessibilityControl) {
       _weaponSelecting
           ? (_weaponHasCandidate
                  ? [NSString
-                       stringWithFormat:@"W%u",
-                                        static_cast<unsigned int>(
-                                            _weaponCandidateSlot + 1U)]
+                       stringWithFormat:@"W%u", static_cast<unsigned int>(
+                                                    _weaponCandidateSlot + 1U)]
                  : @"W\u2013")
           : @"WEAP";
 }
@@ -1977,10 +1970,10 @@ typedef NS_ENUM(NSInteger, AirfixAccessibilityControl) {
       if (_weaponSelecting) {
         value =
             _weaponHasCandidate
-                ? [NSString
-                      stringWithFormat:
-                          NSLocalizedString(@"Selecting weapon %u", nil),
-                          static_cast<unsigned int>(_weaponCandidateSlot + 1U)]
+                ? [NSString stringWithFormat:NSLocalizedString(
+                                                 @"Selecting weapon %u", nil),
+                                             static_cast<unsigned int>(
+                                                 _weaponCandidateSlot + 1U)]
                 : NSLocalizedString(@"Choose a direction", nil);
       } else if (_hasSelectedWeaponSlot) {
         value = [NSString
