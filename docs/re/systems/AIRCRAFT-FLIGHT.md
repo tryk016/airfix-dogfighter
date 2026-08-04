@@ -550,6 +550,19 @@ suppresses the tested unchanged finite values; PC24 with another RC and PC53
 or PC64 with any RC do not. An inactive consumer has no special replay path:
 the next producer call follows this same policy-sensitive comparison.
 
+The portable `LegacyAircraftAiControlsState` and
+`legacyAircraftDispatchAiControlEvents` now implement this isolated layout and
+five-route subsequence. The state has compile-time checks for the recovered
+`0x80`-byte layout and array offsets. The dispatcher requires synchronous,
+separate `Save` and `Process` callbacks and completes one route before testing
+the next; it deliberately exposes no batch, queue, sort, deduplication, replay,
+clock, or source identity. It accepts only IEEE binary32/binary64 without
+excess-precision evaluation and with the thread currently in
+round-to-nearest-even mode, validates the exact five range contracts, and
+otherwise fails closed. This is a policy-labelled PC53 oracle for portable
+tests, not evidence that the live game thread always used that policy or that
+the imported `_ftol` path is bit-identical on every host.
+
 The vehicle's 12 ms refresh invokes `AfAI::Refresh` near its end. AirCraft
 configures the AI interval to exact binary32 `0.1`; the accumulator adds each
 binary32 `dt`, triggers while no longer below that interval, and resets to
@@ -630,12 +643,15 @@ single-invocation typed-event/decode/field-commit composition;
 the ordered slot-45 target/apply/clamp/smoothing prefix; collision-driven
 thrust-integrity degradation; later
 recovery/clamping; and the bounded engine-only audio command stream plus the
-destroyed-dive sample state. The thrust-control transition treats invocation
-as the already-decided active slot-45 call and owns no scheduler, `dt`, Q15
-conversion, or event timing. The command reducer owns neither the 60 Hz
-producer nor 12 ms sample-and-hold policy and returns only a typed native-event
-input. The per-invocation step retains that separation while composing the
-event decoder and field owner; it is not a producer or batch runner. The event
+destroyed-dive sample state. The exact `AIControls` value layout and immediate
+five-channel AI dispatcher may likewise be used as an isolated oracle behind
+the explicit supported numeric-policy gate. The thrust-control transition
+treats invocation as the already-decided active slot-45 call and owns no
+scheduler, `dt`, Q15 conversion, or event timing. The command reducer owns
+neither the 60 Hz producer nor 12 ms sample-and-hold policy and returns only a
+typed native-event input. The per-invocation step retains that separation while
+composing the event decoder and field owner; it is not a producer or batch
+runner. The event
 decoders share that timing boundary and return only a typed write plus a
 rest-clear directive. The primary `WpMGun` helper may also
 preserve its

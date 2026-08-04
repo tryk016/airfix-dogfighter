@@ -571,8 +571,10 @@ contract, evidence, implementation, tests, parity result, and documentation agre
    picker, bounded private copy, progress, startup gate, and verified rollback
    presentation.
 8. Establish the isolated reference runtime and record the first deterministic
-   flight/control/render scenarios; this remains independent of host static
-   analysis until the isolated environment is available.
+   flight/control/render scenarios. The exact `0x80` AIControls layout and
+   immediate five-route AirCraft dispatcher are implemented as a policy-gated
+   portable oracle, but live x87/`_ftol`, 12 ms cadence, task evaluation, and
+   cross-producer traces still require the isolated environment.
 9. **Foundation complete:** the native Windows x64 boundary now has SDL3
    window/events/input, D3D11/DXGI/HLSL rendering, XAudio2 2.9 audio, and a
    data-less product smoke that drives shared reconstructed AirCraft audio
