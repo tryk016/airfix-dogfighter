@@ -9,6 +9,9 @@ namespace airfix::settings {
 
 struct RenderPresentationSettingsMenuCapabilities final {
   bool persistenceAvailable{true};
+  // This exposes only a coarse product capability. The model never receives
+  // a private root, manifest, checksum, or asset identity.
+  bool enhancedTexturesAvailable{};
 
   [[nodiscard]] friend constexpr bool operator==(
       const RenderPresentationSettingsMenuCapabilities &,
@@ -23,6 +26,7 @@ enum class RenderPresentationSettingsMenuPhase : std::uint8_t {
 enum class RenderPresentationSettingsMenuEditStatus : std::uint8_t {
   accepted,
   applyInProgress,
+  enhancedTexturesUnavailable,
   invalidSettings,
 };
 
@@ -52,9 +56,9 @@ struct RenderPresentationSettingsMenuApplyTicket final {
 // The model deliberately knows nothing about UIKit, persistence formats,
 // renderer resources, or private texture content. VisualProfile::enhanced is
 // the existing presentation-policy preview selector; it is not an HD-texture
-// availability signal. A requested TextureMode is retained byte-for-field but
-// deliberately has no editor until a product coordinator owns the required
-// atomic mission reload.
+// availability signal. TextureMode editing is gated only by the coarse
+// enhancedTexturesAvailable capability; products remain responsible for the
+// atomic mission reload represented by the resulting delta.
 class RenderPresentationSettingsMenuModel final {
 public:
   // Invalid applied settings fail closed and do not create a model.
@@ -109,6 +113,10 @@ public:
     return capabilities_.persistenceAvailable;
   }
 
+  [[nodiscard]] bool enhancedTexturesAvailable() const noexcept {
+    return capabilities_.enhancedTexturesAvailable;
+  }
+
   [[nodiscard]] bool exhausted() const noexcept { return exhausted_; }
 
   void setPersistenceAvailable(bool available) noexcept;
@@ -121,6 +129,9 @@ public:
 
   [[nodiscard]] RenderPresentationSettingsMenuEditResult
   setVisualProfile(render::VisualProfile value) noexcept;
+
+  [[nodiscard]] RenderPresentationSettingsMenuEditResult
+  setTextureMode(texture::TextureMode value) noexcept;
 
   [[nodiscard]] RenderPresentationSettingsMenuEditResult
   setDiagnosticsOverlayEnabled(bool value) noexcept;

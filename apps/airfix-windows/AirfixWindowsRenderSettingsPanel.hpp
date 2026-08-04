@@ -4,6 +4,7 @@
 #include "airfix/settings/ControllerInputBindingPickerModel.hpp"
 #include "airfix/settings/ControllerInputProfileMenuModel.hpp"
 #include "airfix/settings/RenderPresentationSettingsMenuModel.hpp"
+#include "airfix/texture/TextureModeMissionReload.hpp"
 
 #include <array>
 #include <cstddef>
@@ -36,6 +37,7 @@ enum class AirfixWindowsRenderSettingsItem : std::uint8_t {
   presentation,
   verticalFovAdjustment,
   visualProfile,
+  textureMode,
   rendererStatistics,
   apply,
   cancel,
@@ -69,6 +71,7 @@ enum class AirfixWindowsRenderSettingsItem : std::uint8_t {
   case AirfixWindowsRenderSettingsItem::presentation:
   case AirfixWindowsRenderSettingsItem::verticalFovAdjustment:
   case AirfixWindowsRenderSettingsItem::visualProfile:
+  case AirfixWindowsRenderSettingsItem::textureMode:
   case AirfixWindowsRenderSettingsItem::rendererStatistics:
   case AirfixWindowsRenderSettingsItem::innerDeadzone:
   case AirfixWindowsRenderSettingsItem::outerSaturation:
@@ -109,6 +112,8 @@ enum class AirfixWindowsRenderSettingsStatus : std::uint8_t {
   applyFailed,
   persistenceUnavailable,
   invalidSettings,
+  enhancedTexturesUnavailable,
+  textureReloadFailedRestartRequired,
   controllerProfileReady,
   controllerProfileNoChanges,
   controllerProfileSaving,
@@ -144,6 +149,7 @@ enum class AirfixWindowsRenderSettingsSessionOverride : std::uint8_t {
   visualProfile = 1U << 2U,
   rendererStatistics = 1U << 3U,
   verticalFovAdjustment = 1U << 4U,
+  textureMode = 1U << 5U,
 };
 
 using AirfixWindowsRenderSettingsSessionOverrideMask = std::uint8_t;
@@ -160,7 +166,9 @@ inline constexpr AirfixWindowsRenderSettingsSessionOverrideMask
         static_cast<std::uint8_t>(
             AirfixWindowsRenderSettingsSessionOverride::rendererStatistics) |
         static_cast<std::uint8_t>(
-            AirfixWindowsRenderSettingsSessionOverride::verticalFovAdjustment));
+            AirfixWindowsRenderSettingsSessionOverride::verticalFovAdjustment) |
+        static_cast<std::uint8_t>(
+            AirfixWindowsRenderSettingsSessionOverride::textureMode));
 
 [[nodiscard]] constexpr AirfixWindowsRenderSettingsSessionOverrideMask
 airfixWindowsRenderSettingsSessionOverrideMask(
@@ -185,6 +193,10 @@ airfixWindowsRenderSettingsSessionOverrideMask(
   if (overrides.verticalFovAdjustmentDegrees.has_value()) {
     mask |= static_cast<std::uint8_t>(
         AirfixWindowsRenderSettingsSessionOverride::verticalFovAdjustment);
+  }
+  if (overrides.textureMode.has_value()) {
+    mask |= static_cast<std::uint8_t>(
+        AirfixWindowsRenderSettingsSessionOverride::textureMode);
   }
   return mask;
 }
@@ -232,7 +244,7 @@ struct AirfixWindowsRenderSettingsViewItem final {
              const AirfixWindowsRenderSettingsViewItem &) noexcept = default;
 };
 
-inline constexpr std::size_t airfixWindowsRenderSettingsMaximumViewItems = 8U;
+inline constexpr std::size_t airfixWindowsRenderSettingsMaximumViewItems = 9U;
 inline constexpr std::uint8_t airfixWindowsControllerBindingNoControlIndex =
     static_cast<std::uint8_t>(input::controllerAssignableControlCount);
 
@@ -272,6 +284,7 @@ struct AirfixWindowsRenderSettingsViewSnapshot final {
       AirfixWindowsRenderSettingsStatus::ready};
   render::RenderPresentationSettings appliedSettings;
   render::RenderPresentationSettings draftSettings;
+  texture::TextureModeRuntimeState textureModeState;
   AirfixWindowsUiPixelExtent output;
   float layoutScale{1.0F};
   AirfixWindowsUiPixelRect panelBounds;
@@ -363,7 +376,11 @@ public:
       AirfixWindowsRenderSettingsSessionOverrideMask sessionOverrideMask = 0U,
       bool resumeAvailable = true,
       std::optional<AirfixWindowsControllerProfilePanelState>
-          controllerProfile = std::nullopt) noexcept;
+          controllerProfile = std::nullopt,
+      texture::TexturePackageAvailability texturePackageAvailability =
+          texture::TexturePackageAvailability::notConfigured,
+      std::optional<texture::ActiveMissionTextureState> activeMissionTextures =
+          std::nullopt) noexcept;
 
   AirfixWindowsRenderSettingsPanel(const AirfixWindowsRenderSettingsPanel &) =
       default;
@@ -401,6 +418,8 @@ public:
   void setControllerProfilePersistenceAvailable(bool available) noexcept;
   void setControllerAxisInput(
       const AirfixWindowsControllerAxisInputSnapshot &input) noexcept;
+  void setTextureModeReloadOutcome(
+      const texture::TextureModeMissionReloadOutcome &outcome) noexcept;
 
   [[nodiscard]] bool
   finishApplySuccess(const settings::RenderPresentationSettingsMenuApplyTicket
@@ -456,7 +475,9 @@ private:
           controllerProfileModel,
       AirfixWindowsUiPixelExtent output,
       AirfixWindowsRenderSettingsSessionOverrideMask sessionOverrideMask,
-      bool resumeAvailable) noexcept;
+      bool resumeAvailable,
+      texture::TexturePackageAvailability texturePackageAvailability,
+      texture::ActiveMissionTextureState activeMissionTextures) noexcept;
 
   void moveSelection(std::int32_t direction) noexcept;
   void adjustSelectedValue(std::int32_t direction) noexcept;
@@ -490,6 +511,9 @@ private:
   std::optional<settings::ControllerInputProfileMenuSaveTicket>
       activeControllerProfileTicket_;
   AirfixWindowsControllerAxisInputSnapshot controllerAxisInput_;
+  texture::TexturePackageAvailability texturePackageAvailability_{
+      texture::TexturePackageAvailability::notConfigured};
+  texture::ActiveMissionTextureState activeMissionTextures_;
   AirfixWindowsRenderSettingsScreen screen_{
       AirfixWindowsRenderSettingsScreen::pause};
   AirfixWindowsRenderSettingsItem selectedPauseItem_{

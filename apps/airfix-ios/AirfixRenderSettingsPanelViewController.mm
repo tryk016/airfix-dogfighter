@@ -25,10 +25,11 @@ enum class SettingsRow : NSUInteger {
   presentation = 2U,
   verticalFovAdjustment = 3U,
   visualProfile = 4U,
-  diagnostics = 5U,
-  apply = 6U,
-  cancel = 7U,
-  count = 8U,
+  textureMode = 5U,
+  diagnostics = 6U,
+  apply = 7U,
+  cancel = 8U,
+  count = 9U,
 };
 
 inline constexpr NSUInteger kSettingsRowCount =
@@ -97,6 +98,7 @@ inline constexpr NSUInteger kSettingsRowCount =
 @property(nonatomic, strong) UISlider *verticalFovSlider;
 @property(nonatomic, strong) UILabel *verticalFovValueLabel;
 @property(nonatomic, strong) UISegmentedControl *visualProfileControl;
+@property(nonatomic, strong) UISegmentedControl *textureModeControl;
 @property(nonatomic, strong) UISwitch *diagnosticsSwitch;
 @property(nonatomic, strong) UIButton *applyButton;
 @property(nonatomic, strong) UIButton *cancelButton;
@@ -116,6 +118,7 @@ inline constexpr NSUInteger kSettingsRowCount =
 - (void)presentationChanged:(UISegmentedControl *)sender;
 - (void)verticalFovChanged:(UISlider *)sender;
 - (void)visualProfileChanged:(UISegmentedControl *)sender;
+- (void)textureModeChanged:(UISegmentedControl *)sender;
 - (void)diagnosticsChanged:(UISwitch *)sender;
 - (void)applySettings;
 - (void)cancelOrClose;
@@ -139,7 +142,10 @@ inline constexpr NSUInteger kSettingsRowCount =
     _coordinator = coordinator;
     _model = airfix::settings::RenderPresentationSettingsMenuModel::create(
         [coordinator activeSettings],
-        { .persistenceAvailable = coordinator.persistenceAvailable == YES, });
+        {
+            .persistenceAvailable = coordinator.persistenceAvailable == YES,
+            .enhancedTexturesAvailable = false,
+        });
     _selectedRow = SettingsRow::renderScale;
     self.modalPresentationStyle = UIModalPresentationOverFullScreen;
   }
@@ -160,8 +166,9 @@ inline constexpr NSUInteger kSettingsRowCount =
 
   UILabel *explanation = makeTextLabel(
       NSLocalizedString(
-          @"These settings change presentation only. Gameplay, physics, "
-          @"and the loaded mission are not reloaded.",
+          @"These settings do not change deterministic gameplay or physics. "
+          @"Mission texture replacements require a supported platform "
+          @"reload path.",
           nil),
       UIFontTextStyleFootnote, UIColor.secondaryLabelColor);
   explanation.textAlignment = NSTextAlignmentCenter;
@@ -333,6 +340,26 @@ inline constexpr NSUInteger kSettingsRowCount =
   UIStackView *profileRow =
       makeSettingRow(NSLocalizedString(@"Visual profile", nil), profile);
 
+  UISegmentedControl *textureMode =
+      [[UISegmentedControl alloc] initWithItems:@[
+        NSLocalizedString(@"Classic", nil),
+        NSLocalizedString(@"Enhanced HD", nil),
+      ]];
+  textureMode.translatesAutoresizingMaskIntoConstraints = NO;
+  textureMode.accessibilityLabel = NSLocalizedString(@"Mission textures", nil);
+  textureMode.accessibilityHint = NSLocalizedString(
+      @"Enhanced private textures are not yet supported by the iOS Metal "
+      @"loader. Classic mission textures remain active.",
+      nil);
+  textureMode.accessibilityIdentifier = @"airfix.settings.texture-mode";
+  [textureMode addTarget:self
+                  action:@selector(textureModeChanged:)
+        forControlEvents:UIControlEventValueChanged];
+  [textureMode setEnabled:NO forSegmentAtIndex:1U];
+  self.textureModeControl = textureMode;
+  UIStackView *textureModeRow =
+      makeSettingRow(NSLocalizedString(@"Mission textures", nil), textureMode);
+
   UISwitch *diagnosticsSwitch = [[UISwitch alloc] initWithFrame:CGRectZero];
   diagnosticsSwitch.translatesAutoresizingMaskIntoConstraints = NO;
   diagnosticsSwitch.accessibilityLabel =
@@ -350,8 +377,9 @@ inline constexpr NSUInteger kSettingsRowCount =
 
   UILabel *previewNote = makeTextLabel(
       NSLocalizedString(
-          @"Classic and Enhanced are renderer profiles. They are separate "
-          @"from any optional private HD texture package.",
+          @"The Classic and Enhanced visual profiles are separate from the "
+          @"optional private HD texture package. Enhanced HD mission "
+          @"textures are not yet available on iOS.",
           nil),
       UIFontTextStyleFootnote, UIColor.secondaryLabelColor);
 
@@ -393,6 +421,7 @@ inline constexpr NSUInteger kSettingsRowCount =
   _focusRows[rowIndex(SettingsRow::verticalFovAdjustment)] =
       verticalFovRow;
   _focusRows[rowIndex(SettingsRow::visualProfile)] = profileRow;
+  _focusRows[rowIndex(SettingsRow::textureMode)] = textureModeRow;
   _focusRows[rowIndex(SettingsRow::diagnostics)] = diagnosticsRow;
   _focusRows[rowIndex(SettingsRow::apply)] = apply;
   _focusRows[rowIndex(SettingsRow::cancel)] = cancel;
@@ -415,6 +444,7 @@ inline constexpr NSUInteger kSettingsRowCount =
     presentationRow,
     verticalFovRow,
     profileRow,
+    textureModeRow,
     diagnosticsRow,
     previewNote,
     status,
@@ -443,6 +473,7 @@ inline constexpr NSUInteger kSettingsRowCount =
     presentationRow,
     verticalFovRow,
     profileRow,
+    textureModeRow,
     diagnosticsRow,
   ];
   NSMutableArray<UILabel *> *bodyLabels = [NSMutableArray array];
@@ -569,6 +600,21 @@ inline constexpr NSUInteger kSettingsRowCount =
                          ? airfix::render::VisualProfile::enhanced
                          : airfix::render::VisualProfile::classic;
   (void)_model->setVisualProfile(value);
+  [self refreshControls];
+}
+
+- (void)textureModeChanged:(UISegmentedControl *)sender {
+  if (!_model.has_value()) {
+    return;
+  }
+  const auto value = sender.selectedSegmentIndex == 1
+                         ? airfix::texture::TextureMode::enhanced
+                         : airfix::texture::TextureMode::classic;
+  const auto result = _model->setTextureMode(value);
+  if (!result.accepted()) {
+    self.statusLabel.text = NSLocalizedString(
+        @"Enhanced HD mission textures are not yet available on iOS.", nil);
+  }
   [self refreshControls];
 }
 
@@ -735,6 +781,8 @@ inline constexpr NSUInteger kSettingsRowCount =
                                           forState:UIControlStateNormal];
   [self.visualProfileControl setTitleTextAttributes:segmentAttributes
                                            forState:UIControlStateNormal];
+  [self.textureModeControl setTitleTextAttributes:segmentAttributes
+                                         forState:UIControlStateNormal];
   NSString *widescreenTitle =
       stackedRows ? NSLocalizedString(@"Hor+", nil)
                   : NSLocalizedString(@"Widescreen Hor+", nil);
@@ -772,6 +820,7 @@ inline constexpr NSUInteger kSettingsRowCount =
     self.presentationControl.enabled = NO;
     self.verticalFovSlider.enabled = NO;
     self.visualProfileControl.enabled = NO;
+    self.textureModeControl.enabled = NO;
     self.diagnosticsSwitch.enabled = NO;
     self.applyButton.enabled = NO;
     self.statusLabel.text =
@@ -803,6 +852,8 @@ inline constexpr NSUInteger kSettingsRowCount =
       self.verticalFovValueLabel.text;
   self.visualProfileControl.selectedSegmentIndex =
       draft.visualProfile == airfix::render::VisualProfile::enhanced ? 1 : 0;
+  self.textureModeControl.selectedSegmentIndex =
+      draft.textureMode == airfix::texture::TextureMode::enhanced ? 1 : 0;
   self.diagnosticsSwitch.on = draft.diagnosticsOverlayEnabled;
 
   const BOOL applying =
@@ -813,6 +864,8 @@ inline constexpr NSUInteger kSettingsRowCount =
   self.presentationControl.enabled = !applying;
   self.verticalFovSlider.enabled = !applying;
   self.visualProfileControl.enabled = !applying;
+  self.textureModeControl.enabled = !applying;
+  [self.textureModeControl setEnabled:NO forSegmentAtIndex:1U];
   self.diagnosticsSwitch.enabled = !applying;
   self.applyButton.enabled = _model->canApply();
   [self.cancelButton setTitle:(applying ? NSLocalizedString(@"Close", nil)
@@ -821,6 +874,12 @@ inline constexpr NSUInteger kSettingsRowCount =
   if (!_model->persistenceAvailable() && self.statusLabel.text.length == 0U) {
     self.statusLabel.text = NSLocalizedString(
         @"Display settings cannot be saved on this installation.", nil);
+  } else if (draft.textureMode == airfix::texture::TextureMode::enhanced &&
+             self.statusLabel.text.length == 0U) {
+    self.statusLabel.text = NSLocalizedString(
+        @"Enhanced HD is unavailable on iOS; Classic mission textures are "
+        @"active.",
+        nil);
   }
   [self applyInterfaceScale:draft.uiScalePercent];
 }
@@ -918,6 +977,16 @@ inline constexpr NSUInteger kSettingsRowCount =
         direction < 0 ? airfix::render::VisualProfile::classic
                       : airfix::render::VisualProfile::enhanced);
     break;
+  case SettingsRow::textureMode: {
+    const auto result = _model->setTextureMode(
+        direction < 0 ? airfix::texture::TextureMode::classic
+                      : airfix::texture::TextureMode::enhanced);
+    if (!result.accepted()) {
+      self.statusLabel.text = NSLocalizedString(
+          @"Enhanced HD mission textures are not yet available on iOS.", nil);
+    }
+    break;
+  }
   case SettingsRow::diagnostics:
     (void)_model->setDiagnosticsOverlayEnabled(direction > 0);
     break;
@@ -948,6 +1017,10 @@ inline constexpr NSUInteger kSettingsRowCount =
         adjustSelectedValue:self.visualProfileControl.selectedSegmentIndex == 0
                                 ? 1
                                 : -1];
+    break;
+  case SettingsRow::textureMode:
+    [self adjustSelectedValue:
+              self.textureModeControl.selectedSegmentIndex == 0 ? 1 : -1];
     break;
   case SettingsRow::diagnostics:
     if (_model.has_value()) {

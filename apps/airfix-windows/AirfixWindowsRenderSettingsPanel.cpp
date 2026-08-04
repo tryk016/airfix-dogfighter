@@ -31,11 +31,12 @@ constexpr std::array<Item, 3U> pauseItemsWithControllerProfile{
     Item::controllerCalibration,
     Item::resume,
 };
-constexpr std::array<Item, 8U> displaySettingsItems{
+constexpr std::array<Item, 9U> displaySettingsItems{
     Item::renderScale,   Item::interfaceScale,
     Item::presentation,  Item::verticalFovAdjustment,
-    Item::visualProfile, Item::rendererStatistics,
-    Item::apply,         Item::cancel,
+    Item::visualProfile, Item::textureMode,
+    Item::rendererStatistics, Item::apply,
+    Item::cancel,
 };
 constexpr std::array<Item, 8U> controllerProfileItems{
     Item::leftStickX,
@@ -304,9 +305,29 @@ AirfixWindowsRenderSettingsPanel::create(
     const AirfixWindowsRenderSettingsSessionOverrideMask sessionOverrideMask,
     const bool resumeAvailable,
     std::optional<AirfixWindowsControllerProfilePanelState>
-        controllerProfile) noexcept {
+        controllerProfile,
+    const texture::TexturePackageAvailability texturePackageAvailability,
+    std::optional<texture::ActiveMissionTextureState>
+        activeMissionTextures) noexcept {
+  const auto initialTextureState = texture::resolveTextureModeState(
+      applied.textureMode, texturePackageAvailability, activeMissionTextures);
+  if (!initialTextureState.complete()) {
+    return std::nullopt;
+  }
+  if (!activeMissionTextures.has_value()) {
+    activeMissionTextures = texture::ActiveMissionTextureState{
+        .requestedMode = applied.textureMode,
+        .effectiveMode = initialTextureState.state->effectiveMode,
+    };
+  }
   auto model = settings::RenderPresentationSettingsMenuModel::create(
-      applied, {.persistenceAvailable = persistenceAvailable});
+      applied,
+      {
+          .persistenceAvailable = persistenceAvailable,
+          .enhancedTexturesAvailable =
+              texturePackageAvailability ==
+              texture::TexturePackageAvailability::ready,
+      });
   if (!model.has_value()) {
     return std::nullopt;
   }
@@ -327,6 +348,8 @@ AirfixWindowsRenderSettingsPanel::create(
       static_cast<AirfixWindowsRenderSettingsSessionOverrideMask>(
           sessionOverrideMask & airfixWindowsRenderSettingsAllSessionOverrides),
       resumeAvailable,
+      texturePackageAvailability,
+      *activeMissionTextures,
   };
 }
 
@@ -336,10 +359,14 @@ AirfixWindowsRenderSettingsPanel::AirfixWindowsRenderSettingsPanel(
         controllerProfileModel,
     const AirfixWindowsUiPixelExtent output,
     const AirfixWindowsRenderSettingsSessionOverrideMask sessionOverrideMask,
-    const bool resumeAvailable) noexcept
+    const bool resumeAvailable,
+    const texture::TexturePackageAvailability texturePackageAvailability,
+    const texture::ActiveMissionTextureState activeMissionTextures) noexcept
     : model_(std::move(model)),
       controllerProfileModel_(std::move(controllerProfileModel)),
       output_(output), sessionOverrideMask_(sessionOverrideMask),
+      texturePackageAvailability_(texturePackageAvailability),
+      activeMissionTextures_(activeMissionTextures),
       status_(model_.persistenceAvailable()
                   ? AirfixWindowsRenderSettingsStatus::ready
                   : AirfixWindowsRenderSettingsStatus::persistenceUnavailable),
@@ -532,6 +559,7 @@ AirfixWindowsRenderSettingsPanel::snapshot() const noexcept {
       .status = status_,
       .appliedSettings = model_.appliedSettings(),
       .draftSettings = model_.draftSettings(),
+      .textureModeState = {},
       .output = output_,
       .layoutScale = 1.0F,
       .panelBounds = {},
@@ -566,6 +594,13 @@ AirfixWindowsRenderSettingsPanel::snapshot() const noexcept {
       .controllerProfileRestartRequired = false,
       .controllerConnected = controllerAxisInput_.connected,
   };
+
+  const auto textureState = texture::resolveTextureModeState(
+      result.draftSettings.textureMode, texturePackageAvailability_,
+      activeMissionTextures_);
+  if (textureState.complete()) {
+    result.textureModeState = *textureState.state;
+  }
 
   if (controllerProfileModel_.has_value()) {
     result.controllerDraftAxes = controllerProfileModel_->draftRecord().axes;
@@ -633,6 +668,7 @@ AirfixWindowsRenderSettingsPanel::snapshot() const noexcept {
     case Item::presentation:
     case Item::verticalFovAdjustment:
     case Item::visualProfile:
+    case Item::textureMode:
     case Item::rendererStatistics:
       enabled = !result.applying;
       break;
@@ -796,6 +832,19 @@ void AirfixWindowsRenderSettingsPanel::setControllerAxisInput(
     const AirfixWindowsControllerAxisInputSnapshot &input) noexcept {
   const AccessibilityMutationGuard mutation{*this};
   controllerAxisInput_ = input;
+}
+
+void AirfixWindowsRenderSettingsPanel::setTextureModeReloadOutcome(
+    const texture::TextureModeMissionReloadOutcome &outcome) noexcept {
+  const AccessibilityMutationGuard mutation{*this};
+  activeMissionTextures_ = outcome.activeMission;
+  if (outcome.status ==
+      texture::TextureModeMissionReloadStatus::reloadFailed) {
+    status_ = AirfixWindowsRenderSettingsStatus::
+        textureReloadFailedRestartRequired;
+  } else if (outcome.requestedState.fallbackToClassic()) {
+    status_ = AirfixWindowsRenderSettingsStatus::enhancedTexturesUnavailable;
+  }
 }
 
 bool AirfixWindowsRenderSettingsPanel::finishApplySuccess(
@@ -989,6 +1038,11 @@ void AirfixWindowsRenderSettingsPanel::adjustSelectedValue(
                                            ? render::VisualProfile::classic
                                            : render::VisualProfile::enhanced);
       break;
+    case Item::textureMode:
+      result = model_.setTextureMode(
+          direction < 0 ? texture::TextureMode::classic
+                        : texture::TextureMode::enhanced);
+      break;
     case Item::rendererStatistics:
       result = model_.setDiagnosticsOverlayEnabled(direction > 0);
       break;
@@ -997,7 +1051,12 @@ void AirfixWindowsRenderSettingsPanel::adjustSelectedValue(
     }
     status_ = result.accepted()
                   ? AirfixWindowsRenderSettingsStatus::ready
-                  : AirfixWindowsRenderSettingsStatus::invalidSettings;
+                  : (result.status == settings::
+                                          RenderPresentationSettingsMenuEditStatus::
+                                              enhancedTexturesUnavailable
+                         ? AirfixWindowsRenderSettingsStatus::
+                               enhancedTexturesUnavailable
+                         : AirfixWindowsRenderSettingsStatus::invalidSettings);
     return;
   }
 
@@ -1117,6 +1176,7 @@ AirfixWindowsRenderSettingsPanel::activateSelectedItem() noexcept {
     case Item::presentation:
     case Item::verticalFovAdjustment:
     case Item::visualProfile:
+    case Item::textureMode:
       adjustSelectedValue(1);
       return {};
     case Item::rendererStatistics:

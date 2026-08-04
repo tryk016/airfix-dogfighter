@@ -56,11 +56,13 @@ settings(const float scale = 100.0F,
 [[nodiscard]] RenderPresentationSettingsMenuModel
 model(const RenderPresentationSettings &applied = {},
       const bool persistenceAvailable = true,
-      const std::uint64_t initialSerial = 0U) {
+      const std::uint64_t initialSerial = 0U,
+      const bool enhancedTexturesAvailable = false) {
   auto created = RenderPresentationSettingsMenuModel::create(
       applied,
       RenderPresentationSettingsMenuCapabilities{
           .persistenceAvailable = persistenceAvailable,
+          .enhancedTexturesAvailable = enhancedTexturesAvailable,
       },
       initialSerial);
   require(created.has_value(), "valid menu model was not created");
@@ -265,6 +267,17 @@ void testTypedEditsAreAtomicAndProduceExactDelta() {
 
 void testEverySingleFieldDeltaIsExact() {
   {
+    auto menu = model({}, true, 0U, true);
+    require(menu.setTextureMode(airfix::texture::TextureMode::enhanced)
+                .accepted(),
+            "texture-mode-only edit failed");
+    require(menu.delta() ==
+                RenderPresentationSettingsDelta{
+                    .textureModeChanged = true,
+                },
+            "texture-mode-only edit produced wrong delta");
+  }
+  {
     auto menu = model();
     require(
         menu.setScenePresentation(ScenePresentationMode::originalFourByThree)
@@ -316,6 +329,46 @@ void testEverySingleFieldDeltaIsExact() {
                 },
             "UI-scale-only edit produced wrong delta");
   }
+}
+
+void testEnhancedTextureCapabilityFailsClosed() {
+  auto unavailable = model();
+  const auto rejected =
+      unavailable.setTextureMode(airfix::texture::TextureMode::enhanced);
+  require(rejected.status == RenderPresentationSettingsMenuEditStatus::
+                                 enhancedTexturesUnavailable &&
+              !rejected.issue.has_value() && !unavailable.dirty() &&
+              unavailable.draftSettings().textureMode ==
+                  airfix::texture::TextureMode::classic,
+          "unavailable Enhanced texture edit changed the draft");
+
+  const auto forged = unavailable.setTextureMode(
+      static_cast<airfix::texture::TextureMode>(0xFFU));
+  require(forged.status ==
+                  RenderPresentationSettingsMenuEditStatus::invalidSettings &&
+              forged.issue.has_value() &&
+              forged.issue->kind ==
+                  RenderPresentationSettingsIssueKind::unsupportedTextureMode,
+          "forged texture mode reported the wrong edit result");
+
+  auto ready = model({}, true, 0U, true);
+  require(ready.enhancedTexturesAvailable() &&
+              ready.setTextureMode(airfix::texture::TextureMode::enhanced)
+                  .accepted() &&
+              ready.draftSettings().textureMode ==
+                  airfix::texture::TextureMode::enhanced,
+          "ready Enhanced texture capability rejected the edit");
+
+  auto fallback = model(settings(100.0F,
+                                 ScenePresentationMode::widescreenHorPlus,
+                                 VisualProfile::classic, false, 0.0F, 100.0F,
+                                 airfix::texture::TextureMode::enhanced));
+  require(!fallback.enhancedTexturesAvailable() &&
+              fallback.setTextureMode(airfix::texture::TextureMode::enhanced)
+                  .accepted() &&
+              fallback.setTextureMode(airfix::texture::TextureMode::classic)
+                  .accepted(),
+          "fallback preference could not remain Enhanced or return Classic");
 }
 
 void testFovEditBoundariesAndInvalidClassesAreAtomic() {
@@ -581,6 +634,7 @@ int main() {
     testCreationRejectsEveryInvalidAppliedClass();
     testTypedEditsAreAtomicAndProduceExactDelta();
     testEverySingleFieldDeltaIsExact();
+    testEnhancedTextureCapabilityFailsClosed();
     testScaleEditBoundariesAndInvalidClassesAreAtomic();
     testFovEditBoundariesAndInvalidClassesAreAtomic();
     testEditingBackToAppliedClearsDirtyState();

@@ -129,6 +129,9 @@ airfixWindowsUiItemLabel(AirfixWindowsRenderSettingsItem item) noexcept;
   case AirfixWindowsRenderSettingsStatus::applyFailed:
   case AirfixWindowsRenderSettingsStatus::persistenceUnavailable:
   case AirfixWindowsRenderSettingsStatus::invalidSettings:
+  case AirfixWindowsRenderSettingsStatus::enhancedTexturesUnavailable:
+  case AirfixWindowsRenderSettingsStatus::
+      textureReloadFailedRestartRequired:
   case AirfixWindowsRenderSettingsStatus::controllerProfileSaveFailed:
   case AirfixWindowsRenderSettingsStatus::
       controllerProfilePersistenceUnavailable:

@@ -5774,3 +5774,30 @@ superseded evidence.
   normalization, CI-classifier tests, and `git diff --check` pass. Generic
   native mode UI, atomic in-process mission reload, iOS owner import/Metal
   upload, streaming, and compressed derivatives remain later stages.
+
+## 2026-08-03 - native texture-mode UI and atomic Windows mission reload
+
+- Added the independent Classic/Enhanced mission-texture row to the portable
+  settings menu model and both native settings panels. Windows enables
+  Enhanced only when the configured package has completed validation. iOS
+  keeps the Enhanced segment disabled and reports fixed path-free fallback
+  copy until an owner-imported Metal transaction exists.
+- Added a portable owner-thread mission-reload coordinator. It resolves the
+  requested/effective target, avoids no-op reloads, invokes one product
+  publication callback, advances active state only after success, and preserves
+  the previous active state exactly after preparation failure.
+- Windows now opens a configured HD package independently from the startup
+  preference, separates visual mission loading from one-time aircraft-audio
+  registration, and reloads the room plus all six authenticated HUD texture
+  owners while paused. D3D11 prepares every private resource before one
+  ownership swap; only then are the renderer-owned spawn, actor-pose, and
+  gameplay-camera endpoints replaced. Failures keep the prior scene and expose
+  a fixed retry/restart status without paths, logical names, or checksums.
+- A clean GNU 15.2/Ninja portable build completed 495/495 edges and passed
+  154/154 CTests. A clean MSVC 19.51/Ninja Windows Release product build passed
+  169/169 CTests, including D3D11/XAudio2 product smokes, scaled rendering, UI
+  Automation, and the new settings/reload tests. Public-boundary tests and the
+  816-file scan, documentation integrity (119 experiments/408 catalogue rows),
+  12/12 Rizin normalization, CI-classifier tests, and `git diff --check` pass.
+  No private manifest, PNG, GTI, content root, or derived asset entered the
+  repository or test inputs.

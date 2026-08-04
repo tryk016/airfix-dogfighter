@@ -70,6 +70,24 @@ RenderPresentationSettingsMenuModel::setVisualProfile(
 }
 
 RenderPresentationSettingsMenuEditResult
+RenderPresentationSettingsMenuModel::setTextureMode(
+    const texture::TextureMode value) noexcept {
+  if (phase() == RenderPresentationSettingsMenuPhase::applying) {
+    return editResult(
+        RenderPresentationSettingsMenuEditStatus::applyInProgress);
+  }
+  if (value == texture::TextureMode::enhanced &&
+      value != draft_.textureMode &&
+      !capabilities_.enhancedTexturesAvailable) {
+    return editResult(
+        RenderPresentationSettingsMenuEditStatus::enhancedTexturesUnavailable);
+  }
+  render::RenderPresentationSettingsOverride overrides;
+  overrides.textureMode = value;
+  return edit(overrides);
+}
+
+RenderPresentationSettingsMenuEditResult
 RenderPresentationSettingsMenuModel::setDiagnosticsOverlayEnabled(
     const bool value) noexcept {
   render::RenderPresentationSettingsOverride overrides;
