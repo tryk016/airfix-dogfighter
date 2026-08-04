@@ -334,8 +334,10 @@ Tasks:
   useful, as staged in ADR-0002.
 - Implement Metal surface/backend, shader compilation, resource residency, and
   device-loss/lifecycle handling.
-- Design touch controls rather than merely overlaying the keyboard: configurable
-  virtual stick, throttle, weapons, camera, pause, haptics, and handedness.
+- Continue the implemented custom touch controls beyond the portable V1
+  safe-area geometry, compact density, and handedness foundation: add private
+  durable layout/visibility settings, a recovery-safe editor, opacity policy,
+  finished menus, and haptics.
 - Support Game Controller devices, safe areas, rotation policy, interruptions,
   background/foreground, audio sessions, thermal state, memory warnings, and
   sandboxed save locations.

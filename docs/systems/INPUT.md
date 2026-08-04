@@ -1,9 +1,10 @@
 # Input, controls, and haptics system
 
 **Status:** portable core, controller-profile V1, safe native startup seams,
-native gameplay transport, Windows/iOS calibration/remap/save UI, and the
-bounded binding-remap model implemented; live replacement, Windows UI
-Automation, haptics, glyphs, and device acceptance pending
+native gameplay transport, Windows/iOS calibration/remap/save UI, bounded
+binding remapping, and touch-layout geometry/profile V1 implemented; durable
+touch visibility/layout settings, live replacement, Windows UI Automation,
+haptics, glyphs, and device acceptance pending
 
 **Priority:** P0 for the Windows x64 and iOS vertical slices
 
@@ -242,6 +243,26 @@ targets, and provides explicit VoiceOver actions. Partial touch cancellation
 releases only the affected control. Full cancellation releases every held
 control while preserving the absolute throttle target.
 
+The visual and capture rectangles now come from the platform-neutral
+`TouchControlsLayoutProfile` V1 model. Its default reproduces the previous
+right-handed automatic UIKit layout, including automatic compact geometry on
+short or narrow safe areas. Callers may force compact density or select a
+left-handed layout that mirrors every rectangle inside the same offset safe
+area without changing any semantic action identifier. Unsupported schemas,
+forged enum values, non-finite rectangles, and empty safe bounds fail closed.
+Every profile change cancels active touches before UIKit publishes new frames.
+This is the tested layout foundation only: the application does not yet persist
+the selection or expose visibility, opacity, free placement, or an editor.
+
+The current overlay deliberately uses a vertical throttle rail with a broad
+horizontal handle. Stick, throttle, look region, and buttons use translucent
+dark fills plus stable accent borders; active controls increase fill/border
+emphasis and keep their capture geometry fixed. Labels retain a dark shadow for
+readability over bright and dark rooms. This gives the requested unobtrusive
+game-overlay appearance without a blur pass or a full-screen translucent layer.
+User-adjustable opacity remains a later persisted setting with an enforced
+legibility floor.
+
 `AirfixGameControllerAdapter` assigns one extended controller and maps both
 sticks, both triggers, all four D-pad directions, shoulders, face buttons, optional
 right-stick click, and combined menu/options pause while leaving Bluetooth
@@ -286,9 +307,10 @@ path, checksum, controller identity, GUID or Bluetooth address. Settings panels
 remain in the validated menu context, so a valid custom profile need not
 contain modal/control-editor bindings.
 
-This completes calibration/remap/save transport, not control-system acceptance.
-Persistent touch layout/visibility profiles, prompt glyphs, haptics, finished
-touch/controller menus, and physical validation of
+This completes calibration/remap/save transport and the deterministic touch
+geometry foundation, not control-system acceptance. Durable touch
+layout/visibility settings, prompt glyphs, haptics, finished touch/controller
+menus, and physical validation of
 Application Support protection, save/force-quit/relaunch and lifecycle recovery
 on both target iPhones remain pending.
 
@@ -676,8 +698,11 @@ InputProfile
 ```
 
 Controller remapping/calibration uses the separate AFIP V1 record described
-above. Touch layout, visibility, handedness, haptics, and optional motion remain
-future independently versioned records rather than being forced into AFIP.
+above. The implemented touch-layout profile is currently an in-memory,
+versioned geometry value; its durable document and migration policy remain
+future work. Touch layout, visibility, handedness, haptics, and optional motion
+will remain independently versioned records rather than being forced into
+AFIP.
 Profiles use logical actions and standardized controller elements. Runtime
 device IDs, Bluetooth addresses, and hardware serial-like identifiers are not
 stored. Invalid current-schema AFIP documents fall back safely; bounded,
@@ -727,6 +752,9 @@ Budgets are provisional until target devices are selected.
 - All required multi-touch combinations listed above.
 - Finger crosses controls, leaves screen, receives cancel, and changes context.
 - Phone/tablet layouts across supported aspect ratios and safe areas.
+- Exact default-layout parity, forced/automatic compact selection,
+  semantic-preserving horizontal mirroring, invalid-profile rejection, and
+  bounded 44-point capture geometry in portable tests.
 - Left-handed, large-control, minimum/maximum opacity, and inverted controls.
 - Control editor cannot hide or strand recovery actions.
 - Accidental-touch test near Home indicator and screen edges.

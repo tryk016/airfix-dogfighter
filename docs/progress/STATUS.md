@@ -1404,8 +1404,12 @@
    implemented bounded Windows COM provider. Until that passes, do not claim
    Narrator support. Before supporting live replacement, add a host-owned
    pause transaction that
-   prepares a fresh pair. Then add persistent touch layout/visibility profiles,
-   controller glyphs, haptics, and finished menu bindings before touch-only and
+   prepares a fresh pair. The platform-neutral touch-layout geometry/profile V1
+   now preserves the default UIKit layout, supports automatic/forced compact
+   density and semantic-preserving left-handed mirroring, and cancels active
+   touches before relayout. Next add its private durable settings document,
+   visibility/opacity policy and recovery-safe editor, followed by controller
+   glyphs, haptics, and finished menu bindings before touch-only and
    controller-only acceptance on both target iPhones. Never mutate
    position-indexed active router state in place or accept a live caller's
    unauthenticated mission claim.
@@ -1476,6 +1480,17 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The touch-layout geometry/profile V1 adds a platform-neutral C++20 safe-area
+  model, automatic/forced compact density, semantic-preserving left-handed
+  mirroring, enlarged capture geometry for the broad throttle handle, and
+  fail-closed profile/bounds validation. UIKit consumes the model, cancels
+  active touches before relayout, and presents a translucent bordered overlay
+  with a vertical throttle and horizontal handle. A complete clean portable
+  GCC/Ninja build passes 160/160 CTests. Changed-source clang-format,
+  `git diff --check`, synthetic public-boundary tests, the actual 834-file
+  public scan, documentation integrity (119 experiments/408 catalogue rows),
+  CI-classifier tests, and 12/12 Rizin normalization tests pass. Hosted Apple,
+  Windows, Linux, macOS, and clangd builds remain the publication gate.
 - The iOS HD package slice now includes a portable package session, canonical
   AFTL locator codec, durable current/backup store, bounded accepted-manifest
   discovery, owner-copy installation, restart inspection, and native iOS

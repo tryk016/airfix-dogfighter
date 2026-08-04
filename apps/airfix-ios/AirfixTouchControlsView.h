@@ -26,6 +26,16 @@ typedef NS_ENUM(NSInteger, AirfixTouchButton) {
   AirfixTouchButtonCount,
 };
 
+typedef NS_ENUM(NSInteger, AirfixTouchControlsHandedness) {
+  AirfixTouchControlsHandednessRight = 0,
+  AirfixTouchControlsHandednessLeft,
+};
+
+typedef NS_ENUM(NSInteger, AirfixTouchControlsDensity) {
+  AirfixTouchControlsDensityAutomatic = 0,
+  AirfixTouchControlsDensityCompact,
+};
+
 @class AirfixTouchControlsView;
 
 @protocol AirfixTouchControlsViewDelegate <NSObject>
@@ -44,6 +54,12 @@ typedef NS_ENUM(NSInteger, AirfixTouchButton) {
 
 @property(nonatomic, weak, nullable) id<AirfixTouchControlsViewDelegate>
     delegate;
+
+// Main-thread only. Changing either property first releases every active
+// touch, then applies a stable semantic-preserving relayout. Left-handed mode
+// mirrors geometry only; it never swaps input action identifiers.
+@property(nonatomic) AirfixTouchControlsHandedness layoutHandedness;
+@property(nonatomic) AirfixTouchControlsDensity layoutDensity;
 
 // Main-thread only. Releases every captured/accessible held control and
 // publishes neutral stick, camera-look, throttle-delta, and button state. The

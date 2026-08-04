@@ -130,6 +130,7 @@ add_library(airfix_input
     src/airfix/input/ControllerInputBatchBridge.cpp
     src/airfix/input/DesktopInputBridge.cpp
     src/airfix/input/InputRouter.cpp
+    src/airfix/input/TouchControlsLayout.cpp
 )
 add_library(airfix::input ALIAS airfix_input)
 
@@ -1008,6 +1009,13 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_input_tests tests/InputRouterTests.cpp)
     target_link_libraries(airfix_input_tests PRIVATE airfix::input)
     add_test(NAME airfix_input_tests COMMAND airfix_input_tests)
+
+    add_executable(airfix_touch_controls_layout_tests
+        tests/TouchControlsLayoutTests.cpp)
+    target_link_libraries(airfix_touch_controls_layout_tests
+        PRIVATE airfix::input)
+    add_test(NAME airfix_touch_controls_layout_tests
+        COMMAND airfix_touch_controls_layout_tests)
 
     add_executable(airfix_ios_input_startup_policy_tests
         tests/AirfixIOSInputStartupPolicyTests.cpp)

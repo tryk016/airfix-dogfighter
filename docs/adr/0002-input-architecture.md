@@ -1,7 +1,7 @@
 # ADR-0002: Semantic actions with touch and controller adapters
 
-**Status:** Accepted; portable router, controller-profile core, and native
-startup installation seams implemented
+**Status:** Accepted; portable router, controller-profile core, native startup
+installation seams, and touch-layout geometry/profile V1 implemented
 
 **Date:** 2026-07-21
 
@@ -31,6 +31,27 @@ Controller framework because the current shell is native and this avoids an
 unneeded platform dependency in the vertical slice. SDL3 remains an optional
 common desktop/controller adapter if a later cross-platform shell benefits from
 it. Core Haptics stays behind a narrow Apple feedback bridge.
+
+Keep touch-control placement in a platform-neutral, versioned geometry profile.
+UIKit supplies an already inset safe-area rectangle and consumes the returned
+visual/capture rectangles; UIKit types do not enter the portable model. Schema
+V1 preserves the existing right-handed automatic layout as its default, permits
+a forced compact density, and mirrors geometry (but never semantic action IDs)
+for left-handed play. A profile or safe-area change first cancels active touches
+so a finger cannot retain ownership of a control that moved underneath it.
+
+This first profile is an in-memory geometry contract, not durable user settings.
+Visibility, opacity, free placement, serialization/migration, menu ownership,
+and safe recovery controls remain separate follow-up work.
+
+The default visual language uses a vertical aircraft throttle with a broad
+horizontal handle and translucent, dark-backed controls with persistent accent
+borders. Resting controls leave the scene readable; touch/held state raises
+fill and border emphasis without moving the capture rectangle. Text receives a
+dark shadow because scene luminance is uncontrolled. Do not use full-screen
+blur or make color the only state signal. A future opacity preference must be
+bounded by an accessibility-safe minimum and must not shrink the independent
+44-point capture targets.
 
 ## Options considered
 
@@ -91,6 +112,11 @@ context and remapping, and cannot express an absolute touch throttle cleanly.
 - Touch-only completion and controller-only completion are independent release
   tests.
 - Input profile schemas require versioning and migration.
+- Touch-layout calculations are deterministic C++20 and testable without
+  UIKit; native code owns only safe-area acquisition, view presentation, touch
+  capture, and accessibility projection.
+- Changing handedness or density is a main-thread transaction that releases all
+  active touch ownership before relayout. Mirroring never changes action IDs.
 - Controller prompts require a last-active-source service.
 - Lifecycle transitions and device loss are part of input correctness, not app
   shell edge cases.
@@ -111,7 +137,9 @@ context and remapping, and cannot express an absolute touch throttle cleanly.
 
 1. [ ] Confirm action semantics and timing from the Windows reference build.
 2. [x] Implement action IDs, contexts, bindings, and deterministic input frames.
-3. [ ] Prototype custom multi-touch stick, throttle, and two-button firing.
+3. [x] Implement the native custom multi-touch stick, throttle, weapons, camera,
+   mission, and pause surface, including the portable safe-area layout profile,
+   automatic/forced compact geometry, and semantic-preserving left-handed mode.
 4. [x] Implement Apple Game Controller hot-plug on iOS; add an SDL3 desktop
    adapter only when desktop parity work needs it.
 5. [x] Implement a bounded controller profile, deterministic integer
@@ -122,3 +150,5 @@ context and remapping, and cannot express an absolute touch throttle cleanly.
    pair; an input context enum is not authorization.
 7. [ ] Validate whether an Apple bridge is required for haptics/glyph metadata.
 8. [ ] Run phone/tablet/controller usability and lifecycle tests.
+9. [ ] Add a private durable touch-layout/visibility document, migration,
+   settings UI, opacity/visibility policy, and recovery-safe layout editing.
