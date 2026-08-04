@@ -135,7 +135,8 @@ inline constexpr NSUInteger kSettingsRowCount =
 @implementation AirfixRenderSettingsPanelViewController
 
 - (instancetype)initWithCoordinator:
-    (AirfixRenderSettingsCoordinator *)coordinator {
+                    (AirfixRenderSettingsCoordinator *)coordinator
+    enhancedTexturesAvailable:(BOOL)enhancedTexturesAvailable {
   NSParameterAssert(coordinator != nil);
   self = [super initWithNibName:nil bundle:nil];
   if (self != nil) {
@@ -144,7 +145,7 @@ inline constexpr NSUInteger kSettingsRowCount =
         [coordinator activeSettings],
         {
             .persistenceAvailable = coordinator.persistenceAvailable == YES,
-            .enhancedTexturesAvailable = false,
+            .enhancedTexturesAvailable = enhancedTexturesAvailable == YES,
         });
     _selectedRow = SettingsRow::renderScale;
     self.modalPresentationStyle = UIModalPresentationOverFullScreen;
@@ -348,14 +349,16 @@ inline constexpr NSUInteger kSettingsRowCount =
   textureMode.translatesAutoresizingMaskIntoConstraints = NO;
   textureMode.accessibilityLabel = NSLocalizedString(@"Mission textures", nil);
   textureMode.accessibilityHint = NSLocalizedString(
-      @"Enhanced private textures are not yet supported by the iOS Metal "
-      @"loader. Classic mission textures remain active.",
+      @"Enhanced uses a locally imported, validated private texture package "
+      @"and reloads the current mission. Classic always uses original GTI "
+      @"textures.",
       nil);
   textureMode.accessibilityIdentifier = @"airfix.settings.texture-mode";
   [textureMode addTarget:self
                   action:@selector(textureModeChanged:)
         forControlEvents:UIControlEventValueChanged];
-  [textureMode setEnabled:NO forSegmentAtIndex:1U];
+  [textureMode setEnabled:_model->enhancedTexturesAvailable()
+             forSegmentAtIndex:1U];
   self.textureModeControl = textureMode;
   UIStackView *textureModeRow =
       makeSettingRow(NSLocalizedString(@"Mission textures", nil), textureMode);
@@ -613,7 +616,7 @@ inline constexpr NSUInteger kSettingsRowCount =
   const auto result = _model->setTextureMode(value);
   if (!result.accepted()) {
     self.statusLabel.text = NSLocalizedString(
-        @"Enhanced HD mission textures are not yet available on iOS.", nil);
+        @"Import and validate a private HD texture package first.", nil);
   }
   [self refreshControls];
 }
@@ -865,7 +868,9 @@ inline constexpr NSUInteger kSettingsRowCount =
   self.verticalFovSlider.enabled = !applying;
   self.visualProfileControl.enabled = !applying;
   self.textureModeControl.enabled = !applying;
-  [self.textureModeControl setEnabled:NO forSegmentAtIndex:1U];
+  [self.textureModeControl
+      setEnabled:!applying && _model->enhancedTexturesAvailable()
+      forSegmentAtIndex:1U];
   self.diagnosticsSwitch.enabled = !applying;
   self.applyButton.enabled = _model->canApply();
   [self.cancelButton setTitle:(applying ? NSLocalizedString(@"Close", nil)
@@ -875,10 +880,11 @@ inline constexpr NSUInteger kSettingsRowCount =
     self.statusLabel.text = NSLocalizedString(
         @"Display settings cannot be saved on this installation.", nil);
   } else if (draft.textureMode == airfix::texture::TextureMode::enhanced &&
+             !_model->enhancedTexturesAvailable() &&
              self.statusLabel.text.length == 0U) {
     self.statusLabel.text = NSLocalizedString(
-        @"Enhanced HD is unavailable on iOS; Classic mission textures are "
-        @"active.",
+        @"Enhanced HD is unavailable until a private texture package is "
+        @"validated. Classic mission textures remain active.",
         nil);
   }
   [self applyInterfaceScale:draft.uiScalePercent];
@@ -983,7 +989,7 @@ inline constexpr NSUInteger kSettingsRowCount =
                       : airfix::texture::TextureMode::enhanced);
     if (!result.accepted()) {
       self.statusLabel.text = NSLocalizedString(
-          @"Enhanced HD mission textures are not yet available on iOS.", nil);
+          @"Import and validate a private HD texture package first.", nil);
     }
     break;
   }

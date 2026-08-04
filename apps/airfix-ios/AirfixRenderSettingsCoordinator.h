@@ -7,6 +7,16 @@
 NS_ASSUME_NONNULL_BEGIN
 
 @class AirfixMetalRenderer;
+@class AirfixRenderSettingsCoordinator;
+
+@protocol AirfixRenderSettingsCoordinatorDelegate <NSObject>
+
+// Main-thread notification after startup resolution or a successful durable
+// Metal publication. The receiver reads the complete active snapshot.
+- (void)renderSettingsCoordinatorDidPublishActiveSettings:
+    (AirfixRenderSettingsCoordinator*)coordinator;
+
+@end
 
 typedef NS_ENUM(NSInteger, AirfixRenderSettingsApplyResult) {
     AirfixRenderSettingsApplyResultApplied,
@@ -23,6 +33,9 @@ typedef void (^AirfixRenderSettingsApplyCompletion)(
 // one candidate may pass prepare/save/publication at a time; later UI requests
 // are coalesced to the newest complete persistent base.
 @interface AirfixRenderSettingsCoordinator : NSObject
+
+@property(nonatomic, weak, nullable)
+    id<AirfixRenderSettingsCoordinatorDelegate> delegate;
 
 - (instancetype)initWithRenderer:(AirfixMetalRenderer*)renderer
     NS_DESIGNATED_INITIALIZER;

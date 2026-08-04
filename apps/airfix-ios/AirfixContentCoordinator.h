@@ -11,6 +11,18 @@ typedef NS_ENUM(NSInteger, AirfixContentReadiness) {
     AirfixContentReadinessRejected,
 };
 
+typedef NS_ENUM(NSInteger, AirfixTexturePackageAvailability) {
+    AirfixTexturePackageAvailabilityNotConfigured,
+    AirfixTexturePackageAvailabilityValidating,
+    AirfixTexturePackageAvailabilityReady,
+    AirfixTexturePackageAvailabilityUnavailable,
+};
+
+typedef NS_ENUM(NSInteger, AirfixMissionTextureMode) {
+    AirfixMissionTextureModeClassic,
+    AirfixMissionTextureModeEnhanced,
+};
+
 @class AirfixContentCoordinator;
 @class AirfixMissionWorldRoomSnapshot;
 
@@ -27,6 +39,9 @@ typedef NS_ENUM(NSInteger, AirfixContentReadiness) {
         (AirfixMissionWorldRoomSnapshot*)snapshot;
 - (void)contentCoordinatorDidFailLoadingMission:
     (AirfixContentCoordinator*)coordinator;
+- (void)contentCoordinator:(AirfixContentCoordinator*)coordinator
+    didChangeTexturePackageAvailability:
+        (AirfixTexturePackageAvailability)availability;
 @end
 
 // Owns the native private-content workflow. All package mutations are
@@ -37,6 +52,8 @@ typedef NS_ENUM(NSInteger, AirfixContentReadiness) {
 @property(nonatomic, weak, nullable) id<AirfixContentCoordinatorDelegate> delegate;
 @property(nonatomic, strong, readonly) UIView* controlsView;
 @property(nonatomic, readonly) AirfixContentReadiness readiness;
+@property(nonatomic, readonly)
+    AirfixTexturePackageAvailability texturePackageAvailability;
 
 - (instancetype)initWithPresentingViewController:(UIViewController*)viewController
     NS_DESIGNATED_INITIALIZER;
@@ -47,6 +64,11 @@ typedef NS_ENUM(NSInteger, AirfixContentReadiness) {
 - (void)applicationDidEnterBackground;
 - (void)applicationWillEnterForeground;
 - (void)applicationDidBecomeActive;
+
+// Changes only the requested mission-texture policy. Enhanced becomes
+// effective after a completely validated private package is ready; otherwise
+// a full mission reload safely uses Classic GTI textures.
+- (void)requestMissionTextureMode:(AirfixMissionTextureMode)textureMode;
 
 // Remembers an explicit private mission setup/Level pair and an optional exact
 // player object-definition path. If content is validating or the app is

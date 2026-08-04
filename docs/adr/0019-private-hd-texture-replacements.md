@@ -57,14 +57,17 @@ manifest record.
 
 The project supports an optional, owner-configured HD replacement package
 through a portable `TextureReplacementResolver`, with implementation kept
-deliberately staged. Public stages 1-7 are implemented: AFRS persists the
-requested mode, both native settings panels expose the independent choice, and
-Windows resolves it against session-local package availability and can replace
-the complete running mission visual snapshot atomically. The iOS owner import
-and Metal upload transaction remain later work, so Enhanced is visible but
-disabled in the iOS panel. This does not make Enhanced a cross-platform product
-claim. This ADR does not merge the pipeline branch or add the private package
-to a build, bundle, Git, or CI.
+deliberately staged. Public stages 1-8 are implemented in source: AFRS persists
+the requested mode, both native settings panels expose the independent choice,
+and both products resolve it against validated package availability before an
+atomic full-mission visual reload. Windows accepts an explicit session-local
+root. iOS imports an owner-selected folder copy into private Application
+Support, persists only an opaque product-generated locator, reopens the shared
+portable package session after restart, and uses the existing transactional
+Metal RGBA8/mip upload. Physical-device budget and visual acceptance remain
+pending, so this is not yet a completed device-support claim. This ADR does not
+merge the pipeline branch or add the private package to a build, bundle, Git,
+or CI.
 
 ### Independent setting and effective state
 
@@ -120,9 +123,11 @@ package at startup, then its native pause panel enables Enhanced only for a
 ready package. A mode change reloads the room and all authenticated HUD texture
 owners without re-registering aircraft audio. CPU and GPU preparation precede
 the renderer's single ownership swap; a preparation failure preserves the old
-scene, active mode, simulation endpoints, and Classic fallback. iOS presents
-the same durable field but disables Enhanced until its private content and
-Metal transaction are implemented.
+scene, active mode, simulation endpoints, and Classic fallback. iOS enables
+Enhanced only while its installed package has passed the same accepted-only
+manifest and root-capability validation. A package or mode change cancels any
+stale publication ticket and prepares a complete replacement mission snapshot
+before Metal's no-fail ownership swap.
 
 `RenderPresentationSettings` now carries the requested `TextureMode` through
 AFRS semantic schema 4. Existing schema-1/2/3 records migrate to Classic. A
@@ -140,8 +145,8 @@ The package root is supplied only by an owner-local platform adapter:
 - Windows may use an explicit `--texture-pack-root` launch option and later a
   private content-manager selection stored below the application preference
   root;
-- iOS may use a separate owner-imported Application Support subtree managed by
-  a later private package importer; and
+- iOS uses a separate owner-imported Application Support subtree managed by
+  its native document-picker importer; and
 - tests inject a temporary synthetic root.
 
 The root is never compiled into CMake, embedded as an application resource,
@@ -157,7 +162,35 @@ processing disabled. Apple platforms use the equivalent descriptor-relative
 no-follow walk. The shared first implementation in ADR-0020 rejects symbolic
 links, junctions, other reparse entries, devices, FIFOs, sockets, multiply
 linked files, and directories where a regular file is required. It stores no
-configured root spelling and no product currently calls its platform factory.
+configured root spelling. Windows, iOS, and the portable synthetic suites call
+the same platform factory; iOS uses the POSIX capability.
+
+Package-session construction is also portable. `TexturePackSession` assigns a
+non-zero process generation, pins the root capability, reads the bounded
+manifest through that capability, builds the accepted-only immutable index,
+and constructs the non-owning resolver while preserving owner lifetimes. The
+Windows adapter is deliberately only a compatibility facade over this shared
+implementation. The iOS importer reuses it after installing an owner-selected
+folder copy; it has no independent parser or weaker path-opening policy.
+
+The iOS installer asks the system document picker for a folder copy. It never
+opens, renames, or modifies the owner's original folder. The disposable copy
+is moved under a product-generated lowercase `pack-<UUID>.partial` identity,
+scanned without following links, and must contain exactly one JSONL candidate
+that opens as an accepted reviewed-corpus session. Neither a layer name nor a
+specific manifest filename is hardcoded. Only after validation is the staging
+directory renamed to its immutable `pack-<UUID>` identity.
+
+Activation uses the canonical AFTL v1 locator in a durable current/backup
+pair. The locator contains only the product-generated package identity and the
+validated root-relative manifest path, has fixed framing plus SHA-256, and is
+never shown in product UI or logs. Unknown future AFTL schemas are retained
+opaque and block downgrade writes. A failed or unconfirmed commit is inspected
+again before any success is reported; a rejected replacement closes all file
+handles before its exact owned directory is removed. The previous current and
+backup packages remain available for recovery. The app bundle, CMake resources,
+Git, and public CI never contain the locator, manifest, PNG files, or package
+directory.
 
 ### Manifest index
 
@@ -558,10 +591,12 @@ the renderer, and gives both backends one fallback and cache vocabulary.
    availability state, generic native UI, Windows startup resolution, and
    atomic Windows in-process mode-switch reload are implemented. Missing or
    invalid packages recover to Classic without mutating the active mission.
-   iOS exposes the fixed unavailable state without accepting Enhanced.
-8. **Metal pilot and device budgets.** Add owner-imported Application Support
-   storage, Metal RGBA8 uploads under the existing aggregate ledger, then
-   profile iPhone SE 3 and iPhone 17 Pro Max before choosing quality caps.
+8. **Metal pilot and device budgets.** Implemented in source: owner-imported
+   Application Support storage, durable AFTL locator recovery, the shared
+   portable package session, availability-gated native UI, and the existing
+   Metal RGBA8/mip upload transaction participate in one Enhanced mission
+   reload. Hosted iOS compilation plus profiling on iPhone SE 3 and iPhone 17
+   Pro Max remain required before choosing final quality caps.
 9. **Streaming.** Add generation-tagged priority jobs, resident mip ranges,
    cancellation, eviction, memory-pressure handling, and no-double-residency
    defaults. Validate deterministic simulation hashes throughout.
@@ -694,8 +729,8 @@ The following remain outside Git and public CI:
 11. [x] Add the portable persistent requested/effective state and schema-4
         migration after the fallback matrix and Windows pilot review.
 12. [x] Add generic native UI and atomic Windows in-process mission reload.
-        The iOS control remains explicitly unavailable rather than claiming an
-        unimplemented Metal path.
-13. [ ] Add the iOS owner-import/Metal pilot and validate both target phones.
-14. [ ] Add streaming and compressed derivatives only after device budgets and
+13. [x] Add the iOS owner-import, durable private locator/session recovery, and
+        atomic Metal mission-reload path without bundling private resources.
+14. [ ] Validate the HD pilot and memory budgets on both target phones.
+15. [ ] Add streaming and compressed derivatives only after device budgets and
         per-mip authentication are defined.

@@ -12,6 +12,7 @@
 #include "airfix/content/MissionWorldRoomLoader.hpp"
 #include "airfix/content/WorldRoomPublicationGate.hpp"
 #include "airfix/simulation/PlayerSpawnPose.hpp"
+#include "airfix/texture/TextureModeState.hpp"
 
 #include <optional>
 
@@ -29,7 +30,8 @@ namespace airfix::ios {
     content::LoadedLegacyAircraftHudRollingDigitsTextureSet &&rollingDigits,
     content::LoadedLegacyAircraftHudInstrumentTextureSet &&hudInstruments,
     content::LoadedLegacyAircraftHudWeaponPanelTextureSet &&weaponPanels,
-    content::LoadedLegacyAircraftHudIdentityStatusTextureSet &&identityStatus);
+    content::LoadedLegacyAircraftHudIdentityStatusTextureSet &&identityStatus,
+    texture::ActiveMissionTextureState textureState);
 
 // One-shot renderer handoff. A second call fails rather than returning a
 // moved-from payload.
@@ -66,6 +68,9 @@ missionWorldRoomResultRevision(AirfixMissionWorldRoomSnapshot *snapshot);
 // room payload has moved to the renderer.
 [[nodiscard]] std::optional<simulation::PlayerSpawnPose>
 missionWorldRoomPlayerSpawnPose(
+    AirfixMissionWorldRoomSnapshot *snapshot) noexcept;
+[[nodiscard]] texture::ActiveMissionTextureState
+missionWorldRoomTextureState(
     AirfixMissionWorldRoomSnapshot *snapshot) noexcept;
 
 } // namespace airfix::ios

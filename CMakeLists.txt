@@ -226,9 +226,12 @@ endif()
 
 add_library(airfix_texture
     src/airfix/texture/PrivateTextureFileStore.cpp
+    src/airfix/texture/TexturePackDiscovery.cpp
     src/airfix/texture/TextureHdManifestIndex.cpp
     src/airfix/texture/TextureHdPngPreparation.cpp
     src/airfix/texture/TextureModeMissionReload.cpp
+    src/airfix/texture/TexturePackLocator.cpp
+    src/airfix/texture/TexturePackSession.cpp
     src/airfix/texture/TextureReplacementResolver.cpp
 )
 add_library(airfix::texture ALIAS airfix_texture)
@@ -393,6 +396,27 @@ if(WIN32)
     target_sources(airfix_io PRIVATE src/airfix/io/DurableFileWin32.cpp)
 else()
     target_sources(airfix_io PRIVATE src/airfix/io/DurableFilePosix.cpp)
+endif()
+
+add_library(airfix_texture_store
+    src/airfix/texture/TexturePackInstallation.cpp
+    src/airfix/texture/TexturePackLocatorStore.cpp
+)
+add_library(airfix::texture_store ALIAS airfix_texture_store)
+target_include_directories(airfix_texture_store
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+)
+target_compile_features(airfix_texture_store PUBLIC cxx_std_20)
+target_link_libraries(airfix_texture_store
+    PUBLIC airfix::texture
+    PRIVATE airfix::io
+)
+if(MSVC)
+    target_compile_options(airfix_texture_store PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(airfix_texture_store PRIVATE
+        -Wall -Wextra -Wpedantic)
 endif()
 target_include_directories(airfix_io
     PUBLIC
@@ -773,6 +797,41 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::texture)
     add_test(NAME airfix_texture_mode_mission_reload_tests
         COMMAND airfix_texture_mode_mission_reload_tests)
+
+    add_executable(airfix_texture_pack_session_tests
+        tests/TexturePackSessionTests.cpp)
+    target_link_libraries(airfix_texture_pack_session_tests
+        PRIVATE airfix::texture)
+    add_test(NAME airfix_texture_pack_session_tests
+        COMMAND airfix_texture_pack_session_tests)
+
+    add_executable(airfix_texture_pack_locator_tests
+        tests/TexturePackLocatorTests.cpp)
+    target_link_libraries(airfix_texture_pack_locator_tests
+        PRIVATE airfix::texture)
+    add_test(NAME airfix_texture_pack_locator_tests
+        COMMAND airfix_texture_pack_locator_tests)
+
+    add_executable(airfix_texture_pack_locator_store_tests
+        tests/TexturePackLocatorStoreTests.cpp)
+    target_link_libraries(airfix_texture_pack_locator_store_tests
+        PRIVATE airfix::texture_store)
+    add_test(NAME airfix_texture_pack_locator_store_tests
+        COMMAND airfix_texture_pack_locator_store_tests)
+
+    add_executable(airfix_texture_pack_discovery_tests
+        tests/TexturePackDiscoveryTests.cpp)
+    target_link_libraries(airfix_texture_pack_discovery_tests
+        PRIVATE airfix::texture)
+    add_test(NAME airfix_texture_pack_discovery_tests
+        COMMAND airfix_texture_pack_discovery_tests)
+
+    add_executable(airfix_texture_pack_installation_tests
+        tests/TexturePackInstallationTests.cpp)
+    target_link_libraries(airfix_texture_pack_installation_tests
+        PRIVATE airfix::texture_store)
+    add_test(NAME airfix_texture_pack_installation_tests
+        COMMAND airfix_texture_pack_installation_tests)
 
     add_executable(airfix_texture_hd_png_preparation_tests
         tests/TextureHdPngPreparationTests.cpp)
