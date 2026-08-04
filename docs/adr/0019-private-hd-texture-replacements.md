@@ -595,8 +595,9 @@ the renderer, and gives both backends one fallback and cache vocabulary.
    Application Support storage, durable AFTL locator recovery, the shared
    portable package session, availability-gated native UI, and the existing
    Metal RGBA8/mip upload transaction participate in one Enhanced mission
-   reload. Hosted iOS compilation plus profiling on iPhone SE 3 and iPhone 17
-   Pro Max remain required before choosing final quality caps.
+   reload. Hosted iPhoneOS and iPhoneSimulator compilation is green in PR
+   #141; profiling on iPhone SE 3 and iPhone 17 Pro Max remains required before
+   choosing final quality caps.
 9. **Streaming.** Add generation-tagged priority jobs, resident mip ranges,
    cancellation, eviction, memory-pressure handling, and no-double-residency
    defaults. Validate deterministic simulation hashes throughout.

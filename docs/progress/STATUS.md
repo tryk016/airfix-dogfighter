@@ -1462,9 +1462,9 @@
     Classic fallback. Generic native UI and the atomic Windows in-process
     mission reload are complete. The iOS owner-import, durable locator/session,
     availability-gated settings, and atomic Metal mission-reload source path are
-    now implemented. Next validate the hosted unsigned iOS build and both target
-    phones; do not add private resources to CMake/CI or begin streaming/
-    compressed derivatives.
+    now implemented. Hosted unsigned iPhoneOS and iPhoneSimulator builds are
+    green. Next validate both target phones; do not add private resources to
+    CMake/CI or begin streaming/compressed derivatives.
 
 ## Open questions
 
@@ -1487,9 +1487,11 @@ These questions do not block static analysis or the archive work.
   native/scaled smoke, package, settings, UI semantics, and UI Automation.
   The initial Visual Studio generator attempt exposed only a process-local
   duplicate `Path/PATH` MSBuild defect; the same source passed through the
-  established Visual Studio developer environment and Ninja. Hosted unsigned
-  iOS compilation and physical-device validation remain publication gates; no
-  private resource entered the repository or app bundle.
+  established Visual Studio developer environment and Ninja. Hosted runs
+  `30884920194` and `30884920214` pass the Windows product, portable Windows,
+  Linux, macOS, clangd, iPhoneOS, and iPhoneSimulator jobs. Physical-device
+  validation remains pending; no private resource entered the repository or
+  app bundle.
 - The generic TextureMode UI and Windows mission-reload slice passes a clean
   GNU 15.2/Ninja portable build (495/495 edges, 154/154 CTests) and a clean
   MSVC 19.51/Ninja Windows Release product build (169/169 CTests). The Windows
@@ -1499,9 +1501,9 @@ These questions do not block static analysis or the archive work.
   selecting the already installed accessible interpreter, the identical full
   suite passed. Public-boundary tests and the 816-file scan, documentation
   integrity (119 experiments/408 catalogue rows), 12/12 Rizin normalization,
-  CI-classifier tests, and `git diff --check` pass. Hosted
-  Linux/macOS/Windows, clangd, and unsigned iOS remain the publication gates
-  for this branch.
+  CI-classifier tests, and `git diff --check` pass. Hosted runs
+  `30860088903` and `30860088926` pass Linux, macOS, Windows, clangd,
+  iPhoneOS, and iPhoneSimulator for this branch.
 - The durable texture-mode slice passes a clean MSVC 19.51/Ninja Windows
   product build and all 168/168 CTests, including D3D11/XAudio2 product smokes.
   Its synthetic coverage includes AFRS schema-1/2/3 migration, schema-4 golden
@@ -1510,9 +1512,9 @@ These questions do not block static analysis or the archive work.
   A clean GNU 15.2/Ninja portable build completes all 492 edges and passes
   153/153 CTests. Public-boundary regressions and the 813-file scan,
   documentation integrity (119 experiments/408 catalogue rows), 12/12 Rizin
-  normalization, CI-classifier
-  tests, and `git diff --check` pass. Hosted Linux/macOS/Windows, clangd, and
-  unsigned iOS are the remaining publication gates for this branch.
+  normalization, CI-classifier tests, and `git diff --check` pass. Hosted runs
+  `30857993665` and `30857993651` pass Linux, macOS, Windows, clangd,
+  iPhoneOS, and iPhoneSimulator for this branch.
 - The Windows session-only HD texture pilot passes its synthetic parser,
   package, resolver, loader/publication, CLI, and D3D11 cache tests. The public
   manifest parser now follows the schema-valid `mixed` representative-category
