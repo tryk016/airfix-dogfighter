@@ -335,9 +335,9 @@ Tasks:
 - Implement Metal surface/backend, shader compilation, resource residency, and
   device-loss/lifecycle handling.
 - Continue the implemented custom touch controls beyond the portable V1
-  safe-area geometry, compact density, and handedness foundation: add private
-  durable layout/visibility settings, a recovery-safe editor, opacity policy,
-  finished menus, and haptics.
+  safe-area geometry and private AFTC V1 handedness/density/opacity editor: add
+  a recovery-safe visibility/automatic-controller-hide policy, optional free
+  placement, finished menus, and haptics.
 - Support Game Controller devices, safe areas, rotation policy, interruptions,
   background/foreground, audio sessions, thermal state, memory warnings, and
   sandboxed save locations.

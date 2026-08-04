@@ -7,10 +7,13 @@
 #import "AirfixIOSControllerInputProfileStore.h"
 #import "AirfixIOSInputCoordinator.h"
 #include "AirfixIOSInputStartupPolicy.hpp"
+#import "AirfixIOSTouchControlsPreferencesStore.h"
 #import "AirfixMetalRenderer.h"
 #import "AirfixMissionWorldRoomSnapshot.h"
 #import "AirfixRenderSettingsCoordinator.h"
 #import "AirfixRenderSettingsPanelViewController.h"
+#import "AirfixTouchControlsPreferencesCoordinator.h"
+#import "AirfixTouchControlsSettingsPanelViewController.h"
 #import "AirfixTouchControlsView.h"
 
 #import <MetalKit/MetalKit.h>
@@ -103,7 +106,8 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
     AirfixContentCoordinatorDelegate, AirfixIOSInputCoordinatorDelegate,
     AirfixRenderSettingsCoordinatorDelegate,
     AirfixRenderSettingsPanelViewControllerDelegate,
-    AirfixControllerCalibrationPanelViewControllerDelegate> {
+    AirfixControllerCalibrationPanelViewControllerDelegate,
+    AirfixTouchControlsSettingsPanelViewControllerDelegate> {
   airfix::runtime::AppSession _session;
   airfix::runtime::PlayerAircraftPresentationCoordinator
       _playerAircraftPresentation;
@@ -132,14 +136,21 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
     AirfixIOSControllerInputProfileStore *controllerInputProfileStore;
 @property(nonatomic, strong)
     AirfixControllerInputProfileCoordinator *controllerInputProfileCoordinator;
+@property(nonatomic, strong)
+    AirfixIOSTouchControlsPreferencesStore *touchControlsPreferencesStore;
+@property(nonatomic, strong) AirfixTouchControlsPreferencesCoordinator
+    *touchControlsPreferencesCoordinator;
 @property(nonatomic, copy) NSString *controllerInputProfileStatus;
 @property(nonatomic, strong) UIButton *resumeButton;
 @property(nonatomic, strong) UIButton *renderSettingsButton;
 @property(nonatomic, strong) UIButton *controllerCalibrationButton;
+@property(nonatomic, strong) UIButton *touchControlsSettingsButton;
 @property(nonatomic, strong)
     AirfixRenderSettingsPanelViewController *renderSettingsPanel;
 @property(nonatomic, strong)
     AirfixControllerCalibrationPanelViewController *controllerCalibrationPanel;
+@property(nonatomic, strong)
+    AirfixTouchControlsSettingsPanelViewController *touchControlsSettingsPanel;
 @property(nonatomic) BOOL inputPipelineReady;
 @property(nonatomic) BOOL simulationPipelineReady;
 
@@ -147,10 +158,13 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
 - (void)closeRenderSettingsPanel;
 - (void)showControllerCalibration;
 - (void)closeControllerCalibrationPanel;
+- (void)showTouchControlsSettings;
+- (void)closeTouchControlsSettingsPanel;
 - (BOOL)isSettingsPanelOpen;
 - (void)setPausedSettingsSelection:(NSUInteger)selection
                           announce:(BOOL)announce;
 - (void)beginControllerInputProfileLoad;
+- (void)beginTouchControlsPreferencesLoad;
 - (void)startInputCoordinatorIfReady;
 - (void)refreshPausedMissionReadiness;
 - (void)resumeGameplay;
@@ -270,6 +284,25 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
                         forControlEvents:UIControlEventTouchUpInside];
   controllerCalibrationButton.enabled = NO;
   self.controllerCalibrationButton = controllerCalibrationButton;
+
+  UIButton *touchControlsSettingsButton =
+      [UIButton buttonWithType:UIButtonTypeSystem];
+  touchControlsSettingsButton.translatesAutoresizingMaskIntoConstraints = NO;
+  [touchControlsSettingsButton setTitle:@"Touch controls"
+                               forState:UIControlStateNormal];
+  touchControlsSettingsButton.titleLabel.font =
+      [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
+  touchControlsSettingsButton.titleLabel.adjustsFontForContentSizeCategory =
+      YES;
+  touchControlsSettingsButton.accessibilityIdentifier =
+      @"airfix.settings.touch.open";
+  touchControlsSettingsButton.accessibilityHint =
+      @"Pauses gameplay and edits the mobile control overlay.";
+  [touchControlsSettingsButton addTarget:self
+                                  action:@selector(showTouchControlsSettings)
+                        forControlEvents:UIControlEventTouchUpInside];
+  touchControlsSettingsButton.enabled = NO;
+  self.touchControlsSettingsButton = touchControlsSettingsButton;
   _pausedSettingsSelection = 0U;
   _rendererPreparationQueue =
       dispatch_queue_create("com.tryk016.airfixdogfighter.renderer-preparation",
@@ -316,6 +349,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
     resumeButton,
     renderSettingsButton,
     controllerCalibrationButton,
+    touchControlsSettingsButton,
     self.contentCoordinator.controlsView,
   ]];
   stack.translatesAutoresizingMaskIntoConstraints = NO;
@@ -340,6 +374,8 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   self.inputCoordinator.delegate = self;
   self.controllerInputProfileStore =
       [[AirfixIOSControllerInputProfileStore alloc] init];
+  self.touchControlsPreferencesStore =
+      [[AirfixIOSTouchControlsPreferencesStore alloc] init];
   self.controllerInputProfileStatus = @"PROFILE starting";
   self.simulationPipelineReady = YES;
   _audioBackend = std::make_unique<airfix::ios::AirfixAVAudioEngineBackend>();
@@ -410,6 +446,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
         @"Airfix Dogfighter reconstruction\nInput initialization failed";
   }
   [self beginControllerInputProfileLoad];
+  [self beginTouchControlsPreferencesLoad];
   [self updateDiagnosticsLabelWithInputDiagnostics:self.inputCoordinator
                                                        .diagnostics];
 
@@ -546,6 +583,46 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   }];
 }
 
+- (void)beginTouchControlsPreferencesLoad {
+  NSAssert(NSThread.isMainThread, @"Touch preference startup belongs to main");
+  if (self.touchControlsPreferencesCoordinator != nil ||
+      self.touchControlsPreferencesStore == nil ||
+      self.touchControlsView == nil) {
+    return;
+  }
+
+  __weak AirfixGameViewController *weakSelf = self;
+  [self.touchControlsPreferencesStore
+      loadWithCompletion:^(
+          const airfix::ios::TouchControlsPreferencesLoadOutcome outcome) {
+        AirfixGameViewController *strongSelf = weakSelf;
+        if (strongSelf == nil ||
+            strongSelf.touchControlsPreferencesCoordinator != nil) {
+          return;
+        }
+
+        airfix::input::TouchControlsPreferences preferences{};
+        BOOL persistenceAvailable = NO;
+        BOOL repairRequired = NO;
+        if (outcome.result.has_value()) {
+          preferences = outcome.result->preferences;
+          persistenceAvailable = !outcome.result->persistenceBlocked;
+          repairRequired =
+              airfix::settings::touchControlsPreferencesNeedsRepair(
+                  *outcome.result);
+        }
+        strongSelf.touchControlsPreferencesCoordinator =
+            [[AirfixTouchControlsPreferencesCoordinator alloc]
+                       initWithStore:strongSelf.touchControlsPreferencesStore
+                   touchControlsView:strongSelf.touchControlsView
+                   activePreferences:preferences
+                persistenceAvailable:persistenceAvailable
+                      repairRequired:repairRequired];
+        strongSelf.touchControlsSettingsButton.enabled =
+            strongSelf.touchControlsPreferencesCoordinator != nil;
+      }];
+}
+
 - (void)startInputCoordinatorIfReady {
   NSAssert(NSThread.isMainThread, @"Input coordinator startup belongs to main");
   const bool shouldStart = airfix::ios::startup_policy::shouldStartInput({
@@ -665,10 +742,10 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
 
   AirfixRenderSettingsPanelViewController *panel =
       [[AirfixRenderSettingsPanelViewController alloc]
-          initWithCoordinator:self.renderSettingsCoordinator
-          enhancedTexturesAvailable:
-              self.contentCoordinator.texturePackageAvailability ==
-              AirfixTexturePackageAvailabilityReady];
+                initWithCoordinator:self.renderSettingsCoordinator
+          enhancedTexturesAvailable:self.contentCoordinator
+                                        .texturePackageAvailability ==
+                                    AirfixTexturePackageAvailabilityReady];
   panel.delegate = self;
   [self addChildViewController:panel];
   panel.view.translatesAutoresizingMaskIntoConstraints = NO;
@@ -684,6 +761,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   self.renderSettingsPanel = panel;
   self.renderSettingsButton.enabled = NO;
   self.controllerCalibrationButton.enabled = NO;
+  self.touchControlsSettingsButton.enabled = NO;
   self.statusLabel.text = @"Airfix Dogfighter reconstruction\n"
                            "Gameplay paused while display settings are open";
 }
@@ -705,6 +783,9 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   self.controllerCalibrationButton.enabled =
       self.controllerInputProfileCoordinator != nil &&
       !self.controllerInputProfileCoordinator.isSaving;
+  self.touchControlsSettingsButton.enabled =
+      self.touchControlsPreferencesCoordinator != nil &&
+      !self.touchControlsPreferencesCoordinator.isSaving;
 
   [self.inputCoordinator setInputContext:AirfixNativeInputContextMenu];
   [self.inputCoordinator resetForGameplayBoundary];
@@ -763,6 +844,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   self.controllerCalibrationPanel = panel;
   self.renderSettingsButton.enabled = NO;
   self.controllerCalibrationButton.enabled = NO;
+  self.touchControlsSettingsButton.enabled = NO;
   self.statusLabel.text = @"Airfix Dogfighter reconstruction\n"
                            "Gameplay paused while controller settings are open";
 }
@@ -786,6 +868,9 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   self.controllerCalibrationButton.enabled =
       self.controllerInputProfileCoordinator != nil &&
       !self.controllerInputProfileCoordinator.isSaving;
+  self.touchControlsSettingsButton.enabled =
+      self.touchControlsPreferencesCoordinator != nil &&
+      !self.touchControlsPreferencesCoordinator.isSaving;
 
   const auto active = [self.controllerInputProfileCoordinator activeProfile];
   const auto persistent =
@@ -823,19 +908,105 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
                                   self.controllerCalibrationButton);
 }
 
+- (void)showTouchControlsSettings {
+  NSAssert(NSThread.isMainThread,
+           @"The touch-settings overlay belongs to main");
+  AirfixTouchControlsPreferencesCoordinator *coordinator =
+      self.touchControlsPreferencesCoordinator;
+  if ([self isSettingsPanelOpen] || coordinator == nil ||
+      coordinator.isSaving) {
+    return;
+  }
+
+  _audioBackend->setActive(false);
+  _session.pause();
+  ((MTKView *)self.view).paused = YES;
+  [self.inputCoordinator setInputContext:AirfixNativeInputContextMenu];
+  self.touchControlsView.hidden = YES;
+
+  AirfixTouchControlsSettingsPanelViewController *panel =
+      [[AirfixTouchControlsSettingsPanelViewController alloc]
+          initWithCoordinator:coordinator];
+  panel.delegate = self;
+  [self addChildViewController:panel];
+  panel.view.translatesAutoresizingMaskIntoConstraints = NO;
+  [self.view addSubview:panel.view];
+  [NSLayoutConstraint activateConstraints:@[
+    [panel.view.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+    [panel.view.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+    [panel.view.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+    [panel.view.trailingAnchor
+        constraintEqualToAnchor:self.view.trailingAnchor],
+  ]];
+  [panel didMoveToParentViewController:self];
+  self.touchControlsSettingsPanel = panel;
+  self.renderSettingsButton.enabled = NO;
+  self.controllerCalibrationButton.enabled = NO;
+  self.touchControlsSettingsButton.enabled = NO;
+  self.statusLabel.text = @"Airfix Dogfighter reconstruction\n"
+                           "Gameplay paused while touch settings are open";
+}
+
+- (void)closeTouchControlsSettingsPanel {
+  NSAssert(NSThread.isMainThread,
+           @"The touch-settings overlay belongs to main");
+  AirfixTouchControlsSettingsPanelViewController *panel =
+      self.touchControlsSettingsPanel;
+  if (panel == nil) {
+    return;
+  }
+
+  panel.delegate = nil;
+  [panel willMoveToParentViewController:nil];
+  [panel.view removeFromSuperview];
+  [panel removeFromParentViewController];
+  self.touchControlsSettingsPanel = nil;
+  self.renderSettingsButton.enabled = self.renderSettingsCoordinator != nil;
+  self.controllerCalibrationButton.enabled =
+      self.controllerInputProfileCoordinator != nil &&
+      !self.controllerInputProfileCoordinator.isSaving;
+  self.touchControlsSettingsButton.enabled =
+      self.touchControlsPreferencesCoordinator != nil &&
+      !self.touchControlsPreferencesCoordinator.isSaving;
+
+  [self.inputCoordinator setInputContext:AirfixNativeInputContextMenu];
+  [self.inputCoordinator resetForGameplayBoundary];
+  const BOOL gameplayReady =
+      _session.contentState() == airfix::runtime::ContentState::ready &&
+      self.inputPipelineReady && self.simulationPipelineReady &&
+      self.inputCoordinator.isOperational &&
+      self.renderer.missionWorldRoomInstalled;
+  self.touchControlsView.hidden = YES;
+  self.resumeButton.hidden = !gameplayReady;
+  _audioBackend->setActive(false);
+  _session.pause();
+  ((MTKView *)self.view).paused = YES;
+  if (gameplayReady) {
+    self.statusLabel.text =
+        @"Airfix Dogfighter reconstruction\n"
+         "Touch settings closed; select Resume or press controller B";
+  }
+  _pausedSettingsSelection = 2U;
+  [self setPausedSettingsSelection:_pausedSettingsSelection announce:NO];
+  UIAccessibilityPostNotification(UIAccessibilityScreenChangedNotification,
+                                  self.touchControlsSettingsButton);
+}
+
 - (BOOL)isSettingsPanelOpen {
   return self.renderSettingsPanel != nil ||
-         self.controllerCalibrationPanel != nil;
+         self.controllerCalibrationPanel != nil ||
+         self.touchControlsSettingsPanel != nil;
 }
 
 - (void)setPausedSettingsSelection:(NSUInteger)selection
                           announce:(BOOL)announce {
   const NSUInteger normalized =
-      std::min(selection, static_cast<NSUInteger>(1U));
+      std::min(selection, static_cast<NSUInteger>(2U));
   _pausedSettingsSelection = normalized;
   NSArray<UIButton *> *buttons = @[
     self.renderSettingsButton,
     self.controllerCalibrationButton,
+    self.touchControlsSettingsButton,
   ];
   for (NSUInteger index = 0U; index < buttons.count; ++index) {
     UIButton *button = buttons[index];
@@ -898,10 +1069,10 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   }
   const auto settings = [coordinator activeSettings];
   [self.contentCoordinator
-      requestMissionTextureMode:
-          settings.textureMode == airfix::texture::TextureMode::enhanced
-              ? AirfixMissionTextureModeEnhanced
-              : AirfixMissionTextureModeClassic];
+      requestMissionTextureMode:settings.textureMode ==
+                                        airfix::texture::TextureMode::enhanced
+                                    ? AirfixMissionTextureModeEnhanced
+                                    : AirfixMissionTextureModeClassic];
 }
 
 - (void)controllerCalibrationPanelViewControllerDidFinish:
@@ -910,6 +1081,14 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
     return;
   }
   [self closeControllerCalibrationPanel];
+}
+
+- (void)touchControlsSettingsPanelViewControllerDidFinish:
+    (AirfixTouchControlsSettingsPanelViewController *)panel {
+  if (panel != self.touchControlsSettingsPanel) {
+    return;
+  }
+  [self closeTouchControlsSettingsPanel];
 }
 
 - (BOOL)prefersStatusBarHidden {
@@ -1417,6 +1596,10 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
     [self.renderSettingsPanel consumeUIInputSnapshot:input];
     return;
   }
+  if (self.touchControlsSettingsPanel != nil) {
+    [self.touchControlsSettingsPanel consumeUIInputSnapshot:input];
+    return;
+  }
   if (input.cancelPressed) {
     [self resumeGameplay];
     return;
@@ -1426,27 +1609,47 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
                       airfix::input::uiNavigationReleaseQ15)) {
     _pausedSettingsNavigationLatched = NO;
   }
+  const auto moveSelection = ^(NSInteger direction) {
+    NSArray<UIButton *> *buttons = @[
+      self.renderSettingsButton,
+      self.controllerCalibrationButton,
+      self.touchControlsSettingsButton,
+    ];
+    NSInteger candidate = static_cast<NSInteger>(_pausedSettingsSelection);
+    for (NSUInteger attempt = 0U; attempt < buttons.count; ++attempt) {
+      candidate =
+          (candidate + direction + static_cast<NSInteger>(buttons.count)) %
+          static_cast<NSInteger>(buttons.count);
+      if (buttons[static_cast<NSUInteger>(candidate)].enabled) {
+        [self setPausedSettingsSelection:static_cast<NSUInteger>(candidate)
+                                announce:YES];
+        return;
+      }
+    }
+  };
   if (!_pausedSettingsNavigationLatched &&
       input.navigationY >= airfix::input::uiNavigationActuationQ15) {
     _pausedSettingsNavigationLatched = YES;
-    [self setPausedSettingsSelection:0U announce:YES];
+    moveSelection(-1);
   } else if (!_pausedSettingsNavigationLatched &&
-             input.navigationY <= -airfix::input::uiNavigationActuationQ15 &&
-             self.controllerCalibrationButton.enabled) {
+             input.navigationY <= -airfix::input::uiNavigationActuationQ15) {
     _pausedSettingsNavigationLatched = YES;
-    [self setPausedSettingsSelection:1U announce:YES];
+    moveSelection(1);
   }
   if (input.tabPreviousPressed) {
-    [self setPausedSettingsSelection:0U announce:YES];
+    moveSelection(-1);
   }
-  if (input.tabNextPressed && self.controllerCalibrationButton.enabled) {
-    [self setPausedSettingsSelection:1U announce:YES];
+  if (input.tabNextPressed) {
+    moveSelection(1);
   }
   if (input.confirmPressed) {
-    if (_pausedSettingsSelection == 1U &&
-        self.controllerCalibrationButton.enabled) {
+    if (_pausedSettingsSelection == 2U &&
+        self.touchControlsSettingsButton.enabled) {
+      [self showTouchControlsSettings];
+    } else if (_pausedSettingsSelection == 1U &&
+               self.controllerCalibrationButton.enabled) {
       [self showControllerCalibration];
-    } else {
+    } else if (self.renderSettingsButton.enabled) {
       [self showRenderSettings];
     }
   }

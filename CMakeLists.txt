@@ -131,6 +131,7 @@ add_library(airfix_input
     src/airfix/input/DesktopInputBridge.cpp
     src/airfix/input/InputRouter.cpp
     src/airfix/input/TouchControlsLayout.cpp
+    src/airfix/input/TouchControlsPreferences.cpp
 )
 add_library(airfix::input ALIAS airfix_input)
 
@@ -463,6 +464,8 @@ add_library(airfix_settings
     src/airfix/settings/RenderPresentationSettingsMenuModel.cpp
     src/airfix/settings/RenderPresentationSettingsCodec.cpp
     src/airfix/settings/RenderPresentationSettingsStore.cpp
+    src/airfix/settings/TouchControlsPreferencesCodec.cpp
+    src/airfix/settings/TouchControlsPreferencesStore.cpp
 )
 add_library(airfix::settings ALIAS airfix_settings)
 
@@ -1016,6 +1019,27 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::input)
     add_test(NAME airfix_touch_controls_layout_tests
         COMMAND airfix_touch_controls_layout_tests)
+
+    add_executable(airfix_touch_controls_preferences_tests
+        tests/TouchControlsPreferencesTests.cpp)
+    target_link_libraries(airfix_touch_controls_preferences_tests
+        PRIVATE airfix::input)
+    add_test(NAME airfix_touch_controls_preferences_tests
+        COMMAND airfix_touch_controls_preferences_tests)
+
+    add_executable(airfix_touch_controls_preferences_codec_tests
+        tests/TouchControlsPreferencesCodecTests.cpp)
+    target_link_libraries(airfix_touch_controls_preferences_codec_tests
+        PRIVATE airfix::settings airfix::crypto)
+    add_test(NAME airfix_touch_controls_preferences_codec_tests
+        COMMAND airfix_touch_controls_preferences_codec_tests)
+
+    add_executable(airfix_touch_controls_preferences_store_tests
+        tests/TouchControlsPreferencesStoreTests.cpp)
+    target_link_libraries(airfix_touch_controls_preferences_store_tests
+        PRIVATE airfix::settings airfix::crypto airfix::io)
+    add_test(NAME airfix_touch_controls_preferences_store_tests
+        COMMAND airfix_touch_controls_preferences_store_tests)
 
     add_executable(airfix_ios_input_startup_policy_tests
         tests/AirfixIOSInputStartupPolicyTests.cpp)
