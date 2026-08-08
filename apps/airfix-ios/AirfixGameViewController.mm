@@ -160,6 +160,8 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
 @property(nonatomic, strong) AirfixSimulatorSmokeHarness *simulatorSmokeHarness;
 @property(nonatomic) NSUInteger simulatorSmokeDrawAttemptCount;
 @property(nonatomic) BOOL simulatorSmokeFrameResolved;
+@property(nonatomic, copy, nullable) void (^simulatorSmokeCompletion)
+    (NSDictionary<NSString *, id> *result);
 #endif
 
 - (void)showRenderSettings;
@@ -707,6 +709,55 @@ static constexpr NSUInteger kSimulatorSmokeMaximumDrawAttempts = 400U;
 static constexpr int64_t kSimulatorSmokeDrawRetryNanoseconds =
     100 * NSEC_PER_MSEC;
 
+static NSString *
+simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
+  switch (stage) {
+  case AirfixSimulatorSmokeDrawStageNotEntered:
+    return @"draw-not-entered";
+  case AirfixSimulatorSmokeDrawStageEntered:
+    return @"draw-entered";
+  case AirfixSimulatorSmokeDrawStageInvalidThread:
+    return @"invalid-thread";
+  case AirfixSimulatorSmokeDrawStageInvalidView:
+    return @"invalid-view";
+  case AirfixSimulatorSmokeDrawStageAwaitingPresentation:
+    return @"awaiting-presentation";
+  case AirfixSimulatorSmokeDrawStageMissingSceneSampling:
+    return @"missing-scene-sampling";
+  case AirfixSimulatorSmokeDrawStageMissingSampler:
+    return @"missing-sampler";
+  case AirfixSimulatorSmokeDrawStageMissingSnapshot:
+    return @"missing-snapshot";
+  case AirfixSimulatorSmokeDrawStageMissingResources:
+    return @"missing-resources";
+  case AirfixSimulatorSmokeDrawStageMissingDiagnostics:
+    return @"missing-diagnostics";
+  case AirfixSimulatorSmokeDrawStageMissingGameplayCamera:
+    return @"missing-gameplay-camera";
+  case AirfixSimulatorSmokeDrawStageMissingFallback:
+    return @"missing-fallback";
+  case AirfixSimulatorSmokeDrawStageMissingDrawable:
+    return @"missing-drawable";
+  case AirfixSimulatorSmokeDrawStageOutputExtentMismatch:
+    return @"output-extent-mismatch";
+  case AirfixSimulatorSmokeDrawStageInvalidLayout:
+    return @"invalid-layout";
+  case AirfixSimulatorSmokeDrawStageRenderTargetMismatch:
+    return @"render-target-mismatch";
+  case AirfixSimulatorSmokeDrawStageMissingScaledTarget:
+    return @"missing-scaled-target";
+  case AirfixSimulatorSmokeDrawStageMissingCommandBuffer:
+    return @"missing-command-buffer";
+  case AirfixSimulatorSmokeDrawStageMissingSceneEncoder:
+    return @"missing-scene-encoder";
+  case AirfixSimulatorSmokeDrawStageMissingPresentationEncoder:
+    return @"missing-presentation-encoder";
+  case AirfixSimulatorSmokeDrawStageSubmitted:
+    return @"submitted-without-completion";
+  }
+  return @"unknown-draw-stage";
+}
+
 - (void)startSimulatorSmokeIfReady {
   if (!self.renderSettingsCoordinator.readyForPresentation) {
     return;
@@ -721,9 +772,25 @@ static constexpr int64_t kSimulatorSmokeDrawRetryNanoseconds =
 - (void)attemptSimulatorSmokeDraw {
   NSAssert(NSThread.isMainThread,
            @"Simulator smoke draws belong to the main thread");
-  if (self.simulatorSmokeFrameResolved ||
-      self.simulatorSmokeDrawAttemptCount >=
-          kSimulatorSmokeMaximumDrawAttempts) {
+  if (self.simulatorSmokeFrameResolved) {
+    return;
+  }
+  if (self.simulatorSmokeDrawAttemptCount >=
+      kSimulatorSmokeMaximumDrawAttempts) {
+    self.simulatorSmokeFrameResolved = YES;
+    [self.renderer setSimulatorSmokeFrameCompletion:nil];
+    void (^completion)(NSDictionary<NSString *, id> *) =
+        self.simulatorSmokeCompletion;
+    self.simulatorSmokeCompletion = nil;
+    if (completion != nil) {
+      completion(@{
+        @"schema" : @"airfix.ios-simulator-smoke",
+        @"version" : @1,
+        @"status" : @"fail",
+        @"failureStage" :
+            simulatorSmokeFailureStage(self.renderer.simulatorSmokeDrawStage),
+      });
+    }
     return;
   }
   ++self.simulatorSmokeDrawAttemptCount;
@@ -1258,7 +1325,7 @@ static constexpr int64_t kSimulatorSmokeDrawRetryNanoseconds =
       @"schema" : @"airfix.ios-simulator-smoke",
       @"version" : @1,
       @"status" : @"fail",
-      @"failure" : @"invalid-data-less-startup-state",
+      @"failureStage" : @"invalid-data-less-startup-state",
     });
     return;
   }
@@ -1266,14 +1333,18 @@ static constexpr int64_t kSimulatorSmokeDrawRetryNanoseconds =
   __weak AirfixGameViewController *weakSelf = self;
   self.simulatorSmokeDrawAttemptCount = 0U;
   self.simulatorSmokeFrameResolved = NO;
+  self.simulatorSmokeCompletion = completion;
   [self.renderer setSimulatorSmokeFrameCompletion:^(
                      BOOL publicSyntheticScene, NSUInteger sceneDrawCallCount,
                      NSUInteger sceneTriangleCount, NSError *frameError) {
     AirfixGameViewController *strongSelf = weakSelf;
-    if (strongSelf == nil) {
+    if (strongSelf == nil || strongSelf.simulatorSmokeFrameResolved) {
       return;
     }
     strongSelf.simulatorSmokeFrameResolved = YES;
+    void (^resultCompletion)(NSDictionary<NSString *, id> *) =
+        strongSelf.simulatorSmokeCompletion;
+    strongSelf.simulatorSmokeCompletion = nil;
     MTKView *strongMetalView = (MTKView *)strongSelf.view;
     const BOOL metalFrameCompleted =
         frameError == nil && publicSyntheticScene && sceneDrawCallCount > 0U &&
@@ -1303,10 +1374,23 @@ static constexpr int64_t kSimulatorSmokeDrawRetryNanoseconds =
         !autoResumed;
     const BOOL passed = metalFrameCompleted && inactive && background &&
                         foreground && activeStillPaused;
-    completion(@{
+    if (resultCompletion == nil) {
+      return;
+    }
+    if (!passed) {
+      resultCompletion(@{
+        @"schema" : @"airfix.ios-simulator-smoke",
+        @"version" : @1,
+        @"status" : @"fail",
+        @"failureStage" : metalFrameCompleted ? @"lifecycle-invariant-failed"
+                                              : @"metal-frame-failed",
+      });
+      return;
+    }
+    resultCompletion(@{
       @"schema" : @"airfix.ios-simulator-smoke",
       @"version" : @1,
-      @"status" : passed ? @"pass" : @"fail",
+      @"status" : @"pass",
       @"dataLess" : @YES,
       @"metalFrame" : @{
         @"commandBufferCompleted" : @(frameError == nil),

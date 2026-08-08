@@ -52,6 +52,39 @@ class ResultValidationTests(unittest.TestCase):
         with self.assertRaises(MODULE.SmokeFailure):
             MODULE.validate_result(result)
 
+    def test_reports_bounded_application_failure_stage(self) -> None:
+        result = {
+            "schema": "airfix.ios-simulator-smoke",
+            "version": 1,
+            "status": "fail",
+            "failureStage": "missing-drawable",
+        }
+        with self.assertRaisesRegex(
+            MODULE.SmokeFailure, "failure stage: missing-drawable"
+        ):
+            MODULE.validate_result(result)
+
+    def test_rejects_unknown_application_failure_stage(self) -> None:
+        result = {
+            "schema": "airfix.ios-simulator-smoke",
+            "version": 1,
+            "status": "fail",
+            "failureStage": "private/path/value",
+        }
+        with self.assertRaisesRegex(MODULE.SmokeFailure, "unknown failure stage"):
+            MODULE.validate_result(result)
+
+    def test_rejects_extra_application_failure_field(self) -> None:
+        result = {
+            "schema": "airfix.ios-simulator-smoke",
+            "version": 1,
+            "status": "fail",
+            "failureStage": "missing-drawable",
+            "localPath": "/private/value",
+        }
+        with self.assertRaisesRegex(MODULE.SmokeFailure, "unexpected top-level"):
+            MODULE.validate_result(result)
+
 
 class RuntimeSelectionTests(unittest.TestCase):
     def test_accepts_platform_less_ios_runtime(self) -> None:

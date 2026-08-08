@@ -16,7 +16,35 @@ import uuid
 
 RESULT_NAME = "airfix-ios-simulator-smoke-v1.json"
 BUNDLE_ID = "com.tryk016.airfixdogfighter"
-EXPECTED_KEYS = {"schema", "version", "status", "dataLess", "metalFrame", "lifecycle"}
+PASS_KEYS = {"schema", "version", "status", "dataLess", "metalFrame", "lifecycle"}
+FAILURE_KEYS = {"schema", "version", "status", "failureStage"}
+FAILURE_STAGES = {
+    "invalid-data-less-startup-state",
+    "draw-not-entered",
+    "draw-entered",
+    "invalid-thread",
+    "invalid-view",
+    "awaiting-presentation",
+    "missing-scene-sampling",
+    "missing-sampler",
+    "missing-snapshot",
+    "missing-resources",
+    "missing-diagnostics",
+    "missing-gameplay-camera",
+    "missing-fallback",
+    "missing-drawable",
+    "output-extent-mismatch",
+    "invalid-layout",
+    "render-target-mismatch",
+    "missing-scaled-target",
+    "missing-command-buffer",
+    "missing-scene-encoder",
+    "missing-presentation-encoder",
+    "submitted-without-completion",
+    "metal-frame-failed",
+    "lifecycle-invariant-failed",
+    "unknown-draw-stage",
+}
 MAX_DIAGNOSTIC_BYTES = 32_000
 
 
@@ -77,12 +105,21 @@ def require_bool(value: object, name: str) -> None:
 
 
 def validate_result(document: object) -> dict[str, object]:
-    if not isinstance(document, dict) or set(document) != EXPECTED_KEYS:
+    if not isinstance(document, dict):
         raise SmokeFailure("result has an unexpected top-level schema")
-    if document["schema"] != "airfix.ios-simulator-smoke" or document["version"] != 1:
+    if document.get("schema") != "airfix.ios-simulator-smoke" or document.get("version") != 1:
         raise SmokeFailure("result schema or version is unsupported")
-    if document["status"] != "pass":
-        raise SmokeFailure("application reported a failed smoke result")
+    if document.get("status") == "fail":
+        if set(document) != FAILURE_KEYS:
+            raise SmokeFailure("failure result has an unexpected top-level schema")
+        failure_stage = document.get("failureStage")
+        if not isinstance(failure_stage, str) or failure_stage not in FAILURE_STAGES:
+            raise SmokeFailure("application reported an unknown failure stage")
+        raise SmokeFailure(
+            f"application reported simulator failure stage: {failure_stage}"
+        )
+    if document.get("status") != "pass" or set(document) != PASS_KEYS:
+        raise SmokeFailure("result has an unexpected top-level schema")
     require_bool(document["dataLess"], "dataLess")
     if document["dataLess"] is not True:
         raise SmokeFailure("simulator smoke was not data-less")

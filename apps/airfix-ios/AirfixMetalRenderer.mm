@@ -1260,6 +1260,7 @@ bool preflightPrivateRoom(id<MTLDevice> device,
 @property(nonatomic, copy, nullable) void (^simulatorSmokeFrameObserver)
     (BOOL publicSyntheticScene, NSUInteger sceneDrawCallCount,
      NSUInteger sceneTriangleCount, NSError *_Nullable error);
+@property(nonatomic) AirfixSimulatorSmokeDrawStage simulatorSmokeDrawStage;
 #endif
 @property(nonatomic, strong)
     AirfixMetalPresentationTransactionHolder *presentationTransactionHolder;
@@ -1343,9 +1344,13 @@ bool preflightPrivateRoom(id<MTLDevice> device,
 
 #if AIRFIX_IOS_SIMULATOR_SMOKE
 - (void)setSimulatorSmokeFrameCompletion:
-    (void (^)(BOOL, NSUInteger, NSUInteger, NSError *_Nullable))completion {
+    (void (^_Nullable)(BOOL, NSUInteger, NSUInteger,
+                       NSError *_Nullable))completion {
   NSAssert(NSThread.isMainThread,
            @"Simulator smoke observation belongs to the main thread");
+  if (completion != nil) {
+    self.simulatorSmokeDrawStage = AirfixSimulatorSmokeDrawStageNotEntered;
+  }
   self.simulatorSmokeFrameObserver = completion;
 }
 #endif
@@ -4967,17 +4972,30 @@ bool preflightPrivateRoom(id<MTLDevice> device,
 }
 
 - (void)drawInMTKView:(MTKView *)view {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+  self.simulatorSmokeDrawStage = AirfixSimulatorSmokeDrawStageEntered;
+#endif
   if (!NSThread.isMainThread) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage = AirfixSimulatorSmokeDrawStageInvalidThread;
+#endif
     return;
   }
   if (view == nil || view != self.metalView || view.device == nil ||
       view.device != self.commandQueue.device) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage = AirfixSimulatorSmokeDrawStageInvalidView;
+#endif
     return;
   }
   AirfixMetalPresentationTransactionHolder *presentationHolder =
       self.presentationTransactionHolder;
   const auto viewExtent = outputPixelExtent(view.drawableSize);
   if (presentationHolder == nil || !viewExtent.has_value()) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage =
+        AirfixSimulatorSmokeDrawStageAwaitingPresentation;
+#endif
     return;
   }
   const auto currentSurface = presentationSurfaceStamp(
@@ -5011,6 +5029,10 @@ bool preflightPrivateRoom(id<MTLDevice> device,
   }
   if (currentPresentation == nullptr ||
       currentPresentation->surface() != currentSurface) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage =
+        AirfixSimulatorSmokeDrawStageAwaitingPresentation;
+#endif
     return;
   }
   const airfix::render::RenderPresentationActiveState presentationSnapshot =
@@ -5020,6 +5042,10 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       airfix::render::sceneTextureSamplingPolicyForProfile(
           presentationSettings.visualProfile);
   if (!sceneTextureSampling.has_value()) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage =
+        AirfixSimulatorSmokeDrawStageMissingSceneSampling;
+#endif
     return;
   }
   id<MTLSamplerState> sceneSamplerState =
@@ -5028,21 +5054,35 @@ bool preflightPrivateRoom(id<MTLDevice> device,
           ? self.enhancedSceneSamplerState
           : self.classicSceneSamplerState;
   if (sceneSamplerState == nil) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage = AirfixSimulatorSmokeDrawStageMissingSampler;
+#endif
     return;
   }
 
   AirfixMetalRoomSnapshot *snapshot = self.roomSnapshot;
   if (snapshot == nil) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage = AirfixSimulatorSmokeDrawStageMissingSnapshot;
+#endif
     return;
   }
   AirfixMetalRoomResources *resources = snapshot->_resources;
   if (resources == nil) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage =
+        AirfixSimulatorSmokeDrawStageMissingResources;
+#endif
     return;
   }
   AirfixMetalDiagnosticsState *diagnosticsState = self.diagnosticsState;
   AirfixSnapshotGpuBudgetLedgerHolder *gpuBudgetHolder = self.gpuBudgetHolder;
   if (diagnosticsState == nil || gpuBudgetHolder == nil ||
       gpuBudgetHolder->_ledger == nullptr) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage =
+        AirfixSimulatorSmokeDrawStageMissingDiagnostics;
+#endif
     return;
   }
   const auto frameStarted = std::chrono::steady_clock::now();
@@ -5067,6 +5107,10 @@ bool preflightPrivateRoom(id<MTLDevice> device,
   const auto *gameplayCamera =
       gameplayCameraLease.has_value() ? gameplayCameraLease->packet() : nullptr;
   if (gameplayCameraActive && gameplayCamera == nullptr) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage =
+        AirfixSimulatorSmokeDrawStageMissingGameplayCamera;
+#endif
     return;
   }
   const airfix::render::DrawModelPayload &payload =
@@ -5077,6 +5121,9 @@ bool preflightPrivateRoom(id<MTLDevice> device,
                            : resources->_submissionPlan;
   AirfixBudgetedMetalTexture *fallbackResource = self.fallbackResource;
   if (fallbackResource == nil || fallbackResource->_texture == nil) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage = AirfixSimulatorSmokeDrawStageMissingFallback;
+#endif
     return;
   }
   MTLRenderPassDescriptor *renderPass = view.currentRenderPassDescriptor;
@@ -5084,12 +5131,19 @@ bool preflightPrivateRoom(id<MTLDevice> device,
   if (renderPass == nil || drawable == nil ||
       renderPass.colorAttachments[0].texture == nil ||
       renderPass.depthAttachment.texture == nil) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage = AirfixSimulatorSmokeDrawStageMissingDrawable;
+#endif
     return;
   }
   id<MTLTexture> drawableDepthTexture = renderPass.depthAttachment.texture;
   const auto outputExtent = outputPixelExtent(drawable.texture);
   if (!outputExtent.has_value() ||
       *outputExtent != presentationSnapshot.surface().outputExtent) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage =
+        AirfixSimulatorSmokeDrawStageOutputExtentMismatch;
+#endif
     return;
   }
   auto layoutConfig = airfix::render::NativeRenderLayoutConfig{
@@ -5110,6 +5164,9 @@ bool preflightPrivateRoom(id<MTLDevice> device,
   const auto builtLayout =
       airfix::render::buildNativeRenderLayout(layoutConfig);
   if (!builtLayout.complete()) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage = AirfixSimulatorSmokeDrawStageInvalidLayout;
+#endif
     return;
   }
   const airfix::render::NativeRenderLayout &layout = *builtLayout.layout;
@@ -5118,6 +5175,10 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       presentationSettings.renderScalePercent !=
       airfix::render::native_render_policy::defaultRenderScalePercent;
   if (renderTargetExtent != presentationSnapshot.targetExtent()) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage =
+        AirfixSimulatorSmokeDrawStageRenderTargetMismatch;
+#endif
     return;
   }
 
@@ -5126,11 +5187,19 @@ bool preflightPrivateRoom(id<MTLDevice> device,
   id<MTLTexture> retainedScaledSceneDepth = nil;
   if (usesScaledSceneTarget) {
     if (!presentationSnapshot.targetBundle().has_value()) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+      self.simulatorSmokeDrawStage =
+          AirfixSimulatorSmokeDrawStageMissingScaledTarget;
+#endif
       return;
     }
     AirfixMetalScaledSceneTargetBundle *targetBundle =
         metalPresentationTargetBundle(*presentationSnapshot.targetBundle());
     if (targetBundle == nil || targetBundle->_extent != renderTargetExtent) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+      self.simulatorSmokeDrawStage =
+          AirfixSimulatorSmokeDrawStageMissingScaledTarget;
+#endif
       return;
     }
     retainedScaledSceneColor = targetBundle->_colorTexture;
@@ -5155,11 +5224,19 @@ bool preflightPrivateRoom(id<MTLDevice> device,
 
   id<MTLCommandBuffer> commandBuffer = [self.commandQueue commandBuffer];
   if (commandBuffer == nil) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage =
+        AirfixSimulatorSmokeDrawStageMissingCommandBuffer;
+#endif
     return;
   }
   id<MTLRenderCommandEncoder> encoder =
       [commandBuffer renderCommandEncoderWithDescriptor:sceneRenderPass];
   if (encoder == nil) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage =
+        AirfixSimulatorSmokeDrawStageMissingSceneEncoder;
+#endif
     return;
   }
 
@@ -5247,6 +5324,10 @@ bool preflightPrivateRoom(id<MTLDevice> device,
     id<MTLRenderCommandEncoder> presentationEncoder =
         [commandBuffer renderCommandEncoderWithDescriptor:renderPass];
     if (presentationEncoder == nil) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+      self.simulatorSmokeDrawStage =
+          AirfixSimulatorSmokeDrawStageMissingPresentationEncoder;
+#endif
       return;
     }
     [presentationEncoder setRenderPipelineState:self.presentationPipelineState];
@@ -5398,6 +5479,7 @@ bool preflightPrivateRoom(id<MTLDevice> device,
   }
   AirfixMetalDiagnosticsState *retainedDiagnosticsState = diagnosticsState;
 #if AIRFIX_IOS_SIMULATOR_SMOKE
+  self.simulatorSmokeDrawStage = AirfixSimulatorSmokeDrawStageSubmitted;
   void (^simulatorSmokeCompletion)(BOOL, NSUInteger, NSUInteger,
                                    NSError *_Nullable) =
       self.simulatorSmokeFrameObserver;

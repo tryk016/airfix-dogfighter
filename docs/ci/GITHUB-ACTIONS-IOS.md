@@ -95,6 +95,14 @@ Trigger: every pull request and push after the iOS target exists.
   This is an immediate handler-contract check: it invokes the same four native
   handlers in order inside the app, rather than claiming to validate
   SpringBoard's delivery timing.
+- A paused `MTKView` is retried for a bounded 40 seconds while the fresh
+  simulator establishes its presentation surface. If no completed command
+  buffer is observed, or a later lifecycle invariant fails, the app writes the
+  same atomic result file with a strict, allow-listed simulator-only failure
+  stage. CI can therefore distinguish a missing drawable, presentation
+  mismatch, resource gate, submitted buffer that never completed, Metal
+  failure, or lifecycle failure without recording paths, checksums, or private
+  data.
 - The current Metal Simulator runtime rejects shared-storage heaps. The public
   smoke snapshot therefore uses directly allocated shared/tracked buffers and
   textures on `TARGET_OS_SIMULATOR`; their measured allocations reconcile against
