@@ -11,16 +11,13 @@ import re
 import subprocess
 import sys
 import tempfile
-import threading
 import time
-from typing import BinaryIO
 import uuid
 
 RESULT_NAME = "airfix-ios-simulator-smoke-v1.json"
 BUNDLE_ID = "com.tryk016.airfixdogfighter"
 EXPECTED_KEYS = {"schema", "version", "status", "dataLess", "metalFrame", "lifecycle"}
 MAX_DIAGNOSTIC_BYTES = 32_000
-MAX_CAPTURE_FILE_BYTES = 64_000
 
 
 class SmokeFailure(RuntimeError):
@@ -72,64 +69,6 @@ def redact_diagnostic_text(text: str, sensitive_paths: tuple[str, ...] = ()) -> 
             "utf-8", errors="replace"
         )
     return text.strip()
-
-
-def bounded_file_text(path: Path, sensitive_paths: tuple[str, ...]) -> str:
-    try:
-        with path.open("rb") as stream:
-            stream.seek(0, os.SEEK_END)
-            size = stream.tell()
-            stream.seek(max(0, size - MAX_DIAGNOSTIC_BYTES), os.SEEK_SET)
-            data = stream.read(MAX_DIAGNOSTIC_BYTES)
-    except OSError:
-        return ""
-    text = data.decode("utf-8", errors="replace")
-    if size > MAX_DIAGNOSTIC_BYTES:
-        text = "[captured output truncated to tail]\n" + text
-    return redact_diagnostic_text(text, sensitive_paths)
-
-
-class BoundedPipeCapture:
-    def __init__(self, stream: BinaryIO) -> None:
-        self._stream = stream
-        self._lock = threading.Lock()
-        self._tail = bytearray()
-        self._total_bytes = 0
-        self._thread = threading.Thread(target=self._drain, daemon=True)
-        self._thread.start()
-
-    def _drain(self) -> None:
-        try:
-            while True:
-                chunk = self._stream.read(4096)
-                if not chunk:
-                    return
-                with self._lock:
-                    self._total_bytes += len(chunk)
-                    self._tail.extend(chunk)
-                    if len(self._tail) > MAX_CAPTURE_FILE_BYTES:
-                        del self._tail[:-MAX_CAPTURE_FILE_BYTES]
-        except OSError:
-            return
-
-    def finish_to_file(self, path: Path) -> None:
-        self._thread.join(timeout=5)
-        try:
-            self._stream.close()
-        except OSError:
-            pass
-        if self._thread.is_alive():
-            self._thread.join(timeout=1)
-        with self._lock:
-            tail = bytes(self._tail)
-            truncated = self._total_bytes > len(tail)
-        marker = b"[capture truncated to final bytes]\n" if truncated else b""
-        payload_limit = MAX_CAPTURE_FILE_BYTES - len(marker)
-        payload = marker + tail[-payload_limit:]
-        try:
-            path.write_bytes(payload)
-        except OSError:
-            return
 
 
 def require_bool(value: object, name: str) -> None:
@@ -257,8 +196,13 @@ def start_supervised_launch(device: str) -> subprocess.Popen[bytes]:
         return subprocess.Popen(
             simulator_launch_command(device),
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            # CoreSimulator may leave these descriptors inherited by the
+            # detached application after simctl itself exits.  Pipes would
+            # then have no bounded EOF and could deadlock failure cleanup.
+            # The strict result file is the success oracle; bounded unified
+            # logging below remains the diagnostic channel.
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
             bufsize=0,
         )
     except OSError as error:
@@ -279,17 +223,6 @@ def stop_supervised_launch(process: subprocess.Popen[bytes] | None) -> None:
         except (OSError, subprocess.TimeoutExpired):
             return
     except OSError:
-        return
-
-
-def finish_capture_non_masking(
-    capture: BoundedPipeCapture | None, path: Path
-) -> None:
-    if capture is None:
-        return
-    try:
-        capture.finish_to_file(path)
-    except (OSError, RuntimeError):
         return
 
 
@@ -335,12 +268,8 @@ def execute(app: Path, output: Path, timeout_seconds: int) -> None:
     device = ""
     with tempfile.TemporaryDirectory(prefix="airfix-ios-smoke-") as capture_root:
         capture_directory = Path(capture_root)
-        stdout_path = capture_directory / "app-stdout.log"
-        stderr_path = capture_directory / "app-stderr.log"
         sensitive_paths = (str(app), str(capture_directory))
         launcher: subprocess.Popen[bytes] | None = None
-        stdout_capture: BoundedPipeCapture | None = None
-        stderr_capture: BoundedPipeCapture | None = None
         try:
             device = run(
                 "xcrun", "simctl", "create", device_name, device_type, runtime
@@ -358,12 +287,6 @@ def execute(app: Path, output: Path, timeout_seconds: int) -> None:
             )
             result_path = data_container / "Documents" / RESULT_NAME
             launcher = start_supervised_launch(device)
-            if launcher.stdout is None or launcher.stderr is None:
-                raise SmokeFailure(
-                    "supervised simctl launch did not expose console pipes"
-                )
-            stdout_capture = BoundedPipeCapture(launcher.stdout)
-            stderr_capture = BoundedPipeCapture(launcher.stderr)
 
             deadline = time.monotonic() + timeout_seconds
             while time.monotonic() < deadline:
@@ -384,16 +307,6 @@ def execute(app: Path, output: Path, timeout_seconds: int) -> None:
             )
         except Exception:
             stop_supervised_launch(launcher)
-            finish_capture_non_masking(stdout_capture, stdout_path)
-            finish_capture_non_masking(stderr_capture, stderr_path)
-            stdout = bounded_file_text(stdout_path, sensitive_paths)
-            stderr = bounded_file_text(stderr_path, sensitive_paths)
-            if stdout:
-                print("--- redacted application stdout ---", file=sys.stderr)
-                print(stdout, file=sys.stderr)
-            if stderr:
-                print("--- redacted application stderr ---", file=sys.stderr)
-                print(stderr, file=sys.stderr)
             if device:
                 log = redacted_failure_log(device, sensitive_paths)
                 if log:
@@ -405,8 +318,6 @@ def execute(app: Path, output: Path, timeout_seconds: int) -> None:
             raise
         finally:
             stop_supervised_launch(launcher)
-            finish_capture_non_masking(stdout_capture, stdout_path)
-            finish_capture_non_masking(stderr_capture, stderr_path)
             if device:
                 run_non_masking(
                     "xcrun", "simctl", "shutdown", device, timeout=20
