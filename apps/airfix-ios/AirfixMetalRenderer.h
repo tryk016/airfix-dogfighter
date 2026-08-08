@@ -37,6 +37,42 @@ NS_ASSUME_NONNULL_BEGIN
 
 @property(nonatomic, readonly) BOOL missionWorldRoomInstalled;
 
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+typedef NS_ENUM(NSUInteger, AirfixSimulatorSmokeDrawStage) {
+  AirfixSimulatorSmokeDrawStageNotEntered = 0,
+  AirfixSimulatorSmokeDrawStageEntered,
+  AirfixSimulatorSmokeDrawStageInvalidThread,
+  AirfixSimulatorSmokeDrawStageInvalidView,
+  AirfixSimulatorSmokeDrawStageAwaitingPresentation,
+  AirfixSimulatorSmokeDrawStageMissingSceneSampling,
+  AirfixSimulatorSmokeDrawStageMissingSampler,
+  AirfixSimulatorSmokeDrawStageMissingSnapshot,
+  AirfixSimulatorSmokeDrawStageMissingResources,
+  AirfixSimulatorSmokeDrawStageMissingDiagnostics,
+  AirfixSimulatorSmokeDrawStageMissingGameplayCamera,
+  AirfixSimulatorSmokeDrawStageMissingFallback,
+  AirfixSimulatorSmokeDrawStageMissingDrawable,
+  AirfixSimulatorSmokeDrawStageOutputExtentMismatch,
+  AirfixSimulatorSmokeDrawStageInvalidLayout,
+  AirfixSimulatorSmokeDrawStageRenderTargetMismatch,
+  AirfixSimulatorSmokeDrawStageMissingScaledTarget,
+  AirfixSimulatorSmokeDrawStageMissingCommandBuffer,
+  AirfixSimulatorSmokeDrawStageMissingSceneEncoder,
+  AirfixSimulatorSmokeDrawStageMissingPresentationEncoder,
+  AirfixSimulatorSmokeDrawStageSubmitted,
+};
+
+@property(nonatomic, readonly)
+    AirfixSimulatorSmokeDrawStage simulatorSmokeDrawStage;
+
+// CI-only, one-shot observation of a command buffer that rendered the public
+// synthetic scene. This declaration is absent from production builds.
+- (void)setSimulatorSmokeFrameCompletion:
+    (void (^_Nullable)(BOOL publicSyntheticScene, NSUInteger sceneDrawCallCount,
+                       NSUInteger sceneTriangleCount,
+                       NSError *_Nullable error))completion;
+#endif
+
 - (nullable instancetype)initWithMetalView:(MTKView *)metalView
                                      error:(NSError *_Nullable *_Nullable)error
     NS_DESIGNATED_INITIALIZER;

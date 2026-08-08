@@ -1,7 +1,7 @@
 # GitHub Actions iOS build and signing design
 
-**Status:** unsigned shell implemented; private signing design accepted but
-disabled
+**Status:** unsigned shell and data-less simulator runtime smoke implemented;
+private signing design accepted but disabled
 
 **Related decision:** ADR-0004
 
@@ -85,14 +85,62 @@ Trigger: every pull request and push after the iOS target exists.
   runner image metadata into a build manifest.
 - Build ARM64 `iphoneos` and ARM64 `iphonesimulator` bundles with code signing
   disabled.
+- The simulator configuration alone enables the explicit
+  `AIRFIX_IOS_SIMULATOR_SMOKE` harness. CI boots a fresh simulator, installs
+  and launches the app through the standard bounded `simctl launch`
+  acknowledgement path without requesting termination of a pre-existing app
+  process, which cannot exist on this newly created device. It then resolves
+  the data container after launch and requires a bounded JSON result written
+  atomically inside that container. The
+  result proves that the normal renderer
+  completed a command buffer containing the public synthetic scene, then that
+  the existing resign-active, background, foreground, and active lifecycle
+  calls left both the session and `MTKView` paused without auto-resume.
+  This is an immediate handler-contract check: it invokes the same four native
+  handlers in order inside the app, rather than claiming to validate
+  SpringBoard's delivery timing.
+- A paused `MTKView` is retried for a bounded 40 seconds while the fresh
+  simulator establishes its presentation surface. If no completed command
+  buffer is observed, or a later lifecycle invariant fails, the app writes the
+  same atomic result file with a strict, allow-listed simulator-only failure
+  stage. CI can therefore distinguish a missing drawable, presentation
+  mismatch, resource gate, submitted buffer that never completed, Metal
+  failure, or lifecycle failure without recording paths, checksums, or private
+  data.
+- An independent simulator-only watchdog is armed before Metal renderer
+  initialization. It reports an initializer or synchronous draw stall without
+  relying on the main run loop. Result serialization, creation of the
+  application Documents directory, and the atomic write are checked; failures
+  emit only a fixed path-free diagnostic marker. Its 42-second deadline fits
+  inside the runner's 60-second result window with explicit launch and write
+  margin. A short set of fixed, path-free milestones distinguishes watchdog
+  arming, renderer completion, first-draw entry/return, and result publication.
+- The current Metal Simulator runtime rejects shared-storage heaps. The public
+  smoke snapshot therefore uses directly allocated shared/tracked buffers and
+  textures on `TARGET_OS_SIMULATOR`. It also avoids heap size/alignment queries
+  and direct-resource `allocatedSize` queries. Instead it reserves the full
+  64 MiB ceiling independently for the public snapshot and persistent fallback
+  before allocation, so either owner can be destroyed without releasing the
+  other's conservative debit. Simulator presentation targets likewise use
+  their checked logical size plus an explicit 128 KiB policy estimate. That
+  estimate is not presented as a backend-exact allocation bound: diagnostics
+  label simulator GPU memory as estimated and report the ledger rather than
+  querying driver allocation metadata. Physical `iphoneos` retains measured
+  shared-heap planning and reconciliation. A private-heap staging/blit
+  pipeline is not introduced for this small CPU-populated CI snapshot.
+- The harness is not compiled into ordinary simulator builds or any `iphoneos`
+  build. CMake rejects the option for a non-simulator SDK, and bundle
+  verification scans the device executable for the harness schema marker.
 - Keep every pull-request invocation data-less. This workflow never reads
   repository secrets or forwards private initial-mission inputs.
 - Do not upload either bundle from the public repository.
 - Verify `IPHONEOS_DEPLOYMENT_TARGET=16.4` and fail if a dependency raises it.
 
-The first green run was `29898694161`: device build and bundle validation took
-45 seconds; simulator build and validation took 66 seconds. Runtime simulator
-launch is a later check and is not implied by this compile/link milestone.
+The first compile-only green run was `29898694161`: device build and bundle
+validation took 45 seconds; simulator build and validation took 66 seconds.
+Current simulator success additionally requires application launch, a real
+public Metal submission, and the lifecycle paused invariant; compilation alone
+cannot satisfy the job.
 
 ### 3. `ios-private-ipa`
 

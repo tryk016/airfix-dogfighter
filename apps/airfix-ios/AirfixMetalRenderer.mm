@@ -8,6 +8,7 @@
 #include "airfix/content/LegacyAircraftHudWeaponPanelsSubmission.hpp"
 #include "airfix/content/LegacyWeaponCrosshairSpriteSubmission.hpp"
 #import <Metal/Metal.h>
+#import <TargetConditionals.h>
 #import <simd/simd.h>
 
 #include "airfix/content/LegacyAircraftHealthGaugeTextureSet.hpp"
@@ -85,9 +86,19 @@ constexpr std::size_t kMaximumPrivateRoomGpuHeapPlanBytes =
 constexpr std::size_t kMaximumPrivateRoomCpuPackedBytes = 128U * 1024U * 1024U;
 constexpr NSUInteger kMaximumScaledSceneDimension = 16384U;
 constexpr std::size_t kMaximumScaledSceneTargetBytes = 512U * 1024U * 1024U;
+#if TARGET_OS_SIMULATOR
+constexpr std::size_t kSimulatorPresentationTextureEstimateAllowanceBytes =
+    2U * 64U * 1024U;
+#endif
 constexpr MTLResourceOptions kSharedTrackedResourceOptions =
     static_cast<MTLResourceOptions>(MTLResourceStorageModeShared |
                                     MTLResourceHazardTrackingModeTracked);
+
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+void logSimulatorRendererMilestone(NSString *stage) {
+  NSLog(@"Airfix simulator smoke renderer milestone %@", stage);
+}
+#endif
 
 // This layout is deliberately independent from DrawVertex. It is the sole
 // CPU/GPU ABI shared with AirfixShaders.metal.
@@ -781,8 +792,19 @@ prepareMetalPresentationTarget(
       return {};
     }
 
-    auto reservation =
-        gpuBudgetHolder->_ledger->tryReserve(minimumAccountedBytes);
+    std::size_t admittedBytes = minimumAccountedBytes;
+#if TARGET_OS_SIMULATOR
+    // The simulator driver cannot safely report allocatedSize for these
+    // textures. This is an explicit policy estimate above the portable
+    // logical minimum, not a backend-exact allocation bound.
+    if (!checkedAdd(admittedBytes,
+                    kSimulatorPresentationTextureEstimateAllowanceBytes,
+                    admittedBytes) ||
+        admittedBytes > kMaximumScaledSceneTargetBytes) {
+      return {};
+    }
+#endif
+    auto reservation = gpuBudgetHolder->_ledger->tryReserve(admittedBytes);
     if (!reservation.has_value()) {
       return {};
     }
@@ -817,14 +839,14 @@ prepareMetalPresentationTarget(
     }
     id<MTLTexture> depthTexture =
         [device newTextureWithDescriptor:depthDescriptor];
-    if (depthTexture == nil || colorTexture.allocatedSize == 0U ||
-        depthTexture.allocatedSize == 0U) {
+    if (depthTexture == nil) {
       return {};
     }
     colorTexture.label = @"Airfix scaled 3D scene color";
     depthTexture.label = @"Airfix scaled 3D scene depth";
 
-    std::size_t actualBytes = 0U;
+    std::size_t actualBytes = admittedBytes;
+#if !TARGET_OS_SIMULATOR
     if (!checkedAdd(static_cast<std::size_t>(colorTexture.allocatedSize),
                     static_cast<std::size_t>(depthTexture.allocatedSize),
                     actualBytes) ||
@@ -833,6 +855,7 @@ prepareMetalPresentationTarget(
                                            *reservation, actualBytes)) {
       return {};
     }
+#endif
 
     AirfixGpuBudgetReservationHolder *reservationHolder =
         [[AirfixGpuBudgetReservationHolder alloc] init];
@@ -1243,6 +1266,12 @@ bool preflightPrivateRoom(id<MTLDevice> device,
 @property(nonatomic, strong) AirfixBudgetedMetalTexture *fallbackResource;
 @property(atomic, strong) AirfixMetalRoomSnapshot *roomSnapshot;
 @property(nonatomic, weak) MTKView *metalView;
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+@property(nonatomic, copy, nullable) void (^simulatorSmokeFrameObserver)
+    (BOOL publicSyntheticScene, NSUInteger sceneDrawCallCount,
+     NSUInteger sceneTriangleCount, NSError *_Nullable error);
+@property(nonatomic) AirfixSimulatorSmokeDrawStage simulatorSmokeDrawStage;
+#endif
 @property(nonatomic, strong)
     AirfixMetalPresentationTransactionHolder *presentationTransactionHolder;
 @property(nonatomic, strong) NSObject *preparationOwnerToken;
@@ -1323,6 +1352,19 @@ bool preflightPrivateRoom(id<MTLDevice> device,
 
 @implementation AirfixMetalRenderer
 
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+- (void)setSimulatorSmokeFrameCompletion:
+    (void (^_Nullable)(BOOL, NSUInteger, NSUInteger,
+                       NSError *_Nullable))completion {
+  NSAssert(NSThread.isMainThread,
+           @"Simulator smoke observation belongs to the main thread");
+  if (completion != nil) {
+    self.simulatorSmokeDrawStage = AirfixSimulatorSmokeDrawStageNotEntered;
+  }
+  self.simulatorSmokeFrameObserver = completion;
+}
+#endif
+
 - (nullable instancetype)initWithMetalView:(MTKView *)metalView
                                      error:
                                          (NSError *_Nullable *_Nullable)error {
@@ -1343,6 +1385,9 @@ bool preflightPrivateRoom(id<MTLDevice> device,
   // No C++ allocation or conversion failure may escape this Objective-C
   // initializer boundary.
   try {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    logSimulatorRendererMilestone(@"init-entered");
+#endif
     airfix::render::PublicRenderSmokeScene smokeScene =
         airfix::render::makePublicRenderSmokeScene();
     airfix::render::DrawModelPayload payload = std::move(smokeScene.model);
@@ -1669,6 +1714,9 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       }
       return nil;
     }
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    logSimulatorRendererMilestone(@"pipeline-suite-ready");
+#endif
 
     MTLDepthStencilDescriptor *depthDescriptor =
         [[MTLDepthStencilDescriptor alloc] init];
@@ -1805,6 +1853,9 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       }
       return nil;
     }
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    logSimulatorRendererMilestone(@"state-suite-ready");
+#endif
 
     // Preflight every byte count and command offset before asking Metal for
     // any resource. The aggregate cap is intentionally small for this public
@@ -1969,6 +2020,20 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       return nil;
     }
 
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    logSimulatorRendererMilestone(@"resource-plan-ready");
+#endif
+
+#if TARGET_OS_SIMULATOR
+    // The public simulator snapshot uses direct shared allocations below.
+    // Querying heap placement for those resources is unnecessary, and the
+    // iOS 26 simulator Metal runtime can fault while sizing shared-storage
+    // heap descriptors. The public snapshot is already bounded to this fixed
+    // ceiling, so reserve that ceiling before allocation and keep the debit
+    // alive with both resource owners. Physical iOS retains exact heap
+    // placement planning and measured reconciliation.
+    const std::size_t admittedHeapPlanBytes = kMaximumSyntheticGpuHeapPlanBytes;
+#else
     std::size_t bufferHeapBytes = 0U;
     std::size_t bufferHeapAlignment = 0U;
     bool heapPlanValid = true;
@@ -2033,6 +2098,7 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       }
       return nil;
     }
+#endif
 
     // Admit the checked descriptor plan before the first heap exists. Metal's
     // undocumented page-rounding delta, if any, is measured and admitted
@@ -2047,10 +2113,35 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       }
       return nil;
     }
+#if TARGET_OS_SIMULATOR
+    // Keep snapshot and fallback debits independent because their owners may
+    // be destroyed in either order and each owner releases its own holder.
+    auto fallbackReservation =
+        gpuBudgetHolder->_ledger->tryReserve(kMaximumSyntheticGpuHeapPlanBytes);
+    if (!fallbackReservation.has_value()) {
+      if (error != nullptr) {
+        *error =
+            makeError(RendererError::resourceLimit,
+                      @"The public fallback reservation is unavailable in the "
+                       "aggregate admission budget.");
+      }
+      return nil;
+    }
+#endif
 
     // Staging collections and autoreleased Metal command objects drain before
     // the outer plan reservation can be destroyed on any failure.
     @autoreleasepool {
+#if TARGET_OS_SIMULATOR
+      // Metal simulator requires private storage for heaps, while this small
+      // public snapshot is synchronously populated by the CPU. Direct shared,
+      // tracked resources preserve that upload contract without introducing a
+      // private-heap staging/blit path solely for CI. Physical iOS continues
+      // to use the admitted shared heaps below.
+      id<MTLHeap> bufferHeap = nil;
+      id<MTLHeap> textureHeap = nil;
+      id<MTLHeap> fallbackHeap = nil;
+#else
       id<MTLHeap> bufferHeap = newSharedTrackedHeap(
           device, bufferHeapBytes, @"Airfix public snapshot buffer heap");
       id<MTLHeap> textureHeap = newSharedTrackedHeap(
@@ -2066,6 +2157,7 @@ bool preflightPrivateRoom(id<MTLDevice> device,
         }
         return nil;
       }
+#endif
 
       NSMutableArray<AirfixMetalMeshBuffers *> *meshBuffers = [NSMutableArray
           arrayWithCapacity:static_cast<NSUInteger>(packedVertices.size())];
@@ -2073,9 +2165,15 @@ bool preflightPrivateRoom(id<MTLDevice> device,
            ++meshSlot) {
         id<MTLBuffer> vertexBuffer = nil;
         if (vertexByteCounts[meshSlot] != 0U) {
+#if TARGET_OS_SIMULATOR
+          vertexBuffer =
+              [device newBufferWithLength:vertexByteCounts[meshSlot]
+                                  options:kSharedTrackedResourceOptions];
+#else
           vertexBuffer =
               [bufferHeap newBufferWithLength:vertexByteCounts[meshSlot]
                                       options:kSharedTrackedResourceOptions];
+#endif
           if (vertexBuffer != nil && vertexBuffer.contents != nullptr) {
             std::memcpy(vertexBuffer.contents, packedVertices[meshSlot].data(),
                         vertexByteCounts[meshSlot]);
@@ -2083,9 +2181,15 @@ bool preflightPrivateRoom(id<MTLDevice> device,
         }
         id<MTLBuffer> indexBuffer = nil;
         if (indexByteCounts[meshSlot] != 0U) {
+#if TARGET_OS_SIMULATOR
+          indexBuffer =
+              [device newBufferWithLength:indexByteCounts[meshSlot]
+                                  options:kSharedTrackedResourceOptions];
+#else
           indexBuffer =
               [bufferHeap newBufferWithLength:indexByteCounts[meshSlot]
                                       options:kSharedTrackedResourceOptions];
+#endif
           if (indexBuffer != nil && indexBuffer.contents != nullptr) {
             std::memcpy(indexBuffer.contents,
                         payload.meshes[meshSlot].indices.data(),
@@ -2107,9 +2211,17 @@ bool preflightPrivateRoom(id<MTLDevice> device,
         buffers.indexBuffer = indexBuffer;
         [meshBuffers addObject:buffers];
       }
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+      logSimulatorRendererMilestone(@"direct-buffers-ready");
+#endif
 
+#if TARGET_OS_SIMULATOR
+      id<MTLTexture> syntheticTexture =
+          [device newTextureWithDescriptor:textureDescriptor];
+#else
       id<MTLTexture> syntheticTexture =
           [textureHeap newTextureWithDescriptor:textureDescriptor];
+#endif
       if (syntheticTexture == nil) {
         if (error != nullptr) {
           *error = makeError(RendererError::textureCreation,
@@ -2123,8 +2235,13 @@ bool preflightPrivateRoom(id<MTLDevice> device,
                             withBytes:smokeScene.textureRgba8.data()
                           bytesPerRow:2U * 4U];
 
+#if TARGET_OS_SIMULATOR
+      id<MTLTexture> fallbackTexture =
+          [device newTextureWithDescriptor:fallbackDescriptor];
+#else
       id<MTLTexture> fallbackTexture =
           [fallbackHeap newTextureWithDescriptor:fallbackDescriptor];
+#endif
       if (fallbackTexture == nil) {
         if (error != nullptr) {
           *error = makeError(RendererError::textureCreation,
@@ -2136,9 +2253,16 @@ bool preflightPrivateRoom(id<MTLDevice> device,
                          mipmapLevel:0U
                            withBytes:smokeScene.fallbackRgba8.data()
                          bytesPerRow:1U * 4U];
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+      logSimulatorRendererMilestone(@"direct-textures-ready");
+#endif
       NSArray<AirfixMetalMeshBuffers *> *meshBufferSnapshot =
           [meshBuffers copy];
       NSArray<id<MTLTexture>> *textureSnapshot = @[ syntheticTexture ];
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+      logSimulatorRendererMilestone(@"resource-snapshots-ready");
+#endif
+#if !TARGET_OS_SIMULATOR
       for (AirfixMetalMeshBuffers *buffers in meshBufferSnapshot) {
         if ((buffers.vertexBuffer != nil &&
              buffers.vertexBuffer.allocatedSize == 0U) ||
@@ -2178,16 +2302,17 @@ bool preflightPrivateRoom(id<MTLDevice> device,
         }
         return nil;
       }
-      // Descriptor plans are admitted before creation. Metal may page-round a
-      // heap beyond that plan, so the measured current allocation must obtain
-      // any supplemental aggregate admission before this snapshot can publish.
+      // The descriptor placement plan is admitted before creation. Reconcile
+      // it with physical-heap current allocation, obtaining any supplemental
+      // aggregate admission before this snapshot can publish.
       if (!finalizeHeapAllocationReservation(*gpuBudgetHolder->_ledger,
                                              *bootstrapPlanReservation,
                                              totalHeapCurrentAllocatedBytes)) {
         if (error != nullptr) {
-          *error = makeError(RendererError::resourceLimit,
-                             @"The public heaps' current allocation is "
-                             @"unavailable in the aggregate admission budget.");
+          *error =
+              makeError(RendererError::resourceLimit,
+                        @"The public Metal resources' measured allocation is "
+                        @"unavailable in the aggregate admission budget.");
         }
         return nil;
       }
@@ -2201,6 +2326,7 @@ bool preflightPrivateRoom(id<MTLDevice> device,
         }
         return nil;
       }
+#endif
 
       AirfixMetalRoomResources *roomResources =
           [[AirfixMetalRoomResources alloc] init];
@@ -2240,6 +2366,9 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       fallbackResource->_texture = fallbackTexture;
       fallbackResource->_heap = fallbackHeap;
       fallbackResource->_gpuBudgetReservationHolder = fallbackReservationHolder;
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+      logSimulatorRendererMilestone(@"resources-accounted");
+#endif
 
       // Publish only after the complete renderer candidate has been validated
       // and every Metal object has been created successfully.
@@ -2273,6 +2402,9 @@ bool preflightPrivateRoom(id<MTLDevice> device,
 
       const auto initialExtent = outputPixelExtent(metalView.drawableSize);
       if (initialExtent.has_value()) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+        logSimulatorRendererMilestone(@"presentation-target-begin");
+#endif
         const auto surface = presentationSurfaceStamp(
             metalView, *initialExtent,
             presentationTransactionHolder->_surfaceGeneration);
@@ -2291,7 +2423,14 @@ bool preflightPrivateRoom(id<MTLDevice> device,
         }
         presentationTransactionHolder->_transaction.commitValidated(
             std::move(*prepared.prepared));
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+        logSimulatorRendererMilestone(@"presentation-target-ready");
+#endif
       }
+
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+      logSimulatorRendererMilestone(@"init-returning");
+#endif
 
       return self;
     }
@@ -4875,17 +5014,30 @@ bool preflightPrivateRoom(id<MTLDevice> device,
 }
 
 - (void)drawInMTKView:(MTKView *)view {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+  self.simulatorSmokeDrawStage = AirfixSimulatorSmokeDrawStageEntered;
+#endif
   if (!NSThread.isMainThread) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage = AirfixSimulatorSmokeDrawStageInvalidThread;
+#endif
     return;
   }
   if (view == nil || view != self.metalView || view.device == nil ||
       view.device != self.commandQueue.device) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage = AirfixSimulatorSmokeDrawStageInvalidView;
+#endif
     return;
   }
   AirfixMetalPresentationTransactionHolder *presentationHolder =
       self.presentationTransactionHolder;
   const auto viewExtent = outputPixelExtent(view.drawableSize);
   if (presentationHolder == nil || !viewExtent.has_value()) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage =
+        AirfixSimulatorSmokeDrawStageAwaitingPresentation;
+#endif
     return;
   }
   const auto currentSurface = presentationSurfaceStamp(
@@ -4919,6 +5071,10 @@ bool preflightPrivateRoom(id<MTLDevice> device,
   }
   if (currentPresentation == nullptr ||
       currentPresentation->surface() != currentSurface) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage =
+        AirfixSimulatorSmokeDrawStageAwaitingPresentation;
+#endif
     return;
   }
   const airfix::render::RenderPresentationActiveState presentationSnapshot =
@@ -4928,6 +5084,10 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       airfix::render::sceneTextureSamplingPolicyForProfile(
           presentationSettings.visualProfile);
   if (!sceneTextureSampling.has_value()) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage =
+        AirfixSimulatorSmokeDrawStageMissingSceneSampling;
+#endif
     return;
   }
   id<MTLSamplerState> sceneSamplerState =
@@ -4936,21 +5096,35 @@ bool preflightPrivateRoom(id<MTLDevice> device,
           ? self.enhancedSceneSamplerState
           : self.classicSceneSamplerState;
   if (sceneSamplerState == nil) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage = AirfixSimulatorSmokeDrawStageMissingSampler;
+#endif
     return;
   }
 
   AirfixMetalRoomSnapshot *snapshot = self.roomSnapshot;
   if (snapshot == nil) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage = AirfixSimulatorSmokeDrawStageMissingSnapshot;
+#endif
     return;
   }
   AirfixMetalRoomResources *resources = snapshot->_resources;
   if (resources == nil) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage =
+        AirfixSimulatorSmokeDrawStageMissingResources;
+#endif
     return;
   }
   AirfixMetalDiagnosticsState *diagnosticsState = self.diagnosticsState;
   AirfixSnapshotGpuBudgetLedgerHolder *gpuBudgetHolder = self.gpuBudgetHolder;
   if (diagnosticsState == nil || gpuBudgetHolder == nil ||
       gpuBudgetHolder->_ledger == nullptr) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage =
+        AirfixSimulatorSmokeDrawStageMissingDiagnostics;
+#endif
     return;
   }
   const auto frameStarted = std::chrono::steady_clock::now();
@@ -4975,6 +5149,10 @@ bool preflightPrivateRoom(id<MTLDevice> device,
   const auto *gameplayCamera =
       gameplayCameraLease.has_value() ? gameplayCameraLease->packet() : nullptr;
   if (gameplayCameraActive && gameplayCamera == nullptr) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage =
+        AirfixSimulatorSmokeDrawStageMissingGameplayCamera;
+#endif
     return;
   }
   const airfix::render::DrawModelPayload &payload =
@@ -4985,6 +5163,9 @@ bool preflightPrivateRoom(id<MTLDevice> device,
                            : resources->_submissionPlan;
   AirfixBudgetedMetalTexture *fallbackResource = self.fallbackResource;
   if (fallbackResource == nil || fallbackResource->_texture == nil) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage = AirfixSimulatorSmokeDrawStageMissingFallback;
+#endif
     return;
   }
   MTLRenderPassDescriptor *renderPass = view.currentRenderPassDescriptor;
@@ -4992,12 +5173,19 @@ bool preflightPrivateRoom(id<MTLDevice> device,
   if (renderPass == nil || drawable == nil ||
       renderPass.colorAttachments[0].texture == nil ||
       renderPass.depthAttachment.texture == nil) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage = AirfixSimulatorSmokeDrawStageMissingDrawable;
+#endif
     return;
   }
   id<MTLTexture> drawableDepthTexture = renderPass.depthAttachment.texture;
   const auto outputExtent = outputPixelExtent(drawable.texture);
   if (!outputExtent.has_value() ||
       *outputExtent != presentationSnapshot.surface().outputExtent) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage =
+        AirfixSimulatorSmokeDrawStageOutputExtentMismatch;
+#endif
     return;
   }
   auto layoutConfig = airfix::render::NativeRenderLayoutConfig{
@@ -5018,6 +5206,9 @@ bool preflightPrivateRoom(id<MTLDevice> device,
   const auto builtLayout =
       airfix::render::buildNativeRenderLayout(layoutConfig);
   if (!builtLayout.complete()) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage = AirfixSimulatorSmokeDrawStageInvalidLayout;
+#endif
     return;
   }
   const airfix::render::NativeRenderLayout &layout = *builtLayout.layout;
@@ -5026,6 +5217,10 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       presentationSettings.renderScalePercent !=
       airfix::render::native_render_policy::defaultRenderScalePercent;
   if (renderTargetExtent != presentationSnapshot.targetExtent()) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage =
+        AirfixSimulatorSmokeDrawStageRenderTargetMismatch;
+#endif
     return;
   }
 
@@ -5034,11 +5229,19 @@ bool preflightPrivateRoom(id<MTLDevice> device,
   id<MTLTexture> retainedScaledSceneDepth = nil;
   if (usesScaledSceneTarget) {
     if (!presentationSnapshot.targetBundle().has_value()) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+      self.simulatorSmokeDrawStage =
+          AirfixSimulatorSmokeDrawStageMissingScaledTarget;
+#endif
       return;
     }
     AirfixMetalScaledSceneTargetBundle *targetBundle =
         metalPresentationTargetBundle(*presentationSnapshot.targetBundle());
     if (targetBundle == nil || targetBundle->_extent != renderTargetExtent) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+      self.simulatorSmokeDrawStage =
+          AirfixSimulatorSmokeDrawStageMissingScaledTarget;
+#endif
       return;
     }
     retainedScaledSceneColor = targetBundle->_colorTexture;
@@ -5063,11 +5266,19 @@ bool preflightPrivateRoom(id<MTLDevice> device,
 
   id<MTLCommandBuffer> commandBuffer = [self.commandQueue commandBuffer];
   if (commandBuffer == nil) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage =
+        AirfixSimulatorSmokeDrawStageMissingCommandBuffer;
+#endif
     return;
   }
   id<MTLRenderCommandEncoder> encoder =
       [commandBuffer renderCommandEncoderWithDescriptor:sceneRenderPass];
   if (encoder == nil) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    self.simulatorSmokeDrawStage =
+        AirfixSimulatorSmokeDrawStageMissingSceneEncoder;
+#endif
     return;
   }
 
@@ -5155,6 +5366,10 @@ bool preflightPrivateRoom(id<MTLDevice> device,
     id<MTLRenderCommandEncoder> presentationEncoder =
         [commandBuffer renderCommandEncoderWithDescriptor:renderPass];
     if (presentationEncoder == nil) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+      self.simulatorSmokeDrawStage =
+          AirfixSimulatorSmokeDrawStageMissingPresentationEncoder;
+#endif
       return;
     }
     [presentationEncoder setRenderPipelineState:self.presentationPipelineState];
@@ -5186,6 +5401,7 @@ bool preflightPrivateRoom(id<MTLDevice> device,
   }
   std::uint64_t trackedGpuBytes =
       static_cast<std::uint64_t>(gpuBudgetHolder->_ledger->reservedBytes());
+#if !TARGET_OS_SIMULATOR
   const auto accountResource = [&trackedGpuBytes](
                                    id<MTLResource> resource) noexcept {
     if (resource == nil) {
@@ -5201,6 +5417,12 @@ bool preflightPrivateRoom(id<MTLDevice> device,
   accountResource(drawable.texture);
   accountResource(drawableDepthTexture);
   accountResource(self.diagnosticsOverlayTexture);
+  constexpr auto gpuMemoryMeasurement =
+      airfix::render::GpuMemoryMeasurement::backendReported;
+#else
+  constexpr auto gpuMemoryMeasurement =
+      airfix::render::GpuMemoryMeasurement::estimated;
+#endif
 
   const auto cpuSampled = std::chrono::steady_clock::now();
   const double cpuFrameMilliseconds =
@@ -5224,8 +5446,7 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       .sceneTriangleCount = sceneTriangleCount,
       .activeLightCount = 0U,
       .gpuMemoryBytes = trackedGpuBytes,
-      .gpuMemoryMeasurement =
-          airfix::render::GpuMemoryMeasurement::backendReported,
+      .gpuMemoryMeasurement = gpuMemoryMeasurement,
   });
   id<MTLTexture> retainedDiagnosticsOverlay = nil;
   if (diagnosticAccepted && presentationSettings.diagnosticsOverlayEnabled) {
@@ -5305,6 +5526,18 @@ bool preflightPrivateRoom(id<MTLDevice> device,
     }
   }
   AirfixMetalDiagnosticsState *retainedDiagnosticsState = diagnosticsState;
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+  self.simulatorSmokeDrawStage = AirfixSimulatorSmokeDrawStageSubmitted;
+  void (^simulatorSmokeCompletion)(BOOL, NSUInteger, NSUInteger,
+                                   NSError *_Nullable) =
+      self.simulatorSmokeFrameObserver;
+  self.simulatorSmokeFrameObserver = nil;
+  const BOOL simulatorSmokePublicSyntheticScene = !gameplayCameraActive;
+  const NSUInteger simulatorSmokeDrawCallCount =
+      static_cast<NSUInteger>(sceneDrawCallCount);
+  const NSUInteger simulatorSmokeTriangleCount =
+      static_cast<NSUInteger>(sceneTriangleCount);
+#endif
   [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completed) {
     const double gpuStart = completed.GPUStartTime;
     const double gpuEnd = completed.GPUEndTime;
@@ -5324,6 +5557,24 @@ bool preflightPrivateRoom(id<MTLDevice> device,
     (void)retainedScaledSceneDepth;
     (void)retainedDiagnosticsOverlay;
     (void)drawableDepthTexture;
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    if (simulatorSmokeCompletion != nil) {
+      NSError *completionError = nil;
+      if (completed.status != MTLCommandBufferStatusCompleted) {
+        completionError = completed.error;
+        if (completionError == nil) {
+          completionError = makeError(
+              RendererError::unexpectedFailure,
+              @"The simulator smoke Metal command buffer did not complete.");
+        }
+      }
+      dispatch_async(dispatch_get_main_queue(), ^{
+        simulatorSmokeCompletion(simulatorSmokePublicSyntheticScene,
+                                 simulatorSmokeDrawCallCount,
+                                 simulatorSmokeTriangleCount, completionError);
+      });
+    }
+#endif
   }];
   [commandBuffer presentDrawable:drawable];
   [commandBuffer commit];

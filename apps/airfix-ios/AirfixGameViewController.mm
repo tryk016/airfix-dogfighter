@@ -9,6 +9,9 @@
 #include "AirfixIOSInputStartupPolicy.hpp"
 #import "AirfixIOSTouchControlsPreferencesStore.h"
 #import "AirfixMetalRenderer.h"
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+#import "AirfixSimulatorSmokeHarness.h"
+#endif
 #import "AirfixMissionWorldRoomSnapshot.h"
 #import "AirfixRenderSettingsCoordinator.h"
 #import "AirfixRenderSettingsPanelViewController.h"
@@ -153,6 +156,13 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
     AirfixTouchControlsSettingsPanelViewController *touchControlsSettingsPanel;
 @property(nonatomic) BOOL inputPipelineReady;
 @property(nonatomic) BOOL simulationPipelineReady;
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+@property(nonatomic, strong) AirfixSimulatorSmokeHarness *simulatorSmokeHarness;
+@property(nonatomic) NSUInteger simulatorSmokeDrawAttemptCount;
+@property(nonatomic) BOOL simulatorSmokeFrameResolved;
+@property(nonatomic, copy, nullable) void (^simulatorSmokeCompletion)
+    (NSDictionary<NSString *, id> *result);
+#endif
 
 - (void)showRenderSettings;
 - (void)closeRenderSettingsPanel;
@@ -172,6 +182,10 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
 - (void)updateDiagnosticsLabelWithInputDiagnostics:
     (AirfixInputDiagnostics *)diagnostics;
 - (void)handleAudioForcedPause:(airfix::ios::AirfixIOSAudioPauseReason)reason;
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+- (void)startSimulatorSmokeIfNeeded;
+- (void)attemptSimulatorSmokeDraw;
+#endif
 @end
 
 @implementation AirfixGameViewController
@@ -189,11 +203,19 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   metalView.paused = YES;
   metalView.enableSetNeedsDisplay = NO;
   self.view = metalView;
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+  self.simulatorSmokeHarness =
+      [[AirfixSimulatorSmokeHarness alloc] initWithGameViewController:self];
+  [self.simulatorSmokeHarness armWatchdog];
+#endif
 
   NSError *rendererError = nil;
   self.renderer =
       [[AirfixMetalRenderer alloc] initWithMetalView:metalView
                                                error:&rendererError];
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+  [self.simulatorSmokeHarness noteRendererInitializationCompleted];
+#endif
   metalView.delegate = self.renderer;
   if (self.renderer != nil) {
     self.renderSettingsCoordinator = [[AirfixRenderSettingsCoordinator alloc]
@@ -486,6 +508,12 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
         constraintEqualToAnchor:metalView.trailingAnchor],
   ]];
   [self setPausedSettingsSelection:0U announce:NO];
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+  // Headless CoreSimulator can launch the process without delivering
+  // viewDidAppear. Start after the renderer and complete view hierarchy exist;
+  // the bounded draw retry waits for any later layout/presentation readiness.
+  [self startSimulatorSmokeIfNeeded];
+#endif
 }
 
 - (void)beginControllerInputProfileLoad {
@@ -689,6 +717,106 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   }
   ((MTKView *)self.view).paused = YES;
 }
+
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+static constexpr NSUInteger kSimulatorSmokeMaximumDrawAttempts = 400U;
+static constexpr int64_t kSimulatorSmokeDrawRetryNanoseconds =
+    100 * NSEC_PER_MSEC;
+
+static NSString *
+simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
+  switch (stage) {
+  case AirfixSimulatorSmokeDrawStageNotEntered:
+    return @"draw-not-entered";
+  case AirfixSimulatorSmokeDrawStageEntered:
+    return @"draw-entered";
+  case AirfixSimulatorSmokeDrawStageInvalidThread:
+    return @"invalid-thread";
+  case AirfixSimulatorSmokeDrawStageInvalidView:
+    return @"invalid-view";
+  case AirfixSimulatorSmokeDrawStageAwaitingPresentation:
+    return @"awaiting-presentation";
+  case AirfixSimulatorSmokeDrawStageMissingSceneSampling:
+    return @"missing-scene-sampling";
+  case AirfixSimulatorSmokeDrawStageMissingSampler:
+    return @"missing-sampler";
+  case AirfixSimulatorSmokeDrawStageMissingSnapshot:
+    return @"missing-snapshot";
+  case AirfixSimulatorSmokeDrawStageMissingResources:
+    return @"missing-resources";
+  case AirfixSimulatorSmokeDrawStageMissingDiagnostics:
+    return @"missing-diagnostics";
+  case AirfixSimulatorSmokeDrawStageMissingGameplayCamera:
+    return @"missing-gameplay-camera";
+  case AirfixSimulatorSmokeDrawStageMissingFallback:
+    return @"missing-fallback";
+  case AirfixSimulatorSmokeDrawStageMissingDrawable:
+    return @"missing-drawable";
+  case AirfixSimulatorSmokeDrawStageOutputExtentMismatch:
+    return @"output-extent-mismatch";
+  case AirfixSimulatorSmokeDrawStageInvalidLayout:
+    return @"invalid-layout";
+  case AirfixSimulatorSmokeDrawStageRenderTargetMismatch:
+    return @"render-target-mismatch";
+  case AirfixSimulatorSmokeDrawStageMissingScaledTarget:
+    return @"missing-scaled-target";
+  case AirfixSimulatorSmokeDrawStageMissingCommandBuffer:
+    return @"missing-command-buffer";
+  case AirfixSimulatorSmokeDrawStageMissingSceneEncoder:
+    return @"missing-scene-encoder";
+  case AirfixSimulatorSmokeDrawStageMissingPresentationEncoder:
+    return @"missing-presentation-encoder";
+  case AirfixSimulatorSmokeDrawStageSubmitted:
+    return @"submitted-without-completion";
+  }
+  return @"unknown-draw-stage";
+}
+
+- (void)startSimulatorSmokeIfNeeded {
+  if (self.simulatorSmokeHarness == nil) {
+    self.simulatorSmokeHarness =
+        [[AirfixSimulatorSmokeHarness alloc] initWithGameViewController:self];
+  }
+  [self.simulatorSmokeHarness start];
+}
+
+- (void)attemptSimulatorSmokeDraw {
+  NSAssert(NSThread.isMainThread,
+           @"Simulator smoke draws belong to the main thread");
+  if (self.simulatorSmokeFrameResolved) {
+    return;
+  }
+  if (self.simulatorSmokeDrawAttemptCount >=
+      kSimulatorSmokeMaximumDrawAttempts) {
+    self.simulatorSmokeFrameResolved = YES;
+    [self.renderer setSimulatorSmokeFrameCompletion:nil];
+    void (^completion)(NSDictionary<NSString *, id> *) =
+        self.simulatorSmokeCompletion;
+    self.simulatorSmokeCompletion = nil;
+    if (completion != nil) {
+      completion(@{
+        @"schema" : @"airfix.ios-simulator-smoke",
+        @"version" : @1,
+        @"status" : @"fail",
+        @"failureStage" :
+            simulatorSmokeFailureStage(self.renderer.simulatorSmokeDrawStage),
+      });
+    }
+    return;
+  }
+  ++self.simulatorSmokeDrawAttemptCount;
+  [self.simulatorSmokeHarness noteDrawWillBegin];
+  [(MTKView *)self.view draw];
+  [self.simulatorSmokeHarness noteDrawDidReturn];
+
+  __weak AirfixGameViewController *weakSelf = self;
+  dispatch_after(
+      dispatch_time(DISPATCH_TIME_NOW, kSimulatorSmokeDrawRetryNanoseconds),
+      dispatch_get_main_queue(), ^{
+        [weakSelf attemptSimulatorSmokeDraw];
+      });
+}
+#endif
 
 - (void)viewDidAppear:(BOOL)animated {
   [super viewDidAppear:animated];
@@ -1176,6 +1304,128 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
         @"Gameplay paused; choose settings with the stick, A opens, B resumes";
   }
 }
+
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+- (void)runSimulatorSmokeWithCompletion:
+    (void (^)(NSDictionary<NSString *, id> *))completion {
+  NSAssert(NSThread.isMainThread,
+           @"Simulator smoke execution belongs to the main thread");
+  if (completion == nil) {
+    return;
+  }
+
+  MTKView *metalView = (MTKView *)self.view;
+  const bool privateInputsAbsent =
+      airfix::ios::private_mission_config::initialSetupLogicalPathBase64[0] ==
+          '\0' &&
+      airfix::ios::private_mission_config::initialLevelLogicalPathBase64[0] ==
+          '\0' &&
+      airfix::ios::private_mission_config::initialPlayerObjectLogicalPathBase64
+              [0] == '\0';
+  const bool initialPaused =
+      _session.lifecycleState() ==
+          airfix::runtime::LifecycleState::foregroundPaused &&
+      !_session.simulationRunning() && metalView.paused;
+  if (self.renderer == nil || metalView == nil || !privateInputsAbsent ||
+      !initialPaused) {
+    completion(@{
+      @"schema" : @"airfix.ios-simulator-smoke",
+      @"version" : @1,
+      @"status" : @"fail",
+      @"failureStage" : @"invalid-data-less-startup-state",
+    });
+    return;
+  }
+
+  __weak AirfixGameViewController *weakSelf = self;
+  self.simulatorSmokeDrawAttemptCount = 0U;
+  self.simulatorSmokeFrameResolved = NO;
+  self.simulatorSmokeCompletion = completion;
+  [self.renderer setSimulatorSmokeFrameCompletion:^(
+                     BOOL publicSyntheticScene, NSUInteger sceneDrawCallCount,
+                     NSUInteger sceneTriangleCount, NSError *frameError) {
+    AirfixGameViewController *strongSelf = weakSelf;
+    if (strongSelf == nil || strongSelf.simulatorSmokeFrameResolved) {
+      return;
+    }
+    strongSelf.simulatorSmokeFrameResolved = YES;
+    void (^resultCompletion)(NSDictionary<NSString *, id> *) =
+        strongSelf.simulatorSmokeCompletion;
+    strongSelf.simulatorSmokeCompletion = nil;
+    MTKView *strongMetalView = (MTKView *)strongSelf.view;
+    const BOOL metalFrameCompleted =
+        frameError == nil && publicSyntheticScene && sceneDrawCallCount > 0U &&
+        sceneTriangleCount > 0U;
+
+    [strongSelf applicationWillResignActive];
+    const BOOL inactive = strongSelf->_session.lifecycleState() ==
+                              airfix::runtime::LifecycleState::inactive &&
+                          strongMetalView.paused &&
+                          !strongSelf->_session.simulationRunning();
+    [strongSelf applicationDidEnterBackground];
+    const BOOL background = strongSelf->_session.lifecycleState() ==
+                                airfix::runtime::LifecycleState::background &&
+                            strongMetalView.paused &&
+                            !strongSelf->_session.simulationRunning();
+    [strongSelf applicationWillEnterForeground];
+    const BOOL foreground =
+        strongSelf->_session.lifecycleState() ==
+            airfix::runtime::LifecycleState::foregroundPaused &&
+        strongMetalView.paused && !strongSelf->_session.simulationRunning();
+    [strongSelf applicationDidBecomeActive];
+    const BOOL autoResumed =
+        strongSelf->_session.simulationRunning() || !strongMetalView.paused;
+    const BOOL activeStillPaused =
+        strongSelf->_session.lifecycleState() ==
+            airfix::runtime::LifecycleState::foregroundPaused &&
+        !autoResumed;
+    const BOOL passed = metalFrameCompleted && inactive && background &&
+                        foreground && activeStillPaused;
+    if (resultCompletion == nil) {
+      return;
+    }
+    if (!passed) {
+      resultCompletion(@{
+        @"schema" : @"airfix.ios-simulator-smoke",
+        @"version" : @1,
+        @"status" : @"fail",
+        @"failureStage" : metalFrameCompleted ? @"lifecycle-invariant-failed"
+                                              : @"metal-frame-failed",
+      });
+      return;
+    }
+    resultCompletion(@{
+      @"schema" : @"airfix.ios-simulator-smoke",
+      @"version" : @1,
+      @"status" : @"pass",
+      @"dataLess" : @YES,
+      @"metalFrame" : @{
+        @"commandBufferCompleted" : @(frameError == nil),
+        @"publicSyntheticScene" : @(publicSyntheticScene),
+        @"sceneDrawCalls" : @(sceneDrawCallCount),
+        @"sceneTriangles" : @(sceneTriangleCount),
+      },
+      @"lifecycle" : @{
+        @"sequence" :
+            @[ @"resign-active", @"background", @"foreground", @"active" ],
+        @"inactivePaused" : @(inactive),
+        @"backgroundPaused" : @(background),
+        @"foregroundPaused" : @(foreground),
+        @"activeStillPaused" : @(activeStillPaused),
+        @"autoResumed" : @(autoResumed),
+      },
+    });
+  }];
+
+  // A paused MTKView does not schedule frames. Always let loadView return
+  // before requesting the first drawable: a headless CoreSimulator can block
+  // an early synchronous draw while UIKit is still attaching the surface,
+  // which would also prevent the bounded retry chain from starting.
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [weakSelf attemptSimulatorSmokeDraw];
+  });
+}
+#endif
 
 - (void)contentCoordinator:(AirfixContentCoordinator *)coordinator
         didChangeReadiness:(AirfixContentReadiness)readiness {
