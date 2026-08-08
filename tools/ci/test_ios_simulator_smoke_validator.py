@@ -216,6 +216,32 @@ class DiagnosticHardeningTests(unittest.TestCase):
             self.assertIsNone(return_code)
             self.assertTrue(output.is_file())
 
+    def test_successful_detached_launch_keeps_waiting_for_result(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            launcher = mock.Mock()
+            launcher.poll.return_value = 0
+
+            completed, return_code = MODULE.poll_supervised_result(
+                launcher, root / "missing.json", root / "validated.json"
+            )
+
+            self.assertFalse(completed)
+            self.assertIsNone(return_code)
+
+    def test_failed_launch_is_reported_before_result(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            launcher = mock.Mock()
+            launcher.poll.return_value = 3
+
+            completed, return_code = MODULE.poll_supervised_result(
+                launcher, root / "missing.json", root / "validated.json"
+            )
+
+            self.assertFalse(completed)
+            self.assertEqual(return_code, 3)
+
     def test_rejects_unknown_fields(self) -> None:
         result = valid_result()
         result["localPath"] = "/private/value"

@@ -317,6 +317,11 @@ def poll_supervised_result(
     # Close the atomic publication-vs-exit race before declaring failure.
     if consume_result_if_present(result_path, output):
         return (True, None)
+    # CoreSimulator may return successfully as soon as the application has
+    # launched, even with --console.  A zero status therefore acknowledges a
+    # detached launch; the strict result document remains the success oracle.
+    if return_code == 0:
+        return (False, None)
     return (False, return_code)
 
 
