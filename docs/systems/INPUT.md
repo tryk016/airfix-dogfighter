@@ -2,9 +2,10 @@
 
 **Status:** portable core, controller-profile V1, safe native startup seams,
 native gameplay transport, Windows/iOS calibration/remap/save UI, bounded
-binding remapping, touch-layout geometry/profile V1, and private durable iOS
-touch layout/opacity settings implemented; touch visibility, live controller
-profile replacement, Windows UI Automation acceptance, haptics, glyphs, and
+binding remapping, touch-layout geometry/profile V1, private durable iOS touch
+preferences V3, automatic controller visibility, and system touch selections/
+throttle detents implemented; live controller profile replacement, Windows UI
+Automation acceptance, gameplay feedback, controller rumble, glyphs, and
 device acceptance pending
 
 **Priority:** P0 for the Windows x64 and iOS vertical slices
@@ -252,20 +253,22 @@ left-handed layout that mirrors every rectangle inside the same offset safe
 area without changing any semantic action identifier. Unsupported schemas,
 forged enum values, non-finite rectangles, and empty safe bounds fail closed.
 Every geometry profile change cancels active touches before UIKit publishes new
-frames. The separate [AFTC V2 preference](../formats/AFTC.md) stores
+frames. The separate [AFTC V3 preference](../formats/AFTC.md) stores
 handedness, automatic/compact density, resting overlay strength, and the
-controller-visibility policy in the
+controller-visibility and system-touch-feedback policies in the
 private Application Support
 settings leaf. The strength range is `50-100%`; it scales only resting
 background fills, leaving labels, accent borders, active feedback, and capture
 geometry unchanged. An opacity-only update therefore retains active ownership.
 The native editor saves durably before publishing one coherent preference
-snapshot. V1 loads migrate to the automatic-hide V2 default and request an
-explicit repair save without writing during startup. During active gameplay,
+snapshot. V1/V2 loads migrate to V3 and request an explicit repair save without
+writing during startup; both gain an explicit disabled-haptics value until the
+user chooses otherwise. During active gameplay,
 automatic mode hides the overlay when a controller connects; `setHidden:`
 first cancels every touch, and controller disconnect still synthesizes release
 and pauses before touch gameplay can resume. Always-visible mode supports
-hybrid input. Free placement is not yet exposed.
+hybrid input. System feedback is independently switchable and does not move
+capture geometry or cancel an active gesture. Free placement is not yet exposed.
 
 The current overlay deliberately uses a vertical throttle rail with a broad
 horizontal handle. Stick, throttle, look region, and buttons use translucent
@@ -301,8 +304,9 @@ the player must explicitly use pause/menu.
 
 The iOS pause surface now offers Display settings, Controller settings, and
 Touch controls as separate controller-selectable panels. The touch panel edits
-handedness, automatic/compact density, and overlay strength by touch or
-controller while gameplay remains paused. The safe-area controller flow edits all
+handedness, automatic/compact density, overlay strength, controller visibility,
+and optional system feedback by touch or controller while gameplay remains
+paused. The safe-area controller flow edits all
 four standardized stick axes, exposes per-axis inner deadzone, outer
 saturation, sensitivity, linear/squared/cubic response, inversion and reset,
 and refreshes a value-only raw/adjusted Q15 preview at 15 Hz. It also lists the
@@ -321,9 +325,10 @@ remain in the validated menu context, so a valid custom profile need not
 contain modal/control-editor bindings.
 
 This completes calibration/remap/save transport, deterministic touch geometry,
-and private layout/opacity persistence, not control-system acceptance. Touch
-visibility/automatic hide policy, prompt glyphs, haptics, finished
-touch/controller menus, and physical validation of
+private V3 preference persistence, controller visibility, and the first touch
+feedback slice, not control-system acceptance. Prompt glyphs, simulation-owned
+gameplay feedback, controller rumble, finished touch/controller menus, and
+physical validation of
 Application Support protection, save/force-quit/relaunch and lifecycle recovery
 on both target iPhones remain pending.
 
@@ -685,6 +690,14 @@ MissionSuccess / MissionFailure
 The feedback router maps them independently to iPhone Core Haptics/system
 feedback and controller rumble based on runtime capability.
 
+The first implemented iOS slice is intentionally narrower. Portable C++20
+selects feedback for non-fire control press edges and tracks 0/50/100% absolute
+throttle detents with hysteresis. UIKit maps those events to
+`UISelectionFeedbackGenerator`; disabled settings, unsupported devices, and
+the simulator silently do nothing. The exact Q15 throttle value still reaches
+gameplay unchanged. Primary and secondary fire attempts do not emit haptics;
+weapon feedback waits for a later accepted gameplay event path.
+
 Rules:
 
 - Global off switch plus separate phone/controller intensity.
@@ -711,11 +724,10 @@ InputProfile
 ```
 
 Controller remapping/calibration uses the separate AFIP V1 record described
-above. The implemented touch-layout profile is currently an in-memory,
-versioned geometry value; its durable document and migration policy remain
-future work. Touch layout, visibility, handedness, haptics, and optional motion
-will remain independently versioned records rather than being forced into
-AFIP.
+above. Touch preferences use the private AFTC V3 record; V1/V2 migrate only in
+memory during load and require an explicit repair save. Touch layout,
+visibility, handedness, haptics, and optional motion remain independently
+versioned records rather than being forced into AFIP.
 Profiles use logical actions and standardized controller elements. Runtime
 device IDs, Bluetooth addresses, and hardware serial-like identifiers are not
 stored. Invalid current-schema AFIP documents fall back safely; bounded,

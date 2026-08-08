@@ -416,8 +416,8 @@
   samples. A Windows-only COM provider now attaches through `WM_GETOBJECT`,
   publishes stable bounded fragments and events, and returns typed actions to
   the SDL owner thread through a fixed 32-entry queue. Physical Narrator
-  acceptance, glyphs, haptics, live replacement, and physical-device
-  persistence acceptance remain.
+  acceptance, glyphs, gameplay haptics/controller rumble, live replacement,
+  and physical-device persistence acceptance remain.
 - Local Git repository initialized on branch `main`; planning baseline committed
   as `59828ed`.
 - GitHub remote `tryk016/airfix-dogfighter` connected and the planning baseline
@@ -579,8 +579,8 @@
   a bounded Apple extended-controller adapter feed a validated portable batch
   reconciler and renderer-independent fixed 60 Hz pump. Context transitions,
   controller generations, FIFO overflow, lifecycle and gameplay boundaries
-  reset fail closed. Remapping, profiles, menu UI, glyphs, haptics, and device
-  acceptance remain pending.
+  reset fail closed. Remapping, profiles, menu UI, glyphs, simulation-owned
+  gameplay feedback/controller rumble, and device acceptance remain pending.
 - Expanded the deterministic simulation consumer. Portable
   `PlayerAircraftState` preserves uninterpreted flight/throttle/camera Q15
   intentions, primary/secondary/rear-view held state and exact edges, discrete
@@ -1420,14 +1420,18 @@
    prepares a fresh pair. The platform-neutral touch-layout geometry/profile V1
    now preserves the default UIKit layout, supports automatic/forced compact
    density and semantic-preserving left-handed mirroring, and cancels active
-   touches before relayout. Its separate private AFTC V2 document and
+   touches before relayout. Its separate private AFTC V3 document and
    recovery-safe iOS editor now persist handedness, density, a `50-100%`
    resting-background strength, and automatic-controller-hide/always-visible
-   policy without storing device metadata. V1 loads migrate safely and request
-   an explicit repair save. Connecting a controller during active gameplay
+   policy plus optional system touch feedback without storing device metadata.
+   V1/V2 loads migrate safely and request an explicit repair save; older
+   documents gain disabled feedback until the user chooses otherwise.
+   Connecting a controller during
+   active gameplay
    hides through the existing cancel-all boundary; disconnect still releases
-   and pauses before touch controls may return. Next add controller glyphs,
-   haptics, free placement, and finished menu bindings before touch-only and
+   and pauses before touch controls may return. Add controller glyphs,
+   simulation-owned gameplay feedback, controller rumble,
+   free placement, and finished menu bindings before touch-only and
    controller-only acceptance on both target iPhones. Never mutate
    position-indexed active router state in place or accept a live caller's
    unauthenticated mission claim.
@@ -1498,6 +1502,14 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- Touch preferences V3 add a persistent Off/System feedback policy and migrate
+  exact V1/V2 documents in memory without startup writes. Portable C++20 maps
+  non-fire press edges and hysteretic 0/50/100% throttle detents; UIKit uses a
+  narrow `UISelectionFeedbackGenerator` bridge with silent simulator/capability
+  fallback. Published Q15 throttle values remain exact, and fire attempts stay
+  silent until a simulation-accepted feedback path exists. Focused semantic,
+  codec/store migration, and detent tests pass locally; hosted Objective-C++
+  and physical-device acceptance remain publication gates.
 - Touch preferences V2 add a portable visibility decision, exact AFTC V1-to-V2
   migration, repair detection, and an iOS Auto-hide/Always visible setting.
   Automatic mode shows controls only during active gameplay without a connected

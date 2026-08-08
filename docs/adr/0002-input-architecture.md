@@ -1,8 +1,8 @@
 # ADR-0002: Semantic actions with touch and controller adapters
 
 **Status:** Accepted; portable router, controller-profile core, native startup
-installation seams, touch-layout geometry/profile V1, and private durable touch
-preferences V1 implemented
+installation seams, touch-layout geometry/profile V1, private durable touch
+preferences V3, and the first system touch-feedback bridge implemented
 
 **Date:** 2026-07-21
 
@@ -41,15 +41,17 @@ a forced compact density, and mirrors geometry (but never semantic action IDs)
 for left-handed play. A profile or safe-area change first cancels active touches
 so a finger cannot retain ownership of a control that moved underneath it.
 
-Persist handedness, density, a bounded resting-opacity percentage, and the
-controller-visibility policy in a separate private
+Persist handedness, density, a bounded resting-opacity percentage,
+controller-visibility policy, and optional system touch-feedback policy in a
+separate private
 [`touch-controls.aftc`](../formats/AFTC.md) document. AFTC uses the
 shared durable current/backup publication policy, rejects malformed current
 schemas, preserves intact future schemas without downgrade, and defaults safely
 when absent. The iOS pause surface owns a recovery-safe editor; a successful
-change is durable before it is applied to the active overlay. Schema V2
-migrates V1 to automatic controller hiding without a load-time write. Free
-placement remains a later policy.
+change is durable before it is applied to the active overlay. Schema V3
+migrates V1/V2 without a load-time write: V1 gains automatic controller hiding,
+and both older schemas gain an explicit disabled-haptics value until the user
+chooses otherwise. Free placement remains a later policy.
 
 The default visual language uses a vertical aircraft throttle with a broad
 horizontal handle and translucent, dark-backed controls with persistent accent
@@ -134,6 +136,12 @@ context and remapping, and cannot express an absolute touch throttle cleanly.
   input.
 - AFTC is private app state, not an original game resource, and must never carry
   host paths, device identities, or controller metadata.
+- The UIKit system-feedback bridge is optional and main-thread-only. It marks
+  non-fire control selections plus 0/50/100% throttle detents without changing
+  or quantizing input. Primary/secondary weapon feedback must originate from a
+  later simulation-accepted event, never from the input attempt. Cancellation,
+  disable, and lifecycle boundaries release the native generator; unsupported
+  hardware and simulator silence are normal.
 - Controller prompts require a last-active-source service.
 - Lifecycle transitions and device loss are part of input correctness, not app
   shell edge cases.
@@ -165,7 +173,8 @@ context and remapping, and cannot express an absolute touch throttle cleanly.
    the one-time iOS pre-start seam. Live replacement remains deferred until a
    host-owned pause transaction can prepare and publish a fresh router/bridge
    pair; an input context enum is not authorization.
-7. [ ] Validate whether an Apple bridge is required for haptics/glyph metadata.
+7. [x] Add a narrow Apple system-feedback bridge for touch selections and
+   throttle detents, with deterministic event selection in portable C++20.
 8. [ ] Run phone/tablet/controller usability and lifecycle tests.
 9. [x] Add the private durable AFTC document, recovery-safe handedness/density
    editor, and bounded resting-opacity policy.
@@ -173,3 +182,5 @@ context and remapping, and cannot express an absolute touch throttle cleanly.
     V1-to-V2 migration and an always-visible override.
 11. [ ] Add free placement only after last-active-source and recovery input are
     proven.
+12. [ ] Add prompt glyph metadata, controller rumble, and simulation-owned
+    gameplay feedback events independently of touch input.

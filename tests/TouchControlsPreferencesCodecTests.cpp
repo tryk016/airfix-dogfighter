@@ -63,6 +63,7 @@ void requireCodecError(
       .restingOpacityPercent = 70U,
       .visibilityMode =
           airfix::input::TouchControlsVisibilityMode::alwaysVisible,
+      .hapticsMode = airfix::input::TouchControlsHapticsMode::disabled,
   });
   require(built.complete(), "test AFTC record is invalid");
   return *built.record;
@@ -72,7 +73,7 @@ void testCanonicalRoundTripAndTruncation() {
   const auto record = testRecord();
   const auto bytes =
       airfix::settings::encodeTouchControlsPreferencesDocument(record);
-  require(bytes.size() == 68U &&
+  require(bytes.size() == 73U &&
               std::string(bytes.begin(), bytes.begin() + 4) == "AFTC",
           "AFTC canonical envelope changed");
   const auto decoded =
@@ -148,7 +149,7 @@ void testEnvelopeAndFieldFailures() {
           integrityMismatch);
 
   auto duplicate = canonical;
-  putU16(duplicate, 53U, 1U);
+  putU16(duplicate, 68U, 4U);
   repairEnvelope(duplicate);
   requireCodecError(
       [&] {
@@ -157,7 +158,7 @@ void testEnvelopeAndFieldFailures() {
       },
       airfix::settings::TouchControlsPreferencesCodecErrorKind::duplicateField);
   auto unknown = canonical;
-  putU16(unknown, 53U, 5U);
+  putU16(unknown, 68U, 6U);
   repairEnvelope(unknown);
   requireCodecError(
       [&] {
@@ -165,7 +166,7 @@ void testEnvelopeAndFieldFailures() {
       },
       airfix::settings::TouchControlsPreferencesCodecErrorKind::unknownField);
   auto missing = canonical;
-  missing.resize(63U);
+  missing.resize(68U);
   repairEnvelope(missing);
   requireCodecError(
       [&] {
@@ -173,7 +174,7 @@ void testEnvelopeAndFieldFailures() {
       },
       airfix::settings::TouchControlsPreferencesCodecErrorKind::missingField);
   auto invalidSize = canonical;
-  putU16(invalidSize, 65U, 2U);
+  putU16(invalidSize, 70U, 2U);
   invalidSize.push_back(0U);
   repairEnvelope(invalidSize);
   requireCodecError(
@@ -188,7 +189,7 @@ void testEnvelopeAndFieldFailures() {
 void testSemanticAndFutureSchemas() {
   const auto canonical =
       airfix::settings::encodeTouchControlsPreferencesDocument(testRecord());
-  for (const auto offset : {52U, 57U, 67U}) {
+  for (const auto offset : {52U, 57U, 67U, 72U}) {
     auto invalid = canonical;
     invalid[offset] = 0xFFU;
     repairEnvelope(invalid);
@@ -212,7 +213,7 @@ void testSemanticAndFutureSchemas() {
           invalidSemanticRecord);
 
   auto future = canonical;
-  putU32(future, 8U, 3U);
+  putU32(future, 8U, 4U);
   future.push_back(0xA5U);
   repairEnvelope(future);
   const auto decoded =
@@ -224,42 +225,56 @@ void testSemanticAndFutureSchemas() {
   const auto &opaque =
       std::get<airfix::settings::OpaqueFutureTouchControlsPreferencesRecord>(
           decoded);
-  require(opaque.schemaVersion == 3U && opaque.exactBytes == future,
+  require(opaque.schemaVersion == 4U && opaque.exactBytes == future,
           "future AFTC bytes were not preserved exactly");
 }
 
 void testLegacySchemaMigration() {
-  auto legacy =
-      airfix::settings::encodeTouchControlsPreferencesDocument(testRecord());
-  legacy.resize(63U);
-  putU32(legacy, 8U,
-         airfix::input::legacyTouchControlsPreferencesRecordSchemaVersion);
-  repairEnvelope(legacy);
+  for (const auto schema : {
+           airfix::input::legacyTouchControlsPreferencesRecordSchemaVersion,
+           airfix::input::visibilityTouchControlsPreferencesRecordSchemaVersion,
+       }) {
+    auto legacy =
+        airfix::settings::encodeTouchControlsPreferencesDocument(testRecord());
+    legacy.resize(
+        schema ==
+                airfix::input::legacyTouchControlsPreferencesRecordSchemaVersion
+            ? 63U
+            : 68U);
+    putU32(legacy, 8U, schema);
+    repairEnvelope(legacy);
 
-  const auto decoded =
-      airfix::settings::decodeTouchControlsPreferencesDocument(legacy);
-  require(std::holds_alternative<
-              airfix::settings::DecodedCurrentTouchControlsPreferencesRecord>(
-              decoded),
-          "legacy AFTC did not migrate to a current record");
-  const auto &current =
-      std::get<airfix::settings::DecodedCurrentTouchControlsPreferencesRecord>(
-          decoded);
-  require(current.migrated() &&
-              current.sourceSchemaVersion ==
-                  airfix::input::
-                      legacyTouchControlsPreferencesRecordSchemaVersion &&
-              current.record.schemaVersion ==
-                  airfix::input::touchControlsPreferencesRecordSchemaVersion &&
-              current.record.visibilityMode == 0U,
-          "legacy AFTC migration metadata or default changed");
-  const auto preferences =
-      airfix::input::touchControlsPreferencesFromRecord(current.record);
-  require(preferences.complete() &&
-              preferences.preferences->visibilityMode ==
-                  airfix::input::TouchControlsVisibilityMode::
-                      automaticControllerHide,
-          "legacy AFTC did not select the safe automatic visibility default");
+    const auto decoded =
+        airfix::settings::decodeTouchControlsPreferencesDocument(legacy);
+    require(std::holds_alternative<
+                airfix::settings::DecodedCurrentTouchControlsPreferencesRecord>(
+                decoded),
+            "legacy AFTC did not migrate to a current record");
+    const auto &current = std::get<
+        airfix::settings::DecodedCurrentTouchControlsPreferencesRecord>(
+        decoded);
+    require(
+        current.migrated() && current.sourceSchemaVersion == schema &&
+            current.record.schemaVersion ==
+                airfix::input::touchControlsPreferencesRecordSchemaVersion &&
+            current.record.hapticsMode == 0U &&
+            (schema != airfix::input::
+                           legacyTouchControlsPreferencesRecordSchemaVersion ||
+             current.record.visibilityMode == 0U),
+        "legacy AFTC migration metadata or safe defaults changed");
+    const auto preferences =
+        airfix::input::touchControlsPreferencesFromRecord(current.record);
+    require(preferences.complete() &&
+                preferences.preferences->hapticsMode ==
+                    airfix::input::TouchControlsHapticsMode::disabled &&
+                (schema !=
+                     airfix::input::
+                         legacyTouchControlsPreferencesRecordSchemaVersion ||
+                 preferences.preferences->visibilityMode ==
+                     airfix::input::TouchControlsVisibilityMode::
+                         automaticControllerHide),
+            "legacy AFTC did not select safe migration defaults");
+  }
 }
 
 } // namespace

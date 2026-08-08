@@ -18,7 +18,8 @@ void testDefaultsAndCustomRoundTrip() {
       "default touch preferences are invalid");
   const auto defaultRecord =
       airfix::input::makeTouchControlsPreferencesRecord(defaults);
-  require(defaultRecord.complete(), "default record was not produced");
+  require(defaultRecord.complete() && defaultRecord.record->hapticsMode == 1U,
+          "default record or system-haptics policy was not produced");
   const auto decoded =
       airfix::input::touchControlsPreferencesFromRecord(*defaultRecord.record);
   require(decoded.complete() && *decoded.preferences == defaults,
@@ -33,13 +34,15 @@ void testDefaultsAndCustomRoundTrip() {
       .restingOpacityPercent = 50U,
       .visibilityMode =
           airfix::input::TouchControlsVisibilityMode::alwaysVisible,
+      .hapticsMode = airfix::input::TouchControlsHapticsMode::disabled,
   };
   const auto customRecord =
       airfix::input::makeTouchControlsPreferencesRecord(custom);
   require(customRecord.complete() && customRecord.record->handedness == 1U &&
               customRecord.record->density == 1U &&
               customRecord.record->restingOpacityPercent == 50U &&
-              customRecord.record->visibilityMode == 1U,
+              customRecord.record->visibilityMode == 1U &&
+              customRecord.record->hapticsMode == 0U,
           "custom record mapping is incorrect");
   const auto customDecoded =
       airfix::input::touchControlsPreferencesFromRecord(*customRecord.record);
@@ -68,7 +71,7 @@ void testInvalidValuesFailClosed() {
   }
 
   auto record = airfix::input::TouchControlsPreferencesRecord{};
-  record.schemaVersion = 3U;
+  record.schemaVersion = 4U;
   require(
       airfix::input::touchControlsPreferencesFromRecord(record).issue->kind ==
           airfix::input::TouchControlsPreferencesIssueKind::unsupportedSchema,
@@ -88,6 +91,12 @@ void testInvalidValuesFailClosed() {
           airfix::input::TouchControlsPreferencesIssueKind::
               invalidVisibilityMode,
       "forged visibility mode was accepted");
+  record = {};
+  record.hapticsMode = 0xFFU;
+  require(
+      airfix::input::touchControlsPreferencesFromRecord(record).issue->kind ==
+          airfix::input::TouchControlsPreferencesIssueKind::invalidHapticsMode,
+      "forged haptics mode was accepted");
 
   preferences = {};
   preferences.visibilityMode =
@@ -96,6 +105,14 @@ void testInvalidValuesFailClosed() {
               airfix::input::TouchControlsPreferencesIssueKind::
                   invalidVisibilityMode,
           "forged visibility preference was accepted");
+
+  preferences = {};
+  preferences.hapticsMode =
+      static_cast<airfix::input::TouchControlsHapticsMode>(0xFFU);
+  require(
+      airfix::input::validateTouchControlsPreferences(preferences)->kind ==
+          airfix::input::TouchControlsPreferencesIssueKind::invalidHapticsMode,
+      "forged haptics preference was accepted");
 }
 
 void testVisibilityPolicy() {

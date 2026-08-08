@@ -9,6 +9,8 @@ inline constexpr std::uint8_t automaticDensityRecordValue = 0U;
 inline constexpr std::uint8_t compactDensityRecordValue = 1U;
 inline constexpr std::uint8_t automaticControllerHideRecordValue = 0U;
 inline constexpr std::uint8_t alwaysVisibleRecordValue = 1U;
+inline constexpr std::uint8_t disabledHapticsRecordValue = 0U;
+inline constexpr std::uint8_t systemHapticsRecordValue = 1U;
 
 [[nodiscard]] constexpr TouchControlsPreferencesIssue
 issue(const TouchControlsPreferencesIssueKind kind) noexcept {
@@ -48,6 +50,17 @@ recordValue(const TouchControlsVisibilityMode visibilityMode) noexcept {
   return automaticControllerHideRecordValue;
 }
 
+[[nodiscard]] constexpr std::uint8_t
+recordValue(const TouchControlsHapticsMode hapticsMode) noexcept {
+  switch (hapticsMode) {
+  case TouchControlsHapticsMode::disabled:
+    return disabledHapticsRecordValue;
+  case TouchControlsHapticsMode::system:
+    return systemHapticsRecordValue;
+  }
+  return disabledHapticsRecordValue;
+}
+
 [[nodiscard]] constexpr std::optional<TouchControlsHandedness>
 handednessFromRecordValue(const std::uint8_t value) noexcept {
   switch (value) {
@@ -84,6 +97,18 @@ visibilityModeFromRecordValue(const std::uint8_t value) noexcept {
   }
 }
 
+[[nodiscard]] constexpr std::optional<TouchControlsHapticsMode>
+hapticsModeFromRecordValue(const std::uint8_t value) noexcept {
+  switch (value) {
+  case disabledHapticsRecordValue:
+    return TouchControlsHapticsMode::disabled;
+  case systemHapticsRecordValue:
+    return TouchControlsHapticsMode::system;
+  default:
+    return std::nullopt;
+  }
+}
+
 } // namespace
 
 std::optional<TouchControlsPreferencesIssue> validateTouchControlsPreferences(
@@ -104,6 +129,13 @@ std::optional<TouchControlsPreferencesIssue> validateTouchControlsPreferences(
   default:
     return issue(TouchControlsPreferencesIssueKind::invalidVisibilityMode);
   }
+  switch (preferences.hapticsMode) {
+  case TouchControlsHapticsMode::disabled:
+  case TouchControlsHapticsMode::system:
+    break;
+  default:
+    return issue(TouchControlsPreferencesIssueKind::invalidHapticsMode);
+  }
   return std::nullopt;
 }
 
@@ -121,6 +153,7 @@ TouchControlsPreferencesRecordBuildResult makeTouchControlsPreferencesRecord(
               .density = recordValue(preferences.layout.density),
               .restingOpacityPercent = preferences.restingOpacityPercent,
               .visibilityMode = recordValue(preferences.visibilityMode),
+              .hapticsMode = recordValue(preferences.hapticsMode),
           },
       .issue = std::nullopt,
   };
@@ -138,6 +171,7 @@ TouchControlsPreferencesFromRecordResult touchControlsPreferencesFromRecord(
   const auto density = densityFromRecordValue(record.density);
   const auto visibilityMode =
       visibilityModeFromRecordValue(record.visibilityMode);
+  const auto hapticsMode = hapticsModeFromRecordValue(record.hapticsMode);
   if (!handedness.has_value() || !density.has_value()) {
     return {
         .preferences = std::nullopt,
@@ -151,6 +185,12 @@ TouchControlsPreferencesFromRecordResult touchControlsPreferencesFromRecord(
             issue(TouchControlsPreferencesIssueKind::invalidVisibilityMode),
     };
   }
+  if (!hapticsMode.has_value()) {
+    return {
+        .preferences = std::nullopt,
+        .issue = issue(TouchControlsPreferencesIssueKind::invalidHapticsMode),
+    };
+  }
   const TouchControlsPreferences preferences{
       .layout =
           {
@@ -160,6 +200,7 @@ TouchControlsPreferencesFromRecordResult touchControlsPreferencesFromRecord(
           },
       .restingOpacityPercent = record.restingOpacityPercent,
       .visibilityMode = *visibilityMode,
+      .hapticsMode = *hapticsMode,
   };
   const auto validation = validateTouchControlsPreferences(preferences);
   if (validation.has_value()) {
