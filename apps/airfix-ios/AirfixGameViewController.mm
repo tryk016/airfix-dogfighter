@@ -1201,12 +1201,12 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
 
   MTKView *metalView = (MTKView *)self.view;
   const bool privateInputsAbsent =
-      airfix::ios::private_mission_config::initialSetupLogicalPathBase64
-          .empty() &&
-      airfix::ios::private_mission_config::initialLevelLogicalPathBase64
-          .empty() &&
+      airfix::ios::private_mission_config::initialSetupLogicalPathBase64[0] ==
+          '\0' &&
+      airfix::ios::private_mission_config::initialLevelLogicalPathBase64[0] ==
+          '\0' &&
       airfix::ios::private_mission_config::initialPlayerObjectLogicalPathBase64
-          .empty();
+              [0] == '\0';
   const bool initialPaused =
       _session.lifecycleState() ==
           airfix::runtime::LifecycleState::foregroundPaused &&
