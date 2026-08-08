@@ -158,6 +158,8 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
 @property(nonatomic) BOOL simulationPipelineReady;
 #if AIRFIX_IOS_SIMULATOR_SMOKE
 @property(nonatomic, strong) AirfixSimulatorSmokeHarness *simulatorSmokeHarness;
+@property(nonatomic) NSUInteger simulatorSmokeDrawAttemptCount;
+@property(nonatomic) BOOL simulatorSmokeFrameResolved;
 #endif
 
 - (void)showRenderSettings;
@@ -180,6 +182,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
 - (void)handleAudioForcedPause:(airfix::ios::AirfixIOSAudioPauseReason)reason;
 #if AIRFIX_IOS_SIMULATOR_SMOKE
 - (void)startSimulatorSmokeIfReady;
+- (void)attemptSimulatorSmokeDraw;
 #endif
 @end
 
@@ -700,6 +703,10 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
 }
 
 #if AIRFIX_IOS_SIMULATOR_SMOKE
+static constexpr NSUInteger kSimulatorSmokeMaximumDrawAttempts = 400U;
+static constexpr int64_t kSimulatorSmokeDrawRetryNanoseconds =
+    100 * NSEC_PER_MSEC;
+
 - (void)startSimulatorSmokeIfReady {
   if (!self.renderSettingsCoordinator.readyForPresentation) {
     return;
@@ -709,6 +716,25 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
         [[AirfixSimulatorSmokeHarness alloc] initWithGameViewController:self];
   }
   [self.simulatorSmokeHarness start];
+}
+
+- (void)attemptSimulatorSmokeDraw {
+  NSAssert(NSThread.isMainThread,
+           @"Simulator smoke draws belong to the main thread");
+  if (self.simulatorSmokeFrameResolved ||
+      self.simulatorSmokeDrawAttemptCount >=
+          kSimulatorSmokeMaximumDrawAttempts) {
+    return;
+  }
+  ++self.simulatorSmokeDrawAttemptCount;
+  [(MTKView *)self.view draw];
+
+  __weak AirfixGameViewController *weakSelf = self;
+  dispatch_after(
+      dispatch_time(DISPATCH_TIME_NOW, kSimulatorSmokeDrawRetryNanoseconds),
+      dispatch_get_main_queue(), ^{
+        [weakSelf attemptSimulatorSmokeDraw];
+      });
 }
 #endif
 
@@ -1238,6 +1264,8 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   }
 
   __weak AirfixGameViewController *weakSelf = self;
+  self.simulatorSmokeDrawAttemptCount = 0U;
+  self.simulatorSmokeFrameResolved = NO;
   [self.renderer setSimulatorSmokeFrameCompletion:^(
                      BOOL publicSyntheticScene, NSUInteger sceneDrawCallCount,
                      NSUInteger sceneTriangleCount, NSError *frameError) {
@@ -1245,6 +1273,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
     if (strongSelf == nil) {
       return;
     }
+    strongSelf.simulatorSmokeFrameResolved = YES;
     MTKView *strongMetalView = (MTKView *)strongSelf.view;
     const BOOL metalFrameCompleted =
         frameError == nil && publicSyntheticScene && sceneDrawCallCount > 0U &&
@@ -1297,10 +1326,11 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
     });
   }];
 
-  // A paused MTKView does not schedule frames. draw is the explicit CI-only
-  // request, but the normal renderer, public snapshot, drawable and command
-  // queue execute the frame.
-  [metalView draw];
+  // A paused MTKView does not schedule frames. A fresh CoreSimulator may need
+  // several main-loop turns before every drawable/presentation prerequisite
+  // is simultaneously available, so retry the normal draw path until its
+  // one-shot command-buffer observer resolves.
+  [self attemptSimulatorSmokeDraw];
 }
 #endif
 
