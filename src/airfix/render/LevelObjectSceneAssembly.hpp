@@ -13,6 +13,7 @@ namespace airfix::render {
 
 struct LevelObjectTargetRoomIdentity {
   std::size_t worldRoomIndex{};
+  std::int32_t legacyCcRoomId{};
 
   [[nodiscard]] friend constexpr bool
   operator==(const LevelObjectTargetRoomIdentity &,
@@ -26,12 +27,16 @@ struct LevelObjectDrawSource {
   const assets::LevelObjectPlacement *placement{};
   const assets::ObjectDefinition *objectDefinition{};
   const assets::CcfMetadata *ccf{};
+  // Bindings belong to this authenticated CCF. Reference values and local
+  // material order must not cross CCF source boundaries.
+  std::span<const DrawMaterial> materialBindings;
   std::optional<LevelObjectTargetRoomIdentity> targetRoom;
 };
 
 enum class LevelObjectSceneIssueKind : std::uint8_t {
   invalidRoomModel,
   invalidSource,
+  invalidSourceOrder,
   invalidRoom,
   missingSelector,
   objectVisualFailure,
@@ -149,7 +154,6 @@ struct LevelObjectSceneAssembly {
 // publication occurs here. On any failure every output payload is empty.
 [[nodiscard]] LevelObjectSceneAssembly buildLevelObjectSceneAssembly(
     DrawModelPayload roomModel, std::span<const LevelObjectDrawSource> sources,
-    std::span<const DrawMaterial> globalMaterialBindings,
     const BasisTransform &basis = {}, UvPolicy uvPolicy = UvPolicy::preserveRaw,
     const LevelObjectSceneLimits &limits = {});
 

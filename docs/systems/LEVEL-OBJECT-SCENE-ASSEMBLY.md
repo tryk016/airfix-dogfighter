@@ -10,10 +10,13 @@ position plus Z-X-Y-radian pose.
 
 The input deliberately carries pointers to the already-authenticated
 placement, object definition, and CCF metadata together with their manifest
-indices and resolved target world-room identity. The API performs no path,
-room-name, archive, or content lookup. A missing pointer, selector, room,
-visual, finite transform, or budget invalidates the complete candidate; there
-is no per-placement skip mode.
+indices, that CCF's own material-binding span, and resolved target identity as
+both portable `worldRoomIndex` and signed legacy `CcRoom` ID. Material tables
+never cross CCF sources. Placement and source indices must each increase
+strictly in the supplied physical order; gaps remain valid. The API performs
+no path, room-name, archive, or content lookup. A missing pointer, selector,
+room, visual, finite transform, ordering invariant, or budget invalidates the
+complete candidate; there is no per-placement skip mode.
 
 The output model retains the supplied room model as an exact prefix. Each
 placement contributes its own contiguous mesh and instance ranges, including
@@ -25,7 +28,9 @@ instance indices. No cross-placement sorting or mesh deduplication occurs.
 The root scalar policy follows
 [EV-20260808-001](../re/systems/LEVEL-OBJECT-ASSEMBLY.md): mesh roots use exact
 `1.0f`, while null/light roots retain their authored scalar in the external
-axis-rotation relation. This is semantic reconstruction, not a claim of
+axis-rotation relation. Mesh-root local provenance likewise records exact
+binary32 `1.0f`; descendant locals are not scaled a second time. This is
+semantic reconstruction, not a claim of
 bit-identical x87 transform arithmetic or renderer draw-order parity. The
 builder does not consume CCF `0x4000` placed-scene records and does not apply
 the separate player `Y(pi)` pose.

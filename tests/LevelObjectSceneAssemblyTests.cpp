@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -152,7 +153,9 @@ placement(const std::array<float, 3> position = {17.0F, -5.0F, 23.0F},
 source(const std::size_t placementIndex, const std::size_t sourceIndex,
        const std::size_t definitionIndex, const LevelObjectPlacement &value,
        const ObjectDefinition &object, const CcfMetadata &ccf,
-       const std::size_t roomIndex) {
+       const std::size_t roomIndex,
+       const std::span<const DrawMaterial> materialBindings,
+       const std::int32_t legacyRoomId = 0) {
   return {
       .placementIndex = placementIndex,
       .sourceIndex = sourceIndex,
@@ -160,7 +163,8 @@ source(const std::size_t placementIndex, const std::size_t sourceIndex,
       .placement = &value,
       .objectDefinition = &object,
       .ccf = &ccf,
-      .targetRoom = LevelObjectTargetRoomIdentity{roomIndex},
+      .materialBindings = materialBindings,
+      .targetRoom = LevelObjectTargetRoomIdentity{roomIndex, legacyRoomId},
   };
 }
 
@@ -207,8 +211,9 @@ void testTransformsPrefixOrderAndProvenance() {
   const auto placed = placement();
   const auto input = roomPrefix();
   const auto materials = bindings();
-  const std::array sources{source(7U, 11U, 13U, placed, object, ccf, 5U)};
-  const auto result = buildLevelObjectSceneAssembly(input, sources, materials);
+  const std::array sources{
+      source(7U, 11U, 13U, placed, object, ccf, 5U, materials, 17)};
+  const auto result = buildLevelObjectSceneAssembly(input, sources);
   require(result.complete(), "valid Level object assembly was rejected");
   require(result.model.meshes.size() == 3U &&
               result.model.instances.size() == 4U,
@@ -250,15 +255,16 @@ void testTransformsPrefixOrderAndProvenance() {
   }
   require(result.placementRanges ==
               std::vector<LevelObjectScenePlacementRange>{
-                  {7U, 11U, 13U, {5U}, 1U, 2U, 1U, 3U}},
+                  {7U, 11U, 13U, {5U, 17}, 1U, 2U, 1U, 3U}},
           "placement range lost exact absolute indices");
-  require(result.objectMeshProvenance.size() == 2U &&
-              result.objectMeshProvenance[0].finalMeshSlot == 1U &&
-              result.objectMeshProvenance[1].finalMeshSlot == 2U &&
-              result.objectInstanceProvenance[2].finalInstanceIndex == 3U &&
-              result.objectInstanceProvenance[2].targetRoom.worldRoomIndex ==
-                  5U,
-          "mesh/instance provenance is incomplete");
+  require(
+      result.objectMeshProvenance.size() == 2U &&
+          result.objectMeshProvenance[0].finalMeshSlot == 1U &&
+          result.objectMeshProvenance[1].finalMeshSlot == 2U &&
+          result.objectInstanceProvenance[2].finalInstanceIndex == 3U &&
+          result.objectInstanceProvenance[2].targetRoom.worldRoomIndex == 5U &&
+          result.objectInstanceProvenance[2].targetRoom.legacyCcRoomId == 17,
+      "mesh/instance provenance is incomplete");
 }
 
 void testRootScalarPolicy() {
@@ -267,17 +273,20 @@ void testRootScalarPolicy() {
   const auto materials = bindings();
 
   const auto meshCcf = meshRootScene(2.0F);
-  const std::array meshSources{source(0U, 0U, 0U, placed, object, meshCcf, 1U)};
-  const auto meshResult =
-      buildLevelObjectSceneAssembly({}, meshSources, materials);
+  const std::array meshSources{
+      source(0U, 0U, 0U, placed, object, meshCcf, 1U, materials)};
+  const auto meshResult = buildLevelObjectSceneAssembly({}, meshSources);
   require(meshResult.complete() &&
-              close(meshResult.model.instances[0].modelLinear, Mat3{}),
+              close(meshResult.model.instances[0].modelLinear, Mat3{}) &&
+              std::bit_cast<std::uint32_t>(
+                  meshResult.objectInstanceProvenance[0].local.rawScalar) ==
+                  0x3F800000U,
           "mesh-root scalar was not reset to exact one");
 
   const auto nullCcf = nullRootScene(2.0F);
-  const std::array nullSources{source(0U, 0U, 0U, placed, object, nullCcf, 1U)};
-  const auto nullResult =
-      buildLevelObjectSceneAssembly({}, nullSources, materials);
+  const std::array nullSources{
+      source(0U, 0U, 0U, placed, object, nullCcf, 1U, materials)};
+  const auto nullResult = buildLevelObjectSceneAssembly({}, nullSources);
   require(nullResult.complete(), "null-root scalar fixture failed");
   const auto root =
       convertLegacyTransform(nullCcf.blueprints[0].authoredTransform);
@@ -299,9 +308,8 @@ void testRootScalarPolicy() {
   auto lightCcf = nullRootScene(2.0F);
   lightCcf.blueprints[0].kind = CcfBlueprintKind::light;
   const std::array lightSources{
-      source(0U, 0U, 0U, placed, object, lightCcf, 1U)};
-  const auto lightResult =
-      buildLevelObjectSceneAssembly({}, lightSources, materials);
+      source(0U, 0U, 0U, placed, object, lightCcf, 1U, materials)};
+  const auto lightResult = buildLevelObjectSceneAssembly({}, lightSources);
   require(
       lightResult.complete() &&
           close(lightResult.model.instances[0].modelLinear, expected.linear) &&
@@ -317,10 +325,10 @@ void testRepeatedDefinitionRemainsTwoRanges() {
   const auto second = placement({2.0F, 0.0F, 0.0F}, {}, "b");
   const auto materials = bindings();
   const std::array sources{
-      source(4U, 9U, 2U, first, object, ccf, 3U),
-      source(5U, 9U, 2U, second, object, ccf, 4U),
+      source(4U, 9U, 2U, first, object, ccf, 3U, materials),
+      source(5U, 10U, 2U, second, object, ccf, 4U, materials),
   };
-  const auto result = buildLevelObjectSceneAssembly({}, sources, materials);
+  const auto result = buildLevelObjectSceneAssembly({}, sources);
   require(result.complete() && result.model.meshes.size() == 2U &&
               result.model.instances.size() == 2U &&
               result.placementRanges.size() == 2U &&
@@ -331,6 +339,72 @@ void testRepeatedDefinitionRemainsTwoRanges() {
           "repeated definition was deduplicated across placements");
 }
 
+void testPerSourceMaterialBindingsDoNotCrossCcfBoundaries() {
+  auto firstCcf = meshRootScene(1.0F);
+  auto secondCcf = meshRootScene(1.0F);
+  secondCcf.materials[0].reference = 601U;
+  secondCcf.meshes[0].triangles[0].materialReference = 601U;
+  const auto object = definition();
+  const auto firstPlacement = placement({1.0F, 0.0F, 0.0F}, {}, "a");
+  const auto secondPlacement = placement({2.0F, 0.0F, 0.0F}, {}, "b");
+  const std::vector<DrawMaterial> firstBindings{{
+      .sourceReference = 501U,
+      .primary = TextureAssetId{70U},
+  }};
+  const std::vector<DrawMaterial> secondBindings{{
+      .sourceReference = 601U,
+      .primary = TextureAssetId{80U},
+  }};
+  const std::array sources{
+      source(1U, 20U, 4U, firstPlacement, object, firstCcf, 2U, firstBindings,
+             3),
+      source(2U, 21U, 5U, secondPlacement, object, secondCcf, 3U,
+             secondBindings, 4),
+  };
+  const auto result = buildLevelObjectSceneAssembly({}, sources);
+  require(result.complete() && result.model.meshes.size() == 2U &&
+              result.model.meshes[0].materials[0].sourceReference == 501U &&
+              result.model.meshes[0].materials[0].primary ==
+                  std::optional<TextureAssetId>{TextureAssetId{70U}} &&
+              result.model.meshes[1].materials[0].sourceReference == 601U &&
+              result.model.meshes[1].materials[0].primary ==
+                  std::optional<TextureAssetId>{TextureAssetId{80U}},
+          "material bindings crossed authenticated CCF source boundaries");
+}
+
+void testPhysicalSourceOrderFailsClosed() {
+  const auto ccf = meshRootScene(1.0F);
+  const auto object = definition();
+  const auto first = placement({1.0F, 0.0F, 0.0F}, {}, "a");
+  const auto second = placement({2.0F, 0.0F, 0.0F}, {}, "b");
+  const auto materials = bindings();
+
+  const std::array duplicateSourceIndex{
+      source(2U, 7U, 0U, first, object, ccf, 1U, materials),
+      source(3U, 7U, 0U, second, object, ccf, 1U, materials),
+  };
+  requireAtomicFailure(buildLevelObjectSceneAssembly({}, duplicateSourceIndex),
+                       LevelObjectSceneIssueKind::invalidSourceOrder,
+                       "duplicate source index did not fail-clear");
+
+  const std::array reversedPlacementIndex{
+      source(5U, 8U, 0U, first, object, ccf, 1U, materials),
+      source(4U, 9U, 0U, second, object, ccf, 1U, materials),
+  };
+  requireAtomicFailure(
+      buildLevelObjectSceneAssembly({}, reversedPlacementIndex),
+      LevelObjectSceneIssueKind::invalidSourceOrder,
+      "reversed placement index did not fail-clear");
+
+  const std::array reversedSourceIndex{
+      source(5U, 9U, 0U, first, object, ccf, 1U, materials),
+      source(6U, 8U, 0U, second, object, ccf, 1U, materials),
+  };
+  requireAtomicFailure(buildLevelObjectSceneAssembly({}, reversedSourceIndex),
+                       LevelObjectSceneIssueKind::invalidSourceOrder,
+                       "reversed source index did not fail-clear");
+}
+
 void testInvalidInputsFailAtomically() {
   const auto validCcf = meshRootScene(1.0F);
   const auto validObject = definition();
@@ -338,69 +412,74 @@ void testInvalidInputsFailAtomically() {
   const auto materials = bindings();
 
   auto invalidSource =
-      source(0U, 0U, 0U, validPlacement, validObject, validCcf, 0U);
+      source(0U, 0U, 0U, validPlacement, validObject, validCcf, 0U, materials);
   invalidSource.ccf = nullptr;
-  requireAtomicFailure(
-      buildLevelObjectSceneAssembly(roomPrefix(), std::span{&invalidSource, 1U},
-                                    materials),
-      LevelObjectSceneIssueKind::invalidSource, "null CCF did not fail-clear");
+  requireAtomicFailure(buildLevelObjectSceneAssembly(
+                           roomPrefix(), std::span{&invalidSource, 1U}),
+                       LevelObjectSceneIssueKind::invalidSource,
+                       "null CCF did not fail-clear");
 
-  invalidSource = source(0U, 0U, 0U, validPlacement, validObject, validCcf, 0U);
+  invalidSource =
+      source(0U, 0U, 0U, validPlacement, validObject, validCcf, 0U, materials);
   invalidSource.placement = nullptr;
-  requireAtomicFailure(
-      buildLevelObjectSceneAssembly(roomPrefix(), std::span{&invalidSource, 1U},
-                                    materials),
-      LevelObjectSceneIssueKind::invalidSource,
-      "null placement did not fail-clear");
+  requireAtomicFailure(buildLevelObjectSceneAssembly(
+                           roomPrefix(), std::span{&invalidSource, 1U}),
+                       LevelObjectSceneIssueKind::invalidSource,
+                       "null placement did not fail-clear");
 
-  invalidSource = source(0U, 0U, 0U, validPlacement, validObject, validCcf, 0U);
+  invalidSource =
+      source(0U, 0U, 0U, validPlacement, validObject, validCcf, 0U, materials);
   invalidSource.objectDefinition = nullptr;
-  requireAtomicFailure(
-      buildLevelObjectSceneAssembly(roomPrefix(), std::span{&invalidSource, 1U},
-                                    materials),
-      LevelObjectSceneIssueKind::invalidSource,
-      "null object definition did not fail-clear");
+  requireAtomicFailure(buildLevelObjectSceneAssembly(
+                           roomPrefix(), std::span{&invalidSource, 1U}),
+                       LevelObjectSceneIssueKind::invalidSource,
+                       "null object definition did not fail-clear");
 
   const auto noSelector = definition(std::nullopt);
   const std::array selectorSources{
-      source(0U, 0U, 0U, validPlacement, noSelector, validCcf, 0U)};
+      source(0U, 0U, 0U, validPlacement, noSelector, validCcf, 0U, materials)};
   requireAtomicFailure(
-      buildLevelObjectSceneAssembly(roomPrefix(), selectorSources, materials),
+      buildLevelObjectSceneAssembly(roomPrefix(), selectorSources),
       LevelObjectSceneIssueKind::missingSelector,
       "missing selector did not fail-clear");
 
   const auto noRoom = placement({}, {}, "");
   const std::array roomSources{
-      source(0U, 0U, 0U, noRoom, validObject, validCcf, 0U)};
-  requireAtomicFailure(
-      buildLevelObjectSceneAssembly(roomPrefix(), roomSources, materials),
-      LevelObjectSceneIssueKind::invalidRoom,
-      "missing room did not fail-clear");
+      source(0U, 0U, 0U, noRoom, validObject, validCcf, 0U, materials)};
+  requireAtomicFailure(buildLevelObjectSceneAssembly(roomPrefix(), roomSources),
+                       LevelObjectSceneIssueKind::invalidRoom,
+                       "missing room did not fail-clear");
 
   auto absentRoomSource =
-      source(0U, 0U, 0U, validPlacement, validObject, validCcf, 0U);
+      source(0U, 0U, 0U, validPlacement, validObject, validCcf, 0U, materials);
   absentRoomSource.targetRoom.reset();
-  requireAtomicFailure(
-      buildLevelObjectSceneAssembly(
-          roomPrefix(), std::span{&absentRoomSource, 1U}, materials),
-      LevelObjectSceneIssueKind::invalidRoom,
-      "absent target identity did not fail-clear");
+  requireAtomicFailure(buildLevelObjectSceneAssembly(
+                           roomPrefix(), std::span{&absentRoomSource, 1U}),
+                       LevelObjectSceneIssueKind::invalidRoom,
+                       "absent target identity did not fail-clear");
+
+  auto negativeRoomSource = source(0U, 0U, 0U, validPlacement, validObject,
+                                   validCcf, 0U, materials, -1);
+  requireAtomicFailure(buildLevelObjectSceneAssembly(
+                           roomPrefix(), std::span{&negativeRoomSource, 1U}),
+                       LevelObjectSceneIssueKind::invalidRoom,
+                       "negative signed legacy room ID did not fail-clear");
 
   auto nonfinite = validPlacement;
   nonfinite.position[1] = std::numeric_limits<float>::infinity();
   const std::array nonfiniteSources{
-      source(0U, 0U, 0U, nonfinite, validObject, validCcf, 0U)};
+      source(0U, 0U, 0U, nonfinite, validObject, validCcf, 0U, materials)};
   requireAtomicFailure(
-      buildLevelObjectSceneAssembly(roomPrefix(), nonfiniteSources, materials),
+      buildLevelObjectSceneAssembly(roomPrefix(), nonfiniteSources),
       LevelObjectSceneIssueKind::invalidPlacementTransform,
       "non-finite placement did not fail-clear");
 
   auto singularCcf = validCcf;
   singularCcf.blueprints[0].authoredTransform.orientation = {};
-  const std::array singularSources{
-      source(0U, 0U, 0U, validPlacement, validObject, singularCcf, 0U)};
+  const std::array singularSources{source(
+      0U, 0U, 0U, validPlacement, validObject, singularCcf, 0U, materials)};
   requireAtomicFailure(
-      buildLevelObjectSceneAssembly(roomPrefix(), singularSources, materials),
+      buildLevelObjectSceneAssembly(roomPrefix(), singularSources),
       LevelObjectSceneIssueKind::objectVisualFailure,
       "singular authored transform did not fail-clear");
 
@@ -411,10 +490,10 @@ void testInvalidInputsFailAtomically() {
   auto overflowCcf = nullRootScene();
   overflowCcf.blueprints[0].authoredTransform.position = {
       -std::numeric_limits<float>::max(), 0.0F, 0.0F};
-  const std::array overflowSources{
-      source(0U, 0U, 0U, overflowPlacement, validObject, overflowCcf, 0U)};
+  const std::array overflowSources{source(
+      0U, 0U, 0U, overflowPlacement, validObject, overflowCcf, 0U, materials)};
   const auto overflowResult =
-      buildLevelObjectSceneAssembly(roomPrefix(), overflowSources, materials);
+      buildLevelObjectSceneAssembly(roomPrefix(), overflowSources);
   require(!overflowResult.complete() && overflowResult.model.meshes.empty(),
           "finite transform overflow published partial output");
 }
@@ -443,9 +522,9 @@ void testExactAndOneUnderBudgets() {
   const auto object = definition();
   const auto placed = placement();
   const auto materials = bindings();
-  const std::array sources{source(0U, 0U, 0U, placed, object, ccf, 0U)};
-  const auto baseline =
-      buildLevelObjectSceneAssembly(roomPrefix(), sources, materials);
+  const std::array sources{
+      source(0U, 0U, 0U, placed, object, ccf, 0U, materials)};
+  const auto baseline = buildLevelObjectSceneAssembly(roomPrefix(), sources);
   require(baseline.complete(), "budget baseline failed");
   LevelObjectSceneLimits exact;
   exact.maximumPlacements = sources.size();
@@ -462,22 +541,22 @@ void testExactAndOneUnderBudgets() {
     exact.maximumTotalRanges += meshValue.ranges.size();
   }
   exact.maximumTotalBytes = exactLogicalBytes(baseline);
-  require(buildLevelObjectSceneAssembly(roomPrefix(), sources, materials, {},
+  require(buildLevelObjectSceneAssembly(roomPrefix(), sources, {},
                                         UvPolicy::preserveRaw, exact)
               .complete(),
           "exact byte budget was rejected");
   auto byteOneUnder = exact;
   --byteOneUnder.maximumTotalBytes;
-  requireAtomicFailure(
-      buildLevelObjectSceneAssembly(roomPrefix(), sources, materials, {},
-                                    UvPolicy::preserveRaw, byteOneUnder),
-      LevelObjectSceneIssueKind::limitExceeded,
-      "one-under byte budget did not fail-clear");
+  requireAtomicFailure(buildLevelObjectSceneAssembly(roomPrefix(), sources, {},
+                                                     UvPolicy::preserveRaw,
+                                                     byteOneUnder),
+                       LevelObjectSceneIssueKind::limitExceeded,
+                       "one-under byte budget did not fail-clear");
 
   const auto requireOneUnder = [&](LevelObjectSceneLimits oneUnder,
                                    const std::string &label) {
     const auto failed = buildLevelObjectSceneAssembly(
-        roomPrefix(), sources, materials, {}, UvPolicy::preserveRaw, oneUnder);
+        roomPrefix(), sources, {}, UvPolicy::preserveRaw, oneUnder);
     requireAtomicFailure(failed, LevelObjectSceneIssueKind::limitExceeded,
                          label + " one-under budget did not fail-clear");
   };
@@ -516,6 +595,8 @@ int main() {
     testTransformsPrefixOrderAndProvenance();
     testRootScalarPolicy();
     testRepeatedDefinitionRemainsTwoRanges();
+    testPerSourceMaterialBindingsDoNotCrossCcfBoundaries();
+    testPhysicalSourceOrderFailsClosed();
     testInvalidInputsFailAtomically();
     testExactAndOneUnderBudgets();
   } catch (const std::exception &error) {

@@ -175,7 +175,6 @@ validateAddressableCounts(const std::size_t meshCount,
 LevelObjectSceneAssembly buildLevelObjectSceneAssembly(
     DrawModelPayload roomModel,
     const std::span<const LevelObjectDrawSource> sources,
-    const std::span<const DrawMaterial> globalMaterialBindings,
     const BasisTransform &basis, const UvPolicy uvPolicy,
     const LevelObjectSceneLimits &limits) {
   LevelObjectSceneAssembly result;
@@ -223,13 +222,25 @@ LevelObjectSceneAssembly buildLevelObjectSceneAssembly(
   std::vector<PreparedPlacement> prepared;
   prepared.reserve(sources.size());
 
-  for (const auto &source : sources) {
+  for (std::size_t physicalIndex = 0U; physicalIndex < sources.size();
+       ++physicalIndex) {
+    const auto &source = sources[physicalIndex];
+    if (physicalIndex != 0U) {
+      const auto &previous = sources[physicalIndex - 1U];
+      if (source.placementIndex <= previous.placementIndex ||
+          source.sourceIndex <= previous.sourceIndex) {
+        addIssue(result, LevelObjectSceneIssueKind::invalidSourceOrder,
+                 &source);
+        return result;
+      }
+    }
     if (source.placement == nullptr || source.objectDefinition == nullptr ||
         source.ccf == nullptr) {
       addIssue(result, LevelObjectSceneIssueKind::invalidSource, &source);
       return result;
     }
-    if (!source.targetRoom.has_value() || source.placement->room.empty()) {
+    if (!source.targetRoom.has_value() || source.placement->room.empty() ||
+        source.targetRoom->legacyCcRoomId < 0) {
       addIssue(result, LevelObjectSceneIssueKind::invalidRoom, &source);
       return result;
     }
@@ -240,7 +251,7 @@ LevelObjectSceneAssembly buildLevelObjectSceneAssembly(
     }
 
     auto visual = buildObjectVisualDrawAssembly(
-        *source.objectDefinition, *source.ccf, globalMaterialBindings, basis,
+        *source.objectDefinition, *source.ccf, source.materialBindings, basis,
         uvPolicy, limits.visualPerPlacement);
     if (!visual.issues.empty()) {
       const auto &issue = visual.issues.front();
@@ -394,6 +405,12 @@ LevelObjectSceneAssembly buildLevelObjectSceneAssembly(
                 .authoredTransform,
             basis);
         local = deriveLocalTransform(placement.authoredRoot, authoredNode);
+        if (visualProvenance.blueprintIndex ==
+                *placement.visual.resolution.rootBlueprintIndex &&
+            source.ccf->blueprints[visualProvenance.blueprintIndex].kind ==
+                assets::CcfBlueprintKind::mesh) {
+          local.rawScalar = 1.0F;
+        }
         absolute = composeNodeTransforms(placement.placementRoot, local);
       } catch (const GeometryError &error) {
         addIssue(result, LevelObjectSceneIssueKind::invalidComposedTransform,
