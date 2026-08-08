@@ -178,6 +178,9 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
 - (void)updateDiagnosticsLabelWithInputDiagnostics:
     (AirfixInputDiagnostics *)diagnostics;
 - (void)handleAudioForcedPause:(airfix::ios::AirfixIOSAudioPauseReason)reason;
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+- (void)startSimulatorSmokeIfReady;
+#endif
 @end
 
 @implementation AirfixGameViewController
@@ -696,6 +699,19 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   ((MTKView *)self.view).paused = YES;
 }
 
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+- (void)startSimulatorSmokeIfReady {
+  if (!self.renderSettingsCoordinator.readyForPresentation) {
+    return;
+  }
+  if (self.simulatorSmokeHarness == nil) {
+    self.simulatorSmokeHarness =
+        [[AirfixSimulatorSmokeHarness alloc] initWithGameViewController:self];
+  }
+  [self.simulatorSmokeHarness start];
+}
+#endif
+
 - (void)viewDidAppear:(BOOL)animated {
   [super viewDidAppear:animated];
   _viewVisible = YES;
@@ -704,11 +720,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   [self.contentCoordinator start];
   [self startInputCoordinatorIfReady];
 #if AIRFIX_IOS_SIMULATOR_SMOKE
-  if (self.simulatorSmokeHarness == nil) {
-    self.simulatorSmokeHarness =
-        [[AirfixSimulatorSmokeHarness alloc] initWithGameViewController:self];
-  }
-  [self.simulatorSmokeHarness start];
+  [self startSimulatorSmokeIfReady];
 #endif
 }
 
@@ -1115,6 +1127,9 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
                                         airfix::texture::TextureMode::enhanced
                                     ? AirfixMissionTextureModeEnhanced
                                     : AirfixMissionTextureModeClassic];
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+  [self startSimulatorSmokeIfReady];
+#endif
 }
 
 - (void)controllerCalibrationPanelViewControllerDidFinish:
