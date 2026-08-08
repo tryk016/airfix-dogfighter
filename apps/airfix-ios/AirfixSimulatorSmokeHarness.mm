@@ -16,6 +16,8 @@ constexpr int64_t kWatchdogNanoseconds = 42 * NSEC_PER_SEC;
 @property(nonatomic) BOOL started;
 @property(nonatomic, strong) dispatch_queue_t publicationQueue;
 @property(nonatomic) BOOL resultPublished;
+@property(nonatomic) BOOL firstDrawBegan;
+@property(nonatomic) BOOL firstDrawReturned;
 @property(nonatomic, copy) NSString *watchdogFailureStage;
 - (void)enqueueResult:(NSDictionary<NSString *, id> *)result;
 - (void)publishResultOnPublicationQueue:(NSDictionary<NSString *, id> *)result;
@@ -39,8 +41,11 @@ constexpr int64_t kWatchdogNanoseconds = 42 * NSEC_PER_SEC;
 - (void)armWatchdog {
   NSAssert(NSThread.isMainThread,
            @"Simulator smoke watchdog belongs to the main thread");
+  NSLog(@"Airfix simulator smoke milestone watchdog-armed");
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, kWatchdogNanoseconds),
                  self.publicationQueue, ^{
+                   NSLog(@"Airfix simulator smoke watchdog-fired %@",
+                         self.watchdogFailureStage);
                    [self publishResultOnPublicationQueue:@{
                      @"schema" : @"airfix.ios-simulator-smoke",
                      @"version" : @1,
@@ -54,6 +59,7 @@ constexpr int64_t kWatchdogNanoseconds = 42 * NSEC_PER_SEC;
   dispatch_async(self.publicationQueue, ^{
     if (!self.resultPublished) {
       self.watchdogFailureStage = @"smoke-sequence-timeout";
+      NSLog(@"Airfix simulator smoke milestone renderer-initialized");
     }
   });
 }
@@ -62,6 +68,10 @@ constexpr int64_t kWatchdogNanoseconds = 42 * NSEC_PER_SEC;
   dispatch_async(self.publicationQueue, ^{
     if (!self.resultPublished) {
       self.watchdogFailureStage = @"draw-call-timeout";
+      if (!self.firstDrawBegan) {
+        self.firstDrawBegan = YES;
+        NSLog(@"Airfix simulator smoke milestone first-draw-begin");
+      }
     }
   });
 }
@@ -70,6 +80,10 @@ constexpr int64_t kWatchdogNanoseconds = 42 * NSEC_PER_SEC;
   dispatch_async(self.publicationQueue, ^{
     if (!self.resultPublished) {
       self.watchdogFailureStage = @"smoke-sequence-timeout";
+      if (!self.firstDrawReturned) {
+        self.firstDrawReturned = YES;
+        NSLog(@"Airfix simulator smoke milestone first-draw-return");
+      }
     }
   });
 }
@@ -136,6 +150,8 @@ constexpr int64_t kWatchdogNanoseconds = 42 * NSEC_PER_SEC;
                   error:&writeError] ||
       writeError != nil) {
     NSLog(@"Airfix simulator smoke result-write-failed");
+  } else {
+    NSLog(@"Airfix simulator smoke milestone result-written");
   }
 }
 

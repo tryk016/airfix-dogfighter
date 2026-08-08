@@ -143,26 +143,57 @@ class RuntimeSelectionTests(unittest.TestCase):
 
 
 class DiagnosticHardeningTests(unittest.TestCase):
-    def test_launch_uses_supervised_console_without_ps_probe(self) -> None:
+    def test_launch_uses_standard_acknowledged_path_without_ps_probe(self) -> None:
         command = MODULE.simulator_launch_command(
             "00000000-0000-0000-0000-000000000000"
         )
-        self.assertIn("--console", command)
-        self.assertFalse(any(part.startswith("--stdout=") for part in command))
+        self.assertNotIn("--console", command)
         self.assertNotIn("/bin/ps", command)
         self.assertEqual(command[-1], MODULE.BUNDLE_ID)
 
-    def test_supervised_launch_cannot_inherit_blocking_console_pipes(self) -> None:
-        process = mock.sentinel.process
-        with mock.patch.object(MODULE.subprocess, "Popen", return_value=process) as popen:
-            self.assertIs(
-                MODULE.start_supervised_launch(
-                    "00000000-0000-0000-0000-000000000000"
-                ),
-                process,
+    def test_launch_accepts_exact_positive_pid_acknowledgement(self) -> None:
+        acknowledgement = subprocess.CompletedProcess(
+            ["xcrun", "simctl"], 0, f"{MODULE.BUNDLE_ID}: 42\n", ""
+        )
+        with mock.patch.object(MODULE, "run", return_value=acknowledgement) as run:
+            MODULE.launch_application(
+                "00000000-0000-0000-0000-000000000000"
             )
-        self.assertIs(popen.call_args.kwargs["stdout"], subprocess.DEVNULL)
-        self.assertIs(popen.call_args.kwargs["stderr"], subprocess.DEVNULL)
+        self.assertEqual(run.call_args.kwargs["timeout"], 30)
+
+    def test_launch_rejects_malformed_acknowledgement(self) -> None:
+        acknowledgement = subprocess.CompletedProcess(
+            ["xcrun", "simctl"], 0, f"{MODULE.BUNDLE_ID}: not-a-pid\n", ""
+        )
+        with mock.patch.object(MODULE, "run", return_value=acknowledgement):
+            with self.assertRaisesRegex(MODULE.SmokeFailure, "invalid launch"):
+                MODULE.launch_application(
+                    "00000000-0000-0000-0000-000000000000"
+                )
+
+    def test_result_path_is_resolved_from_the_current_data_container(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            container = Path(directory)
+            response = subprocess.CompletedProcess(
+                ["xcrun", "simctl"], 0, f"{container}\n", ""
+            )
+            with mock.patch.object(MODULE, "run", return_value=response):
+                result_path = MODULE.application_result_path(
+                    "00000000-0000-0000-0000-000000000000"
+                )
+        self.assertEqual(
+            result_path, container / "Documents" / MODULE.RESULT_NAME
+        )
+
+    def test_result_path_rejects_a_relative_or_missing_container(self) -> None:
+        response = subprocess.CompletedProcess(
+            ["xcrun", "simctl"], 0, "relative/container\n", ""
+        )
+        with mock.patch.object(MODULE, "run", return_value=response):
+            with self.assertRaisesRegex(MODULE.SmokeFailure, "invalid application"):
+                MODULE.application_result_path(
+                    "00000000-0000-0000-0000-000000000000"
+                )
 
     def test_redacts_paths_controls_and_bounds_output(self) -> None:
         text = (
@@ -214,64 +245,24 @@ class DiagnosticHardeningTests(unittest.TestCase):
         ):
             MODULE.run_non_masking("xcrun", "simctl", timeout=1)
 
-    def test_supervised_stop_escalates_without_escaping(self) -> None:
-        process = mock.Mock()
-        process.poll.return_value = None
-        process.wait.side_effect = [
-            subprocess.TimeoutExpired(["xcrun", "simctl"], 5),
-            0,
-        ]
-        MODULE.stop_supervised_launch(process)
-        process.terminate.assert_called_once_with()
-        process.kill.assert_called_once_with()
-
-    def test_result_published_during_exit_poll_is_accepted(self) -> None:
+    def test_consume_accepts_an_atomic_result(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             result_path = root / "result.json"
             output = root / "validated.json"
-            launcher = mock.Mock()
-
-            def publish_then_exit() -> int:
-                result_path.write_text(
-                    json.dumps(valid_result()), encoding="utf-8"
-                )
-                return 0
-
-            launcher.poll.side_effect = publish_then_exit
+            result_path.write_text(json.dumps(valid_result()), encoding="utf-8")
             with mock.patch("builtins.print"):
-                completed, return_code = MODULE.poll_supervised_result(
-                    launcher, result_path, output
-                )
+                completed = MODULE.consume_result_if_present(result_path, output)
             self.assertTrue(completed)
-            self.assertIsNone(return_code)
             self.assertTrue(output.is_file())
 
-    def test_successful_detached_launch_keeps_waiting_for_result(self) -> None:
+    def test_consume_keeps_waiting_when_result_is_absent(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            launcher = mock.Mock()
-            launcher.poll.return_value = 0
-
-            completed, return_code = MODULE.poll_supervised_result(
-                launcher, root / "missing.json", root / "validated.json"
+            completed = MODULE.consume_result_if_present(
+                root / "missing.json", root / "validated.json"
             )
-
             self.assertFalse(completed)
-            self.assertIsNone(return_code)
-
-    def test_failed_launch_is_reported_before_result(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            launcher = mock.Mock()
-            launcher.poll.return_value = 3
-
-            completed, return_code = MODULE.poll_supervised_result(
-                launcher, root / "missing.json", root / "validated.json"
-            )
-
-            self.assertFalse(completed)
-            self.assertEqual(return_code, 3)
 
     def test_rejects_unknown_fields(self) -> None:
         result = valid_result()

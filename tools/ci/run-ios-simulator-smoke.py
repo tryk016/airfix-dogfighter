@@ -10,7 +10,6 @@ from pathlib import Path
 import re
 import subprocess
 import sys
-import tempfile
 import time
 import uuid
 
@@ -216,7 +215,9 @@ def redacted_failure_log(device: str, sensitive_paths: tuple[str, ...]) -> str:
     try:
         result = run(
             "xcrun", "simctl", "spawn", device, "log", "show", "--last", "2m",
-            "--style", "compact", "--predicate", 'process == "AirfixDogfighter"',
+            "--style", "compact", "--predicate",
+            '(process == "AirfixDogfighter" OR '
+            f'eventMessage CONTAINS[c] "{BUNDLE_ID}")',
             check=False, timeout=20,
         )
     except (SmokeFailure, OSError):
@@ -226,44 +227,27 @@ def redacted_failure_log(device: str, sensitive_paths: tuple[str, ...]) -> str:
 
 def simulator_launch_command(device: str) -> tuple[str, ...]:
     return (
-        "xcrun", "simctl", "launch", "--console",
-        "--terminate-running-process", device, BUNDLE_ID,
+        "xcrun", "simctl", "launch", "--terminate-running-process",
+        device, BUNDLE_ID,
     )
 
 
-def start_supervised_launch(device: str) -> subprocess.Popen[bytes]:
-    try:
-        return subprocess.Popen(
-            simulator_launch_command(device),
-            stdin=subprocess.DEVNULL,
-            # CoreSimulator may leave these descriptors inherited by the
-            # detached application after simctl itself exits.  Pipes would
-            # then have no bounded EOF and could deadlock failure cleanup.
-            # The strict result file is the success oracle; bounded unified
-            # logging below remains the diagnostic channel.
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            bufsize=0,
-        )
-    except OSError as error:
-        raise SmokeFailure("unable to start supervised simctl launch") from error
+def launch_application(device: str) -> None:
+    result = run(*simulator_launch_command(device), timeout=30)
+    acknowledgement = result.stdout.strip()
+    if not re.fullmatch(rf"{re.escape(BUNDLE_ID)}:\s+[1-9][0-9]*", acknowledgement):
+        raise SmokeFailure("simctl returned an invalid launch acknowledgement")
 
 
-def stop_supervised_launch(process: subprocess.Popen[bytes] | None) -> None:
-    if process is None:
-        return
-    try:
-        if process.poll() is None:
-            process.terminate()
-        process.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        try:
-            process.kill()
-            process.wait(timeout=5)
-        except (OSError, subprocess.TimeoutExpired):
-            return
-    except OSError:
-        return
+def application_result_path(device: str) -> Path:
+    data_container = Path(
+        run(
+            "xcrun", "simctl", "get_app_container", device, BUNDLE_ID, "data"
+        ).stdout.strip()
+    )
+    if not data_container.is_absolute() or not data_container.is_dir():
+        raise SmokeFailure("simctl returned an invalid application data container")
+    return data_container / "Documents" / RESULT_NAME
 
 
 def consume_result_if_present(result_path: Path, output: Path) -> bool:
@@ -279,25 +263,6 @@ def consume_result_if_present(result_path: Path, output: Path) -> bool:
     return True
 
 
-def poll_supervised_result(
-    launcher: subprocess.Popen[bytes], result_path: Path, output: Path
-) -> tuple[bool, int | None]:
-    if consume_result_if_present(result_path, output):
-        return (True, None)
-    return_code = launcher.poll()
-    if return_code is None:
-        return (False, None)
-    # Close the atomic publication-vs-exit race before declaring failure.
-    if consume_result_if_present(result_path, output):
-        return (True, None)
-    # CoreSimulator may return successfully as soon as the application has
-    # launched, even with --console.  A zero status therefore acknowledges a
-    # detached launch; the strict result document remains the success oracle.
-    if return_code == 0:
-        return (False, None)
-    return (False, return_code)
-
-
 def execute(app: Path, output: Path, timeout_seconds: int) -> None:
     app = app.resolve(strict=True)
     if not app.is_dir() or app.suffix != ".app":
@@ -306,65 +271,52 @@ def execute(app: Path, output: Path, timeout_seconds: int) -> None:
     device_type = select_device_type()
     device_name = f"AirfixSimulatorSmoke-{os.getpid()}-{uuid.uuid4().hex[:8]}"
     device = ""
-    with tempfile.TemporaryDirectory(prefix="airfix-ios-smoke-") as capture_root:
-        capture_directory = Path(capture_root)
-        sensitive_paths = (str(app), str(capture_directory))
-        launcher: subprocess.Popen[bytes] | None = None
-        try:
-            device = run(
-                "xcrun", "simctl", "create", device_name, device_type, runtime
-            ).stdout.strip()
-            if not re.fullmatch(r"[0-9A-Fa-f-]{36}", device):
-                raise SmokeFailure("simctl returned an invalid device identifier")
-            run("xcrun", "simctl", "boot", device)
-            run("xcrun", "simctl", "bootstatus", device, "-b", timeout=180)
-            run("xcrun", "simctl", "install", device, str(app), timeout=90)
-            data_container = Path(
-                run(
-                    "xcrun", "simctl", "get_app_container", device, BUNDLE_ID,
-                    "data",
-                ).stdout.strip()
-            )
-            result_path = data_container / "Documents" / RESULT_NAME
-            launcher = start_supervised_launch(device)
+    sensitive_paths = (str(app),)
+    try:
+        device = run(
+            "xcrun", "simctl", "create", device_name, device_type, runtime
+        ).stdout.strip()
+        if not re.fullmatch(r"[0-9A-Fa-f-]{36}", device):
+            raise SmokeFailure("simctl returned an invalid device identifier")
+        run("xcrun", "simctl", "boot", device)
+        run("xcrun", "simctl", "bootstatus", device, "-b", timeout=180)
+        run("xcrun", "simctl", "install", device, str(app), timeout=90)
+        launch_application(device)
+        result_path = application_result_path(device)
 
-            deadline = time.monotonic() + timeout_seconds
-            while time.monotonic() < deadline:
-                completed, return_code = poll_supervised_result(
-                    launcher, result_path, output
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            if consume_result_if_present(result_path, output):
+                return
+            time.sleep(1.0)
+        # Re-resolve after first launch to tolerate an observed container
+        # rotation without exposing either host path, then close the final
+        # atomic publication-vs-deadline race.
+        result_path = application_result_path(device)
+        if consume_result_if_present(result_path, output):
+            return
+        raise SmokeFailure(
+            f"application did not produce a result within "
+            f"{timeout_seconds} seconds"
+        )
+    except Exception:
+        if device:
+            log = redacted_failure_log(device, sensitive_paths)
+            if log:
+                print(
+                    "--- redacted AirfixDogfighter simulator log ---",
+                    file=sys.stderr,
                 )
-                if completed:
-                    return
-                if return_code is not None:
-                    raise SmokeFailure(
-                        "supervised simctl launch exited before producing a "
-                        f"result (exit code {return_code})"
-                    )
-                time.sleep(1.0)
-            raise SmokeFailure(
-                f"application did not produce a result within "
-                f"{timeout_seconds} seconds"
+                print(log, file=sys.stderr)
+        raise
+    finally:
+        if device:
+            run_non_masking(
+                "xcrun", "simctl", "shutdown", device, timeout=20
             )
-        except Exception:
-            stop_supervised_launch(launcher)
-            if device:
-                log = redacted_failure_log(device, sensitive_paths)
-                if log:
-                    print(
-                        "--- redacted AirfixDogfighter simulator log ---",
-                        file=sys.stderr,
-                    )
-                    print(log, file=sys.stderr)
-            raise
-        finally:
-            stop_supervised_launch(launcher)
-            if device:
-                run_non_masking(
-                    "xcrun", "simctl", "shutdown", device, timeout=20
-                )
-                run_non_masking(
-                    "xcrun", "simctl", "delete", device, timeout=20
-                )
+            run_non_masking(
+                "xcrun", "simctl", "delete", device, timeout=20
+            )
 
 
 def main() -> int:

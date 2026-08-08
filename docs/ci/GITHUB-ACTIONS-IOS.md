@@ -87,8 +87,10 @@ Trigger: every pull request and push after the iOS target exists.
   disabled.
 - The simulator configuration alone enables the explicit
   `AIRFIX_IOS_SIMULATOR_SMOKE` harness. CI boots a fresh simulator, installs
-  and launches the app, and requires a bounded JSON result written atomically
-  inside the app's data container. The result proves that the normal renderer
+  and launches the app through the standard bounded `simctl launch`
+  acknowledgement path, then resolves the data container after launch. It
+  requires a bounded JSON result written atomically inside that container. The
+  result proves that the normal renderer
   completed a command buffer containing the public synthetic scene, then that
   the existing resign-active, background, foreground, and active lifecycle
   calls left both the session and `MTKView` paused without auto-resume.
@@ -109,7 +111,8 @@ Trigger: every pull request and push after the iOS target exists.
   application Documents directory, and the atomic write are checked; failures
   emit only a fixed path-free diagnostic marker. Its 42-second deadline fits
   inside the runner's 60-second result window with explicit launch and write
-  margin.
+  margin. A short set of fixed, path-free milestones distinguishes watchdog
+  arming, renderer completion, first-draw entry/return, and result publication.
 - The current Metal Simulator runtime rejects shared-storage heaps. The public
   smoke snapshot therefore uses directly allocated shared/tracked buffers and
   textures on `TARGET_OS_SIMULATOR`; their measured allocations reconcile against
