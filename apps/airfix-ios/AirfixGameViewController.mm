@@ -500,6 +500,12 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
         constraintEqualToAnchor:metalView.trailingAnchor],
   ]];
   [self setPausedSettingsSelection:0U announce:NO];
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+  // Headless CoreSimulator can launch the process without delivering
+  // viewDidAppear. Start after the renderer and complete view hierarchy exist;
+  // the bounded draw retry waits for any later layout/presentation readiness.
+  [self startSimulatorSmokeIfNeeded];
+#endif
 }
 
 - (void)beginControllerInputProfileLoad {
@@ -809,9 +815,6 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   [self.renderSettingsCoordinator notifyPresentationSurfaceAvailable];
   [self.contentCoordinator start];
   [self startInputCoordinatorIfReady];
-#if AIRFIX_IOS_SIMULATOR_SMOKE
-  [self startSimulatorSmokeIfNeeded];
-#endif
 }
 
 - (void)viewDidLayoutSubviews {
@@ -1217,9 +1220,6 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
                                         airfix::texture::TextureMode::enhanced
                                     ? AirfixMissionTextureModeEnhanced
                                     : AirfixMissionTextureModeClassic];
-#if AIRFIX_IOS_SIMULATOR_SMOKE
-  [self startSimulatorSmokeIfNeeded];
-#endif
 }
 
 - (void)controllerCalibrationPanelViewControllerDidFinish:
