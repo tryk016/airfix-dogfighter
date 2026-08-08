@@ -209,6 +209,47 @@ class DiagnosticHardeningTests(unittest.TestCase):
                     "00000000-0000-0000-0000-000000000000"
                 )
 
+    def test_boot_readiness_timeout_is_retryable_before_launch(self) -> None:
+        completed = subprocess.CompletedProcess(["xcrun", "simctl"], 0, "", "")
+        with (
+            mock.patch.object(
+                MODULE,
+                "run",
+                side_effect=[completed, MODULE.SmokeFailure("boot timed out")],
+            ) as run,
+            mock.patch.object(MODULE, "launch_application") as launch,
+        ):
+            with self.assertRaisesRegex(
+                MODULE.RetryableSimulatorFailure, "acknowledged application launch"
+            ):
+                MODULE.prepare_application_for_launch(
+                    "00000000-0000-0000-0000-000000000000",
+                    Path("AirfixDogfighter.app"),
+                )
+        self.assertEqual(run.call_count, 2)
+        launch.assert_not_called()
+
+    def test_install_failure_is_retryable_before_launch(self) -> None:
+        completed = subprocess.CompletedProcess(["xcrun", "simctl"], 0, "", "")
+        with (
+            mock.patch.object(
+                MODULE,
+                "run",
+                side_effect=[
+                    completed,
+                    completed,
+                    MODULE.SmokeFailure("install failed"),
+                ],
+            ),
+            mock.patch.object(MODULE, "launch_application") as launch,
+        ):
+            with self.assertRaises(MODULE.RetryableSimulatorFailure):
+                MODULE.prepare_application_for_launch(
+                    "00000000-0000-0000-0000-000000000000",
+                    Path("AirfixDogfighter.app"),
+                )
+        launch.assert_not_called()
+
     def test_execute_retries_inconclusive_startup_once(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             app = Path(directory) / "AirfixDogfighter.app"
