@@ -88,8 +88,10 @@ Trigger: every pull request and push after the iOS target exists.
 - The simulator configuration alone enables the explicit
   `AIRFIX_IOS_SIMULATOR_SMOKE` harness. CI boots a fresh simulator, installs
   and launches the app through the standard bounded `simctl launch`
-  acknowledgement path, then resolves the data container after launch. It
-  requires a bounded JSON result written atomically inside that container. The
+  acknowledgement path without requesting termination of a pre-existing app
+  process, which cannot exist on this newly created device. It then resolves
+  the data container after launch and requires a bounded JSON result written
+  atomically inside that container. The
   result proves that the normal renderer
   completed a command buffer containing the public synthetic scene, then that
   the existing resign-active, background, foreground, and active lifecycle

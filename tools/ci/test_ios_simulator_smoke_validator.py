@@ -143,11 +143,12 @@ class RuntimeSelectionTests(unittest.TestCase):
 
 
 class DiagnosticHardeningTests(unittest.TestCase):
-    def test_launch_uses_standard_acknowledged_path_without_ps_probe(self) -> None:
+    def test_launch_uses_fresh_standard_acknowledged_path(self) -> None:
         command = MODULE.simulator_launch_command(
             "00000000-0000-0000-0000-000000000000"
         )
         self.assertNotIn("--console", command)
+        self.assertNotIn("--terminate-running-process", command)
         self.assertNotIn("/bin/ps", command)
         self.assertEqual(command[-1], MODULE.BUNDLE_ID)
 

@@ -227,8 +227,7 @@ def redacted_failure_log(device: str, sensitive_paths: tuple[str, ...]) -> str:
 
 def simulator_launch_command(device: str) -> tuple[str, ...]:
     return (
-        "xcrun", "simctl", "launch", "--terminate-running-process",
-        device, BUNDLE_ID,
+        "xcrun", "simctl", "launch", device, BUNDLE_ID,
     )
 
 
