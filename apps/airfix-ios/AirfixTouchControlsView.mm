@@ -1,7 +1,10 @@
 #import "AirfixTouchControlsView.h"
 
+#import "AirfixIOSHapticFeedbackRouter.h"
+
 #import <QuartzCore/QuartzCore.h>
 
+#include "airfix/input/TouchControlsHaptics.hpp"
 #include "airfix/input/TouchControlsPreferences.hpp"
 
 #include <algorithm>
@@ -266,6 +269,9 @@ elementForButton(const AirfixTouchButton button) noexcept {
 
   airfix::input::TouchControlsLayoutProfile _layoutProfile;
   std::uint8_t _restingOpacityPercent;
+  airfix::input::TouchControlsHapticsMode _hapticsMode;
+  airfix::input::TouchThrottleDetentTracker _throttleDetentTracker;
+  AirfixIOSHapticFeedbackRouter *_hapticFeedbackRouter;
 
   NSArray<AirfixTouchAccessibilityElement *> *_controlAccessibilityElements;
 }
@@ -318,6 +324,7 @@ elementForButton(const AirfixTouchButton button) noexcept {
 - (void)pulseButton:(AirfixTouchButton)button
      asynchronously:(BOOL)asynchronously;
 - (void)commitWeaponSlot:(uint8_t)slot;
+- (void)playHapticEvent:(airfix::input::TouchControlsHapticEvent)event;
 
 - (void)updateVisualState;
 - (void)updateAccessibilityValues;
@@ -594,6 +601,12 @@ elementForButton(const AirfixTouchButton button) noexcept {
   }
   _layoutProfile = preferences.layout;
   _restingOpacityPercent = preferences.restingOpacityPercent;
+  if (_hapticsMode != preferences.hapticsMode) {
+    _hapticsMode = preferences.hapticsMode;
+    _throttleDetentTracker.reset();
+    _hapticFeedbackRouter.enabled =
+        _hapticsMode == airfix::input::TouchControlsHapticsMode::system;
+  }
   if (layoutChanged) {
     [self setNeedsLayout];
   }
@@ -610,6 +623,9 @@ elementForButton(const AirfixTouchButton button) noexcept {
   _layoutProfile = {};
   _restingOpacityPercent =
       airfix::input::defaultTouchControlsRestingOpacityPercent;
+  _hapticsMode = airfix::input::TouchControlsHapticsMode::system;
+  _hapticFeedbackRouter = [[AirfixIOSHapticFeedbackRouter alloc] init];
+  _hapticFeedbackRouter.enabled = YES;
 
   _stickBaseView = [[UIView alloc] initWithFrame:CGRectZero];
   _stickHorizontalGuideView = [[UIView alloc] initWithFrame:CGRectZero];
@@ -1336,6 +1352,8 @@ elementForButton(const AirfixTouchButton button) noexcept {
     if (_throttleTouch == nil &&
         CGRectContainsPoint(_throttleCaptureFrame, point)) {
       _throttleTouch = touch;
+      _throttleDetentTracker.reset();
+      [_hapticFeedbackRouter prepareSelectionFeedback];
       [self updateThrottleForTouch:touch force:YES];
       if (_interactionGeneration != interactionGeneration) {
         return;
@@ -1437,6 +1455,7 @@ elementForButton(const AirfixTouchButton button) noexcept {
   }
   if (releaseThrottle) {
     _throttleTouch = nil;
+    _throttleDetentTracker.reset();
   }
   if (releaseLook) {
     _lookTouch = nil;
@@ -1531,9 +1550,15 @@ elementForButton(const AirfixTouchButton button) noexcept {
   const CGFloat unit =
       (CGRectGetMaxY(_throttleTrackView.bounds) - inset - point.y) /
       usableHeight;
-  [self publishAxis:AirfixTouchAxisThrottleSet
-              value:q15FromPositiveUnitValue(unit)
-              force:force];
+  const int16_t value = q15FromPositiveUnitValue(unit);
+  const auto hapticEvent = _throttleDetentTracker.observe(value);
+  const NSUInteger interactionGeneration = _interactionGeneration;
+  [self publishAxis:AirfixTouchAxisThrottleSet value:value force:force];
+  if (hapticEvent.has_value() &&
+      _interactionGeneration == interactionGeneration &&
+      _throttleTouch == touch) {
+    [self playHapticEvent:*hapticEvent];
+  }
 }
 
 - (void)updateLookForTouch:(UITouch *)touch force:(BOOL)force {
@@ -1593,8 +1618,14 @@ elementForButton(const AirfixTouchButton button) noexcept {
   }
   const NSInteger roundedSector =
       static_cast<NSInteger>(std::floor((angle + sector * 0.5) / sector));
+  const BOOL hadCandidate = _weaponHasCandidate;
+  const uint8_t previousCandidate = _weaponCandidateSlot;
   _weaponCandidateSlot = static_cast<uint8_t>(roundedSector % kWeaponSlotCount);
   _weaponHasCandidate = YES;
+  if (!hadCandidate || previousCandidate != _weaponCandidateSlot) {
+    [self playHapticEvent:airfix::input::TouchControlsHapticEvent::
+                              controlSelection];
+  }
   [self updateVisualState];
   [self updateAccessibilityValues];
 }
@@ -1722,6 +1753,7 @@ elementForButton(const AirfixTouchButton button) noexcept {
     return;
   }
   const NSUInteger index = buttonIndex(button);
+  const BOOL wasPressed = _buttonPressed[index];
   const BOOL pressed = _physicalButtonPressed[index] ||
                        _accessibilityButtonLatched[index] ||
                        _accessibilityButtonPulse[index];
@@ -1731,6 +1763,13 @@ elementForButton(const AirfixTouchButton button) noexcept {
   _buttonPressed[index] = pressed;
   [self updateVisualState];
   [self updateAccessibilityValues];
+  if (!wasPressed && pressed && !_isCancellingAll) {
+    const auto hapticEvent =
+        airfix::input::touchControlPressHapticEvent(elementForButton(button));
+    if (hapticEvent.has_value()) {
+      [self playHapticEvent:*hapticEvent];
+    }
+  }
   [self.delegate touchControlsView:self didChangeButton:button pressed:pressed];
 }
 
@@ -1771,6 +1810,22 @@ elementForButton(const AirfixTouchButton button) noexcept {
   [self.delegate touchControlsView:self didSelectWeaponSlot:slot];
 }
 
+- (void)playHapticEvent:(airfix::input::TouchControlsHapticEvent)event {
+  NSAssert(NSThread.isMainThread, @"Touch haptics belong to the main thread");
+  if (!NSThread.isMainThread ||
+      _hapticsMode != airfix::input::TouchControlsHapticsMode::system) {
+    return;
+  }
+  switch (event) {
+  case airfix::input::TouchControlsHapticEvent::controlSelection:
+  case airfix::input::TouchControlsHapticEvent::throttleIdleDetent:
+  case airfix::input::TouchControlsHapticEvent::throttleMidpointDetent:
+  case airfix::input::TouchControlsHapticEvent::throttleFullDetent:
+    [_hapticFeedbackRouter playSelectionFeedback];
+    break;
+  }
+}
+
 - (void)cancelAllTouches {
   NSAssert(NSThread.isMainThread,
            @"Touch controls must be cancelled on the main thread");
@@ -1787,6 +1842,8 @@ elementForButton(const AirfixTouchButton button) noexcept {
   _weaponGestureActive = NO;
   _weaponSelecting = NO;
   _weaponHasCandidate = NO;
+  _throttleDetentTracker.reset();
+  [_hapticFeedbackRouter cancelFeedback];
   for (NSUInteger index = 0U; index < kButtonCount; ++index) {
     _buttonTouches[index] = nil;
     _physicalButtonPressed[index] = NO;

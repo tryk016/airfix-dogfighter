@@ -82,9 +82,10 @@ using DecodedTouchControlsPreferencesDocument =
 
 // AFTC is a bounded canonical little-endian envelope. The digest covers the
 // prefix and every field byte, excluding only the digest slot. Current fields
-// are mandatory, unique, one byte wide, and strictly ordered. Schema 1 is
-// migrated in memory to schema 2 with automatic controller hiding. An intact
-// future schema is retained byte-for-byte so older builds cannot downgrade it.
+// are mandatory, unique, one byte wide, and strictly ordered. Schemas 1 and 2
+// migrate in memory to schema 3; missing haptic policy defaults to disabled so
+// migration preserves prior behavior. An intact future schema is retained
+// byte-for-byte so older builds cannot downgrade it.
 [[nodiscard]] DecodedTouchControlsPreferencesDocument
 decodeTouchControlsPreferencesDocument(
     std::span<const std::uint8_t> bytes,

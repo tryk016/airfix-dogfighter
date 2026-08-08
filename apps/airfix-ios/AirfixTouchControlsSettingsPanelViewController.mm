@@ -20,6 +20,7 @@ typedef NS_ENUM(NSUInteger, AirfixTouchSettingsRow) {
   AirfixTouchSettingsRowDensity,
   AirfixTouchSettingsRowOpacity,
   AirfixTouchSettingsRowVisibility,
+  AirfixTouchSettingsRowHaptics,
   AirfixTouchSettingsRowReset,
   AirfixTouchSettingsRowSave,
   AirfixTouchSettingsRowClose,
@@ -78,6 +79,7 @@ typedef NS_ENUM(NSUInteger, AirfixTouchSettingsRow) {
 @property(nonatomic, strong) UISlider *opacitySlider;
 @property(nonatomic, strong) UILabel *opacityValueLabel;
 @property(nonatomic, strong) UISegmentedControl *visibilityControl;
+@property(nonatomic, strong) UISegmentedControl *hapticsControl;
 @property(nonatomic, strong) UILabel *statusLabel;
 @property(nonatomic, strong) UIButton *resetButton;
 @property(nonatomic, strong) UIButton *saveButton;
@@ -126,7 +128,9 @@ typedef NS_ENUM(NSUInteger, AirfixTouchSettingsRow) {
           @"Choose the side and density of the flight overlay. Overlay "
            "strength changes resting backgrounds only; labels, borders, "
            "active feedback and touch targets stay clear. Auto-hide removes "
-           "the overlay while a controller is connected.",
+           "the overlay while a controller is connected. System feedback "
+           "marks control selections and the throttle's 0, 50 and 100 percent "
+           "detents; firing feedback remains tied to accepted gameplay.",
           nil),
       UIFontTextStyleFootnote, UIColor.secondaryLabelColor);
   explanation.textAlignment = NSTextAlignmentCenter;
@@ -209,6 +213,22 @@ typedef NS_ENUM(NSUInteger, AirfixTouchSettingsRow) {
   UIStackView *visibilityRow =
       makeRow(NSLocalizedString(@"With controller", nil), visibility);
 
+  UISegmentedControl *haptics = [[UISegmentedControl alloc] initWithItems:@[
+    NSLocalizedString(@"Off", nil),
+    NSLocalizedString(@"System", nil),
+  ]];
+  haptics.translatesAutoresizingMaskIntoConstraints = NO;
+  haptics.accessibilityLabel = NSLocalizedString(@"Touch feedback", nil);
+  haptics.accessibilityHint = NSLocalizedString(
+      @"Enables system selection feedback and throttle detents.", nil);
+  haptics.accessibilityIdentifier = @"airfix.settings.touch.haptics";
+  [haptics addTarget:self
+                action:@selector(hapticsChanged:)
+      forControlEvents:UIControlEventValueChanged];
+  self.hapticsControl = haptics;
+  UIStackView *hapticsRow =
+      makeRow(NSLocalizedString(@"Touch feedback", nil), haptics);
+
   UIButton *reset = [UIButton buttonWithType:UIButtonTypeSystem];
   [reset setTitle:NSLocalizedString(@"Reset defaults", nil)
          forState:UIControlStateNormal];
@@ -262,6 +282,7 @@ typedef NS_ENUM(NSUInteger, AirfixTouchSettingsRow) {
     densityRow,
     opacityRow,
     visibilityRow,
+    hapticsRow,
     actions,
     status,
   ]];
@@ -300,6 +321,7 @@ typedef NS_ENUM(NSUInteger, AirfixTouchSettingsRow) {
   _focusRows[AirfixTouchSettingsRowDensity] = densityRow;
   _focusRows[AirfixTouchSettingsRowOpacity] = opacityRow;
   _focusRows[AirfixTouchSettingsRowVisibility] = visibilityRow;
+  _focusRows[AirfixTouchSettingsRowHaptics] = hapticsRow;
   _focusRows[AirfixTouchSettingsRowReset] = reset;
   _focusRows[AirfixTouchSettingsRowSave] = save;
   _focusRows[AirfixTouchSettingsRowClose] = close;
@@ -341,6 +363,13 @@ typedef NS_ENUM(NSUInteger, AirfixTouchSettingsRow) {
   [self refreshControls];
 }
 
+- (void)hapticsChanged:(UISegmentedControl *)sender {
+  _draft.hapticsMode = sender.selectedSegmentIndex == 0
+                           ? airfix::input::TouchControlsHapticsMode::disabled
+                           : airfix::input::TouchControlsHapticsMode::system;
+  [self refreshControls];
+}
+
 - (void)refreshControls {
   self.handednessControl.selectedSegmentIndex =
       _draft.layout.handedness ==
@@ -358,6 +387,9 @@ typedef NS_ENUM(NSUInteger, AirfixTouchSettingsRow) {
               airfix::input::TouchControlsVisibilityMode::alwaysVisible
           ? 1
           : 0;
+  self.hapticsControl.selectedSegmentIndex =
+      _draft.hapticsMode == airfix::input::TouchControlsHapticsMode::system ? 1
+                                                                            : 0;
   AirfixTouchControlsPreferencesCoordinator *coordinator = _coordinator;
   const BOOL available = coordinator != nil &&
                          coordinator.persistenceAvailable &&
@@ -471,6 +503,10 @@ typedef NS_ENUM(NSUInteger, AirfixTouchSettingsRow) {
     self.visibilityControl.selectedSegmentIndex = direction < 0 ? 0 : 1;
     [self visibilityChanged:self.visibilityControl];
     break;
+  case AirfixTouchSettingsRowHaptics:
+    self.hapticsControl.selectedSegmentIndex = direction < 0 ? 0 : 1;
+    [self hapticsChanged:self.hapticsControl];
+    break;
   case AirfixTouchSettingsRowReset:
   case AirfixTouchSettingsRowSave:
   case AirfixTouchSettingsRowClose:
@@ -484,6 +520,7 @@ typedef NS_ENUM(NSUInteger, AirfixTouchSettingsRow) {
   case AirfixTouchSettingsRowHandedness:
   case AirfixTouchSettingsRowDensity:
   case AirfixTouchSettingsRowVisibility:
+  case AirfixTouchSettingsRowHaptics:
     [self adjustSelectedValue:1];
     break;
   case AirfixTouchSettingsRowOpacity:

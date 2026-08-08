@@ -16,6 +16,11 @@ enum class TouchControlsVisibilityMode : std::uint8_t {
   alwaysVisible,
 };
 
+enum class TouchControlsHapticsMode : std::uint8_t {
+  disabled,
+  system,
+};
+
 struct TouchControlsPreferences final {
   TouchControlsLayoutProfile layout{};
   // Scales resting background fills only. Labels, semantic accent borders,
@@ -23,6 +28,7 @@ struct TouchControlsPreferences final {
   std::uint8_t restingOpacityPercent{defaultTouchControlsRestingOpacityPercent};
   TouchControlsVisibilityMode visibilityMode{
       TouchControlsVisibilityMode::automaticControllerHide};
+  TouchControlsHapticsMode hapticsMode{TouchControlsHapticsMode::system};
 
   [[nodiscard]] friend constexpr bool
   operator==(const TouchControlsPreferences &,
@@ -34,6 +40,7 @@ enum class TouchControlsPreferencesIssueKind : std::uint8_t {
   invalidLayoutProfile,
   restingOpacityOutOfRange,
   invalidVisibilityMode,
+  invalidHapticsMode,
 };
 
 struct TouchControlsPreferencesIssue final {
@@ -45,9 +52,11 @@ struct TouchControlsPreferencesIssue final {
 validateTouchControlsPreferences(
     const TouchControlsPreferences &preferences) noexcept;
 
-inline constexpr std::uint32_t touchControlsPreferencesRecordSchemaVersion = 2U;
+inline constexpr std::uint32_t touchControlsPreferencesRecordSchemaVersion = 3U;
 inline constexpr std::uint32_t
     legacyTouchControlsPreferencesRecordSchemaVersion = 1U;
+inline constexpr std::uint32_t
+    visibilityTouchControlsPreferencesRecordSchemaVersion = 2U;
 
 struct TouchControlsPreferencesRecord final {
   std::uint32_t schemaVersion{touchControlsPreferencesRecordSchemaVersion};
@@ -55,6 +64,7 @@ struct TouchControlsPreferencesRecord final {
   std::uint8_t density{};
   std::uint8_t restingOpacityPercent{defaultTouchControlsRestingOpacityPercent};
   std::uint8_t visibilityMode{};
+  std::uint8_t hapticsMode{1U};
 
   [[nodiscard]] friend constexpr bool
   operator==(const TouchControlsPreferencesRecord &,

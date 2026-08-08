@@ -148,7 +148,7 @@ void testFutureAndReplaceableInvalidRecords() {
     require(record.complete(), "future AFTC fixture is invalid");
     auto future = airfix::settings::encodeTouchControlsPreferencesDocument(
         *record.record);
-    putU32(future, 8U, 3U);
+    putU32(future, 8U, 4U);
     future.push_back(0xA5U);
     repairEnvelope(future);
     writeRaw(temporary.current(), future);
@@ -193,43 +193,59 @@ void testFutureAndReplaceableInvalidRecords() {
 }
 
 void testLegacyCurrentMigratesAndRequiresRepair() {
-  TempDirectory temporary;
-  std::filesystem::create_directories(temporary.settings());
-  const auto expected = preferences(75U);
-  const auto record =
-      airfix::input::makeTouchControlsPreferencesRecord(expected);
-  require(record.complete(), "legacy AFTC fixture is invalid");
-  auto legacy =
-      airfix::settings::encodeTouchControlsPreferencesDocument(*record.record);
-  legacy.resize(63U);
-  putU32(legacy, 8U,
-         airfix::input::legacyTouchControlsPreferencesRecordSchemaVersion);
-  repairEnvelope(legacy);
-  writeRaw(temporary.current(), legacy);
+  for (const auto schema : {
+           airfix::input::legacyTouchControlsPreferencesRecordSchemaVersion,
+           airfix::input::visibilityTouchControlsPreferencesRecordSchemaVersion,
+       }) {
+    TempDirectory temporary;
+    std::filesystem::create_directories(temporary.settings());
+    auto source = preferences(75U);
+    source.visibilityMode =
+        airfix::input::TouchControlsVisibilityMode::alwaysVisible;
+    const auto record =
+        airfix::input::makeTouchControlsPreferencesRecord(source);
+    require(record.complete(), "legacy AFTC fixture is invalid");
+    auto legacy = airfix::settings::encodeTouchControlsPreferencesDocument(
+        *record.record);
+    legacy.resize(
+        schema ==
+                airfix::input::legacyTouchControlsPreferencesRecordSchemaVersion
+            ? 63U
+            : 68U);
+    putU32(legacy, 8U, schema);
+    repairEnvelope(legacy);
+    writeRaw(temporary.current(), legacy);
 
-  const auto migrated =
-      airfix::settings::loadTouchControlsPreferences(temporary.settings());
-  require(
-      migrated.source ==
-              airfix::settings::TouchControlsPreferencesLoadSource::current &&
-          migrated.preferences == expected &&
-          migrated.current.schemaVersion ==
-              airfix::input::
-                  legacyTouchControlsPreferencesRecordSchemaVersion &&
-          airfix::settings::touchControlsPreferencesNeedsRepair(migrated),
-      "legacy current AFTC was not migrated with a repair request");
+    auto expected = source;
+    expected.hapticsMode = airfix::input::TouchControlsHapticsMode::disabled;
+    if (schema ==
+        airfix::input::legacyTouchControlsPreferencesRecordSchemaVersion) {
+      expected.visibilityMode =
+          airfix::input::TouchControlsVisibilityMode::automaticControllerHide;
+    }
+    const auto migrated =
+        airfix::settings::loadTouchControlsPreferences(temporary.settings());
+    require(
+        migrated.source ==
+                airfix::settings::TouchControlsPreferencesLoadSource::current &&
+            migrated.preferences == expected &&
+            migrated.current.schemaVersion == schema &&
+            airfix::settings::touchControlsPreferencesNeedsRepair(migrated),
+        "legacy current AFTC was not migrated with a repair request");
 
-  const auto saved = airfix::settings::saveTouchControlsPreferences(
-      temporary.settings(), migrated.preferences);
-  require(saved.backupRotated,
-          "legacy current AFTC was not retained as the backup during repair");
-  const auto repaired =
-      airfix::settings::loadTouchControlsPreferences(temporary.settings());
-  require(repaired.preferences == expected &&
-              repaired.current.schemaVersion ==
-                  airfix::input::touchControlsPreferencesRecordSchemaVersion &&
-              !airfix::settings::touchControlsPreferencesNeedsRepair(repaired),
-          "legacy AFTC repair did not publish canonical schema 2");
+    const auto saved = airfix::settings::saveTouchControlsPreferences(
+        temporary.settings(), migrated.preferences);
+    require(saved.backupRotated,
+            "legacy current AFTC was not retained during repair");
+    const auto repaired =
+        airfix::settings::loadTouchControlsPreferences(temporary.settings());
+    require(
+        repaired.preferences == expected &&
+            repaired.current.schemaVersion ==
+                airfix::input::touchControlsPreferencesRecordSchemaVersion &&
+            !airfix::settings::touchControlsPreferencesNeedsRepair(repaired),
+        "legacy AFTC repair did not publish canonical schema 3");
+  }
 }
 
 void testInvalidCandidateAndWrongTypeBlock() {

@@ -130,6 +130,7 @@ add_library(airfix_input
     src/airfix/input/ControllerInputBatchBridge.cpp
     src/airfix/input/DesktopInputBridge.cpp
     src/airfix/input/InputRouter.cpp
+    src/airfix/input/TouchControlsHaptics.cpp
     src/airfix/input/TouchControlsLayout.cpp
     src/airfix/input/TouchControlsPreferences.cpp
 )
@@ -1021,6 +1022,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::input)
     add_test(NAME airfix_touch_controls_layout_tests
         COMMAND airfix_touch_controls_layout_tests)
+
+    add_executable(airfix_touch_controls_haptics_tests
+        tests/TouchControlsHapticsTests.cpp)
+    target_link_libraries(airfix_touch_controls_haptics_tests
+        PRIVATE airfix::input)
+    add_test(NAME airfix_touch_controls_haptics_tests
+        COMMAND airfix_touch_controls_haptics_tests)
 
     add_executable(airfix_touch_controls_preferences_tests
         tests/TouchControlsPreferencesTests.cpp)

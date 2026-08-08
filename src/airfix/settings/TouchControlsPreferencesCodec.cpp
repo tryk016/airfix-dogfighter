@@ -18,10 +18,11 @@ constexpr std::uint16_t handednessField = 1U;
 constexpr std::uint16_t densityField = 2U;
 constexpr std::uint16_t restingOpacityField = 3U;
 constexpr std::uint16_t visibilityModeField = 4U;
+constexpr std::uint16_t hapticsModeField = 5U;
 constexpr std::size_t canonicalDocumentBytes =
-    headerBytes + (fieldHeaderBytes + 1U) * 4U;
+    headerBytes + (fieldHeaderBytes + 1U) * 5U;
 
-static_assert(canonicalDocumentBytes == 68U);
+static_assert(canonicalDocumentBytes == 73U);
 
 [[noreturn]] void fail(const TouchControlsPreferencesCodecErrorKind kind,
                        const std::optional<std::uint32_t> schemaVersion,
@@ -103,6 +104,7 @@ std::vector<std::uint8_t> encodeTouchControlsPreferencesDocument(
   appendField(output, densityField, record.density);
   appendField(output, restingOpacityField, record.restingOpacityPercent);
   appendField(output, visibilityModeField, record.visibilityMode);
+  appendField(output, hapticsModeField, record.hapticsMode);
 
   if (output.size() != canonicalDocumentBytes) {
     throw std::logic_error("AFTC encoder produced a noncanonical size");
@@ -163,18 +165,30 @@ DecodedTouchControlsPreferencesDocument decodeTouchControlsPreferencesDocument(
   }
   if (schemaVersion != input::touchControlsPreferencesRecordSchemaVersion &&
       schemaVersion !=
-          input::legacyTouchControlsPreferencesRecordSchemaVersion) {
+          input::legacyTouchControlsPreferencesRecordSchemaVersion &&
+      schemaVersion !=
+          input::visibilityTouchControlsPreferencesRecordSchemaVersion) {
     fail(TouchControlsPreferencesCodecErrorKind::invalidSchemaVersion,
          schemaVersion, "AFTC semantic schema version is unsupported");
   }
 
-  const std::uint16_t lastField =
-      schemaVersion == input::legacyTouchControlsPreferencesRecordSchemaVersion
-          ? restingOpacityField
-          : visibilityModeField;
+  std::uint16_t lastField = hapticsModeField;
+  if (schemaVersion ==
+      input::legacyTouchControlsPreferencesRecordSchemaVersion) {
+    lastField = restingOpacityField;
+  } else if (schemaVersion ==
+             input::visibilityTouchControlsPreferencesRecordSchemaVersion) {
+    lastField = visibilityModeField;
+  }
 
   input::TouchControlsPreferencesRecord record;
-  std::array<bool, visibilityModeField + 1U> seen{};
+  if (schemaVersion < input::touchControlsPreferencesRecordSchemaVersion) {
+    // Preserve pre-haptics behavior during migration. New/default V3 records
+    // use system haptics; V1/V2 become explicitly disabled until the user
+    // chooses otherwise.
+    record.hapticsMode = 0U;
+  }
+  std::array<bool, hapticsModeField + 1U> seen{};
   std::uint16_t previousField = 0U;
   std::size_t offset = headerBytes;
   while (offset < bytes.size()) {
@@ -223,6 +237,9 @@ DecodedTouchControlsPreferencesDocument decodeTouchControlsPreferencesDocument(
       break;
     case visibilityModeField:
       record.visibilityMode = bytes[offset];
+      break;
+    case hapticsModeField:
+      record.hapticsMode = bytes[offset];
       break;
     default:
       throw std::logic_error("validated AFTC field is unreachable");
