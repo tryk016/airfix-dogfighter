@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import importlib.util
+import io
+import json
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 from unittest import mock
 
@@ -92,15 +95,26 @@ class RuntimeSelectionTests(unittest.TestCase):
 
 
 class DiagnosticHardeningTests(unittest.TestCase):
-    def test_launch_captures_stdout_and_stderr_to_host_paths(self) -> None:
+    def test_launch_uses_supervised_console_without_ps_probe(self) -> None:
         command = MODULE.simulator_launch_command(
-            "00000000-0000-0000-0000-000000000000",
-            Path("capture-stdout.log"),
-            Path("capture-stderr.log"),
+            "00000000-0000-0000-0000-000000000000"
         )
-        self.assertIn("--stdout=capture-stdout.log", command)
-        self.assertIn("--stderr=capture-stderr.log", command)
+        self.assertIn("--console", command)
+        self.assertFalse(any(part.startswith("--stdout=") for part in command))
+        self.assertNotIn("/bin/ps", command)
         self.assertEqual(command[-1], MODULE.BUNDLE_ID)
+
+    def test_supervised_launch_exposes_console_pipes(self) -> None:
+        process = mock.sentinel.process
+        with mock.patch.object(MODULE.subprocess, "Popen", return_value=process) as popen:
+            self.assertIs(
+                MODULE.start_supervised_launch(
+                    "00000000-0000-0000-0000-000000000000"
+                ),
+                process,
+            )
+        self.assertIs(popen.call_args.kwargs["stdout"], subprocess.PIPE)
+        self.assertIs(popen.call_args.kwargs["stderr"], subprocess.PIPE)
 
     def test_redacts_paths_controls_and_bounds_output(self) -> None:
         text = (
@@ -123,6 +137,18 @@ class DiagnosticHardeningTests(unittest.TestCase):
         self.assertLessEqual(
             len(redacted.encode("utf-8")), MODULE.MAX_DIAGNOSTIC_BYTES
         )
+
+    def test_pipe_capture_is_hard_bounded_and_preserves_tail(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "capture.log"
+            capture = MODULE.BoundedPipeCapture(
+                io.BytesIO(b"prefix" + b"x" * MODULE.MAX_CAPTURE_FILE_BYTES)
+            )
+            capture.finish_to_file(path)
+            data = path.read_bytes()
+        self.assertLessEqual(len(data), MODULE.MAX_CAPTURE_FILE_BYTES)
+        self.assertTrue(data.startswith(b"[capture truncated"))
+        self.assertTrue(data.endswith(b"x" * 64))
 
     def test_subprocess_timeout_becomes_smoke_failure(self) -> None:
         with mock.patch.object(
@@ -151,6 +177,44 @@ class DiagnosticHardeningTests(unittest.TestCase):
             side_effect=MODULE.SmokeFailure("cleanup timed out"),
         ):
             MODULE.run_non_masking("xcrun", "simctl", timeout=1)
+
+    def test_supervised_stop_escalates_without_escaping(self) -> None:
+        process = mock.Mock()
+        process.poll.return_value = None
+        process.wait.side_effect = [
+            subprocess.TimeoutExpired(["xcrun", "simctl"], 5),
+            0,
+        ]
+        MODULE.stop_supervised_launch(process)
+        process.terminate.assert_called_once_with()
+        process.kill.assert_called_once_with()
+
+    def test_capture_close_failure_does_not_escape(self) -> None:
+        capture = mock.Mock()
+        capture.finish_to_file.side_effect = OSError("close failed")
+        MODULE.finish_capture_non_masking(capture, Path("unused.log"))
+
+    def test_result_published_during_exit_poll_is_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            result_path = root / "result.json"
+            output = root / "validated.json"
+            launcher = mock.Mock()
+
+            def publish_then_exit() -> int:
+                result_path.write_text(
+                    json.dumps(valid_result()), encoding="utf-8"
+                )
+                return 0
+
+            launcher.poll.side_effect = publish_then_exit
+            with mock.patch("builtins.print"):
+                completed, return_code = MODULE.poll_supervised_result(
+                    launcher, result_path, output
+                )
+            self.assertTrue(completed)
+            self.assertIsNone(return_code)
+            self.assertTrue(output.is_file())
 
     def test_rejects_unknown_fields(self) -> None:
         result = valid_result()

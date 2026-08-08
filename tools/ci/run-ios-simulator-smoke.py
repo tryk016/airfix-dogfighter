@@ -11,13 +11,16 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+from typing import BinaryIO
 import uuid
 
 RESULT_NAME = "airfix-ios-simulator-smoke-v1.json"
 BUNDLE_ID = "com.tryk016.airfixdogfighter"
 EXPECTED_KEYS = {"schema", "version", "status", "dataLess", "metalFrame", "lifecycle"}
 MAX_DIAGNOSTIC_BYTES = 32_000
+MAX_CAPTURE_FILE_BYTES = 64_000
 
 
 class SmokeFailure(RuntimeError):
@@ -84,6 +87,49 @@ def bounded_file_text(path: Path, sensitive_paths: tuple[str, ...]) -> str:
     if size > MAX_DIAGNOSTIC_BYTES:
         text = "[captured output truncated to tail]\n" + text
     return redact_diagnostic_text(text, sensitive_paths)
+
+
+class BoundedPipeCapture:
+    def __init__(self, stream: BinaryIO) -> None:
+        self._stream = stream
+        self._lock = threading.Lock()
+        self._tail = bytearray()
+        self._total_bytes = 0
+        self._thread = threading.Thread(target=self._drain, daemon=True)
+        self._thread.start()
+
+    def _drain(self) -> None:
+        try:
+            while True:
+                chunk = self._stream.read(4096)
+                if not chunk:
+                    return
+                with self._lock:
+                    self._total_bytes += len(chunk)
+                    self._tail.extend(chunk)
+                    if len(self._tail) > MAX_CAPTURE_FILE_BYTES:
+                        del self._tail[:-MAX_CAPTURE_FILE_BYTES]
+        except OSError:
+            return
+
+    def finish_to_file(self, path: Path) -> None:
+        self._thread.join(timeout=5)
+        try:
+            self._stream.close()
+        except OSError:
+            pass
+        if self._thread.is_alive():
+            self._thread.join(timeout=1)
+        with self._lock:
+            tail = bytes(self._tail)
+            truncated = self._total_bytes > len(tail)
+        marker = b"[capture truncated to final bytes]\n" if truncated else b""
+        payload_limit = MAX_CAPTURE_FILE_BYTES - len(marker)
+        payload = marker + tail[-payload_limit:]
+        try:
+            path.write_bytes(payload)
+        except OSError:
+            return
 
 
 def require_bool(value: object, name: str) -> None:
@@ -199,13 +245,79 @@ def redacted_failure_log(device: str, sensitive_paths: tuple[str, ...]) -> str:
     return redact_diagnostic_text(result.stdout or result.stderr, sensitive_paths)
 
 
-def simulator_launch_command(
-    device: str, stdout_path: Path, stderr_path: Path
-) -> tuple[str, ...]:
+def simulator_launch_command(device: str) -> tuple[str, ...]:
     return (
-        "xcrun", "simctl", "launch", "--terminate-running-process",
-        f"--stdout={stdout_path}", f"--stderr={stderr_path}", device, BUNDLE_ID,
+        "xcrun", "simctl", "launch", "--console",
+        "--terminate-running-process", device, BUNDLE_ID,
     )
+
+
+def start_supervised_launch(device: str) -> subprocess.Popen[bytes]:
+    try:
+        return subprocess.Popen(
+            simulator_launch_command(device),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=0,
+        )
+    except OSError as error:
+        raise SmokeFailure("unable to start supervised simctl launch") from error
+
+
+def stop_supervised_launch(process: subprocess.Popen[bytes] | None) -> None:
+    if process is None:
+        return
+    try:
+        if process.poll() is None:
+            process.terminate()
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+            process.wait(timeout=5)
+        except (OSError, subprocess.TimeoutExpired):
+            return
+    except OSError:
+        return
+
+
+def finish_capture_non_masking(
+    capture: BoundedPipeCapture | None, path: Path
+) -> None:
+    if capture is None:
+        return
+    try:
+        capture.finish_to_file(path)
+    except (OSError, RuntimeError):
+        return
+
+
+def consume_result_if_present(result_path: Path, output: Path) -> bool:
+    if not result_path.is_file():
+        return False
+    document = validate_result(load_json(result_path))
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(
+        json.dumps(document, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    print(json.dumps(document, sort_keys=True))
+    return True
+
+
+def poll_supervised_result(
+    launcher: subprocess.Popen[bytes], result_path: Path, output: Path
+) -> tuple[bool, int | None]:
+    if consume_result_if_present(result_path, output):
+        return (True, None)
+    return_code = launcher.poll()
+    if return_code is None:
+        return (False, None)
+    # Close the atomic publication-vs-exit race before declaring failure.
+    if consume_result_if_present(result_path, output):
+        return (True, None)
+    return (False, return_code)
 
 
 def execute(app: Path, output: Path, timeout_seconds: int) -> None:
@@ -221,6 +333,9 @@ def execute(app: Path, output: Path, timeout_seconds: int) -> None:
         stdout_path = capture_directory / "app-stdout.log"
         stderr_path = capture_directory / "app-stderr.log"
         sensitive_paths = (str(app), str(capture_directory))
+        launcher: subprocess.Popen[bytes] | None = None
+        stdout_capture: BoundedPipeCapture | None = None
+        stderr_capture: BoundedPipeCapture | None = None
         try:
             device = run(
                 "xcrun", "simctl", "create", device_name, device_type, runtime
@@ -237,34 +352,25 @@ def execute(app: Path, output: Path, timeout_seconds: int) -> None:
                 ).stdout.strip()
             )
             result_path = data_container / "Documents" / RESULT_NAME
-            launch = run(
-                *simulator_launch_command(device, stdout_path, stderr_path)
-            )
-            match = re.search(r":\s*([0-9]+)\s*$", launch.stdout)
-            if match is None:
+            launcher = start_supervised_launch(device)
+            if launcher.stdout is None or launcher.stderr is None:
                 raise SmokeFailure(
-                    "simctl launch did not return an application PID"
+                    "supervised simctl launch did not expose console pipes"
                 )
-            pid = match.group(1)
+            stdout_capture = BoundedPipeCapture(launcher.stdout)
+            stderr_capture = BoundedPipeCapture(launcher.stderr)
 
             deadline = time.monotonic() + timeout_seconds
             while time.monotonic() < deadline:
-                if result_path.is_file():
-                    document = validate_result(load_json(result_path))
-                    output.parent.mkdir(parents=True, exist_ok=True)
-                    output.write_text(
-                        json.dumps(document, sort_keys=True, indent=2) + "\n",
-                        encoding="utf-8",
-                    )
-                    print(json.dumps(document, sort_keys=True))
-                    return
-                process = run(
-                    "xcrun", "simctl", "spawn", device, "/bin/ps", "-p", pid,
-                    "-o", "pid=", check=False, timeout=10,
+                completed, return_code = poll_supervised_result(
+                    launcher, result_path, output
                 )
-                if process.returncode != 0 or pid not in process.stdout.split():
+                if completed:
+                    return
+                if return_code is not None:
                     raise SmokeFailure(
-                        "application exited before producing a result"
+                        "supervised simctl launch exited before producing a "
+                        f"result (exit code {return_code})"
                     )
                 time.sleep(1.0)
             raise SmokeFailure(
@@ -272,6 +378,9 @@ def execute(app: Path, output: Path, timeout_seconds: int) -> None:
                 f"{timeout_seconds} seconds"
             )
         except Exception:
+            stop_supervised_launch(launcher)
+            finish_capture_non_masking(stdout_capture, stdout_path)
+            finish_capture_non_masking(stderr_capture, stderr_path)
             stdout = bounded_file_text(stdout_path, sensitive_paths)
             stderr = bounded_file_text(stderr_path, sensitive_paths)
             if stdout:
@@ -290,6 +399,9 @@ def execute(app: Path, output: Path, timeout_seconds: int) -> None:
                     print(log, file=sys.stderr)
             raise
         finally:
+            stop_supervised_launch(launcher)
+            finish_capture_non_masking(stdout_capture, stdout_path)
+            finish_capture_non_masking(stderr_capture, stderr_path)
             if device:
                 run_non_masking(
                     "xcrun", "simctl", "shutdown", device, timeout=20
