@@ -365,6 +365,7 @@ add_library(airfix_render
     src/airfix/render/LegacyScreenProjection.cpp
     src/airfix/render/LegacySortedRenderQueue.cpp
     src/airfix/render/ObjectTextureBindings.cpp
+    src/airfix/render/LevelObjectSceneAssembly.cpp
     src/airfix/render/ObjectVisualDrawAssembly.cpp
     src/airfix/render/PlayerActorPoseFrame.cpp
     src/airfix/render/PlayerActorPoseRuntime.cpp
@@ -1668,6 +1669,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_object_visual_draw_assembly_tests
         COMMAND airfix_object_visual_draw_assembly_tests)
+
+    add_executable(airfix_level_object_scene_assembly_tests
+        tests/LevelObjectSceneAssemblyTests.cpp)
+    target_link_libraries(airfix_level_object_scene_assembly_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_level_object_scene_assembly_tests
+        COMMAND airfix_level_object_scene_assembly_tests)
 
     add_executable(airfix_player_actor_visual_draw_assembly_tests
         tests/PlayerActorVisualDrawAssemblyTests.cpp)
