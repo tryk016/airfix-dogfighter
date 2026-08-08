@@ -90,6 +90,12 @@ constexpr MTLResourceOptions kSharedTrackedResourceOptions =
     static_cast<MTLResourceOptions>(MTLResourceStorageModeShared |
                                     MTLResourceHazardTrackingModeTracked);
 
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+void logSimulatorRendererMilestone(NSString *stage) {
+  NSLog(@"Airfix simulator smoke renderer milestone %@", stage);
+}
+#endif
+
 // This layout is deliberately independent from DrawVertex. It is the sole
 // CPU/GPU ABI shared with AirfixShaders.metal.
 struct alignas(16) GpuVertex {
@@ -1375,6 +1381,9 @@ bool preflightPrivateRoom(id<MTLDevice> device,
   // No C++ allocation or conversion failure may escape this Objective-C
   // initializer boundary.
   try {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    logSimulatorRendererMilestone(@"init-entered");
+#endif
     airfix::render::PublicRenderSmokeScene smokeScene =
         airfix::render::makePublicRenderSmokeScene();
     airfix::render::DrawModelPayload payload = std::move(smokeScene.model);
@@ -1701,6 +1710,9 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       }
       return nil;
     }
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    logSimulatorRendererMilestone(@"pipeline-suite-ready");
+#endif
 
     MTLDepthStencilDescriptor *depthDescriptor =
         [[MTLDepthStencilDescriptor alloc] init];
@@ -1837,6 +1849,9 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       }
       return nil;
     }
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    logSimulatorRendererMilestone(@"state-suite-ready");
+#endif
 
     // Preflight every byte count and command offset before asking Metal for
     // any resource. The aggregate cap is intentionally small for this public
@@ -2001,6 +2016,19 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       return nil;
     }
 
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    logSimulatorRendererMilestone(@"resource-plan-ready");
+#endif
+
+#if TARGET_OS_SIMULATOR
+    // The public simulator snapshot uses direct shared allocations below.
+    // Querying heap placement for those resources is unnecessary, and the
+    // iOS 26 simulator Metal runtime can fault while sizing shared-storage
+    // heap descriptors. Admit the already bounded logical plan first, then
+    // reconcile it with each resource's measured allocatedSize before
+    // publication. Physical iOS retains exact heap placement planning.
+    const std::size_t admittedHeapPlanBytes = aggregateGpuBytes;
+#else
     std::size_t bufferHeapBytes = 0U;
     std::size_t bufferHeapAlignment = 0U;
     bool heapPlanValid = true;
@@ -2065,6 +2093,7 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       }
       return nil;
     }
+#endif
 
     // Admit the checked descriptor plan before the first heap exists. Metal's
     // undocumented page-rounding delta, if any, is measured and admitted
@@ -2162,6 +2191,9 @@ bool preflightPrivateRoom(id<MTLDevice> device,
         buffers.indexBuffer = indexBuffer;
         [meshBuffers addObject:buffers];
       }
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+      logSimulatorRendererMilestone(@"direct-buffers-ready");
+#endif
 
 #if TARGET_OS_SIMULATOR
       id<MTLTexture> syntheticTexture =
@@ -2201,6 +2233,9 @@ bool preflightPrivateRoom(id<MTLDevice> device,
                          mipmapLevel:0U
                            withBytes:smokeScene.fallbackRgba8.data()
                          bytesPerRow:1U * 4U];
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+      logSimulatorRendererMilestone(@"direct-textures-ready");
+#endif
       NSArray<AirfixMetalMeshBuffers *> *meshBufferSnapshot =
           [meshBuffers copy];
       NSArray<id<MTLTexture>> *textureSnapshot = @[ syntheticTexture ];
@@ -2288,6 +2323,9 @@ bool preflightPrivateRoom(id<MTLDevice> device,
         }
         return nil;
       }
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+      logSimulatorRendererMilestone(@"resources-accounted");
+#endif
       auto fallbackReservation =
           bootstrapPlanReservation->split(fallbackHeapCurrentAllocatedBytes);
       if (!fallbackReservation.has_value()) {
@@ -2389,6 +2427,10 @@ bool preflightPrivateRoom(id<MTLDevice> device,
         presentationTransactionHolder->_transaction.commitValidated(
             std::move(*prepared.prepared));
       }
+
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+      logSimulatorRendererMilestone(@"init-returning");
+#endif
 
       return self;
     }
