@@ -277,6 +277,20 @@ def launch_application(device: str) -> None:
         )
 
 
+def prepare_application_for_launch(device: str, app: Path) -> None:
+    try:
+        run("xcrun", "simctl", "boot", device)
+        run("xcrun", "simctl", "bootstatus", device, "-b", timeout=180)
+        run("xcrun", "simctl", "install", device, str(app), timeout=90)
+        launch_application(device)
+    except RetryableSimulatorFailure:
+        raise
+    except SmokeFailure as error:
+        raise RetryableSimulatorFailure(
+            "simulator did not reach an acknowledged application launch"
+        ) from error
+
+
 def application_result_path(device: str) -> Path:
     data_container = Path(
         run(
@@ -316,15 +330,20 @@ def execute_attempt(
     device = ""
     sensitive_paths = (str(app),)
     try:
-        device = run(
-            "xcrun", "simctl", "create", device_name, device_type, runtime
-        ).stdout.strip()
-        if not re.fullmatch(r"[0-9A-Fa-f-]{36}", device):
-            raise SmokeFailure("simctl returned an invalid device identifier")
-        run("xcrun", "simctl", "boot", device)
-        run("xcrun", "simctl", "bootstatus", device, "-b", timeout=180)
-        run("xcrun", "simctl", "install", device, str(app), timeout=90)
-        launch_application(device)
+        try:
+            created_device = run(
+                "xcrun", "simctl", "create", device_name, device_type, runtime
+            ).stdout.strip()
+        except SmokeFailure as error:
+            raise RetryableSimulatorFailure(
+                "simulator device creation did not complete"
+            ) from error
+        if not re.fullmatch(r"[0-9A-Fa-f-]{36}", created_device):
+            raise RetryableSimulatorFailure(
+                "simctl returned an invalid device identifier"
+            )
+        device = created_device
+        prepare_application_for_launch(device, app)
         result_path = application_result_path(device)
 
         deadline = time.monotonic() + timeout_seconds
