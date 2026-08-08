@@ -329,6 +329,23 @@ authenticated selected start as a separate immutable player world pose.
 Retained scene data for later room changes and dynamic actor instantiation
 remain unimplemented.
 
+### Level `OBJE` instance-admission boundary
+
+`EV-20260808-001` separates definition loading from Level placement. The
+existing `0x2000` definition source contributes resources and blueprints but
+does not publish its `0x4000` records. A later semantic
+`LevelObjectSceneAssembly` must consume each physical Level `OBJE` record in
+order, select only the named `0x3000` subtree, derive descendants relative to
+the selected authored root, and apply one external root pose. It must not emit
+one independent world transform per selected node. Missing selector, blueprint,
+clone, or room skips only that placement.
+
+The native room query is distinct from start selection: root/full-name lookup
+precedes newest-ordinary/name-only ASCII-fold lookup. A future strict duplicate
+room rejection is permitted only as explicit port policy; it is not native
+lookup parity. This record specifies scene admission and provenance, not GPU
+draw order. The C++20 runtime boundary remains pending.
+
 ## Metal handoff
 
 The data-less iOS shell now exercises a bounded multi-mesh/multi-instance

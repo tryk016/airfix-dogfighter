@@ -5801,3 +5801,17 @@ superseded evidence.
   12/12 Rizin normalization, CI-classifier tests, and `git diff --check` pass.
   No private manifest, PNG, GTI, content root, or derived asset entered the
   repository or test inputs.
+
+## 2026-08-08 - Level `OBJE` instance contract
+
+- `EV-20260808-001` / `EXP-20260808-120` records the static scene-assembly
+  contract joining physical Level placement, selected `0x3000` blueprint
+  subtree, external root overwrite, Z-X-Y-radian axis pose, room admission,
+  and the existing authored-world to parent-relative transform proof.
+- The native room query is explicitly bounded without reusing mission-start
+  policy: root/full-name first, then newest ordinary room by ASCII-folded name;
+  missing rooms skip the placement and duplicate ordinary matches select the
+  first native list candidate. No runtime C++20 code changed.
+- The gate is GO for semantic fail-closed future assembly and NO-GO for
+  bit-identical x87/trigonometry or renderer-order claims. A minimal read-only
+  post-`GetWorldRelation` oracle is recorded for later confirmation.

@@ -97,6 +97,17 @@ root's external placement. They do not apply the raw scalar as a universal scale
 F050 matrices retain that value separately, and the alternate loader-supported
 F040 axis representation still needs independent fixtures.
 
+`EV-20260808-001` adds the Level `OBJE` external-placement seam. Its six
+float32 fields overwrite the instantiated selected root with a position and
+Z-X-Y-radian axis pose; they are not composed with the root's authored world
+transform. In the runtime column-vector convention, derive every selected
+descendant relative to the authored selected root, then apply the one placement
+root: `world_i = placementRoot * inverse(authoredRoot) * authoredNode`. The
+root itself is exactly the placement root. Mesh construction supplies root
+scalar `1.0f`; null/light clone paths retain their scalar across the axis-mode
+switch. This is a semantic assembly contract, not a claim of bit-identical
+portable trigonometry or native renderer list order.
+
 ## Triangle winding and normals
 
 `CcMesh::RecalcVertexNormals` at RVA `0x00012E90` computes:
