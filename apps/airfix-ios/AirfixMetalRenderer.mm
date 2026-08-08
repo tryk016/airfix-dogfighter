@@ -8,6 +8,7 @@
 #include "airfix/content/LegacyAircraftHudWeaponPanelsSubmission.hpp"
 #include "airfix/content/LegacyWeaponCrosshairSpriteSubmission.hpp"
 #import <Metal/Metal.h>
+#import <TargetConditionals.h>
 #import <simd/simd.h>
 
 #include "airfix/content/LegacyAircraftHealthGaugeTextureSet.hpp"
@@ -276,6 +277,18 @@ bool accountCurrentHeapAllocation(id<MTLHeap> heap,
                     static_cast<std::size_t>(heap.currentAllocatedSize),
                     aggregateBytes);
 }
+
+#if TARGET_OS_SIMULATOR
+bool accountResourceAllocation(id<MTLResource> resource,
+                               std::size_t &aggregateBytes) noexcept {
+  if (resource == nil || resource.allocatedSize == 0U) {
+    return false;
+  }
+  return checkedAdd(aggregateBytes,
+                    static_cast<std::size_t>(resource.allocatedSize),
+                    aggregateBytes);
+}
+#endif
 
 bool finalizeHeapAllocationReservation(
     airfix::render::SnapshotGpuBudgetLedger &ledger,
@@ -2065,6 +2078,16 @@ bool preflightPrivateRoom(id<MTLDevice> device,
     // Staging collections and autoreleased Metal command objects drain before
     // the outer plan reservation can be destroyed on any failure.
     @autoreleasepool {
+#if TARGET_OS_SIMULATOR
+      // Metal simulator requires private storage for heaps, while this small
+      // public snapshot is synchronously populated by the CPU. Direct shared,
+      // tracked resources preserve that upload contract without introducing a
+      // private-heap staging/blit path solely for CI. Physical iOS continues
+      // to use the admitted shared heaps below.
+      id<MTLHeap> bufferHeap = nil;
+      id<MTLHeap> textureHeap = nil;
+      id<MTLHeap> fallbackHeap = nil;
+#else
       id<MTLHeap> bufferHeap = newSharedTrackedHeap(
           device, bufferHeapBytes, @"Airfix public snapshot buffer heap");
       id<MTLHeap> textureHeap = newSharedTrackedHeap(
@@ -2080,6 +2103,7 @@ bool preflightPrivateRoom(id<MTLDevice> device,
         }
         return nil;
       }
+#endif
 
       NSMutableArray<AirfixMetalMeshBuffers *> *meshBuffers = [NSMutableArray
           arrayWithCapacity:static_cast<NSUInteger>(packedVertices.size())];
@@ -2087,9 +2111,15 @@ bool preflightPrivateRoom(id<MTLDevice> device,
            ++meshSlot) {
         id<MTLBuffer> vertexBuffer = nil;
         if (vertexByteCounts[meshSlot] != 0U) {
+#if TARGET_OS_SIMULATOR
+          vertexBuffer =
+              [device newBufferWithLength:vertexByteCounts[meshSlot]
+                                  options:kSharedTrackedResourceOptions];
+#else
           vertexBuffer =
               [bufferHeap newBufferWithLength:vertexByteCounts[meshSlot]
                                       options:kSharedTrackedResourceOptions];
+#endif
           if (vertexBuffer != nil && vertexBuffer.contents != nullptr) {
             std::memcpy(vertexBuffer.contents, packedVertices[meshSlot].data(),
                         vertexByteCounts[meshSlot]);
@@ -2097,9 +2127,15 @@ bool preflightPrivateRoom(id<MTLDevice> device,
         }
         id<MTLBuffer> indexBuffer = nil;
         if (indexByteCounts[meshSlot] != 0U) {
+#if TARGET_OS_SIMULATOR
+          indexBuffer =
+              [device newBufferWithLength:indexByteCounts[meshSlot]
+                                  options:kSharedTrackedResourceOptions];
+#else
           indexBuffer =
               [bufferHeap newBufferWithLength:indexByteCounts[meshSlot]
                                       options:kSharedTrackedResourceOptions];
+#endif
           if (indexBuffer != nil && indexBuffer.contents != nullptr) {
             std::memcpy(indexBuffer.contents,
                         payload.meshes[meshSlot].indices.data(),
@@ -2122,8 +2158,13 @@ bool preflightPrivateRoom(id<MTLDevice> device,
         [meshBuffers addObject:buffers];
       }
 
+#if TARGET_OS_SIMULATOR
+      id<MTLTexture> syntheticTexture =
+          [device newTextureWithDescriptor:textureDescriptor];
+#else
       id<MTLTexture> syntheticTexture =
           [textureHeap newTextureWithDescriptor:textureDescriptor];
+#endif
       if (syntheticTexture == nil) {
         if (error != nullptr) {
           *error = makeError(RendererError::textureCreation,
@@ -2137,8 +2178,13 @@ bool preflightPrivateRoom(id<MTLDevice> device,
                             withBytes:smokeScene.textureRgba8.data()
                           bytesPerRow:2U * 4U];
 
+#if TARGET_OS_SIMULATOR
+      id<MTLTexture> fallbackTexture =
+          [device newTextureWithDescriptor:fallbackDescriptor];
+#else
       id<MTLTexture> fallbackTexture =
           [fallbackHeap newTextureWithDescriptor:fallbackDescriptor];
+#endif
       if (fallbackTexture == nil) {
         if (error != nullptr) {
           *error = makeError(RendererError::textureCreation,
@@ -2176,6 +2222,35 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       std::size_t snapshotHeapCurrentAllocatedBytes = 0U;
       std::size_t fallbackHeapCurrentAllocatedBytes = 0U;
       std::size_t totalHeapCurrentAllocatedBytes = 0U;
+#if TARGET_OS_SIMULATOR
+      bool directAllocationValid = true;
+      for (AirfixMetalMeshBuffers *buffers in meshBufferSnapshot) {
+        if ((buffers.vertexBuffer != nil &&
+             !accountResourceAllocation(buffers.vertexBuffer,
+                                        snapshotHeapCurrentAllocatedBytes)) ||
+            (buffers.indexBuffer != nil &&
+             !accountResourceAllocation(buffers.indexBuffer,
+                                        snapshotHeapCurrentAllocatedBytes))) {
+          directAllocationValid = false;
+          break;
+        }
+      }
+      if (!directAllocationValid ||
+          !accountResourceAllocation(syntheticTexture,
+                                     snapshotHeapCurrentAllocatedBytes) ||
+          !accountResourceAllocation(fallbackTexture,
+                                     fallbackHeapCurrentAllocatedBytes) ||
+          !checkedAdd(snapshotHeapCurrentAllocatedBytes,
+                      fallbackHeapCurrentAllocatedBytes,
+                      totalHeapCurrentAllocatedBytes)) {
+        if (error != nullptr) {
+          *error = makeError(
+              RendererError::resourceLimit,
+              @"The direct simulator resources have invalid allocations.");
+        }
+        return nil;
+      }
+#else
       if (!accountCurrentHeapAllocation(bufferHeap,
                                         snapshotHeapCurrentAllocatedBytes) ||
           !accountCurrentHeapAllocation(textureHeap,
@@ -2192,16 +2267,19 @@ bool preflightPrivateRoom(id<MTLDevice> device,
         }
         return nil;
       }
-      // Descriptor plans are admitted before creation. Metal may page-round a
-      // heap beyond that plan, so the measured current allocation must obtain
-      // any supplemental aggregate admission before this snapshot can publish.
+#endif
+      // The descriptor placement plan is admitted before creation. Reconcile
+      // it with either physical-heap current allocation or simulator direct
+      // resource allocation, obtaining any supplemental aggregate admission
+      // before this snapshot can publish.
       if (!finalizeHeapAllocationReservation(*gpuBudgetHolder->_ledger,
                                              *bootstrapPlanReservation,
                                              totalHeapCurrentAllocatedBytes)) {
         if (error != nullptr) {
-          *error = makeError(RendererError::resourceLimit,
-                             @"The public heaps' current allocation is "
-                             @"unavailable in the aggregate admission budget.");
+          *error =
+              makeError(RendererError::resourceLimit,
+                        @"The public Metal resources' measured allocation is "
+                        @"unavailable in the aggregate admission budget.");
         }
         return nil;
       }

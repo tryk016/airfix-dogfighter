@@ -95,6 +95,12 @@ Trigger: every pull request and push after the iOS target exists.
   This is an immediate handler-contract check: it invokes the same four native
   handlers in order inside the app, rather than claiming to validate
   SpringBoard's delivery timing.
+- The current Metal Simulator runtime rejects shared-storage heaps. The public
+  smoke snapshot therefore uses directly allocated shared/tracked buffers and
+  textures on `TARGET_OS_SIMULATOR`; their measured allocations reconcile against
+  the same aggregate GPU budget before publication. Physical `iphoneos`
+  retains the shared-heap path. A private-heap staging/blit pipeline is not
+  introduced for this small CPU-populated CI snapshot.
 - The harness is not compiled into ordinary simulator builds or any `iphoneos`
   build. CMake rejects the option for a non-simulator SDK, and bundle
   verification scans the device executable for the harness schema marker.
