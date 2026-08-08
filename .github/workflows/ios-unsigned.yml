@@ -119,4 +119,4 @@ jobs:
           python3 tools/ci/run-ios-simulator-smoke.py \
             --app "$bundle" \
             --result-output "build-${{ matrix.sdk }}/simulator-smoke-result.json" \
-            --timeout-seconds 45
+            --timeout-seconds 60

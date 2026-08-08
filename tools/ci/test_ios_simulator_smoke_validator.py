@@ -74,6 +74,22 @@ class ResultValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(MODULE.SmokeFailure, "unknown failure stage"):
             MODULE.validate_result(result)
 
+    def test_accepts_bounded_watchdog_failure_stages(self) -> None:
+        for stage in (
+            "renderer-initialization-timeout",
+            "draw-call-timeout",
+            "smoke-sequence-timeout",
+        ):
+            with self.subTest(stage=stage):
+                result = {
+                    "schema": "airfix.ios-simulator-smoke",
+                    "version": 1,
+                    "status": "fail",
+                    "failureStage": stage,
+                }
+                with self.assertRaisesRegex(MODULE.SmokeFailure, stage):
+                    MODULE.validate_result(result)
+
     def test_rejects_extra_application_failure_field(self) -> None:
         result = {
             "schema": "airfix.ios-simulator-smoke",

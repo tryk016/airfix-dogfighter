@@ -203,11 +203,19 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   metalView.paused = YES;
   metalView.enableSetNeedsDisplay = NO;
   self.view = metalView;
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+  self.simulatorSmokeHarness =
+      [[AirfixSimulatorSmokeHarness alloc] initWithGameViewController:self];
+  [self.simulatorSmokeHarness armWatchdog];
+#endif
 
   NSError *rendererError = nil;
   self.renderer =
       [[AirfixMetalRenderer alloc] initWithMetalView:metalView
                                                error:&rendererError];
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+  [self.simulatorSmokeHarness noteRendererInitializationCompleted];
+#endif
   metalView.delegate = self.renderer;
   if (self.renderer != nil) {
     self.renderSettingsCoordinator = [[AirfixRenderSettingsCoordinator alloc]
@@ -797,7 +805,9 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
     return;
   }
   ++self.simulatorSmokeDrawAttemptCount;
+  [self.simulatorSmokeHarness noteDrawWillBegin];
   [(MTKView *)self.view draw];
+  [self.simulatorSmokeHarness noteDrawDidReturn];
 
   __weak AirfixGameViewController *weakSelf = self;
   dispatch_after(
@@ -1407,11 +1417,13 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
     });
   }];
 
-  // A paused MTKView does not schedule frames. A fresh CoreSimulator may need
-  // several main-loop turns before every drawable/presentation prerequisite
-  // is simultaneously available, so retry the normal draw path until its
-  // one-shot command-buffer observer resolves.
-  [self attemptSimulatorSmokeDraw];
+  // A paused MTKView does not schedule frames. Always let loadView return
+  // before requesting the first drawable: a headless CoreSimulator can block
+  // an early synchronous draw while UIKit is still attaching the surface,
+  // which would also prevent the bounded retry chain from starting.
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [weakSelf attemptSimulatorSmokeDraw];
+  });
 }
 #endif
 

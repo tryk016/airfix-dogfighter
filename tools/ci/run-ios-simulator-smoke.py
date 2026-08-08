@@ -43,6 +43,9 @@ FAILURE_STAGES = {
     "submitted-without-completion",
     "metal-frame-failed",
     "lifecycle-invariant-failed",
+    "renderer-initialization-timeout",
+    "draw-call-timeout",
+    "smoke-sequence-timeout",
     "unknown-draw-stage",
 }
 MAX_DIAGNOSTIC_BYTES = 32_000
@@ -368,7 +371,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--app", type=Path)
     parser.add_argument("--result-output", type=Path)
-    parser.add_argument("--timeout-seconds", type=int, default=45)
+    parser.add_argument("--timeout-seconds", type=int, default=60)
     parser.add_argument("--validate-only", type=Path)
     args = parser.parse_args()
     try:

@@ -103,6 +103,13 @@ Trigger: every pull request and push after the iOS target exists.
   mismatch, resource gate, submitted buffer that never completed, Metal
   failure, or lifecycle failure without recording paths, checksums, or private
   data.
+- An independent simulator-only watchdog is armed before Metal renderer
+  initialization. It reports an initializer or synchronous draw stall without
+  relying on the main run loop. Result serialization, creation of the
+  application Documents directory, and the atomic write are checked; failures
+  emit only a fixed path-free diagnostic marker. Its 42-second deadline fits
+  inside the runner's 60-second result window with explicit launch and write
+  margin.
 - The current Metal Simulator runtime rejects shared-storage heaps. The public
   smoke snapshot therefore uses directly allocated shared/tracked buffers and
   textures on `TARGET_OS_SIMULATOR`; their measured allocations reconcile against

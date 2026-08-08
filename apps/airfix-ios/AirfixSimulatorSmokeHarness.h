@@ -9,6 +9,10 @@ NS_ASSUME_NONNULL_BEGIN
 @interface AirfixSimulatorSmokeHarness : NSObject
 - (instancetype)initWithGameViewController:
     (AirfixGameViewController *)gameViewController NS_DESIGNATED_INITIALIZER;
+- (void)armWatchdog;
+- (void)noteRendererInitializationCompleted;
+- (void)noteDrawWillBegin;
+- (void)noteDrawDidReturn;
 - (void)start;
 - (instancetype)init NS_UNAVAILABLE;
 @end
