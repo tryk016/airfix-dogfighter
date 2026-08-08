@@ -53,7 +53,7 @@ jobs:
     needs: policy
     if: needs.policy.outputs.full_build == 'true'
     runs-on: macos-26
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:

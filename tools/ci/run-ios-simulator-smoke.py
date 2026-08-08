@@ -63,6 +63,14 @@ class SmokeFailure(RuntimeError):
     pass
 
 
+class RetryableSimulatorFailure(SmokeFailure):
+    """A CoreSimulator startup failure safe to retry on a fresh device."""
+
+
+MAX_SIMULATOR_ATTEMPTS = 2
+SIMULATOR_LAUNCH_TIMEOUT_SECONDS = 60
+
+
 def run(*args: str, check: bool = True, timeout: int = 60) -> subprocess.CompletedProcess[str]:
     try:
         result = subprocess.run(
@@ -253,10 +261,20 @@ def simulator_launch_command(device: str) -> tuple[str, ...]:
 
 
 def launch_application(device: str) -> None:
-    result = run(*simulator_launch_command(device), timeout=30)
+    try:
+        result = run(
+            *simulator_launch_command(device),
+            timeout=SIMULATOR_LAUNCH_TIMEOUT_SECONDS,
+        )
+    except SmokeFailure as error:
+        raise RetryableSimulatorFailure(
+            "simulator launch did not become ready"
+        ) from error
     acknowledgement = result.stdout.strip()
     if not re.fullmatch(rf"{re.escape(BUNDLE_ID)}:\s+[1-9][0-9]*", acknowledgement):
-        raise SmokeFailure("simctl returned an invalid launch acknowledgement")
+        raise RetryableSimulatorFailure(
+            "simctl returned an invalid launch acknowledgement"
+        )
 
 
 def application_result_path(device: str) -> Path:
@@ -283,13 +301,18 @@ def consume_result_if_present(result_path: Path, output: Path) -> bool:
     return True
 
 
-def execute(app: Path, output: Path, timeout_seconds: int) -> None:
-    app = app.resolve(strict=True)
-    if not app.is_dir() or app.suffix != ".app":
-        raise SmokeFailure("--app must name an existing .app bundle")
-    runtime = select_runtime()
-    device_type = select_device_type()
-    device_name = f"AirfixSimulatorSmoke-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+def execute_attempt(
+    app: Path,
+    output: Path,
+    timeout_seconds: int,
+    runtime: str,
+    device_type: str,
+    attempt_number: int,
+) -> None:
+    device_name = (
+        f"AirfixSimulatorSmoke-{os.getpid()}-{attempt_number}-"
+        f"{uuid.uuid4().hex[:8]}"
+    )
     device = ""
     sensitive_paths = (str(app),)
     try:
@@ -336,6 +359,36 @@ def execute(app: Path, output: Path, timeout_seconds: int) -> None:
             )
             run_non_masking(
                 "xcrun", "simctl", "delete", device, timeout=20
+            )
+
+
+def execute(app: Path, output: Path, timeout_seconds: int) -> None:
+    app = app.resolve(strict=True)
+    if not app.is_dir() or app.suffix != ".app":
+        raise SmokeFailure("--app must name an existing .app bundle")
+    runtime = select_runtime()
+    device_type = select_device_type()
+    for attempt_number in range(1, MAX_SIMULATOR_ATTEMPTS + 1):
+        try:
+            execute_attempt(
+                app,
+                output,
+                timeout_seconds,
+                runtime,
+                device_type,
+                attempt_number,
+            )
+            return
+        except RetryableSimulatorFailure as error:
+            if attempt_number == MAX_SIMULATOR_ATTEMPTS:
+                raise SmokeFailure(
+                    "CoreSimulator remained unavailable after "
+                    f"{MAX_SIMULATOR_ATTEMPTS} isolated attempts"
+                ) from error
+            print(
+                "CoreSimulator startup was inconclusive; retrying once "
+                "with a fresh isolated device",
+                file=sys.stderr,
             )
 
 

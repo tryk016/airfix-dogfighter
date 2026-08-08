@@ -115,6 +115,12 @@ Trigger: every pull request and push after the iOS target exists.
   inside the runner's 60-second result window with explicit launch and write
   margin. A short set of fixed, path-free milestones distinguishes watchdog
   arming, renderer completion, first-draw entry/return, and result publication.
+- A launch command that times out or does not return a valid positive PID is
+  treated as an inconclusive CoreSimulator startup. The runner discards that
+  fresh device and retries exactly once with a second isolated device. After a
+  valid PID acknowledgement, a structured failure or missing atomic result is
+  authoritative and is never retried. The 30-minute job ceiling bounds both
+  isolated launch attempts, configuration, build, diagnostics, and cleanup.
 - The current Metal Simulator runtime rejects shared-storage heaps. The public
   smoke snapshot therefore uses directly allocated shared/tracked buffers and
   textures on `TARGET_OS_SIMULATOR`. It also avoids heap size/alignment queries
