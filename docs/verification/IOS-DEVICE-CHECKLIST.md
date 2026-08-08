@@ -1,6 +1,7 @@
 # First iOS device acceptance checklist
 
-**Status:** ready for the first private signed-device spike; results pending
+**Status:** device scenarios ready; signed artifact pending owner-controlled
+private-boundary and signing setup
 
 Use this checklist for the first installation on the registered iPhone 17 Pro
 Max and iPhone SE (3rd generation). It validates the native iOS product shell,
@@ -26,7 +27,9 @@ not substitute the synthetic audio probe for `SCN-AUDIO-001` parity evidence.
 ## Prerequisites
 
 - Use a signed IPA produced inside the approved private signing boundary from
-  one trusted `main` commit. Do not sign code from a pull request or fork.
+  one trusted `main` commit through the manual `Private signed iOS IPA`
+  workflow. Do not sign code from a pull request, tag, fork, or public-repository
+  run.
 - The provisioning profile must contain the target device and match the
   application bundle identifier and signing team.
 - Keep the IPA, certificate, profile, device identifiers, AFPACK, HD textures,
@@ -53,6 +56,11 @@ Record these values in a private result record before installation:
 
 Stop before installation if any value is missing or differs from the private
 build manifest.
+
+The workflow and its validators can be reviewed in the public source, but the
+current public remote intentionally cannot produce the artifact. Configure the
+`ios-private` environment only after establishing the approved private signing
+boundary described in [the iOS CI design](../ci/GITHUB-ACTIONS-IOS.md).
 
 ## Device matrix
 

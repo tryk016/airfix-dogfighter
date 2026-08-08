@@ -319,8 +319,10 @@ Tasks:
   runner. Local Xcode/Mac access is not required.
 - Set the deployment target to iOS 16.4 and use availability guards for any
   newer API.
-- Add unsigned simulator CI for pull requests and a protected, manually triggered
-  signed IPA workflow using an ephemeral keychain and GitHub environment secrets.
+- Maintain unsigned simulator CI for pull requests. The protected, manually
+  triggered signed-IPA workflow, ephemeral keychain, Ad Hoc validators, and
+  one-day artifact policy are implemented; its first execution waits for the
+  approved private signing boundary and owner-controlled GitHub environment.
 - Register and use the available Apple Developer account with iPhone 17 Pro Max
   on iOS 26.6 and iPhone SE (3rd generation) on iOS 26.3. Set 16.4 in build
   metadata and availability checks, but do not claim runtime coverage on 16.4.

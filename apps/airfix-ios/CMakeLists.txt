@@ -1,6 +1,16 @@
 set(AIRFIX_IOS_BUNDLE_IDENTIFIER "com.tryk016.airfixdogfighter" CACHE STRING
     "Bundle identifier used by the unsigned iOS shell")
 
+if(AIRFIX_IOS_ENABLE_SIGNING)
+    set(_airfix_ios_code_signing_allowed YES)
+    set(_airfix_ios_code_signing_required YES)
+    set(_airfix_ios_code_sign_style Manual)
+else()
+    set(_airfix_ios_code_signing_allowed NO)
+    set(_airfix_ios_code_signing_required NO)
+    set(_airfix_ios_code_sign_style Automatic)
+endif()
+
 set(AIRFIX_IOS_INITIAL_SETUP_LOGICAL_PATH_BASE64 "" CACHE STRING
     "Optional Base64-encoded private setup logical path used by the iOS shell")
 set(AIRFIX_IOS_INITIAL_LEVEL_LOGICAL_PATH_BASE64 "" CACHE STRING
@@ -191,8 +201,11 @@ set_target_properties(airfix_ios PROPERTIES
         "${CMAKE_CURRENT_BINARY_DIR}/AirfixDogfighter-Info.plist"
     XCODE_GENERATE_SCHEME YES
     XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES
-    XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED NO
-    XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED NO
+    XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED
+        "${_airfix_ios_code_signing_allowed}"
+    XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED
+        "${_airfix_ios_code_signing_required}"
+    XCODE_ATTRIBUTE_CODE_SIGN_STYLE "${_airfix_ios_code_sign_style}"
     XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET
         "${AIRFIX_IOS_DEPLOYMENT_TARGET}"
     XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER
@@ -200,4 +213,5 @@ set_target_properties(airfix_ios PROPERTIES
     XCODE_ATTRIBUTE_SUPPORTED_PLATFORMS "iphoneos iphonesimulator"
     XCODE_ATTRIBUTE_SUPPORTS_MACCATALYST NO
     XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1"
+    XCODE_ATTRIBUTE_SKIP_INSTALL NO
 )

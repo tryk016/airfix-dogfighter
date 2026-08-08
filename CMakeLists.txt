@@ -2,6 +2,62 @@ cmake_minimum_required(VERSION 3.25)
 
 project(AirfixDogfighterReconstruction VERSION 0.1.0 LANGUAGES CXX)
 
+option(AIRFIX_BUILD_TESTS "Build reconstruction tests" ON)
+option(AIRFIX_BUILD_TOOLS "Build desktop reconstruction tools" ON)
+option(AIRFIX_BUILD_IOS_APP "Build the data-less iOS application shell" OFF)
+option(AIRFIX_IOS_SIMULATOR_SMOKE
+    "Enable the CI-only iPhoneSimulator runtime smoke harness" OFF)
+option(AIRFIX_IOS_ENABLE_SIGNING
+    "Allow explicit manual code signing for a private iphoneos build" OFF)
+option(AIRFIX_BUILD_WINDOWS_APP "Build the data-less Windows x64 application shell" OFF)
+set(AIRFIX_IOS_DEPLOYMENT_TARGET "16.4" CACHE STRING
+    "Minimum iOS version supported by the application")
+
+if(AIRFIX_BUILD_IOS_APP AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    message(FATAL_ERROR "AIRFIX_BUILD_IOS_APP requires an iOS CMake toolchain")
+endif()
+
+if(AIRFIX_IOS_SIMULATOR_SMOKE AND NOT AIRFIX_BUILD_IOS_APP)
+    message(FATAL_ERROR
+        "AIRFIX_IOS_SIMULATOR_SMOKE requires AIRFIX_BUILD_IOS_APP=ON")
+endif()
+
+if(AIRFIX_IOS_ENABLE_SIGNING AND NOT AIRFIX_BUILD_IOS_APP)
+    message(FATAL_ERROR
+        "AIRFIX_IOS_ENABLE_SIGNING requires AIRFIX_BUILD_IOS_APP=ON")
+endif()
+
+if(AIRFIX_IOS_ENABLE_SIGNING AND AIRFIX_IOS_SIMULATOR_SMOKE)
+    message(FATAL_ERROR
+        "AIRFIX_IOS_ENABLE_SIGNING cannot be combined with the simulator smoke harness")
+endif()
+
+if(AIRFIX_IOS_ENABLE_SIGNING)
+    string(TOLOWER "${CMAKE_OSX_SYSROOT}" _airfix_ios_signing_sysroot_lower)
+    if(NOT _airfix_ios_signing_sysroot_lower MATCHES
+            "(^|[/\\\\])iphoneos(\\.sdk)?$")
+        message(FATAL_ERROR
+            "AIRFIX_IOS_ENABLE_SIGNING is restricted to iphoneos builds")
+    endif()
+endif()
+
+if(AIRFIX_IOS_SIMULATOR_SMOKE)
+    string(TOLOWER "${CMAKE_OSX_SYSROOT}" _airfix_ios_sysroot_lower)
+    if(NOT _airfix_ios_sysroot_lower MATCHES
+            "(^|[/\\\\])iphonesimulator(\\.sdk)?$")
+        message(FATAL_ERROR
+            "AIRFIX_IOS_SIMULATOR_SMOKE is restricted to iphonesimulator builds")
+    endif()
+endif()
+
+if(AIRFIX_BUILD_WINDOWS_APP AND NOT WIN32)
+    message(FATAL_ERROR "AIRFIX_BUILD_WINDOWS_APP requires a Windows toolchain")
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    enable_language(OBJCXX)
+endif()
+
 include(FetchContent)
 
 # PNG-only decoder used behind the project's own strict RGBA8/IHDR boundary.
@@ -27,41 +83,6 @@ target_compile_definitions(airfix_lodepng PUBLIC
     LODEPNG_NO_COMPILE_ENCODER
     LODEPNG_NO_COMPILE_ERROR_TEXT
 )
-
-option(AIRFIX_BUILD_TESTS "Build reconstruction tests" ON)
-option(AIRFIX_BUILD_TOOLS "Build desktop reconstruction tools" ON)
-option(AIRFIX_BUILD_IOS_APP "Build the data-less iOS application shell" OFF)
-option(AIRFIX_IOS_SIMULATOR_SMOKE
-    "Enable the CI-only iPhoneSimulator runtime smoke harness" OFF)
-option(AIRFIX_BUILD_WINDOWS_APP "Build the data-less Windows x64 application shell" OFF)
-set(AIRFIX_IOS_DEPLOYMENT_TARGET "16.4" CACHE STRING
-    "Minimum iOS version supported by the application")
-
-if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    enable_language(OBJCXX)
-endif()
-
-if(AIRFIX_BUILD_IOS_APP AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    message(FATAL_ERROR "AIRFIX_BUILD_IOS_APP requires an iOS CMake toolchain")
-endif()
-
-if(AIRFIX_IOS_SIMULATOR_SMOKE AND NOT AIRFIX_BUILD_IOS_APP)
-    message(FATAL_ERROR
-        "AIRFIX_IOS_SIMULATOR_SMOKE requires AIRFIX_BUILD_IOS_APP=ON")
-endif()
-
-if(AIRFIX_IOS_SIMULATOR_SMOKE)
-    string(TOLOWER "${CMAKE_OSX_SYSROOT}" _airfix_ios_sysroot_lower)
-    if(NOT _airfix_ios_sysroot_lower MATCHES
-            "(^|[/\\\\])iphonesimulator(\\.sdk)?$")
-        message(FATAL_ERROR
-            "AIRFIX_IOS_SIMULATOR_SMOKE is restricted to iphonesimulator builds")
-    endif()
-endif()
-
-if(AIRFIX_BUILD_WINDOWS_APP AND NOT WIN32)
-    message(FATAL_ERROR "AIRFIX_BUILD_WINDOWS_APP requires a Windows toolchain")
-endif()
 
 if(AIRFIX_BUILD_TESTS)
     enable_testing()

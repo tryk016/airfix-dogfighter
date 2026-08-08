@@ -1880,6 +1880,15 @@ These questions do not block static analysis or the archive work.
 
 ## Blockers
 
+- The private signed-IPA implementation is now source-complete: an explicit
+  `iphoneos` CMake signing gate, manual trusted-`main` workflow, ephemeral
+  keychain archive/export, strict two-device Ad Hoc profile and signed-bundle
+  verification, forbidden-payload scan, and one-day manifest artifact are
+  covered by synthetic public tests. Its first real execution intentionally
+  remains blocked until the owner establishes a private signing boundary and
+  configures the protected certificate, profile, variables, and both device
+  identifiers outside the public repository.
+
 - None for Phase 1 static analysis.
 - No owner action is required to begin the Windows x64 product spike. The
   platform API/minimum-OS choices are engineering decisions, not blockers.

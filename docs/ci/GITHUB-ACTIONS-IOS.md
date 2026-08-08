@@ -1,7 +1,8 @@
 # GitHub Actions iOS build and signing design
 
 **Status:** unsigned shell and data-less simulator runtime smoke implemented;
-private signing design accepted but disabled
+private signed-IPA workflow implemented but fail-closed until an approved
+private signing boundary and owner credentials are configured
 
 **Related decision:** ADR-0004
 
@@ -18,11 +19,12 @@ private signing design accepted but disabled
 - Make every IPA traceable to source commit, workflow run, compiler, SDK, and
   asset-package schema.
 
-The connected source repository is currently public. Only the no-secret,
-unsigned workflow is enabled there. Before signed IPA work, either this remote
+The connected source repository is currently public. The manual signed-IPA
+workflow is present for review, but its first job refuses every public-repository
+run before checkout or secret access. Before it can succeed, either this remote
 must become private or signing must move to a separate private repository and
 protected workflow. No certificate, profile, UDID, signed IPA, or private asset
-package may enter the public remote.
+package may enter the public remote or a publicly downloadable artifact.
 
 ## Accepted device matrix
 
@@ -43,7 +45,7 @@ expanded later.
 flowchart TD
     R["Public source repository (unsigned only)"] --> V["Validate and unit tests"]
     R --> S["macOS simulator build"]
-    P["Future private signing boundary"] --> D["Manual signed device workflow"]
+    P["Protected private signing boundary"] --> D["Manual signed device workflow"]
     D --> K["Ephemeral keychain from GitHub secrets"]
     K --> I["Signed data-less IPA"]
     I --> P1["iPhone 17 Pro Max / iOS 26.6"]
@@ -152,17 +154,25 @@ cannot satisfy the job.
 
 ### 3. `ios-private-ipa`
 
-Trigger: manual `workflow_dispatch` and optionally an explicit private release
-tag. Never run for pull requests or untrusted branches.
+Trigger: manual `workflow_dispatch` only. The implementation is
+`.github/workflows/ios-private-ipa.yml`; it accepts only the current
+`refs/heads/main` SHA and never runs for pull requests, tags, schedules, forks,
+or untrusted branches.
 
-- Attach the job to a protected GitHub Environment such as `ios-private`.
-- Require manual approval before secrets are made available.
+- A no-secret Ubuntu boundary job first requires a private repository, trusted
+  `main` ref, and full source SHA.
+- The macOS signing job is attached to the protected `ios-private` GitHub
+  Environment. Configure required reviewers before adding secrets.
 - Import certificate/profile into a temporary keychain on the ephemeral runner.
 - Build/archive/export a signed ARM64 IPA for the registered devices.
 - Verify signature, entitlements, provisioning profile, bundle identifier,
-  minimum OS, architecture, and forbidden files.
+  both expected device identifiers, minimum OS, architecture, and forbidden
+  files. Synthetic tests exercise malformed profiles, unsafe IPA archive paths,
+  forbidden payloads, and the static workflow boundary in public CI.
 - Upload only the final IPA plus a non-sensitive build manifest and checksums.
-- Use the shortest practical artifact retention, initially one day.
+- Retain the protected artifact for exactly one day, then remove the runner copy
+  in an `if: always()` cleanup step. Signing inputs and generated keychains never
+  enter an artifact or cache.
 
 Physical installation and testing are manual after artifact download. GitHub
 Actions does not replace the device test pass.
@@ -172,7 +182,7 @@ Actions does not replace the device test pass.
 The iOS target accepts four optional CMake cache inputs for a future protected
 private build workflow or an explicit local build:
 
-| GitHub secret | Generated value |
+| Protected input | Generated value |
 |---|---|
 | `AIRFIX_IOS_INITIAL_SETUP_LOGICAL_PATH_BASE64` | Base64 of the explicit private setup logical path |
 | `AIRFIX_IOS_INITIAL_LEVEL_LOGICAL_PATH_BASE64` | Base64 of the explicit private Level logical path |
@@ -202,9 +212,11 @@ replace these build inputs with an authenticated, bounded mission catalogue,
 but that schema is not implemented. Until then, no private logical path belongs
 in the repository or workflow YAML.
 
-## Signing secrets
+## Signing environment
 
-The protected environment holds only the items required for signing:
+Create an `ios-private` GitHub Environment inside the approved private boundary,
+enable required-reviewer approval, and add these secrets directly in GitHub.
+Never paste their values into chat, an issue, a pull request, or the repository:
 
 | Secret | Contents |
 |---|---|
@@ -212,10 +224,25 @@ The protected environment holds only the items required for signing:
 | `P12_PASSWORD` | password for the `.p12` |
 | `BUILD_PROVISION_PROFILE_BASE64` | base64-encoded `.mobileprovision` containing both device UDIDs |
 | `KEYCHAIN_PASSWORD` | random password for the temporary runner keychain |
+| `AIRFIX_IOS_DEVICE_UDID_PRIMARY` | registered iPhone 17 Pro Max device identifier |
+| `AIRFIX_IOS_DEVICE_UDID_SECONDARY` | registered iPhone SE 3 device identifier |
+| `AIRFIX_IOS_INITIAL_SETUP_LOGICAL_PATH_BASE64` | optional private setup logical path |
+| `AIRFIX_IOS_INITIAL_LEVEL_LOGICAL_PATH_BASE64` | optional private Level logical path |
+| `AIRFIX_IOS_INITIAL_PLAYER_OBJECT_LOGICAL_PATH_BASE64` | optional private player definition logical path |
 
-Team ID, bundle ID, profile name, and selected Xcode version are configuration
-variables unless disclosure would be undesirable. No Apple account password or
-long-lived interactive login belongs in the workflow.
+Configure these environment variables:
+
+| Variable | Required value |
+|---|---|
+| `AIRFIX_IOS_TEAM_ID` | ten-character Apple Team ID |
+| `AIRFIX_IOS_BUNDLE_IDENTIFIER` | explicit App ID/bundle identifier in the Ad Hoc profile |
+| `AIRFIX_IOS_PROFILE_NAME` | exact provisioning-profile name |
+| `AIRFIX_IOS_SIGNING_IDENTITY` | exactly `Apple Distribution` |
+| `AIRFIX_IOS_INITIAL_START_INDEX` | optional decimal `uint32_t`, default `0` |
+
+The three optional logical-path secrets must either be empty or provide setup
+and Level together; player is accepted only with that pair. No Apple account
+password or long-lived interactive login belongs in the workflow.
 
 Rules:
 
@@ -256,7 +283,8 @@ forbidden in GitHub Actions uploads and caches.
 ## Artifact policy
 
 - The source repository may remain public only for unsigned jobs; a private
-  boundary is mandatory before signing workflows are enabled.
+  boundary is mandatory before signing can succeed. The committed workflow
+  enforces this in both its boundary job and signing script.
 - Signed IPA artifact retention starts at one day.
 - Test logs/results may use a longer documented retention only when they contain
   no private content.
@@ -316,13 +344,18 @@ Store publication.
 2. Add the portable validation workflow and CMake test skeleton.
 3. Add data-less iOS simulator/device builds with deployment target 16.4.
 4. Implement the synthetic `.afpack` parser and package tests.
-5. Register both device UDIDs and create the private provisioning profile.
-6. Configure protected signing secrets/environment.
-7. Produce and inspect the first signed IPA.
-8. Select/verify Windows-to-iPhone IPA installation method.
-9. Import the locally converted private data package.
-10. Execute device scenarios on iOS 26.6 and 26.3.
-11. Use local Xcode, LLDB, Metal tooling, or Instruments when interactive
+5. Review the fail-closed manual signed-IPA workflow and synthetic validators.
+6. Establish the approved private signing boundary.
+7. Register both device UDIDs and create the Ad Hoc provisioning profile and
+   Apple Distribution `.p12`.
+8. Configure the protected `ios-private` environment, reviewers, secrets, and
+   variables listed above.
+9. Dispatch `Private signed iOS IPA` from trusted `main`, download the one-day
+   artifact, and compare its manifest and SHA-256 before installation.
+10. Select/verify the Windows-to-iPhone IPA installation method.
+11. Import the locally converted private data package.
+12. Execute device scenarios on iOS 26.6 and 26.3.
+13. Use local Xcode, LLDB, Metal tooling, or Instruments when interactive
     device profiling and debugging begin.
 
 ## Authoritative references
