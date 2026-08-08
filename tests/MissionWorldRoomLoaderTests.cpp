@@ -49,6 +49,13 @@ using airfix::testing::UdspInputEntry;
 inline constexpr std::string_view kObjectOnlyTexture = "ObjectOnly";
 inline constexpr std::string_view kObjectOnlyGtiLogicalPath =
     "Graphics/Textures/ObjectOnly.gti";
+inline constexpr std::string_view kSecondObjectLogicalPath =
+    "Game/Objects/Second.object";
+inline constexpr std::string_view kSecondObjectCcfLogicalPath =
+    "Graphics/SecondObject.ccf";
+inline constexpr std::string_view kSecondObjectTexture = "SecondObject";
+inline constexpr std::string_view kSecondObjectGtiLogicalPath =
+    "Graphics/Textures/SecondObject.gti";
 inline constexpr std::string_view kPlayerObjectLogicalPath =
     "Game/Objects/Player.object";
 inline constexpr std::string_view kPlayerCcfLogicalPath =
@@ -210,10 +217,17 @@ literalCompression(const std::span<const std::uint8_t> decoded) {
 
 struct FixtureOptions {
     bool compressedCcfs{};
+    bool noObjects{};
     bool mainCcfDynamicBsp{};
     bool malformedObjectCcf{};
+    bool missingObjectRoom{};
+    bool missingObjectSelector{};
+    bool distinctObjectDefinitions{};
+    bool futureRoomCreatedBySecondObject{};
     bool malformedDetailGti{};
+    bool malformedObjectGti{};
     bool objectUsesMainCcf{};
+    bool objectSharesRoomTextureRoot{};
     bool backdropUsesMainCcf{};
     bool playerVisual{};
     bool playerUsesMainCcf{};
@@ -253,10 +267,18 @@ struct FixtureOptions {
 
 [[nodiscard]] std::vector<UdspInputEntry>
 missionEntries(const FixtureOptions options = {}) {
-    constexpr std::string_view objectPaths[]{
+    const bool usesDistinctObjectDefinitions =
+        options.distinctObjectDefinitions ||
+        options.futureRoomCreatedBySecondObject;
+    const std::array<std::string_view, 2U> objectPaths{
         airfix::testing::kSyntheticObjectLogicalPath,
-        airfix::testing::kSyntheticObjectLogicalPath,
+        usesDistinctObjectDefinitions
+            ? kSecondObjectLogicalPath
+            : airfix::testing::kSyntheticObjectLogicalPath,
     };
+    const std::span<const std::string_view> objectPathSpan =
+        options.noObjects ? std::span<const std::string_view>{}
+                          : std::span<const std::string_view>{objectPaths};
     const std::array<std::string_view, 1U> backdrops{
         options.backdropUsesMainCcf
             ? airfix::testing::kSyntheticCcfLogicalPath
@@ -342,7 +364,12 @@ missionEntries(const FixtureOptions options = {}) {
             .logicalPath =
                 std::string(airfix::testing::kSyntheticLevelLogicalPath),
             .bytes = airfix::testing::makeSyntheticLevel(
-                airfix::testing::kSyntheticWorldLogicalPath, objectPaths),
+                airfix::testing::kSyntheticWorldLogicalPath, objectPathSpan, {},
+                options.missingObjectRoom
+                    ? std::string_view{"MissingRoom"}
+                    : (options.futureRoomCreatedBySecondObject
+                           ? std::string_view{"FutureRoom"}
+                           : std::string_view{"Room"})),
             .flags = 0U,
             .unpackedSize = std::nullopt,
         },
@@ -363,8 +390,14 @@ missionEntries(const FixtureOptions options = {}) {
                     ? airfix::testing::kSyntheticCcfLogicalPath
                     : airfix::testing::kSyntheticAlternateCcfLogicalPath,
                 options.objectUsesMainCcf
-                    ? std::string_view{"Graphics/ObjectTextures"}
-                    : airfix::testing::kSyntheticTextureRoot),
+                    ? (options.objectSharesRoomTextureRoot
+                           ? airfix::testing::kSyntheticTextureRoot
+                           : std::string_view{"Graphics/ObjectTextures"})
+                    : airfix::testing::kSyntheticTextureRoot,
+                airfix::assets::ObjectDefinitionKind::object,
+                options.missingObjectSelector
+                    ? std::nullopt
+                    : std::optional<std::string_view>{"Mesh"}),
             .flags = 0U,
             .unpackedSize = std::nullopt,
         },
@@ -412,6 +445,51 @@ missionEntries(const FixtureOptions options = {}) {
             .unpackedSize = std::nullopt,
         },
     };
+    if (options.setup == FixtureOptions::SetupKind::authoredRoom) {
+        entries.push_back({
+            .logicalPath = std::string(kObjectOnlyGtiLogicalPath),
+            .bytes =
+                options.malformedObjectGti
+                    ? Bytes{0x00U}
+                    : airfix::testing::makeSyntheticRgba8Gti(
+                          airfix::testing::kSyntheticWallRgba, 0x0B1EC700U),
+            .flags = 0U,
+            .unpackedSize = std::nullopt,
+        });
+    }
+    if (usesDistinctObjectDefinitions) {
+        entries.push_back({
+            .logicalPath = std::string(kSecondObjectLogicalPath),
+            .bytes = airfix::testing::makeSyntheticObjectDefinition(
+                kSecondObjectCcfLogicalPath,
+                airfix::testing::kSyntheticTextureRoot,
+                airfix::assets::ObjectDefinitionKind::object,
+                std::string_view{"Mesh"}),
+            .flags = 0U,
+            .unpackedSize = std::nullopt,
+        });
+        entries.push_back({
+            .logicalPath = std::string(kSecondObjectCcfLogicalPath),
+            .bytes = airfix::testing::makeSyntheticLegacyCcf({
+                .primaryTexture = std::string{kSecondObjectTexture},
+                .secondaryTexture = std::nullopt,
+                .ordinaryRoomName = options.futureRoomCreatedBySecondObject
+                                        ? std::string{"FutureRoom"}
+                                        : std::string{"rOoM"},
+                .placedTranslation = {10.0F, 11.0F, 12.0F},
+                .placedRoomReference = 20U,
+            }),
+            .flags = 0U,
+            .unpackedSize = std::nullopt,
+        });
+        entries.push_back({
+            .logicalPath = std::string(kSecondObjectGtiLogicalPath),
+            .bytes = airfix::testing::makeSyntheticRgba8Gti(
+                airfix::testing::kSyntheticDetailRgba, 0x5EC0AD00U),
+            .flags = 0U,
+            .unpackedSize = std::nullopt,
+        });
+    }
     if (options.playerVisual) {
         entries.push_back({
             .logicalPath = std::string(kPlayerObjectLogicalPath),
@@ -624,6 +702,20 @@ void testRootFallbackOrderingCachingAndPoisonTexture() {
             std::ranges::all_of(ccfProgressTotals,
                                 [](const auto total) { return total == 3U; }),
         "repeated object CCF was not cached once while retaining loads");
+    require(
+        room.uniqueObjectDefinitionCount == 1U &&
+            room.levelObjectAdmissions.size() == 2U &&
+            room.levelObjectAdmissions[0].placementIndex == 0U &&
+            room.levelObjectAdmissions[0].sourceIndex == 2U &&
+            room.levelObjectAdmissions[0].ccfCacheIndex == 2U &&
+            room.levelObjectAdmissions[0].targetRoom.worldRoomIndex == 1U &&
+            room.levelObjectAdmissions[1].placementIndex == 1U &&
+            room.levelObjectAdmissions[1].sourceIndex == 3U &&
+            room.levelObjectAdmissions[1].ccfCacheIndex == 2U &&
+            room.levelObjectPlacementRanges.empty() &&
+            room.levelObjectMeshProvenance.empty() &&
+            room.levelObjectInstanceProvenance.empty(),
+        "all physical OBJE admissions were not retained before room filtering");
 
     requireOneTriangle(room, 0U, {1.0F, 2.0F, 3.0F});
     require(room.textures.size() == 2U &&
@@ -724,6 +816,22 @@ void testEnhancedTextureSelectionAndPerAssetFallback() {
                  room, revisionFor(pack))
                  .has_value(),
             "Enhanced room failed its publication boundary");
+
+    const auto objectPack = makePack({
+        .setup = FixtureOptions::SetupKind::authoredRoom,
+    });
+    auto objectSession = openSession(objectPack);
+    auto objectManifest = buildManifest(objectSession);
+    const auto enhancedObjects = airfix::content::loadMissionWorldRoom(
+        objectSession, *objectManifest.manifest, rootRequest(), {}, {}, {},
+        enhancedContext);
+    require(enhancedObjects.success() &&
+                enhancedObjects.room->levelObjectPlacementRanges.size() == 2U &&
+                enhancedObjects.room->textures.size() == 3U &&
+                enhancedObjects.room->enhancedTextureCount == 1U &&
+                enhancedObjects.room->classicTextureCount == 2U &&
+                enhancedObjects.room->textureFallbackCount == 2U,
+            "Enhanced OBJE texture fallback summary changed");
 
     SyntheticTextureFileStore incompleteFiles{89U};
     incompleteFiles.add("hd/wall/base.png", level0);
@@ -829,19 +937,22 @@ void testPlayerVisualSeparateCcfTexturesAndTablePose() {
             ccfProgressCompleted ==
                 std::vector<std::size_t>{0U, 1U, 2U, 3U, 4U} &&
             textureProgressCompleted ==
-                std::vector<std::size_t>{0U, 1U, 2U, 3U},
+                std::vector<std::size_t>{0U, 1U, 2U, 3U, 4U},
         "player CCF did not join the physical cache after room sources");
     require(
         room.meshProvenance.size() == 1U &&
             room.instanceProvenance.size() == 1U &&
-            room.model.meshes.size() == 2U &&
-            room.model.instances.size() == 2U &&
+                room.levelObjectAdmissions.size() == 2U &&
+                room.levelObjectPlacementRanges.size() == 2U &&
+                room.levelObjectMeshProvenance.size() == 2U &&
+                room.levelObjectInstanceProvenance.size() == 2U &&
+                room.model.meshes.size() == 4U &&
+                room.model.instances.size() == 4U &&
             room.playerActorBinding ==
-                std::optional{
-                    airfix::render::PlayerActorSceneBinding{
-                        .firstMeshSlot = 1U,
+                    std::optional{airfix::render::PlayerActorSceneBinding{
+                        .firstMeshSlot = 3U,
                         .meshCount = 1U,
-                        .firstInstanceIndex = 1U,
+                        .firstInstanceIndex = 3U,
                         .instanceCount = 1U}} &&
             room.playerActorMeshProvenance.size() == 1U &&
             room.playerActorInstanceProvenance.size() == 1U &&
@@ -857,13 +968,11 @@ void testPlayerVisualSeparateCcfTexturesAndTablePose() {
     const auto &actorProvenance =
         room.playerActorInstanceProvenance.front();
     const auto expected = airfix::render::composeNodeTransforms(
-        actorWorldFrom(room.playerSpawnPose),
-        actorProvenance.actorLocal);
-    require(
-        room.model.instances[1].modelLinear == expected.linear &&
-            room.model.instances[1].modelTranslation ==
+        actorWorldFrom(room.playerSpawnPose), actorProvenance.actorLocal);
+    require(room.model.instances[3].modelLinear == expected.linear &&
+                room.model.instances[3].modelTranslation ==
                 expected.translation &&
-            room.model.instances[1].sourceNodeReference ==
+                room.model.instances[3].sourceNodeReference ==
                 actorProvenance.actor.blueprintReference &&
             actorProvenance.actor.legacySkinSlot == 0U,
         "table actor world/local transform was not composed exactly once");
@@ -889,11 +998,8 @@ void testPlayerVisualSeparateCcfTexturesAndTablePose() {
                     collisionObjects.size()} &&
             collisionObjects[0].actorObjectId == 321U,
         "authenticated player collider did not publish into its start room");
-    require(
-        room.textures.size() == 3U,
-        "player texture merge count mismatch");
-    require(
-        room.textures[0].sourceFileIndex ==
+    require(room.textures.size() == 4U, "player texture merge count mismatch");
+    require(room.textures[0].sourceFileIndex ==
                 session.sourceArchive()
                     .lookup(
                         airfix::testing::
@@ -908,19 +1014,21 @@ void testPlayerVisualSeparateCcfTexturesAndTablePose() {
                             kSyntheticWallGtiLogicalPath)
                     .fileIndex,
         "shared room/actor texture was duplicated or reordered");
-    require(
-        room.textures[2].sourceFileIndex ==
+    require(room.textures[2].sourceFileIndex ==
+                    session.sourceArchive()
+                        .lookup(kObjectOnlyGtiLogicalPath)
+                        .fileIndex &&
+                room.textures[3].sourceFileIndex ==
                 session.sourceArchive()
                     .lookup(kActorOnlyGtiLogicalPath)
                     .fileIndex,
         "actor-only texture identity changed");
-    require(
-        room.submission.meshUploads.size() == 2U &&
-            room.submission.commands.size() == 2U &&
-            room.submission.commands[1].primary ==
+    require(room.submission.meshUploads.size() == 4U &&
+                room.submission.commands.size() == 4U &&
+                room.submission.commands[3].primary ==
                 std::optional<TextureAssetId>{TextureAssetId{0U}} &&
-            room.submission.commands[1].secondary ==
-                std::optional<TextureAssetId>{TextureAssetId{2U}},
+                room.submission.commands[3].secondary ==
+                    std::optional<TextureAssetId>{TextureAssetId{3U}},
         "actor was not included in the single final submission");
 }
 
@@ -1002,12 +1110,32 @@ void testAuthoredStartSelectsBackdropAndOwnsStart() {
                 room.playerSpawnPose.runtimeWorldPosition ==
                     std::array<float, 3U>{10.0F, 20.0F, 30.0F},
             "authenticated setup provenance or authored start changed");
-    requireOneTriangle(room, 1U, {4.0F, 5.0F, 6.0F});
-    require(room.textures.size() == 2U &&
+    require(room.meshProvenance.size() == 1U &&
+                room.instanceProvenance.size() == 1U &&
+                room.meshProvenance[0].sourceIndex == 1U &&
+                room.instanceProvenance[0].sourceIndex == 1U &&
+                room.model.instances[0].modelTranslation ==
+                    airfix::render::Vec3{4.0F, 5.0F, 6.0F} &&
+                room.levelObjectAdmissions.size() == 2U &&
+                room.levelObjectPlacementRanges.size() == 2U &&
+                room.levelObjectPlacementRanges[0].firstMeshSlot == 1U &&
+                room.levelObjectPlacementRanges[1].firstMeshSlot == 2U &&
+                room.model.meshes.size() == 3U &&
+                room.model.instances.size() == 3U &&
+                room.model.instances[1].modelTranslation ==
+                    airfix::render::Vec3{0.0F, 2.0F, 3.0F} &&
+                room.model.instances[2].modelTranslation ==
+                    airfix::render::Vec3{1.0F, 2.0F, 3.0F},
+            "room prefix or physical object placement order changed");
+    require(room.textures.size() == 3U &&
                 room.submission.commands[0].primary ==
                     std::optional<TextureAssetId>{TextureAssetId{0U}} &&
                 room.submission.commands[0].secondary ==
                     std::optional<TextureAssetId>{TextureAssetId{1U}} &&
+                room.submission.commands[1].primary ==
+                    std::optional<TextureAssetId>{TextureAssetId{2U}} &&
+                room.submission.commands[2].primary ==
+                    std::optional<TextureAssetId>{TextureAssetId{2U}} &&
                 std::equal(room.textures[0].uploadLevels[0].pixels.begin(),
                            room.textures[0].uploadLevels[0].pixels.end(),
                            airfix::testing::kSyntheticDetailRgba.begin(),
@@ -1016,7 +1144,101 @@ void testAuthoredStartSelectsBackdropAndOwnsStart() {
                            room.textures[1].uploadLevels[0].pixels.end(),
                            airfix::testing::kSyntheticWallRgba.begin(),
                            airfix::testing::kSyntheticWallRgba.end()),
-            "backdrop Detail then Wall first-use namespace changed");
+            "room then first-use object texture namespace changed");
+}
+
+void testNoObjectsRetainsRoomOnlySnapshotAndAccounting() {
+    const auto pack = makePack({.noObjects = true});
+    auto session = openSession(pack);
+    auto manifest = buildManifest(session);
+    require(manifest.success(), "no-OBJE manifest failed");
+    const auto result = airfix::content::loadMissionWorldRoom(
+        session, *manifest.manifest, rootRequest());
+    require(result.success(), "no-OBJE room load failed");
+    const auto &room = *result.room;
+    require(room.semanticCcfSourceCount == 2U &&
+                room.uniqueObjectDefinitionCount == 0U &&
+                room.levelObjectAdmissions.empty() &&
+                room.levelObjectPlacementRanges.empty() &&
+                room.levelObjectMeshProvenance.empty() &&
+                room.levelObjectInstanceProvenance.empty() &&
+                room.model.meshes.size() == 1U &&
+                room.model.instances.size() == 1U &&
+                room.meshProvenance.size() == 1U &&
+                room.instanceProvenance.size() == 1U,
+            "no-OBJE room-only snapshot or accounting changed");
+}
+
+void testDistinctObjectCcfMaterialNamespacesRemainIsolated() {
+    const auto pack = makePack({
+        .distinctObjectDefinitions = true,
+        .setup = FixtureOptions::SetupKind::authoredRoom,
+    });
+    auto session = openSession(pack);
+    auto manifest = buildManifest(session);
+    require(manifest.success(), "distinct OBJE manifest failed");
+    const auto result = airfix::content::loadMissionWorldRoom(
+        session, *manifest.manifest, rootRequest());
+    require(result.success(), "distinct OBJE load failed");
+    const auto &room = *result.room;
+    require(
+        room.uniqueObjectDefinitionCount == 2U &&
+            room.levelObjectAdmissions.size() == 2U &&
+            room.levelObjectAdmissions[0].targetRoom ==
+                room.levelObjectAdmissions[1].targetRoom &&
+            room.levelObjectAdmissions[0].targetRoom.legacyCcRoomId == 1 &&
+            room.levelObjectPlacementRanges.size() == 2U &&
+            room.levelObjectPlacementRanges[0].uniqueObjectDefinitionIndex ==
+                0U &&
+            room.levelObjectPlacementRanges[1].uniqueObjectDefinitionIndex ==
+                1U &&
+            room.textures.size() == 4U &&
+            room.submission.commands.size() == 3U &&
+            room.submission.commands[1].primary ==
+                std::optional<TextureAssetId>{TextureAssetId{2U}} &&
+            room.submission.commands[2].primary ==
+                std::optional<TextureAssetId>{TextureAssetId{3U}} &&
+            room.textures[2].sourceFileIndex ==
+                session.sourceArchive()
+                    .lookup(kObjectOnlyGtiLogicalPath)
+                    .fileIndex &&
+            room.textures[3].sourceFileIndex ==
+                session.sourceArchive()
+                    .lookup(kSecondObjectGtiLogicalPath)
+                    .fileIndex,
+        "local material zero crossed distinct object CCF namespaces");
+}
+
+void testRoomObjectsAndPlayerShareOneTextureImportNamespace() {
+    const auto pack = makePack({
+        .objectUsesMainCcf = true,
+        .objectSharesRoomTextureRoot = true,
+        .playerVisual = true,
+        .playerUsesMainCcf = true,
+        .setup = FixtureOptions::SetupKind::authoredRoom,
+    });
+    auto session = openSession(pack);
+    auto manifest = buildManifest(session, true);
+    require(manifest.success(), "shared GTI namespace manifest failed");
+    const auto result = airfix::content::loadMissionWorldRoom(
+        session, *manifest.manifest, rootRequest());
+    require(result.success(), "shared GTI namespace load failed");
+    const auto &room = *result.room;
+    require(room.textures.size() == 2U && room.uniqueCcfSourceCount == 2U &&
+                room.levelObjectPlacementRanges.size() == 2U &&
+                room.playerActorBinding.has_value() &&
+                room.playerActorBinding->firstMeshSlot == 3U &&
+                room.model.meshes.size() == 4U &&
+                room.submission.commands.size() == 4U &&
+                room.submission.commands[0].primary ==
+                    std::optional<TextureAssetId>{TextureAssetId{0U}} &&
+                room.submission.commands[1].primary ==
+                    std::optional<TextureAssetId>{TextureAssetId{1U}} &&
+                room.submission.commands[2].primary ==
+                    std::optional<TextureAssetId>{TextureAssetId{1U}} &&
+                room.submission.commands[3].primary ==
+                    std::optional<TextureAssetId>{TextureAssetId{1U}},
+            "room/object/player duplicated or reordered shared GTIs");
 }
 
 void testOnePhysicalCcfRetainsDifferentSemanticLoads() {
@@ -1183,7 +1405,130 @@ void testCallerInputsAreSnapshottedBeforeCallbacks() {
                 result.room->selectedStart.has_value() &&
                 result.room->selectedStart->roomName == "Room",
             "loader dereferenced caller-owned input after its first callback");
-    requireOneTriangle(*result.room, 1U, {4.0F, 5.0F, 6.0F});
+    require(result.room->meshProvenance.size() == 1U &&
+                result.room->instanceProvenance.size() == 1U &&
+                result.room->model.instances.size() == 3U &&
+                result.room->model.instances[0].modelTranslation ==
+                    airfix::render::Vec3{4.0F, 5.0F, 6.0F} &&
+                result.room->levelObjectPlacementRanges.size() == 2U,
+            "snapshotted manifest did not retain room plus OBJE suffix");
+}
+
+void testLevelObjectAdmissionAndAssemblyFailuresAreAtomic() {
+    {
+        const auto pack = makePack({.futureRoomCreatedBySecondObject = true});
+        auto session = openSession(pack);
+        auto manifest = buildManifest(session);
+        require(manifest.success(), "forward-room OBJE manifest failed");
+        requireAtomicFailure(
+            airfix::content::loadMissionWorldRoom(session, *manifest.manifest,
+                                                  rootRequest()),
+            MissionWorldRoomLoadIssueKind::levelObjectAdmissionFailure,
+            "earlier OBJE resolved a room created by a later CCF source");
+    }
+    {
+        const auto pack = makePack({.missingObjectRoom = true});
+        auto session = openSession(pack);
+        auto manifest = buildManifest(session);
+        require(manifest.success(), "missing-room OBJE manifest failed");
+        requireAtomicFailure(
+            airfix::content::loadMissionWorldRoom(session, *manifest.manifest,
+                                                  rootRequest()),
+            MissionWorldRoomLoadIssueKind::levelObjectAdmissionFailure,
+            "missing OBJE room published a partial candidate");
+    }
+    {
+        const auto pack = makePack({.missingObjectSelector = true});
+        auto session = openSession(pack);
+        auto manifest = buildManifest(session);
+        require(manifest.success(), "missing-selector fixture manifest failed");
+        requireAtomicFailure(
+            airfix::content::loadMissionWorldRoom(session, *manifest.manifest,
+                                                  rootRequest()),
+            MissionWorldRoomLoadIssueKind::levelObjectAdmissionFailure,
+            "missing OBJE selector published a partial candidate");
+    }
+    {
+        const auto pack = makePack({
+            .setup = FixtureOptions::SetupKind::authoredRoom,
+        });
+        auto session = openSession(pack);
+        auto manifest = buildManifest(session);
+        require(manifest.success(), "OBJE scene-limit manifest failed");
+        MissionWorldRoomLoadLimits limits;
+        limits.levelObjectScene.maximumPlacements = 1U;
+        requireAtomicFailure(
+            airfix::content::loadMissionWorldRoom(session, *manifest.manifest,
+                                                  rootRequest(), limits),
+            MissionWorldRoomLoadIssueKind::levelObjectSceneAssemblyFailure,
+            "OBJE scene limit published room prefix");
+    }
+    {
+        const auto pack = makePack({
+            .malformedObjectGti = true,
+            .setup = FixtureOptions::SetupKind::authoredRoom,
+        });
+        auto session = openSession(pack);
+        auto manifest = buildManifest(session);
+        requireAtomicFailure(
+            airfix::content::loadMissionWorldRoom(session, *manifest.manifest,
+                                                  rootRequest()),
+            MissionWorldRoomLoadIssueKind::texturePreparationFailure,
+            "late OBJE texture preparation failure published a candidate");
+    }
+    constexpr std::array objectPhases{
+        MissionWorldRoomLoadPhase::admittingLevelObjects,
+        MissionWorldRoomLoadPhase::planningObjectTextureBindings,
+        MissionWorldRoomLoadPhase::assemblingLevelObjects,
+    };
+    const auto pack = makePack({
+        .setup = FixtureOptions::SetupKind::authoredRoom,
+    });
+    for (const auto phase : objectPhases) {
+        auto session = openSession(pack);
+        auto manifest = buildManifest(session);
+        std::stop_source stop;
+        bool reached = false;
+        const auto result = airfix::content::loadMissionWorldRoom(
+            session, *manifest.manifest, rootRequest(), {}, stop.get_token(),
+            [&](const auto &progress) {
+                if (!reached && progress.phase == phase) {
+                    reached = true;
+                    stop.request_stop();
+                }
+            });
+        require(reached, "OBJE cancellation phase was not reached");
+        requireAtomicFailure(result, MissionWorldRoomLoadIssueKind::cancelled,
+                             "OBJE phase cancellation published a candidate");
+    }
+    {
+        auto session = openSession(pack);
+        auto manifest = buildManifest(session);
+        const auto baseline = airfix::content::loadMissionWorldRoom(
+            session, *manifest.manifest, rootRequest());
+        require(baseline.success(), "OBJE exact-budget baseline failed");
+
+        MissionWorldRoomLoadLimits exact;
+        exact.objectTextureBindings.maximumSources = 2U;
+        exact.objectTextureBindings.maximumUniqueDefinitions = 1U;
+        exact.levelObjectScene.maximumPlacements = 2U;
+        exact.maximumPublishedCpuBytes = baseline.room->publishedCpuBytes;
+        session = openSession(pack);
+        manifest = buildManifest(session);
+        require(airfix::content::loadMissionWorldRoom(
+                    session, *manifest.manifest, rootRequest(), exact)
+                    .success(),
+                "exact OBJE admission/scene/CPU budgets were rejected");
+
+        --exact.maximumPublishedCpuBytes;
+        session = openSession(pack);
+        manifest = buildManifest(session);
+        requireAtomicFailure(
+            airfix::content::loadMissionWorldRoom(session, *manifest.manifest,
+                                                  rootRequest(), exact),
+            MissionWorldRoomLoadIssueKind::publishedCpuLimitExceeded,
+            "one-under OBJE published CPU bytes succeeded");
+    }
 }
 
 void testCancellationCallbacksAndInvalidStartsAreAtomic() {
@@ -1649,6 +1994,8 @@ sourceFootprint(const VerifiedContentSession &session,
     total += room.setupEntry.logicalPath.size();
     total += room.textures.size() * sizeof(airfix::content::LoadedTextureAsset);
     total += room.ccfCacheIndexByLoadSource.size() * sizeof(std::size_t);
+    total += room.levelObjectAdmissions.size() *
+             sizeof(airfix::content::LevelObjectAdmission);
     total += room.retainedSpatialBytes;
     if (room.playerVisual.has_value()) {
         total +=
@@ -1684,6 +2031,12 @@ sourceFootprint(const VerifiedContentSession &session,
              sizeof(airfix::render::MissionWorldRoomMeshProvenance);
     total += room.instanceProvenance.size() *
              sizeof(airfix::render::MissionWorldRoomInstanceProvenance);
+    total += room.levelObjectMeshProvenance.size() *
+             sizeof(airfix::render::LevelObjectSceneMeshProvenance);
+    total += room.levelObjectInstanceProvenance.size() *
+             sizeof(airfix::render::LevelObjectSceneInstanceProvenance);
+    total += room.levelObjectPlacementRanges.size() *
+             sizeof(airfix::render::LevelObjectScenePlacementRange);
     total += room.playerActorMeshProvenance.size() *
              sizeof(airfix::render::PlayerActorSceneMeshProvenance);
     total += room.playerActorInstanceProvenance.size() *
@@ -2384,13 +2737,17 @@ void testPlayerExactAndOneUnderBudgets() {
 int main() {
     try {
         testRootFallbackOrderingCachingAndPoisonTexture();
+        testNoObjectsRetainsRoomOnlySnapshotAndAccounting();
         testEnhancedTextureSelectionAndPerAssetFallback();
         testPlayerVisualSeparateCcfTexturesAndTablePose();
         testPlayerVisualReusesRoomCcfAndRootPose();
         testAuthoredStartSelectsBackdropAndOwnsStart();
+        testDistinctObjectCcfMaterialNamespacesRemainIsolated();
+        testRoomObjectsAndPlayerShareOneTextureImportNamespace();
         testOnePhysicalCcfRetainsDifferentSemanticLoads();
         testProofRevisionAndSessionIdentityGuards();
         testCallerInputsAreSnapshottedBeforeCallbacks();
+        testLevelObjectAdmissionAndAssemblyFailuresAreAtomic();
         testCancellationCallbacksAndInvalidStartsAreAtomic();
         testLateCcfAndGtiFailuresAreAtomic();
         testPlayerLateFailuresAndCallbacksAreAtomic();

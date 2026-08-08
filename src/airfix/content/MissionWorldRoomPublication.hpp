@@ -48,6 +48,16 @@ enum class MissionWorldRoomPublicationIssueKind : std::uint8_t {
     ccfCacheIndexOutOfRange,
     ccfCacheFirstUseOrderMismatch,
     uniqueCcfSourceCountMismatch,
+    levelObjectAdmissionCooccurrenceMismatch,
+    levelObjectAdmissionOrderMismatch,
+    levelObjectDefinitionIndexOutOfRange,
+    levelObjectCacheJoinMismatch,
+    levelObjectRoomIdentityMismatch,
+    levelObjectPlacementRangeMismatch,
+    levelObjectMeshProvenanceMismatch,
+    levelObjectInstanceProvenanceMismatch,
+    levelObjectTransformMismatch,
+    levelObjectMaterialAssetOutOfRange,
     playerVisualCooccurrenceMismatch,
     invalidPlayerVisualDescriptor,
     playerVisualCcfCacheIndexOutOfRange,
@@ -75,7 +85,8 @@ enum class MissionWorldRoomPublicationIssueKind : std::uint8_t {
 struct MissionWorldRoomPublicationIssue {
     MissionWorldRoomPublicationIssueKind kind{
         MissionWorldRoomPublicationIssueKind::revisionMismatch};
-    // Set for a CCF load source or table start-position index, as applicable.
+    // Set for a CCF source, table start, object placement/range, or object
+    // provenance ordinal, as applicable to the issue kind.
     std::optional<std::size_t> sourceIndex;
     // Set for a non-finite position or axis-rotation component.
     std::optional<std::size_t> componentIndex;

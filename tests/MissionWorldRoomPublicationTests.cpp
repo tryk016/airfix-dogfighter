@@ -96,6 +96,8 @@ void require(const bool condition, const std::string_view message) {
     total += room.textures.size() *
         sizeof(airfix::content::LoadedTextureAsset);
     total += room.ccfCacheIndexByLoadSource.size() * sizeof(std::size_t);
+    total += room.levelObjectAdmissions.size() *
+             sizeof(airfix::content::LevelObjectAdmission);
     total += room.retainedSpatialBytes;
     if (room.playerVisual.has_value()) {
         total +=
@@ -133,6 +135,12 @@ void require(const bool condition, const std::string_view message) {
         sizeof(airfix::render::MissionWorldRoomMeshProvenance);
     total += room.instanceProvenance.size() *
         sizeof(airfix::render::MissionWorldRoomInstanceProvenance);
+    total += room.levelObjectMeshProvenance.size() *
+             sizeof(airfix::render::LevelObjectSceneMeshProvenance);
+    total += room.levelObjectInstanceProvenance.size() *
+             sizeof(airfix::render::LevelObjectSceneInstanceProvenance);
+    total += room.levelObjectPlacementRanges.size() *
+             sizeof(airfix::render::LevelObjectScenePlacementRange);
     total += room.playerActorMeshProvenance.size() *
         sizeof(airfix::render::PlayerActorSceneMeshProvenance);
     total += room.playerActorInstanceProvenance.size() *
@@ -216,6 +224,97 @@ void refreshPublishedCpuBytes(LoadedMissionWorldRoom& room) {
         throw std::runtime_error("valid table pose fixture failed to build");
     }
     room.playerSpawnPose = *pose.pose;
+    refreshPublishedCpuBytes(room);
+    return room;
+}
+
+[[nodiscard]] LoadedMissionWorldRoom validLevelObjectRoom() {
+    auto room = validTableRoom();
+    room.uniqueObjectDefinitionCount = 1U;
+    const airfix::render::LevelObjectTargetRoomIdentity targetRoom{1U, 1};
+    const airfix::render::ConvertedNodeTransform identity{
+        .linear = {},
+        .translation = {},
+        .rawScalar = 1.0F,
+    };
+    room.levelObjectAdmissions = {
+        {
+            .placementIndex = 0U,
+            .sourceIndex = 1U,
+            .uniqueObjectDefinitionIndex = 0U,
+            .ccfCacheIndex = 1U,
+            .targetRoom = targetRoom,
+            .placementRoot = identity,
+        },
+        {
+            .placementIndex = 1U,
+            .sourceIndex = 2U,
+            .uniqueObjectDefinitionIndex = 0U,
+            .ccfCacheIndex = 1U,
+            .targetRoom = targetRoom,
+            .placementRoot = identity,
+        },
+    };
+    room.model.meshes.resize(2U);
+    room.model.instances = {
+        {
+            .meshSlot = 0U,
+            .sourceNodeReference = 10U,
+            .modelLinear = identity.linear,
+            .modelTranslation = identity.translation,
+        },
+        {
+            .meshSlot = 1U,
+            .sourceNodeReference = 11U,
+            .modelLinear = identity.linear,
+            .modelTranslation = identity.translation,
+        },
+    };
+    for (std::size_t index = 0U; index < 2U; ++index) {
+        room.levelObjectMeshProvenance.push_back({
+            .placementIndex = index,
+            .sourceIndex = index + 1U,
+            .uniqueObjectDefinitionIndex = 0U,
+            .targetRoom = targetRoom,
+            .blueprintIndex = index + 4U,
+            .physicalMeshIndex = 0U,
+            .finalMeshSlot = static_cast<std::uint32_t>(index),
+        });
+        room.levelObjectInstanceProvenance.push_back({
+            .placementIndex = index,
+            .sourceIndex = index + 1U,
+            .uniqueObjectDefinitionIndex = 0U,
+            .targetRoom = targetRoom,
+            .blueprintIndex = index + 4U,
+            .physicalMeshIndex = 0U,
+            .finalMeshSlot = static_cast<std::uint32_t>(index),
+            .finalInstanceIndex = static_cast<std::uint32_t>(index),
+            .local = identity,
+        });
+        room.levelObjectPlacementRanges.push_back({
+            .placementIndex = index,
+            .sourceIndex = index + 1U,
+            .uniqueObjectDefinitionIndex = 0U,
+            .targetRoom = targetRoom,
+            .firstMeshSlot = index,
+            .meshCount = 1U,
+            .firstInstanceIndex = index,
+            .instanceCount = 1U,
+        });
+    }
+    refreshPublishedCpuBytes(room);
+    return room;
+}
+
+[[nodiscard]] LoadedMissionWorldRoom
+validLevelObjectRoomWithUnselectedAdmission() {
+    auto room = validLevelObjectRoom();
+    room.levelObjectAdmissions[1].targetRoom = {0U, 0};
+    room.model.meshes.resize(1U);
+    room.model.instances.resize(1U);
+    room.levelObjectMeshProvenance.resize(1U);
+    room.levelObjectInstanceProvenance.resize(1U);
+    room.levelObjectPlacementRanges.resize(1U);
     refreshPublishedCpuBytes(room);
     return room;
 }
@@ -1065,6 +1164,116 @@ void testPlayerActorPublicationBoundary() {
     }
 }
 
+void testLevelObjectPublicationBoundary() {
+    {
+        const auto room = validLevelObjectRoom();
+        require(!airfix::content::validateMissionWorldRoomPublication(
+                     room, revision())
+                     .has_value(),
+                "valid repeated-definition OBJE publication was rejected");
+    }
+    {
+        auto room = validLevelObjectRoom();
+        room.levelObjectAdmissions[1].sourceIndex = 1U;
+        requireIssue(room,
+                     {.kind = MissionWorldRoomPublicationIssueKind::
+                          levelObjectAdmissionOrderMismatch,
+                      .sourceIndex = 1U},
+                     "duplicate OBJE source ordinal was accepted");
+    }
+    {
+        auto room = validLevelObjectRoom();
+        room.levelObjectAdmissions[0].uniqueObjectDefinitionIndex = 1U;
+        requireIssue(room,
+                     {.kind = MissionWorldRoomPublicationIssueKind::
+                          levelObjectDefinitionIndexOutOfRange,
+                      .sourceIndex = 0U},
+                     "out-of-range OBJE definition join was accepted");
+    }
+    {
+        auto room = validLevelObjectRoom();
+        room.levelObjectAdmissions[0].ccfCacheIndex = 0U;
+        requireIssue(room,
+                     {.kind = MissionWorldRoomPublicationIssueKind::
+                          levelObjectCacheJoinMismatch,
+                      .sourceIndex = 0U},
+                     "forged OBJE cache join was accepted");
+    }
+    {
+        auto room = validLevelObjectRoom();
+        room.levelObjectAdmissions[0].targetRoom.legacyCcRoomId = 0;
+        requireIssue(room,
+                     {.kind = MissionWorldRoomPublicationIssueKind::
+                          levelObjectRoomIdentityMismatch,
+                      .sourceIndex = 0U},
+                     "forged OBJE room identity was accepted");
+    }
+    {
+        auto room = validLevelObjectRoomWithUnselectedAdmission();
+        require(!airfix::content::validateMissionWorldRoomPublication(
+                     room, revision())
+                     .has_value(),
+                "valid unselected-room OBJE admission was rejected");
+        room.levelObjectAdmissions[1].placementRoot.translation.x =
+            std::numeric_limits<float>::quiet_NaN();
+        requireIssue(room,
+                     {.kind = MissionWorldRoomPublicationIssueKind::
+                          levelObjectTransformMismatch,
+                      .sourceIndex = 1U},
+                     "non-finite unselected OBJE translation was accepted");
+    }
+    {
+        auto room = validLevelObjectRoomWithUnselectedAdmission();
+        room.levelObjectAdmissions[1].placementRoot.linear.columns[2].y =
+            std::numeric_limits<float>::infinity();
+        requireIssue(
+            room,
+            {.kind = MissionWorldRoomPublicationIssueKind::
+                 levelObjectTransformMismatch,
+             .sourceIndex = 1U},
+            "non-finite unselected OBJE linear transform was accepted");
+    }
+    {
+        auto room = validLevelObjectRoom();
+        room.levelObjectPlacementRanges[1].firstMeshSlot = 0U;
+        requireIssue(room,
+                     {.kind = MissionWorldRoomPublicationIssueKind::
+                          levelObjectPlacementRangeMismatch,
+                      .sourceIndex = 1U},
+                     "overlapping OBJE mesh range was accepted");
+    }
+    {
+        auto room = validLevelObjectRoom();
+        room.levelObjectMeshProvenance[1].finalMeshSlot = 0U;
+        requireIssue(room,
+                     {.kind = MissionWorldRoomPublicationIssueKind::
+                          levelObjectMeshProvenanceMismatch,
+                      .sourceIndex = 1U},
+                     "forged OBJE absolute mesh slot was accepted");
+    }
+    {
+        auto room = validLevelObjectRoom();
+        room.model.instances[1].modelTranslation.x = 1.0F;
+        requireIssue(room,
+                     {.kind = MissionWorldRoomPublicationIssueKind::
+                          levelObjectTransformMismatch,
+                      .sourceIndex = 1U},
+                     "forged OBJE composed transform was accepted");
+    }
+    {
+        auto room = validLevelObjectRoom();
+        room.model.meshes[0].materials.push_back({
+            .sourceReference = 8U,
+            .primary = airfix::render::TextureAssetId{0U},
+        });
+        requireIssue(room,
+                     {.kind = MissionWorldRoomPublicationIssueKind::
+                          levelObjectMaterialAssetOutOfRange,
+                      .sourceIndex = 0U},
+                     "out-of-range OBJE TextureAssetId was accepted");
+    }
+}
+
 void testSpatialPublicationBoundary() {
     {
         auto room = validRootRoom();
@@ -1347,6 +1556,7 @@ int main() {
         testTableMutationsAndFiniteness();
         testPlayerSpawnPoseBinding();
         testCcfCountAndCacheMutations();
+        testLevelObjectPublicationBoundary();
         testPlayerActorPublicationBoundary();
         testSpatialPublicationBoundary();
         testPlacedCollisionPublicationBoundary();

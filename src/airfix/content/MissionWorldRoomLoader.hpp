@@ -5,9 +5,11 @@
 #include "airfix/content/LoadedTextureAsset.hpp"
 #include "airfix/content/MissionLoadManifest.hpp"
 #include "airfix/render/DrawSubmissionPlan.hpp"
+#include "airfix/render/LevelObjectSceneAssembly.hpp"
 #include "airfix/render/MissionPlacedDynamicBspAssembly.hpp"
 #include "airfix/render/MissionWorldRoomDrawAssembly.hpp"
 #include "airfix/render/MissionWorldRoomTextureBindings.hpp"
+#include "airfix/render/ObjectTextureBindings.hpp"
 #include "airfix/render/PlayerActorCollisionAssembly.hpp"
 #include "airfix/render/PlayerActorSceneAssembly.hpp"
 #include "airfix/render/PlayerActorTextureBindings.hpp"
@@ -40,8 +42,10 @@ struct MissionWorldRoomLoadLimits {
     assets::MissionWorldSpatialArenaLimits spatialArena{};
     assets::MissionWorldStartResolutionLimits starts{};
     render::MissionWorldRoomTextureBindingLimits textureBindings{};
+    render::ObjectTextureBindingLimits objectTextureBindings{};
     render::MissionPlacedDynamicBspLimits placedCollision{};
     render::MissionWorldRoomDrawLimits draw{};
+    render::LevelObjectSceneLimits levelObjectScene{};
     render::DrawSubmissionLimits submission{};
     render::GtiUploadDataLimits gtiPerTexture{};
     render::PlayerActorTextureBindingLimits playerTextureBindings{};
@@ -69,6 +73,32 @@ struct MissionWorldRoomLoadLimits {
     std::size_t maximumPlayerBlueprintSelectorBytes{4'096U};
     std::size_t maximumPlayerTextureRootBytes{4'096U};
     std::uint64_t maximumPublishedCpuBytes{768U * 1024U * 1024U};
+};
+
+struct LevelObjectAdmission final {
+    std::size_t placementIndex{};
+    std::size_t sourceIndex{};
+    std::size_t uniqueObjectDefinitionIndex{};
+    std::size_t ccfCacheIndex{};
+    render::LevelObjectTargetRoomIdentity targetRoom;
+    // Exact placement root used to authenticate every published object
+    // instance transform without retaining private authored strings.
+    render::ConvertedNodeTransform placementRoot;
+
+    [[nodiscard]] friend constexpr bool
+    operator==(const LevelObjectAdmission &left,
+               const LevelObjectAdmission &right) {
+        return left.placementIndex == right.placementIndex &&
+               left.sourceIndex == right.sourceIndex &&
+               left.uniqueObjectDefinitionIndex ==
+                   right.uniqueObjectDefinitionIndex &&
+               left.ccfCacheIndex == right.ccfCacheIndex &&
+               left.targetRoom == right.targetRoom &&
+               left.placementRoot.linear == right.placementRoot.linear &&
+               left.placementRoot.translation ==
+                   right.placementRoot.translation &&
+               left.placementRoot.rawScalar == right.placementRoot.rawScalar;
+    }
 };
 
 struct MissionWorldRoomTextureReplacementContext final {
@@ -108,6 +138,9 @@ enum class MissionWorldRoomLoadPhase : std::uint8_t {
     assemblingPlayerScene,
     validatingPublication,
     preflightingPlayerCcfSource,
+    admittingLevelObjects,
+    planningObjectTextureBindings,
+    assemblingLevelObjects,
 };
 
 struct MissionWorldRoomLoadProgress {
@@ -136,11 +169,13 @@ enum class MissionWorldRoomLoadIssueKind : std::uint8_t {
     ccfParseFailure,
     retainedCcfMetadataLimitExceeded,
     catalogFailure,
+    levelObjectAdmissionFailure,
     spatialArenaFailure,
     placedCollisionAssemblyFailure,
     startResolutionFailure,
     startSelectionFailure,
     textureBindingFailure,
+    objectTextureBindingFailure,
     invalidTextureImport,
     textureAssetLimitExceeded,
     textureSourceLimitExceeded,
@@ -151,6 +186,7 @@ enum class MissionWorldRoomLoadIssueKind : std::uint8_t {
     uploadRgbaLimitExceeded,
     residentRgbaLimitExceeded,
     drawAssemblyFailure,
+    levelObjectSceneAssemblyFailure,
     submissionFailure,
     publishedCpuLimitExceeded,
     integerOverflow,
@@ -185,8 +221,12 @@ struct MissionWorldRoomLoadIssue {
     std::optional<assets::MissionWorldStartIssueKind> startIssue;
     std::optional<render::MissionWorldRoomTextureBindingIssueKind>
         textureBindingIssue;
+    std::optional<render::ObjectTextureBindingIssueKind>
+        objectTextureBindingIssue;
     std::optional<render::GtiUploadDataIssueKind> texturePreparationIssue;
     std::optional<render::MissionWorldRoomDrawIssueKind> drawAssemblyIssue;
+    std::optional<render::LevelObjectSceneIssueKind>
+        levelObjectSceneAssemblyIssue;
     std::optional<render::DrawSubmissionIssueKind> submissionIssue;
     std::optional<render::PlayerActorTextureBindingIssueKind>
         playerTextureBindingIssue;
@@ -216,6 +256,15 @@ struct LoadedMissionWorldRoom {
     // Static room provenance remains a stable prefix of the final model.
     std::vector<render::MissionWorldRoomMeshProvenance> meshProvenance;
     std::vector<render::MissionWorldRoomInstanceProvenance> instanceProvenance;
+    // All physical OBJE placements are admitted before room filtering.
+    std::vector<LevelObjectAdmission> levelObjectAdmissions;
+    // These describe only the emitted selected-room object suffix.
+    std::vector<render::LevelObjectSceneMeshProvenance>
+        levelObjectMeshProvenance;
+    std::vector<render::LevelObjectSceneInstanceProvenance>
+        levelObjectInstanceProvenance;
+    std::vector<render::LevelObjectScenePlacementRange>
+        levelObjectPlacementRanges;
     std::optional<MissionPlayerVisualDescriptor> playerVisual;
     std::vector<render::PlayerActorSceneMeshProvenance>
         playerActorMeshProvenance;
@@ -238,6 +287,7 @@ struct LoadedMissionWorldRoom {
     // room-only manifest CCF load list. The optional player index addresses
     // the same first-use-ordered physical cache after all room first uses.
     std::size_t semanticCcfSourceCount{};
+    std::size_t uniqueObjectDefinitionCount{};
     std::size_t uniqueCcfSourceCount{};
     std::uint64_t uniqueCcfSourceFootprintBytes{};
     std::uint64_t retainedCcfMetadataBytes{};

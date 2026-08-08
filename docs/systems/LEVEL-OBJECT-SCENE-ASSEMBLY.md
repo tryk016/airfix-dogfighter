@@ -34,3 +34,21 @@ semantic reconstruction, not a claim of
 bit-identical x87 transform arithmetic or renderer draw-order parity. The
 builder does not consume CCF `0x4000` placed-scene records and does not apply
 the separate player `Y(pi)` pose.
+
+## Mission room integration
+
+`loadMissionWorldRoom` pins the physical Level `OBJE` records and unique
+object definitions before invoking callbacks. It authenticates every placement
+against the dense manifest descriptor join, the first-use physical CCF cache,
+and an immutable root-first/newest-ordinary room catalogue snapshot. Missing
+rooms, selectors, blueprints, CCFs, or cache joins fail the entire candidate.
+
+Only placements targeting the selected runtime room are emitted into its draw
+model. Texture IDs remain one namespace in deterministic order: room prefix,
+selected-room object definitions in first physical use, then the optional
+player. Repeated definitions share texture bindings while retaining separate
+placement ranges. Final scene order is room, object suffix, player suffix.
+`LoadedMissionWorldRoom` retains admissions for every physical placement and
+selected-room ranges/provenance so the allocation-free publication validator
+can recheck dense joins, room identities, absolute indices, material IDs, and
+composed transforms.

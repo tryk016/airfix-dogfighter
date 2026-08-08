@@ -61,6 +61,7 @@ inline constexpr std::array<std::uint8_t, 16U> kSyntheticDetailRgba{{
 struct SyntheticLegacyCcfOptions {
     std::string primaryTexture{"Wall"};
     std::optional<std::string> secondaryTexture;
+    std::string ordinaryRoomName{"Room"};
     std::array<float, 3U> placedTranslation{4.0F, 5.0F, 6.0F};
     std::uint32_t placedRoomReference{20U};
     bool includePlacedDynamicBsp{};
@@ -444,12 +445,17 @@ inline void validateCcf(
         kSyntheticAlternateCcfLogicalPath,
     const std::string_view textureRoot = kSyntheticTextureRoot,
     const assets::ObjectDefinitionKind kind =
-        assets::ObjectDefinitionKind::object) {
+        assets::ObjectDefinitionKind::object,
+    const std::optional<std::string_view> meshSelector = std::nullopt) {
     LegacyAssetBytes chunks;
-    legacy_detail::appendAfChunk(
-        chunks, assets::fourCC('T', 'E', 'X', 'U'), textureRoot);
-    legacy_detail::appendAfChunk(
-        chunks, assets::fourCC('C', 'C', 'F', 'F'), ccfLogicalPath);
+    legacy_detail::appendAfChunk(chunks, assets::fourCC('T', 'E', 'X', 'U'),
+                                 textureRoot);
+    legacy_detail::appendAfChunk(chunks, assets::fourCC('C', 'C', 'F', 'F'),
+                                 ccfLogicalPath);
+    if (meshSelector.has_value()) {
+        legacy_detail::appendAfChunk(chunks, assets::fourCC('M', 'E', 'S', 'H'),
+                                     *meshSelector);
+    }
 
     LegacyAssetBytes bytes;
     legacy_detail::appendU32(
@@ -464,7 +470,10 @@ inline void validateCcf(
     const auto parsed = assets::parseObjectDefinition(bytes);
     if (parsed.kind != kind ||
         parsed.textureRoot != std::optional<std::string>{textureRoot} ||
-        parsed.ccfPath != std::optional<std::string>{ccfLogicalPath}) {
+        parsed.ccfPath != std::optional<std::string>{ccfLogicalPath} ||
+        parsed.meshName != (meshSelector.has_value()
+                                ? std::optional<std::string>{*meshSelector}
+                                : std::nullopt)) {
         throw std::runtime_error(
             "synthetic object definition failed its semantic self-check");
     }
@@ -474,7 +483,8 @@ inline void validateCcf(
 [[nodiscard]] inline LegacyAssetBytes makeSyntheticLevel(
     const std::string_view worldLogicalPath,
     const std::span<const std::string_view> objectLogicalPaths = {},
-    const std::span<const std::string_view> modelLogicalPaths = {}) {
+    const std::span<const std::string_view> modelLogicalPaths = {},
+    const std::string_view objectRoomName = "Room") {
     LegacyAssetBytes chunks;
     legacy_detail::appendAfChunk(
         chunks, assets::fourCC('H', 'O', 'U', 'S'), worldLogicalPath);
@@ -488,7 +498,7 @@ inline void validateCcf(
               0.0F, 0.0F, 0.0F}) {
             legacy_detail::appendFloat(payload, value);
         }
-        legacy_detail::appendCString(payload, "Room");
+        legacy_detail::appendCString(payload, objectRoomName);
         legacy_detail::appendCString(payload, objectLogicalPaths[index]);
         legacy_detail::appendAfChunkPayload(
             chunks, assets::fourCC('O', 'B', 'J', 'E'), payload);
@@ -534,7 +544,8 @@ inline void validateCcf(
 [[nodiscard]] inline LegacyAssetBytes makeSyntheticLegacyCcf(
     const SyntheticLegacyCcfOptions& options = {}) {
     auto rooms = legacy_detail::room("Receiver", 10U);
-    const auto ordinaryRoom = legacy_detail::room("Room", 20U);
+    const auto ordinaryRoom =
+        legacy_detail::room(options.ordinaryRoomName, 20U);
     legacy_detail::appendBytes(rooms, ordinaryRoom);
 
     LegacyAssetBytes sections =
