@@ -52,7 +52,7 @@ Statuses: `not-investigated`, `observed`, `specified`, `implemented`, `verified`
 | iPhone 17 Pro Max / iOS 26.6 | P0 | specified | SCN-IOS-DEVICE-001 | Large Dynamic Island/120 Hz/high quality |
 | iPhone SE 3 / iOS 26.3 | P0 | specified | SCN-IOS-DEVICE-002 | Compact Home-button/A15 floor |
 | iOS 16.4 deployment compatibility | P0 | specified | SCN-IOS-BUILD-001 | Build/availability only; no runtime test |
-| GitHub Actions signed IPA | P0 | specified | SCN-IOS-CI-001 | Protected secrets, signature, min OS, ARM64 |
+| GitHub Actions signed IPA | P0 | in_progress | SCN-IOS-CI-001 | A manual main-only workflow, explicit CMake signing gate, ephemeral keychain build, strict Ad Hoc profile/signature/device/ARM64/min-OS/payload validators, and one-day manifest artifact are implemented and tested synthetically. Execution remains fail-closed while the connected repository is public and the owner-controlled protected environment, certificate, profile, variables, and both device identifiers are absent |
 | Private `.afpack` import | P0 | specified | SCN-IOS-DATA-001 | Original data never enters CI |
 | Native resolution, Hor+, UI and input projection | P0 | specified | SCN-RENDER-001 | Exact output-sized 3D targets at 100%, Hor+, Original 4:3 comparison, independent UI/safe-area/input transforms, 50-200% render scale, independent 75-150% user UI-scale control, diagnostics, six aspect-ratio test classes, and a presentation-only safe-FOV increase are implemented. Complete live HUD/weapon/effect projection and physical-device acceptance remain open under ADR-0013 |
 | Classic renderer | P0 | not-investigated | SCN-RENDER-002 | Faithful art direction at selected high resolution; never a legacy-framebuffer upscale |

@@ -65,6 +65,9 @@ jobs:
       - name: Test documentation and ledgers
         run: python3 tests/DocumentationIntegrityTests.py
 
+      - name: Test private iOS signing boundary
+        run: python3 tests/IosPrivateSigningTests.py
+
       - name: Test deterministic Rizin report normalization
         run: python3 tests/RizinExportTests.py
 

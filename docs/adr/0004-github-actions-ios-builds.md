@@ -90,6 +90,10 @@ if hosted-runner/Xcode constraints make a required build impossible.
 3. [x] Build signing-free simulator and device targets at deployment target
    16.4.
 4. [x] Define and implement the private `.afpack` package boundary.
-5. [ ] Register both device UDIDs and create/export signing materials.
-6. [ ] Configure the protected `ios-private` environment and secrets.
-7. [ ] Build, download, install, and verify the first IPA on both phones.
+5. [x] Implement a manual signed-IPA workflow that fails closed in a public
+   repository and validates its Ad Hoc profile, signature, architecture,
+   deployment target, payload boundary, and one-day artifact manifest.
+6. [ ] Establish the approved private signing boundary.
+7. [ ] Register both device UDIDs and create/export signing materials.
+8. [ ] Configure the protected `ios-private` environment and secrets.
+9. [ ] Build, download, install, and verify the first IPA on both phones.
