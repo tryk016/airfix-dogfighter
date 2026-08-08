@@ -364,6 +364,7 @@ add_library(airfix_render
     src/airfix/render/LegacyQuaternionRotation.cpp
     src/airfix/render/LegacyScreenProjection.cpp
     src/airfix/render/LegacySortedRenderQueue.cpp
+    src/airfix/render/ObjectTextureBindings.cpp
     src/airfix/render/ObjectVisualDrawAssembly.cpp
     src/airfix/render/PlayerActorPoseFrame.cpp
     src/airfix/render/PlayerActorPoseRuntime.cpp
@@ -1720,6 +1721,13 @@ if(AIRFIX_BUILD_TESTS)
         PRIVATE airfix::render)
     add_test(NAME airfix_player_actor_texture_bindings_tests
         COMMAND airfix_player_actor_texture_bindings_tests)
+
+    add_executable(airfix_object_texture_bindings_tests
+        tests/ObjectTextureBindingsTests.cpp)
+    target_link_libraries(airfix_object_texture_bindings_tests
+        PRIVATE airfix::render)
+    add_test(NAME airfix_object_texture_bindings_tests
+        COMMAND airfix_object_texture_bindings_tests)
 
     add_executable(airfix_mission_world_room_draw_tests
         tests/MissionWorldRoomDrawTests.cpp)
