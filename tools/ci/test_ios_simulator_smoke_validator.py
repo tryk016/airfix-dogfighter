@@ -179,17 +179,98 @@ class DiagnosticHardeningTests(unittest.TestCase):
             MODULE.launch_application(
                 "00000000-0000-0000-0000-000000000000"
             )
-        self.assertEqual(run.call_args.kwargs["timeout"], 30)
+        self.assertEqual(
+            run.call_args.kwargs["timeout"],
+            MODULE.SIMULATOR_LAUNCH_TIMEOUT_SECONDS,
+        )
 
     def test_launch_rejects_malformed_acknowledgement(self) -> None:
         acknowledgement = subprocess.CompletedProcess(
             ["xcrun", "simctl"], 0, f"{MODULE.BUNDLE_ID}: not-a-pid\n", ""
         )
         with mock.patch.object(MODULE, "run", return_value=acknowledgement):
-            with self.assertRaisesRegex(MODULE.SmokeFailure, "invalid launch"):
+            with self.assertRaisesRegex(
+                MODULE.RetryableSimulatorFailure, "invalid launch"
+            ):
                 MODULE.launch_application(
                     "00000000-0000-0000-0000-000000000000"
                 )
+
+    def test_launch_timeout_is_retryable(self) -> None:
+        with mock.patch.object(
+            MODULE,
+            "run",
+            side_effect=MODULE.SmokeFailure("launch timed out"),
+        ):
+            with self.assertRaisesRegex(
+                MODULE.RetryableSimulatorFailure, "did not become ready"
+            ):
+                MODULE.launch_application(
+                    "00000000-0000-0000-0000-000000000000"
+                )
+
+    def test_execute_retries_inconclusive_startup_once(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = Path(directory) / "AirfixDogfighter.app"
+            app.mkdir()
+            output = Path(directory) / "result.json"
+            with (
+                mock.patch.object(MODULE, "select_runtime", return_value="runtime"),
+                mock.patch.object(MODULE, "select_device_type", return_value="device"),
+                mock.patch.object(
+                    MODULE,
+                    "execute_attempt",
+                    side_effect=[MODULE.RetryableSimulatorFailure("retry"), None],
+                ) as attempt,
+                mock.patch("builtins.print"),
+            ):
+                MODULE.execute(app, output, 60)
+        self.assertEqual(attempt.call_count, 2)
+        self.assertEqual(attempt.call_args_list[0].args[-1], 1)
+        self.assertEqual(attempt.call_args_list[1].args[-1], 2)
+
+    def test_execute_does_not_retry_a_result_timeout(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = Path(directory) / "AirfixDogfighter.app"
+            app.mkdir()
+            output = Path(directory) / "result.json"
+            with (
+                mock.patch.object(MODULE, "select_runtime", return_value="runtime"),
+                mock.patch.object(MODULE, "select_device_type", return_value="device"),
+                mock.patch.object(
+                    MODULE,
+                    "execute_attempt",
+                    side_effect=MODULE.SmokeFailure(
+                        "application did not produce a result"
+                    ),
+                ) as attempt,
+            ):
+                with self.assertRaisesRegex(
+                    MODULE.SmokeFailure, "did not produce a result"
+                ):
+                    MODULE.execute(app, output, 60)
+        self.assertEqual(attempt.call_count, 1)
+
+    def test_execute_fails_after_two_inconclusive_attempts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = Path(directory) / "AirfixDogfighter.app"
+            app.mkdir()
+            output = Path(directory) / "result.json"
+            with (
+                mock.patch.object(MODULE, "select_runtime", return_value="runtime"),
+                mock.patch.object(MODULE, "select_device_type", return_value="device"),
+                mock.patch.object(
+                    MODULE,
+                    "execute_attempt",
+                    side_effect=MODULE.RetryableSimulatorFailure("retry"),
+                ) as attempt,
+                mock.patch("builtins.print"),
+            ):
+                with self.assertRaisesRegex(
+                    MODULE.SmokeFailure, "after 2 isolated attempts"
+                ):
+                    MODULE.execute(app, output, 60)
+        self.assertEqual(attempt.call_count, 2)
 
     def test_result_path_is_resolved_from_the_current_data_container(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
