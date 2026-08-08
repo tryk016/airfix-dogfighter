@@ -15,10 +15,19 @@ import uuid
 
 RESULT_NAME = "airfix-ios-simulator-smoke-v1.json"
 BUNDLE_ID = "com.tryk016.airfixdogfighter"
-PASS_KEYS = {"schema", "version", "status", "dataLess", "metalFrame", "lifecycle"}
+PASS_KEYS = {
+    "schema",
+    "version",
+    "status",
+    "dataLess",
+    "audioProbe",
+    "metalFrame",
+    "lifecycle",
+}
 FAILURE_KEYS = {"schema", "version", "status", "failureStage"}
 FAILURE_STAGES = {
     "invalid-data-less-startup-state",
+    "audio-probe-failed",
     "draw-not-entered",
     "draw-entered",
     "invalid-thread",
@@ -125,6 +134,18 @@ def validate_result(document: object) -> dict[str, object]:
     require_bool(document["dataLess"], "dataLess")
     if document["dataLess"] is not True:
         raise SmokeFailure("simulator smoke was not data-less")
+
+    audio_probe = document["audioProbe"]
+    expected_audio_probe_keys = {"registered", "submissionAccepted", "stopped"}
+    if (
+        not isinstance(audio_probe, dict)
+        or set(audio_probe) != expected_audio_probe_keys
+    ):
+        raise SmokeFailure("audio probe result has an unexpected schema")
+    for name in expected_audio_probe_keys:
+        require_bool(audio_probe[name], f"audioProbe.{name}")
+        if audio_probe[name] is not True:
+            raise SmokeFailure(f"audioProbe.{name} was not proven")
 
     frame = document["metalFrame"]
     if not isinstance(frame, dict) or set(frame) != {

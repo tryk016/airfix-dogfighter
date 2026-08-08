@@ -4,6 +4,7 @@
 #import "AirfixContentCoordinator.h"
 #import "AirfixControllerCalibrationPanelViewController.h"
 #import "AirfixControllerInputProfileCoordinator.h"
+#include "AirfixIOSAudioOutputProbe.hpp"
 #import "AirfixIOSControllerInputProfileStore.h"
 #import "AirfixIOSInputCoordinator.h"
 #include "AirfixIOSInputStartupPolicy.hpp"
@@ -118,6 +119,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   AirfixPlayerActorPoseRuntimeEndpoint _playerActorPoseRuntime;
   AirfixGameplayCameraMissionRuntimeEndpoint _gameplayCameraRuntime;
   std::unique_ptr<airfix::ios::AirfixAVAudioEngineBackend> _audioBackend;
+  std::unique_ptr<airfix::ios::AirfixIOSAudioOutputProbe> _audioOutputProbe;
   std::optional<airfix::simulation::LegacyAircraftAudioBindings>
       _playerAircraftAudioBindings;
   dispatch_queue_t _rendererPreparationQueue;
@@ -126,6 +128,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   BOOL _viewVisible;
   NSUInteger _pausedSettingsSelection;
   BOOL _pausedSettingsNavigationLatched;
+  NSUInteger _audioOutputProbeGeneration;
 }
 @property(nonatomic, strong) AirfixMetalRenderer *renderer;
 @property(nonatomic, strong)
@@ -148,6 +151,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
 @property(nonatomic, strong) UIButton *renderSettingsButton;
 @property(nonatomic, strong) UIButton *controllerCalibrationButton;
 @property(nonatomic, strong) UIButton *touchControlsSettingsButton;
+@property(nonatomic, strong) UIButton *audioOutputProbeButton;
 @property(nonatomic, strong)
     AirfixRenderSettingsPanelViewController *renderSettingsPanel;
 @property(nonatomic, strong)
@@ -178,6 +182,11 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
 - (void)startInputCoordinatorIfReady;
 - (void)refreshPausedMissionReadiness;
 - (void)resumeGameplay;
+- (void)startAudioOutputProbe;
+- (void)stopAudioOutputProbe;
+- (void)refreshAudioOutputProbeAvailability;
+- (void)updateAudioOutputProbeStatus:
+    (airfix::ios::AirfixIOSAudioOutputProbeStatus)status;
 - (void)refreshTouchControlsVisibility;
 - (void)updateDiagnosticsLabelWithInputDiagnostics:
     (AirfixInputDiagnostics *)diagnostics;
@@ -326,6 +335,22 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
                         forControlEvents:UIControlEventTouchUpInside];
   touchControlsSettingsButton.enabled = NO;
   self.touchControlsSettingsButton = touchControlsSettingsButton;
+
+  UIButton *audioOutputProbeButton =
+      [UIButton buttonWithType:UIButtonTypeSystem];
+  audioOutputProbeButton.translatesAutoresizingMaskIntoConstraints = NO;
+  [audioOutputProbeButton setTitle:@"Test audio output"
+                          forState:UIControlStateNormal];
+  audioOutputProbeButton.titleLabel.font =
+      [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
+  audioOutputProbeButton.titleLabel.adjustsFontForContentSizeCategory = YES;
+  audioOutputProbeButton.accessibilityIdentifier = @"airfix.audio.probe";
+  audioOutputProbeButton.accessibilityHint =
+      @"Plays a short public diagnostic tone while gameplay is paused.";
+  [audioOutputProbeButton addTarget:self
+                             action:@selector(startAudioOutputProbe)
+                   forControlEvents:UIControlEventTouchUpInside];
+  self.audioOutputProbeButton = audioOutputProbeButton;
   _pausedSettingsSelection = 0U;
   _rendererPreparationQueue =
       dispatch_queue_create("com.tryk016.airfixdogfighter.renderer-preparation",
@@ -373,6 +398,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
     renderSettingsButton,
     controllerCalibrationButton,
     touchControlsSettingsButton,
+    audioOutputProbeButton,
     self.contentCoordinator.controlsView,
   ]];
   stack.translatesAutoresizingMaskIntoConstraints = NO;
@@ -402,6 +428,8 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   self.controllerInputProfileStatus = @"PROFILE starting";
   self.simulationPipelineReady = YES;
   _audioBackend = std::make_unique<airfix::ios::AirfixAVAudioEngineBackend>();
+  _audioOutputProbe =
+      std::make_unique<airfix::ios::AirfixIOSAudioOutputProbe>();
 
   __weak AirfixGameViewController *weakSelf = self;
   _audioBackend->setForcedPauseHandler(
@@ -411,6 +439,16 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
           [strongSelf handleAudioForcedPause:reason];
         }
       });
+  _audioOutputProbe->setStatusHandler(
+      [weakSelf](const airfix::ios::AirfixIOSAudioOutputProbeStatus status) {
+        AirfixGameViewController *strongSelf = weakSelf;
+        if (strongSelf != nil) {
+          [strongSelf updateAudioOutputProbeStatus:status];
+          [strongSelf refreshAudioOutputProbeAvailability];
+        }
+      });
+  [self updateAudioOutputProbeStatus:_audioOutputProbe->status()];
+  [self refreshAudioOutputProbeAvailability];
   _inputFrameConsumerInstalled = airfix::ios::setInputFrameConsumer(
       self.inputCoordinator,
       [weakSelf](const airfix::input::InputFrame &frame) noexcept {
@@ -450,6 +488,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
         // controller instance. Keep the last accepted world state intact,
         // neutralize physical input, and refuse later pause-button resume.
         strongSelf.simulationPipelineReady = NO;
+        [strongSelf stopAudioOutputProbe];
         strongSelf->_audioBackend->setActive(false);
         strongSelf->_session.pause();
         [strongSelf.inputCoordinator resetForGameplayBoundary];
@@ -821,6 +860,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
 - (void)viewDidAppear:(BOOL)animated {
   [super viewDidAppear:animated];
   _viewVisible = YES;
+  [self refreshAudioOutputProbeAvailability];
   [self.renderSettingsCoordinator start];
   [self.renderSettingsCoordinator notifyPresentationSurfaceAvailable];
   [self.contentCoordinator start];
@@ -835,6 +875,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
 - (void)viewDidDisappear:(BOOL)animated {
   _viewVisible = NO;
   const bool wasRunning = _session.simulationRunning();
+  [self stopAudioOutputProbe];
   _audioBackend->setActive(false);
   _session.pause();
   ((MTKView *)self.view).paused = YES;
@@ -864,6 +905,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
     return;
   }
 
+  [self stopAudioOutputProbe];
   _audioBackend->setActive(false);
   _session.pause();
   ((MTKView *)self.view).paused = YES;
@@ -892,6 +934,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   self.renderSettingsButton.enabled = NO;
   self.controllerCalibrationButton.enabled = NO;
   self.touchControlsSettingsButton.enabled = NO;
+  self.audioOutputProbeButton.enabled = NO;
   self.statusLabel.text = @"Airfix Dogfighter reconstruction\n"
                            "Gameplay paused while display settings are open";
 }
@@ -926,6 +969,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
       self.renderer.missionWorldRoomInstalled;
   self.touchControlsView.hidden = YES;
   self.resumeButton.hidden = !gameplayReady;
+  [self stopAudioOutputProbe];
   _audioBackend->setActive(false);
   _session.pause();
   ((MTKView *)self.view).paused = YES;
@@ -950,6 +994,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
     return;
   }
 
+  [self stopAudioOutputProbe];
   _audioBackend->setActive(false);
   _session.pause();
   ((MTKView *)self.view).paused = YES;
@@ -975,6 +1020,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   self.renderSettingsButton.enabled = NO;
   self.controllerCalibrationButton.enabled = NO;
   self.touchControlsSettingsButton.enabled = NO;
+  self.audioOutputProbeButton.enabled = NO;
   self.statusLabel.text = @"Airfix Dogfighter reconstruction\n"
                            "Gameplay paused while controller settings are open";
 }
@@ -1024,6 +1070,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
       self.renderer.missionWorldRoomInstalled;
   self.touchControlsView.hidden = YES;
   self.resumeButton.hidden = !gameplayReady;
+  [self stopAudioOutputProbe];
   _audioBackend->setActive(false);
   _session.pause();
   ((MTKView *)self.view).paused = YES;
@@ -1048,6 +1095,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
     return;
   }
 
+  [self stopAudioOutputProbe];
   _audioBackend->setActive(false);
   _session.pause();
   ((MTKView *)self.view).paused = YES;
@@ -1073,6 +1121,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   self.renderSettingsButton.enabled = NO;
   self.controllerCalibrationButton.enabled = NO;
   self.touchControlsSettingsButton.enabled = NO;
+  self.audioOutputProbeButton.enabled = NO;
   self.statusLabel.text = @"Airfix Dogfighter reconstruction\n"
                            "Gameplay paused while touch settings are open";
 }
@@ -1108,6 +1157,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
       self.renderer.missionWorldRoomInstalled;
   self.touchControlsView.hidden = YES;
   self.resumeButton.hidden = !gameplayReady;
+  [self stopAudioOutputProbe];
   _audioBackend->setActive(false);
   _session.pause();
   ((MTKView *)self.view).paused = YES;
@@ -1131,12 +1181,13 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
 - (void)setPausedSettingsSelection:(NSUInteger)selection
                           announce:(BOOL)announce {
   const NSUInteger normalized =
-      std::min(selection, static_cast<NSUInteger>(2U));
+      std::min(selection, static_cast<NSUInteger>(3U));
   _pausedSettingsSelection = normalized;
   NSArray<UIButton *> *buttons = @[
     self.renderSettingsButton,
     self.controllerCalibrationButton,
     self.touchControlsSettingsButton,
+    self.audioOutputProbeButton,
   ];
   for (NSUInteger index = 0U; index < buttons.count; ++index) {
     UIButton *button = buttons[index];
@@ -1152,8 +1203,99 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   }
 }
 
+- (void)updateAudioOutputProbeStatus:
+    (const airfix::ios::AirfixIOSAudioOutputProbeStatus)status {
+  NSString *title = @"Test audio output";
+  switch (status) {
+  case airfix::ios::AirfixIOSAudioOutputProbeStatus::ready:
+    title = @"Test audio output";
+    break;
+  case airfix::ios::AirfixIOSAudioOutputProbeStatus::playing:
+    title = @"Audio test: playing";
+    break;
+  case airfix::ios::AirfixIOSAudioOutputProbeStatus::stopped:
+    title = @"Test audio output again";
+    break;
+  case airfix::ios::AirfixIOSAudioOutputProbeStatus::outputUnavailable:
+    title = @"Audio test: output unavailable";
+    break;
+  case airfix::ios::AirfixIOSAudioOutputProbeStatus::registrationFailed:
+    title = @"Audio test: initialization failed";
+    break;
+  case airfix::ios::AirfixIOSAudioOutputProbeStatus::submissionFailed:
+    title = @"Audio test: submission failed";
+    break;
+  }
+  [self.audioOutputProbeButton setTitle:title forState:UIControlStateNormal];
+  self.audioOutputProbeButton.accessibilityValue = title;
+  self.audioOutputProbeButton.accessibilityHint =
+      status == airfix::ios::AirfixIOSAudioOutputProbeStatus::playing
+          ? @"Stops the public diagnostic tone."
+          : @"Plays a short public diagnostic tone while gameplay is paused.";
+}
+
+- (void)refreshAudioOutputProbeAvailability {
+  if (self.audioOutputProbeButton == nil || !_audioOutputProbe) {
+    return;
+  }
+  const auto status = _audioOutputProbe->status();
+  const BOOL healthy =
+      status !=
+          airfix::ios::AirfixIOSAudioOutputProbeStatus::registrationFailed &&
+      status != airfix::ios::AirfixIOSAudioOutputProbeStatus::submissionFailed;
+  self.audioOutputProbeButton.enabled =
+      healthy && _viewVisible && !_session.simulationRunning() &&
+      _session.contentState() != airfix::runtime::ContentState::validating &&
+      ![self isSettingsPanelOpen] &&
+      UIApplication.sharedApplication.applicationState ==
+          UIApplicationStateActive;
+}
+
+- (void)startAudioOutputProbe {
+  NSAssert(NSThread.isMainThread, @"Audio output probe belongs to main");
+  [self refreshAudioOutputProbeAvailability];
+  if (!_audioOutputProbe || !self.audioOutputProbeButton.enabled) {
+    return;
+  }
+  if (_audioOutputProbe->status() ==
+      airfix::ios::AirfixIOSAudioOutputProbeStatus::playing) {
+    [self stopAudioOutputProbe];
+    return;
+  }
+
+  const auto status = _audioOutputProbe->start();
+  [self updateAudioOutputProbeStatus:status];
+  [self refreshAudioOutputProbeAvailability];
+  if (status != airfix::ios::AirfixIOSAudioOutputProbeStatus::playing) {
+    return;
+  }
+
+  const NSUInteger generation = ++_audioOutputProbeGeneration;
+  __weak AirfixGameViewController *weakSelf = self;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 750 * NSEC_PER_MSEC),
+                 dispatch_get_main_queue(), ^{
+                   AirfixGameViewController *strongSelf = weakSelf;
+                   if (strongSelf != nil &&
+                       strongSelf->_audioOutputProbeGeneration == generation) {
+                     [strongSelf stopAudioOutputProbe];
+                   }
+                 });
+}
+
+- (void)stopAudioOutputProbe {
+  NSAssert(NSThread.isMainThread, @"Audio output probe stop belongs to main");
+  ++_audioOutputProbeGeneration;
+  if (!_audioOutputProbe) {
+    return;
+  }
+  const auto status = _audioOutputProbe->stop();
+  [self updateAudioOutputProbeStatus:status];
+  [self refreshAudioOutputProbeAvailability];
+}
+
 - (void)resumeGameplay {
   NSAssert(NSThread.isMainThread, @"Explicit gameplay resume belongs to main");
+  [self stopAudioOutputProbe];
   if ([self isSettingsPanelOpen]) {
     return;
   }
@@ -1181,6 +1323,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   _audioBackend->setActive(true);
   self.resumeButton.hidden = YES;
   [self refreshTouchControlsVisibility];
+  [self refreshAudioOutputProbeAvailability];
   self.statusLabel.text = @"Airfix Dogfighter reconstruction\nGameplay running";
 }
 
@@ -1259,6 +1402,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
 - (void)applicationWillResignActive {
   [self.inputCoordinator applicationWillResignActive];
   [self.contentCoordinator applicationWillResignActive];
+  [self stopAudioOutputProbe];
   _audioBackend->setActive(false);
   _session.enterInactive();
   ((MTKView *)self.view).paused = YES;
@@ -1267,6 +1411,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
 - (void)applicationDidEnterBackground {
   [self.inputCoordinator applicationDidEnterBackground];
   [self.contentCoordinator applicationDidEnterBackground];
+  [self stopAudioOutputProbe];
   _audioBackend->setActive(false);
   _session.enterBackground();
   ((MTKView *)self.view).paused = YES;
@@ -1275,6 +1420,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
 - (void)applicationWillEnterForeground {
   [self.inputCoordinator applicationWillEnterForeground];
   [self.contentCoordinator applicationWillEnterForeground];
+  [self stopAudioOutputProbe];
   _audioBackend->setActive(false);
   _session.enterForeground();
   ((MTKView *)self.view).paused = YES;
@@ -1303,6 +1449,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
         @"Airfix Dogfighter reconstruction\n"
         @"Gameplay paused; choose settings with the stick, A opens, B resumes";
   }
+  [self refreshAudioOutputProbeAvailability];
 }
 
 #if AIRFIX_IOS_SIMULATOR_SMOKE
@@ -1326,13 +1473,30 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
       _session.lifecycleState() ==
           airfix::runtime::LifecycleState::foregroundPaused &&
       !_session.simulationRunning() && metalView.paused;
-  if (self.renderer == nil || metalView == nil || !privateInputsAbsent ||
-      !initialPaused) {
+  if (self.renderer == nil || metalView == nil || !_audioOutputProbe ||
+      !privateInputsAbsent || !initialPaused) {
     completion(@{
       @"schema" : @"airfix.ios-simulator-smoke",
       @"version" : @1,
       @"status" : @"fail",
       @"failureStage" : @"invalid-data-less-startup-state",
+    });
+    return;
+  }
+
+  const auto probeStart = _audioOutputProbe->start();
+  const BOOL probeSubmissionAccepted =
+      probeStart == airfix::ios::AirfixIOSAudioOutputProbeStatus::playing ||
+      probeStart ==
+          airfix::ios::AirfixIOSAudioOutputProbeStatus::outputUnavailable;
+  const auto probeStop = _audioOutputProbe->stop();
+  if (!probeSubmissionAccepted ||
+      probeStop != airfix::ios::AirfixIOSAudioOutputProbeStatus::stopped) {
+    completion(@{
+      @"schema" : @"airfix.ios-simulator-smoke",
+      @"version" : @1,
+      @"status" : @"fail",
+      @"failureStage" : @"audio-probe-failed",
     });
     return;
   }
@@ -1399,6 +1563,11 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
       @"version" : @1,
       @"status" : @"pass",
       @"dataLess" : @YES,
+      @"audioProbe" : @{
+        @"registered" : @YES,
+        @"submissionAccepted" : @YES,
+        @"stopped" : @YES,
+      },
       @"metalFrame" : @{
         @"commandBufferCompleted" : @(frameError == nil),
         @"publicSyntheticScene" : @(publicSyntheticScene),
@@ -1450,17 +1619,20 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   }
   _session.setContentState(contentState);
   if (contentState != airfix::runtime::ContentState::ready) {
+    [self stopAudioOutputProbe];
     _audioBackend->setActive(false);
     [self.inputCoordinator resetForGameplayBoundary];
     ((MTKView *)self.view).paused = YES;
     self.touchControlsView.hidden = YES;
     self.resumeButton.hidden = YES;
   }
+  [self refreshAudioOutputProbeAvailability];
 }
 
 - (void)contentCoordinatorDidBeginLoadingMission:
     (AirfixContentCoordinator *)coordinator {
   (void)coordinator;
+  [self stopAudioOutputProbe];
   _audioBackend->setActive(false);
   _session.setContentState(airfix::runtime::ContentState::validating);
   // Keep the previously committed mission state intact until the new room,
@@ -1473,6 +1645,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   self.resumeButton.hidden = YES;
   self.statusLabel.text =
       @"Airfix Dogfighter reconstruction\nLoading private mission...";
+  [self refreshAudioOutputProbeAvailability];
 }
 
 - (void)contentCoordinator:(AirfixContentCoordinator *)coordinator
@@ -1749,6 +1922,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
             @"Private mission ready; input pipeline unavailable";
       }
       ((MTKView *)strongSelf.view).paused = YES;
+      [strongSelf refreshAudioOutputProbeAvailability];
     });
   });
 }
@@ -1756,6 +1930,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
 - (void)contentCoordinatorDidFailLoadingMission:
     (AirfixContentCoordinator *)coordinator {
   (void)coordinator;
+  [self stopAudioOutputProbe];
   _audioBackend->setActive(false);
   _playerAircraftAudioBindings.reset();
   _session.setContentState(airfix::runtime::ContentState::rejected);
@@ -1765,6 +1940,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   self.resumeButton.hidden = YES;
   self.statusLabel.text =
       @"Airfix Dogfighter reconstruction\nPrivate mission could not be loaded";
+  [self refreshAudioOutputProbeAvailability];
 }
 
 - (void)inputCoordinator:(AirfixIOSInputCoordinator *)coordinator
@@ -1776,12 +1952,15 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   MTKView *metalView = (MTKView *)self.view;
   if ([self isSettingsPanelOpen] &&
       reason == AirfixInputPauseReasonUserControl) {
+    [self stopAudioOutputProbe];
     _audioBackend->setActive(false);
     _session.pause();
     metalView.paused = YES;
+    [self refreshAudioOutputProbeAvailability];
     return;
   }
   if (reason != AirfixInputPauseReasonUserControl) {
+    [self stopAudioOutputProbe];
     _audioBackend->setActive(false);
     _session.pause();
     metalView.paused = YES;
@@ -1808,10 +1987,12 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
       self.statusLabel.text = @"Airfix Dogfighter reconstruction\n"
                               @"Input stream reset; gameplay paused";
     }
+    [self refreshAudioOutputProbeAvailability];
     return;
   }
 
   if (_session.lifecycleState() == airfix::runtime::LifecycleState::running) {
+    [self stopAudioOutputProbe];
     _audioBackend->setActive(false);
     _session.pause();
     metalView.paused = YES;
@@ -1821,6 +2002,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
     self.statusLabel.text =
         @"Airfix Dogfighter reconstruction\n"
         @"Gameplay paused; choose settings with the stick, A opens, B resumes";
+    [self refreshAudioOutputProbeAvailability];
     return;
   }
 
@@ -1829,6 +2011,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
 
 - (void)handleAudioForcedPause:
     (const airfix::ios::AirfixIOSAudioPauseReason)reason {
+  [self stopAudioOutputProbe];
   _session.pause();
   [self.inputCoordinator resetForGameplayBoundary];
   ((MTKView *)self.view).paused = YES;
@@ -1852,6 +2035,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   }
   self.statusLabel.text =
       [@"Airfix Dogfighter reconstruction\n" stringByAppendingString:detail];
+  [self refreshAudioOutputProbeAvailability];
 }
 
 - (void)inputCoordinator:(AirfixIOSInputCoordinator *)coordinator
@@ -1894,6 +2078,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
       self.renderSettingsButton,
       self.controllerCalibrationButton,
       self.touchControlsSettingsButton,
+      self.audioOutputProbeButton,
     ];
     NSInteger candidate = static_cast<NSInteger>(_pausedSettingsSelection);
     for (NSUInteger attempt = 0U; attempt < buttons.count; ++attempt) {
@@ -1923,8 +2108,10 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
     moveSelection(1);
   }
   if (input.confirmPressed) {
-    if (_pausedSettingsSelection == 2U &&
-        self.touchControlsSettingsButton.enabled) {
+    if (_pausedSettingsSelection == 3U && self.audioOutputProbeButton.enabled) {
+      [self startAudioOutputProbe];
+    } else if (_pausedSettingsSelection == 2U &&
+               self.touchControlsSettingsButton.enabled) {
       [self showTouchControlsSettings];
     } else if (_pausedSettingsSelection == 1U &&
                self.controllerCalibrationButton.enabled) {

@@ -25,6 +25,11 @@ def valid_result() -> dict[str, object]:
         "version": 1,
         "status": "pass",
         "dataLess": True,
+        "audioProbe": {
+            "registered": True,
+            "submissionAccepted": True,
+            "stopped": True,
+        },
         "metalFrame": {
             "commandBufferCompleted": True,
             "publicSyntheticScene": True,
@@ -50,6 +55,20 @@ class ResultValidationTests(unittest.TestCase):
         result = valid_result()
         result["lifecycle"]["autoResumed"] = True
         with self.assertRaises(MODULE.SmokeFailure):
+            MODULE.validate_result(result)
+
+    def test_rejects_unproven_audio_probe_state(self) -> None:
+        for name in ("registered", "submissionAccepted", "stopped"):
+            with self.subTest(name=name):
+                result = valid_result()
+                result["audioProbe"][name] = False
+                with self.assertRaisesRegex(MODULE.SmokeFailure, name):
+                    MODULE.validate_result(result)
+
+    def test_rejects_extra_audio_probe_field(self) -> None:
+        result = valid_result()
+        result["audioProbe"]["privatePath"] = "/private/value"
+        with self.assertRaisesRegex(MODULE.SmokeFailure, "unexpected schema"):
             MODULE.validate_result(result)
 
     def test_reports_bounded_application_failure_stage(self) -> None:
