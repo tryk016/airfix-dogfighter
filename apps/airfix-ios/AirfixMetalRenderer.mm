@@ -1243,6 +1243,11 @@ bool preflightPrivateRoom(id<MTLDevice> device,
 @property(nonatomic, strong) AirfixBudgetedMetalTexture *fallbackResource;
 @property(atomic, strong) AirfixMetalRoomSnapshot *roomSnapshot;
 @property(nonatomic, weak) MTKView *metalView;
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+@property(nonatomic, copy, nullable) void (^simulatorSmokeFrameObserver)
+    (BOOL publicSyntheticScene, NSUInteger sceneDrawCallCount,
+     NSUInteger sceneTriangleCount, NSError *_Nullable error);
+#endif
 @property(nonatomic, strong)
     AirfixMetalPresentationTransactionHolder *presentationTransactionHolder;
 @property(nonatomic, strong) NSObject *preparationOwnerToken;
@@ -1322,6 +1327,15 @@ bool preflightPrivateRoom(id<MTLDevice> device,
 @end
 
 @implementation AirfixMetalRenderer
+
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+- (void)setSimulatorSmokeFrameCompletion:
+    (void (^)(BOOL, NSUInteger, NSUInteger, NSError *_Nullable))completion {
+  NSAssert(NSThread.isMainThread,
+           @"Simulator smoke observation belongs to the main thread");
+  self.simulatorSmokeFrameObserver = completion;
+}
+#endif
 
 - (nullable instancetype)initWithMetalView:(MTKView *)metalView
                                      error:
@@ -5305,6 +5319,17 @@ bool preflightPrivateRoom(id<MTLDevice> device,
     }
   }
   AirfixMetalDiagnosticsState *retainedDiagnosticsState = diagnosticsState;
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+  void (^simulatorSmokeCompletion)(BOOL, NSUInteger, NSUInteger,
+                                   NSError *_Nullable) =
+      self.simulatorSmokeFrameObserver;
+  self.simulatorSmokeFrameObserver = nil;
+  const BOOL simulatorSmokePublicSyntheticScene = !gameplayCameraActive;
+  const NSUInteger simulatorSmokeDrawCallCount =
+      static_cast<NSUInteger>(sceneDrawCallCount);
+  const NSUInteger simulatorSmokeTriangleCount =
+      static_cast<NSUInteger>(sceneTriangleCount);
+#endif
   [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completed) {
     const double gpuStart = completed.GPUStartTime;
     const double gpuEnd = completed.GPUEndTime;
@@ -5324,6 +5349,24 @@ bool preflightPrivateRoom(id<MTLDevice> device,
     (void)retainedScaledSceneDepth;
     (void)retainedDiagnosticsOverlay;
     (void)drawableDepthTexture;
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+    if (simulatorSmokeCompletion != nil) {
+      NSError *completionError = nil;
+      if (completed.status != MTLCommandBufferStatusCompleted) {
+        completionError = completed.error;
+        if (completionError == nil) {
+          completionError = makeError(
+              RendererError::unexpectedFailure,
+              @"The simulator smoke Metal command buffer did not complete.");
+        }
+      }
+      dispatch_async(dispatch_get_main_queue(), ^{
+        simulatorSmokeCompletion(simulatorSmokePublicSyntheticScene,
+                                 simulatorSmokeDrawCallCount,
+                                 simulatorSmokeTriangleCount, completionError);
+      });
+    }
+#endif
   }];
   [commandBuffer presentDrawable:drawable];
   [commandBuffer commit];

@@ -9,6 +9,9 @@
 #include "AirfixIOSInputStartupPolicy.hpp"
 #import "AirfixIOSTouchControlsPreferencesStore.h"
 #import "AirfixMetalRenderer.h"
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+#import "AirfixSimulatorSmokeHarness.h"
+#endif
 #import "AirfixMissionWorldRoomSnapshot.h"
 #import "AirfixRenderSettingsCoordinator.h"
 #import "AirfixRenderSettingsPanelViewController.h"
@@ -153,6 +156,9 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
     AirfixTouchControlsSettingsPanelViewController *touchControlsSettingsPanel;
 @property(nonatomic) BOOL inputPipelineReady;
 @property(nonatomic) BOOL simulationPipelineReady;
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+@property(nonatomic, strong) AirfixSimulatorSmokeHarness *simulatorSmokeHarness;
+#endif
 
 - (void)showRenderSettings;
 - (void)closeRenderSettingsPanel;
@@ -697,6 +703,13 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   [self.renderSettingsCoordinator notifyPresentationSurfaceAvailable];
   [self.contentCoordinator start];
   [self startInputCoordinatorIfReady];
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+  if (self.simulatorSmokeHarness == nil) {
+    self.simulatorSmokeHarness =
+        [[AirfixSimulatorSmokeHarness alloc] initWithGameViewController:self];
+  }
+  [self.simulatorSmokeHarness start];
+#endif
 }
 
 - (void)viewDidLayoutSubviews {
@@ -1176,6 +1189,105 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
         @"Gameplay paused; choose settings with the stick, A opens, B resumes";
   }
 }
+
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+- (void)runSimulatorSmokeWithCompletion:
+    (void (^)(NSDictionary<NSString *, id> *))completion {
+  NSAssert(NSThread.isMainThread,
+           @"Simulator smoke execution belongs to the main thread");
+  if (completion == nil) {
+    return;
+  }
+
+  MTKView *metalView = (MTKView *)self.view;
+  const bool privateInputsAbsent =
+      airfix::ios::private_mission_config::initialSetupLogicalPathBase64
+          .empty() &&
+      airfix::ios::private_mission_config::initialLevelLogicalPathBase64
+          .empty() &&
+      airfix::ios::private_mission_config::initialPlayerObjectLogicalPathBase64
+          .empty();
+  const bool initialPaused =
+      _session.lifecycleState() ==
+          airfix::runtime::LifecycleState::foregroundPaused &&
+      !_session.simulationRunning() && metalView.paused;
+  if (self.renderer == nil || metalView == nil || !privateInputsAbsent ||
+      !initialPaused) {
+    completion(@{
+      @"schema" : @"airfix.ios-simulator-smoke",
+      @"version" : @1,
+      @"status" : @"fail",
+      @"failure" : @"invalid-data-less-startup-state",
+    });
+    return;
+  }
+
+  __weak AirfixGameViewController *weakSelf = self;
+  [self.renderer setSimulatorSmokeFrameCompletion:^(
+                     BOOL publicSyntheticScene, NSUInteger sceneDrawCallCount,
+                     NSUInteger sceneTriangleCount, NSError *frameError) {
+    AirfixGameViewController *strongSelf = weakSelf;
+    if (strongSelf == nil) {
+      return;
+    }
+    MTKView *strongMetalView = (MTKView *)strongSelf.view;
+    const BOOL metalFrameCompleted =
+        frameError == nil && publicSyntheticScene && sceneDrawCallCount > 0U &&
+        sceneTriangleCount > 0U;
+
+    [strongSelf applicationWillResignActive];
+    const BOOL inactive = strongSelf->_session.lifecycleState() ==
+                              airfix::runtime::LifecycleState::inactive &&
+                          strongMetalView.paused &&
+                          !strongSelf->_session.simulationRunning();
+    [strongSelf applicationDidEnterBackground];
+    const BOOL background = strongSelf->_session.lifecycleState() ==
+                                airfix::runtime::LifecycleState::background &&
+                            strongMetalView.paused &&
+                            !strongSelf->_session.simulationRunning();
+    [strongSelf applicationWillEnterForeground];
+    const BOOL foreground =
+        strongSelf->_session.lifecycleState() ==
+            airfix::runtime::LifecycleState::foregroundPaused &&
+        strongMetalView.paused && !strongSelf->_session.simulationRunning();
+    [strongSelf applicationDidBecomeActive];
+    const BOOL autoResumed =
+        strongSelf->_session.simulationRunning() || !strongMetalView.paused;
+    const BOOL activeStillPaused =
+        strongSelf->_session.lifecycleState() ==
+            airfix::runtime::LifecycleState::foregroundPaused &&
+        !autoResumed;
+    const BOOL passed = metalFrameCompleted && inactive && background &&
+                        foreground && activeStillPaused;
+    completion(@{
+      @"schema" : @"airfix.ios-simulator-smoke",
+      @"version" : @1,
+      @"status" : passed ? @"pass" : @"fail",
+      @"dataLess" : @YES,
+      @"metalFrame" : @{
+        @"commandBufferCompleted" : @(frameError == nil),
+        @"publicSyntheticScene" : @(publicSyntheticScene),
+        @"sceneDrawCalls" : @(sceneDrawCallCount),
+        @"sceneTriangles" : @(sceneTriangleCount),
+      },
+      @"lifecycle" : @{
+        @"sequence" :
+            @[ @"resign-active", @"background", @"foreground", @"active" ],
+        @"inactivePaused" : @(inactive),
+        @"backgroundPaused" : @(background),
+        @"foregroundPaused" : @(foreground),
+        @"activeStillPaused" : @(activeStillPaused),
+        @"autoResumed" : @(autoResumed),
+      },
+    });
+  }];
+
+  // A paused MTKView does not schedule frames. draw is the explicit CI-only
+  // request, but the normal renderer, public snapshot, drawable and command
+  // queue execute the frame.
+  [metalView draw];
+}
+#endif
 
 - (void)contentCoordinator:(AirfixContentCoordinator *)coordinator
         didChangeReadiness:(AirfixContentReadiness)readiness {

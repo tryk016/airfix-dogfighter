@@ -37,6 +37,15 @@ NS_ASSUME_NONNULL_BEGIN
 
 @property(nonatomic, readonly) BOOL missionWorldRoomInstalled;
 
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+// CI-only, one-shot observation of a command buffer that rendered the public
+// synthetic scene. This declaration is absent from production builds.
+- (void)setSimulatorSmokeFrameCompletion:
+    (void (^)(BOOL publicSyntheticScene, NSUInteger sceneDrawCallCount,
+              NSUInteger sceneTriangleCount,
+              NSError *_Nullable error))completion;
+#endif
+
 - (nullable instancetype)initWithMetalView:(MTKView *)metalView
                                      error:(NSError *_Nullable *_Nullable)error
     NS_DESIGNATED_INITIALIZER;

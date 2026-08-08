@@ -113,6 +113,16 @@ add_executable(airfix_ios MACOSX_BUNDLE
     AirfixTouchControlsSettingsPanelViewController.mm
 )
 
+if(AIRFIX_IOS_SIMULATOR_SMOKE)
+    target_sources(airfix_ios PRIVATE
+        AirfixSimulatorSmokeHarness.h
+        AirfixSimulatorSmokeHarness.mm
+    )
+    target_compile_definitions(airfix_ios PRIVATE
+        AIRFIX_IOS_SIMULATOR_SMOKE=1
+    )
+endif()
+
 configure_file(
     "${airfix_lodepng_source_SOURCE_DIR}/LICENSE"
     "${CMAKE_CURRENT_BINARY_DIR}/LodePNG.txt"

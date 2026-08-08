@@ -76,8 +76,16 @@ jobs:
       - name: Enforce public source boundary
         run: python3 tools/ci/check_public_boundary.py .
 
+      - name: Validate simulator smoke result contract
+        if: matrix.sdk == 'iphonesimulator'
+        run: python3 tools/ci/test_ios_simulator_smoke_validator.py
+
       - name: Configure Xcode project
         run: |
+          simulator_smoke=OFF
+          if [[ "${{ matrix.sdk }}" == "iphonesimulator" ]]; then
+            simulator_smoke=ON
+          fi
           cmake -S . -B "build-${{ matrix.sdk }}" -G Xcode \
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT="${{ matrix.sdk }}" \
@@ -86,7 +94,8 @@ jobs:
             -DAIRFIX_IOS_DEPLOYMENT_TARGET=16.4 \
             -DAIRFIX_BUILD_TESTS=OFF \
             -DAIRFIX_BUILD_TOOLS=OFF \
-            -DAIRFIX_BUILD_IOS_APP=ON
+            -DAIRFIX_BUILD_IOS_APP=ON \
+            -DAIRFIX_IOS_SIMULATOR_SMOKE="$simulator_smoke"
 
       - name: Build without signing
         run: |
@@ -96,3 +105,18 @@ jobs:
 
       - name: Verify data-less bundle
         run: bash tools/ci/verify-ios-bundle.sh "build-${{ matrix.sdk }}" "${{ matrix.sdk }}"
+
+      - name: Run data-less simulator Metal and lifecycle smoke
+        if: matrix.sdk == 'iphonesimulator'
+        run: |
+          bundles="$(find "build-${{ matrix.sdk }}" -type d -name AirfixDogfighter.app -print)"
+          bundle_count="$(printf '%s\n' "$bundles" | sed '/^$/d' | wc -l | tr -d ' ')"
+          if [[ "$bundle_count" != "1" ]]; then
+            echo "expected exactly one simulator application bundle" >&2
+            exit 1
+          fi
+          bundle="$(printf '%s\n' "$bundles" | sed -n '1p')"
+          python3 tools/ci/run-ios-simulator-smoke.py \
+            --app "$bundle" \
+            --result-output "build-${{ matrix.sdk }}/simulator-smoke-result.json" \
+            --timeout-seconds 45

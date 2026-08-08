@@ -73,6 +73,12 @@ if ! grep -Eq 'minos +16\.4(\.0)?' <<<"$build_version"; then
     exit 1
 fi
 
+if [[ "$sdk" == "iphoneos" ]] &&
+    grep -a -F -q 'airfix.ios-simulator-smoke' "$executable"; then
+    echo "CI-only simulator smoke harness leaked into the iphoneos binary" >&2
+    exit 1
+fi
+
 forbidden="$(find "$bundle" -type f \( \
     -iname '*.afpack' -o -iname '*.up' -o -iname '*.gti' -o \
     -iname '*.ccf' -o -iname '*.exe' -o -iname '*.dll' -o \
