@@ -183,7 +183,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
     (AirfixInputDiagnostics *)diagnostics;
 - (void)handleAudioForcedPause:(airfix::ios::AirfixIOSAudioPauseReason)reason;
 #if AIRFIX_IOS_SIMULATOR_SMOKE
-- (void)startSimulatorSmokeIfReady;
+- (void)startSimulatorSmokeIfNeeded;
 - (void)attemptSimulatorSmokeDraw;
 #endif
 @end
@@ -758,10 +758,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   return @"unknown-draw-stage";
 }
 
-- (void)startSimulatorSmokeIfReady {
-  if (!self.renderSettingsCoordinator.readyForPresentation) {
-    return;
-  }
+- (void)startSimulatorSmokeIfNeeded {
   if (self.simulatorSmokeHarness == nil) {
     self.simulatorSmokeHarness =
         [[AirfixSimulatorSmokeHarness alloc] initWithGameViewController:self];
@@ -813,7 +810,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   [self.contentCoordinator start];
   [self startInputCoordinatorIfReady];
 #if AIRFIX_IOS_SIMULATOR_SMOKE
-  [self startSimulatorSmokeIfReady];
+  [self startSimulatorSmokeIfNeeded];
 #endif
 }
 
@@ -1221,7 +1218,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
                                     ? AirfixMissionTextureModeEnhanced
                                     : AirfixMissionTextureModeClassic];
 #if AIRFIX_IOS_SIMULATOR_SMOKE
-  [self startSimulatorSmokeIfReady];
+  [self startSimulatorSmokeIfNeeded];
 #endif
 }
 
