@@ -123,6 +123,7 @@ endif()
 
 add_library(airfix_audio
     src/airfix/audio/AudioCommand.cpp
+    src/airfix/audio/AudioOutputProbe.cpp
     src/airfix/audio/WavePcm16.cpp
 )
 add_library(airfix::audio ALIAS airfix_audio)
@@ -1025,6 +1026,13 @@ if(AIRFIX_BUILD_TESTS)
     add_executable(airfix_audio_command_tests tests/AudioCommandTests.cpp)
     target_link_libraries(airfix_audio_command_tests PRIVATE airfix::audio)
     add_test(NAME airfix_audio_command_tests COMMAND airfix_audio_command_tests)
+
+    add_executable(airfix_audio_output_probe_tests
+        tests/AudioOutputProbeTests.cpp)
+    target_link_libraries(airfix_audio_output_probe_tests
+        PRIVATE airfix::audio)
+    add_test(NAME airfix_audio_output_probe_tests
+        COMMAND airfix_audio_output_probe_tests)
 
     add_executable(airfix_wave_pcm16_tests tests/WavePcm16Tests.cpp)
     target_link_libraries(airfix_wave_pcm16_tests PRIVATE airfix::audio)

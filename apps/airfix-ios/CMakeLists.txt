@@ -71,6 +71,8 @@ add_executable(airfix_ios MACOSX_BUNDLE
     AirfixAppDelegate.mm
     AirfixAVAudioEngineBackend.hpp
     AirfixAVAudioEngineBackend.mm
+    AirfixIOSAudioOutputProbe.hpp
+    AirfixIOSAudioOutputProbe.mm
     AirfixContentCoordinator.h
     AirfixContentCoordinator.mm
     AirfixMissionWorldRoomSnapshot.h

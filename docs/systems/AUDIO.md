@@ -150,6 +150,25 @@ Unsigned `iphoneos` and `iphonesimulator` builds validate the Objective-C++ API,
 iOS 16.4 availability, linkage, and data-less bundle. They do not prove audible
 output, route timing, or physical-device recovery.
 
+The paused/data-less iOS surface also exposes an explicit **Test audio output**
+control for the first signed-device spike. It generates a public, deterministic
+200 ms mono PCM16 triangle tone in portable C++ and sends one bounded start
+command through a dedicated AVAudioEngine backend. This backend, clip ID, voice
+ID, sequence, and lifecycle are isolated from authenticated mission audio. A
+second press stops the tone, and a 750 ms deadline is a safety stop if the user
+does nothing. Resume, mission loading, settings panels, view disappearance,
+inactive/background transitions, route loss, and interruption all stop and
+deactivate the probe; foregrounding never replays it.
+
+The iPhoneSimulator smoke registers the public PCM, submits its monotonic
+one-command batch, validates the fixed probe state, and stops it before the
+Metal/lifecycle checks. Its strict result schema requires positive
+`registered`, `submissionAccepted`, and `stopped` fields; omitting or weakening
+any field fails CI. Simulator success proves API execution and state handling
+only. Speaker/Bluetooth audibility, silent-mode policy, route changes, and
+interruption recovery remain physical-device checks. The probe is not gameplay
+audio and is never evidence for AirCraft timing or audible parity.
+
 The content worker loads the six clips from the same authenticated session as
 the mission and moves them inside the opaque mission snapshot. Main prepares a
 new AVAudioEngine backend, registers all six copied clips, and derives the
