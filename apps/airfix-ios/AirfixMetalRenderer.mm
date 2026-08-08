@@ -86,6 +86,10 @@ constexpr std::size_t kMaximumPrivateRoomGpuHeapPlanBytes =
 constexpr std::size_t kMaximumPrivateRoomCpuPackedBytes = 128U * 1024U * 1024U;
 constexpr NSUInteger kMaximumScaledSceneDimension = 16384U;
 constexpr std::size_t kMaximumScaledSceneTargetBytes = 512U * 1024U * 1024U;
+#if TARGET_OS_SIMULATOR
+constexpr std::size_t kSimulatorPresentationTextureEstimateAllowanceBytes =
+    2U * 64U * 1024U;
+#endif
 constexpr MTLResourceOptions kSharedTrackedResourceOptions =
     static_cast<MTLResourceOptions>(MTLResourceStorageModeShared |
                                     MTLResourceHazardTrackingModeTracked);
@@ -283,18 +287,6 @@ bool accountCurrentHeapAllocation(id<MTLHeap> heap,
                     static_cast<std::size_t>(heap.currentAllocatedSize),
                     aggregateBytes);
 }
-
-#if TARGET_OS_SIMULATOR
-bool accountResourceAllocation(id<MTLResource> resource,
-                               std::size_t &aggregateBytes) noexcept {
-  if (resource == nil || resource.allocatedSize == 0U) {
-    return false;
-  }
-  return checkedAdd(aggregateBytes,
-                    static_cast<std::size_t>(resource.allocatedSize),
-                    aggregateBytes);
-}
-#endif
 
 bool finalizeHeapAllocationReservation(
     airfix::render::SnapshotGpuBudgetLedger &ledger,
@@ -800,8 +792,19 @@ prepareMetalPresentationTarget(
       return {};
     }
 
-    auto reservation =
-        gpuBudgetHolder->_ledger->tryReserve(minimumAccountedBytes);
+    std::size_t admittedBytes = minimumAccountedBytes;
+#if TARGET_OS_SIMULATOR
+    // The simulator driver cannot safely report allocatedSize for these
+    // textures. This is an explicit policy estimate above the portable
+    // logical minimum, not a backend-exact allocation bound.
+    if (!checkedAdd(admittedBytes,
+                    kSimulatorPresentationTextureEstimateAllowanceBytes,
+                    admittedBytes) ||
+        admittedBytes > kMaximumScaledSceneTargetBytes) {
+      return {};
+    }
+#endif
+    auto reservation = gpuBudgetHolder->_ledger->tryReserve(admittedBytes);
     if (!reservation.has_value()) {
       return {};
     }
@@ -836,14 +839,14 @@ prepareMetalPresentationTarget(
     }
     id<MTLTexture> depthTexture =
         [device newTextureWithDescriptor:depthDescriptor];
-    if (depthTexture == nil || colorTexture.allocatedSize == 0U ||
-        depthTexture.allocatedSize == 0U) {
+    if (depthTexture == nil) {
       return {};
     }
     colorTexture.label = @"Airfix scaled 3D scene color";
     depthTexture.label = @"Airfix scaled 3D scene depth";
 
-    std::size_t actualBytes = 0U;
+    std::size_t actualBytes = admittedBytes;
+#if !TARGET_OS_SIMULATOR
     if (!checkedAdd(static_cast<std::size_t>(colorTexture.allocatedSize),
                     static_cast<std::size_t>(depthTexture.allocatedSize),
                     actualBytes) ||
@@ -852,6 +855,7 @@ prepareMetalPresentationTarget(
                                            *reservation, actualBytes)) {
       return {};
     }
+#endif
 
     AirfixGpuBudgetReservationHolder *reservationHolder =
         [[AirfixGpuBudgetReservationHolder alloc] init];
@@ -2024,10 +2028,11 @@ bool preflightPrivateRoom(id<MTLDevice> device,
     // The public simulator snapshot uses direct shared allocations below.
     // Querying heap placement for those resources is unnecessary, and the
     // iOS 26 simulator Metal runtime can fault while sizing shared-storage
-    // heap descriptors. Admit the already bounded logical plan first, then
-    // reconcile it with each resource's measured allocatedSize before
-    // publication. Physical iOS retains exact heap placement planning.
-    const std::size_t admittedHeapPlanBytes = aggregateGpuBytes;
+    // heap descriptors. The public snapshot is already bounded to this fixed
+    // ceiling, so reserve that ceiling before allocation and keep the debit
+    // alive with both resource owners. Physical iOS retains exact heap
+    // placement planning and measured reconciliation.
+    const std::size_t admittedHeapPlanBytes = kMaximumSyntheticGpuHeapPlanBytes;
 #else
     std::size_t bufferHeapBytes = 0U;
     std::size_t bufferHeapAlignment = 0U;
@@ -2108,6 +2113,21 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       }
       return nil;
     }
+#if TARGET_OS_SIMULATOR
+    // Keep snapshot and fallback debits independent because their owners may
+    // be destroyed in either order and each owner releases its own holder.
+    auto fallbackReservation =
+        gpuBudgetHolder->_ledger->tryReserve(kMaximumSyntheticGpuHeapPlanBytes);
+    if (!fallbackReservation.has_value()) {
+      if (error != nullptr) {
+        *error =
+            makeError(RendererError::resourceLimit,
+                      @"The public fallback reservation is unavailable in the "
+                       "aggregate admission budget.");
+      }
+      return nil;
+    }
+#endif
 
     // Staging collections and autoreleased Metal command objects drain before
     // the outer plan reservation can be destroyed on any failure.
@@ -2239,6 +2259,10 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       NSArray<AirfixMetalMeshBuffers *> *meshBufferSnapshot =
           [meshBuffers copy];
       NSArray<id<MTLTexture>> *textureSnapshot = @[ syntheticTexture ];
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+      logSimulatorRendererMilestone(@"resource-snapshots-ready");
+#endif
+#if !TARGET_OS_SIMULATOR
       for (AirfixMetalMeshBuffers *buffers in meshBufferSnapshot) {
         if ((buffers.vertexBuffer != nil &&
              buffers.vertexBuffer.allocatedSize == 0U) ||
@@ -2262,35 +2286,6 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       std::size_t snapshotHeapCurrentAllocatedBytes = 0U;
       std::size_t fallbackHeapCurrentAllocatedBytes = 0U;
       std::size_t totalHeapCurrentAllocatedBytes = 0U;
-#if TARGET_OS_SIMULATOR
-      bool directAllocationValid = true;
-      for (AirfixMetalMeshBuffers *buffers in meshBufferSnapshot) {
-        if ((buffers.vertexBuffer != nil &&
-             !accountResourceAllocation(buffers.vertexBuffer,
-                                        snapshotHeapCurrentAllocatedBytes)) ||
-            (buffers.indexBuffer != nil &&
-             !accountResourceAllocation(buffers.indexBuffer,
-                                        snapshotHeapCurrentAllocatedBytes))) {
-          directAllocationValid = false;
-          break;
-        }
-      }
-      if (!directAllocationValid ||
-          !accountResourceAllocation(syntheticTexture,
-                                     snapshotHeapCurrentAllocatedBytes) ||
-          !accountResourceAllocation(fallbackTexture,
-                                     fallbackHeapCurrentAllocatedBytes) ||
-          !checkedAdd(snapshotHeapCurrentAllocatedBytes,
-                      fallbackHeapCurrentAllocatedBytes,
-                      totalHeapCurrentAllocatedBytes)) {
-        if (error != nullptr) {
-          *error = makeError(
-              RendererError::resourceLimit,
-              @"The direct simulator resources have invalid allocations.");
-        }
-        return nil;
-      }
-#else
       if (!accountCurrentHeapAllocation(bufferHeap,
                                         snapshotHeapCurrentAllocatedBytes) ||
           !accountCurrentHeapAllocation(textureHeap,
@@ -2307,11 +2302,9 @@ bool preflightPrivateRoom(id<MTLDevice> device,
         }
         return nil;
       }
-#endif
       // The descriptor placement plan is admitted before creation. Reconcile
-      // it with either physical-heap current allocation or simulator direct
-      // resource allocation, obtaining any supplemental aggregate admission
-      // before this snapshot can publish.
+      // it with physical-heap current allocation, obtaining any supplemental
+      // aggregate admission before this snapshot can publish.
       if (!finalizeHeapAllocationReservation(*gpuBudgetHolder->_ledger,
                                              *bootstrapPlanReservation,
                                              totalHeapCurrentAllocatedBytes)) {
@@ -2323,9 +2316,6 @@ bool preflightPrivateRoom(id<MTLDevice> device,
         }
         return nil;
       }
-#if AIRFIX_IOS_SIMULATOR_SMOKE
-      logSimulatorRendererMilestone(@"resources-accounted");
-#endif
       auto fallbackReservation =
           bootstrapPlanReservation->split(fallbackHeapCurrentAllocatedBytes);
       if (!fallbackReservation.has_value()) {
@@ -2336,6 +2326,7 @@ bool preflightPrivateRoom(id<MTLDevice> device,
         }
         return nil;
       }
+#endif
 
       AirfixMetalRoomResources *roomResources =
           [[AirfixMetalRoomResources alloc] init];
@@ -2375,6 +2366,9 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       fallbackResource->_texture = fallbackTexture;
       fallbackResource->_heap = fallbackHeap;
       fallbackResource->_gpuBudgetReservationHolder = fallbackReservationHolder;
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+      logSimulatorRendererMilestone(@"resources-accounted");
+#endif
 
       // Publish only after the complete renderer candidate has been validated
       // and every Metal object has been created successfully.
@@ -2408,6 +2402,9 @@ bool preflightPrivateRoom(id<MTLDevice> device,
 
       const auto initialExtent = outputPixelExtent(metalView.drawableSize);
       if (initialExtent.has_value()) {
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+        logSimulatorRendererMilestone(@"presentation-target-begin");
+#endif
         const auto surface = presentationSurfaceStamp(
             metalView, *initialExtent,
             presentationTransactionHolder->_surfaceGeneration);
@@ -2426,6 +2423,9 @@ bool preflightPrivateRoom(id<MTLDevice> device,
         }
         presentationTransactionHolder->_transaction.commitValidated(
             std::move(*prepared.prepared));
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+        logSimulatorRendererMilestone(@"presentation-target-ready");
+#endif
       }
 
 #if AIRFIX_IOS_SIMULATOR_SMOKE
@@ -5401,6 +5401,7 @@ bool preflightPrivateRoom(id<MTLDevice> device,
   }
   std::uint64_t trackedGpuBytes =
       static_cast<std::uint64_t>(gpuBudgetHolder->_ledger->reservedBytes());
+#if !TARGET_OS_SIMULATOR
   const auto accountResource = [&trackedGpuBytes](
                                    id<MTLResource> resource) noexcept {
     if (resource == nil) {
@@ -5416,6 +5417,12 @@ bool preflightPrivateRoom(id<MTLDevice> device,
   accountResource(drawable.texture);
   accountResource(drawableDepthTexture);
   accountResource(self.diagnosticsOverlayTexture);
+  constexpr auto gpuMemoryMeasurement =
+      airfix::render::GpuMemoryMeasurement::backendReported;
+#else
+  constexpr auto gpuMemoryMeasurement =
+      airfix::render::GpuMemoryMeasurement::estimated;
+#endif
 
   const auto cpuSampled = std::chrono::steady_clock::now();
   const double cpuFrameMilliseconds =
@@ -5439,8 +5446,7 @@ bool preflightPrivateRoom(id<MTLDevice> device,
       .sceneTriangleCount = sceneTriangleCount,
       .activeLightCount = 0U,
       .gpuMemoryBytes = trackedGpuBytes,
-      .gpuMemoryMeasurement =
-          airfix::render::GpuMemoryMeasurement::backendReported,
+      .gpuMemoryMeasurement = gpuMemoryMeasurement,
   });
   id<MTLTexture> retainedDiagnosticsOverlay = nil;
   if (diagnosticAccepted && presentationSettings.diagnosticsOverlayEnabled) {

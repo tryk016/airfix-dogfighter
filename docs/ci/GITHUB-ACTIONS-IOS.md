@@ -118,11 +118,16 @@ Trigger: every pull request and push after the iOS target exists.
 - The current Metal Simulator runtime rejects shared-storage heaps. The public
   smoke snapshot therefore uses directly allocated shared/tracked buffers and
   textures on `TARGET_OS_SIMULATOR`. It also avoids heap size/alignment queries
-  for those direct resources: the bounded logical plan is admitted first, then
-  measured allocations reconcile against the same aggregate GPU budget before
-  publication. Physical `iphoneos` retains the shared-heap planning and
-  allocation path. A private-heap staging/blit pipeline is not introduced for
-  this small CPU-populated CI snapshot.
+  and direct-resource `allocatedSize` queries. Instead it reserves the full
+  64 MiB ceiling independently for the public snapshot and persistent fallback
+  before allocation, so either owner can be destroyed without releasing the
+  other's conservative debit. Simulator presentation targets likewise use
+  their checked logical size plus an explicit 128 KiB policy estimate. That
+  estimate is not presented as a backend-exact allocation bound: diagnostics
+  label simulator GPU memory as estimated and report the ledger rather than
+  querying driver allocation metadata. Physical `iphoneos` retains measured
+  shared-heap planning and reconciliation. A private-heap staging/blit
+  pipeline is not introduced for this small CPU-populated CI snapshot.
 - The harness is not compiled into ordinary simulator builds or any `iphoneos`
   build. CMake rejects the option for a non-simulator SDK, and bundle
   verification scans the device executable for the harness schema marker.
