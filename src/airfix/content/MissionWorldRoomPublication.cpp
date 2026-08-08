@@ -149,8 +149,10 @@ indexedIssue(const MissionWorldRoomPublicationIssueKind kind,
             total,
             room.ccfCacheIndexByLoadSource.size(),
             sizeof(std::size_t)) ||
-        !detail::checkedMissionWorldRoomByteAdd(
-            total, room.retainedSpatialBytes)) {
+        !addPublishedCount(total, room.levelObjectAdmissions.size(),
+                           sizeof(LevelObjectAdmission)) ||
+        !detail::checkedMissionWorldRoomByteAdd(total,
+                                                room.retainedSpatialBytes)) {
         return false;
     }
 
@@ -230,9 +232,14 @@ indexedIssue(const MissionWorldRoomPublicationIssueKind kind,
                total,
                room.instanceProvenance.size(),
                sizeof(render::MissionWorldRoomInstanceProvenance)) &&
-        addPublishedCount(
-               total,
-               room.playerActorMeshProvenance.size(),
+           addPublishedCount(total, room.levelObjectMeshProvenance.size(),
+                             sizeof(render::LevelObjectSceneMeshProvenance)) &&
+           addPublishedCount(
+               total, room.levelObjectInstanceProvenance.size(),
+               sizeof(render::LevelObjectSceneInstanceProvenance)) &&
+           addPublishedCount(total, room.levelObjectPlacementRanges.size(),
+                             sizeof(render::LevelObjectScenePlacementRange)) &&
+           addPublishedCount(total, room.playerActorMeshProvenance.size(),
                sizeof(render::PlayerActorSceneMeshProvenance)) &&
         addPublishedCount(
                total,
@@ -563,6 +570,16 @@ validatePlacedDynamicCollision(
            sameFloatBits(left.z, right.z);
 }
 
+[[nodiscard]] bool finiteVec(const render::Vec3 &value) noexcept {
+    return std::isfinite(value.x) && std::isfinite(value.y) &&
+           std::isfinite(value.z);
+}
+
+[[nodiscard]] bool finiteMat(const render::Mat3 &value) noexcept {
+    return finiteVec(value.columns[0]) && finiteVec(value.columns[1]) &&
+           finiteVec(value.columns[2]);
+}
+
 [[nodiscard]] bool sameMatBits(const render::Mat3 &left,
                                const render::Mat3 &right) noexcept {
     return sameVecBits(left.columns[0], right.columns[0]) &&
@@ -616,12 +633,19 @@ validateMissionWorldRoomPublication(
             return issue(MissionWorldRoomPublicationIssueKind::
                              playerVisualCooccurrenceMismatch);
         }
-        if (room.meshProvenance.size() != room.model.meshes.size()) {
+        std::size_t expectedStaticMeshCount = 0U;
+        std::size_t expectedStaticInstanceCount = 0U;
+        if (!checkedAdd(room.meshProvenance.size(),
+                        room.levelObjectMeshProvenance.size(),
+                        expectedStaticMeshCount) ||
+            !checkedAdd(room.instanceProvenance.size(),
+                        room.levelObjectInstanceProvenance.size(),
+                        expectedStaticInstanceCount) ||
+            expectedStaticMeshCount != room.model.meshes.size()) {
             return issue(MissionWorldRoomPublicationIssueKind::
                              meshProvenanceCountMismatch);
         }
-        if (room.instanceProvenance.size() !=
-            room.model.instances.size()) {
+        if (expectedStaticInstanceCount != room.model.instances.size()) {
             return issue(MissionWorldRoomPublicationIssueKind::
                              instanceProvenanceCountMismatch);
         }
@@ -640,6 +664,18 @@ validateMissionWorldRoomPublication(
     if (hasPlayer && !room.playerVisual->valid()) {
         return issue(MissionWorldRoomPublicationIssueKind::
                          invalidPlayerVisualDescriptor);
+    }
+    if (room.levelObjectAdmissions.empty()) {
+        if (room.uniqueObjectDefinitionCount != 0U ||
+            !room.levelObjectMeshProvenance.empty() ||
+            !room.levelObjectInstanceProvenance.empty() ||
+            !room.levelObjectPlacementRanges.empty()) {
+            return issue(MissionWorldRoomPublicationIssueKind::
+                             levelObjectAdmissionCooccurrenceMismatch);
+        }
+    } else if (room.uniqueObjectDefinitionCount == 0U) {
+        return issue(MissionWorldRoomPublicationIssueKind::
+                         levelObjectAdmissionCooccurrenceMismatch);
     }
 
     switch (room.startSelection.source) {
@@ -851,6 +887,186 @@ validateMissionWorldRoomPublication(
             MissionWorldRoomPublicationIssueKind::uniqueCcfSourceCountMismatch);
     }
 
+    if (room.levelObjectAdmissions.size() > room.semanticCcfSourceCount) {
+        return issue(MissionWorldRoomPublicationIssueKind::
+                         levelObjectAdmissionCooccurrenceMismatch);
+    }
+    const auto objectSourceBegin =
+        room.semanticCcfSourceCount - room.levelObjectAdmissions.size();
+    if (!room.levelObjectAdmissions.empty() && objectSourceBegin != 1U &&
+        objectSourceBegin != 2U) {
+        return issue(MissionWorldRoomPublicationIssueKind::
+                         levelObjectAdmissionOrderMismatch);
+    }
+    std::size_t selectedAdmissionCount = 0U;
+    for (std::size_t admissionIndex = 0U;
+         admissionIndex < room.levelObjectAdmissions.size(); ++admissionIndex) {
+        const auto &admission = room.levelObjectAdmissions[admissionIndex];
+        const auto expectedSourceIndex = objectSourceBegin + admissionIndex;
+        if (admission.placementIndex != admissionIndex ||
+            admission.sourceIndex != expectedSourceIndex) {
+            return indexedIssue(MissionWorldRoomPublicationIssueKind::
+                                    levelObjectAdmissionOrderMismatch,
+                                admissionIndex);
+        }
+        if (admission.uniqueObjectDefinitionIndex >=
+            room.uniqueObjectDefinitionCount) {
+            return indexedIssue(MissionWorldRoomPublicationIssueKind::
+                                    levelObjectDefinitionIndexOutOfRange,
+                                admissionIndex);
+        }
+        if (admission.sourceIndex >= room.ccfCacheIndexByLoadSource.size() ||
+            admission.ccfCacheIndex !=
+                room.ccfCacheIndexByLoadSource[admission.sourceIndex]) {
+            return indexedIssue(MissionWorldRoomPublicationIssueKind::
+                                    levelObjectCacheJoinMismatch,
+                                admissionIndex);
+        }
+        const auto expectedLegacyRoomId =
+            assets::legacyCcRoomIdForWorldRoomIndex(
+                room.spatialArena.rooms.size(),
+                admission.targetRoom.worldRoomIndex);
+        if (!expectedLegacyRoomId.has_value() ||
+            *expectedLegacyRoomId != admission.targetRoom.legacyCcRoomId) {
+            return indexedIssue(MissionWorldRoomPublicationIssueKind::
+                                    levelObjectRoomIdentityMismatch,
+                                admissionIndex);
+        }
+        const auto placementDeterminant =
+            render::determinant(admission.placementRoot.linear);
+        if (!std::isfinite(admission.placementRoot.rawScalar) ||
+            admission.placementRoot.rawScalar == 0.0F ||
+            !finiteMat(admission.placementRoot.linear) ||
+            !finiteVec(admission.placementRoot.translation) ||
+            !std::isfinite(placementDeterminant) ||
+            placementDeterminant == 0.0F) {
+            return indexedIssue(MissionWorldRoomPublicationIssueKind::
+                                    levelObjectTransformMismatch,
+                                admissionIndex);
+        }
+        if (admission.targetRoom.worldRoomIndex ==
+            room.startSelection.worldRoomIndex) {
+            ++selectedAdmissionCount;
+        }
+    }
+    if (room.levelObjectPlacementRanges.size() != selectedAdmissionCount) {
+        return issue(MissionWorldRoomPublicationIssueKind::
+                         levelObjectPlacementRangeMismatch);
+    }
+
+    std::size_t expectedObjectMeshSlot = room.meshProvenance.size();
+    std::size_t expectedObjectInstanceIndex = room.instanceProvenance.size();
+    std::size_t objectMeshProvenanceIndex = 0U;
+    std::size_t objectInstanceProvenanceIndex = 0U;
+    std::size_t selectedRangeIndex = 0U;
+    for (std::size_t admissionIndex = 0U;
+         admissionIndex < room.levelObjectAdmissions.size(); ++admissionIndex) {
+        const auto &admission = room.levelObjectAdmissions[admissionIndex];
+        if (admission.targetRoom.worldRoomIndex !=
+            room.startSelection.worldRoomIndex) {
+            continue;
+        }
+        const auto &range =
+            room.levelObjectPlacementRanges[selectedRangeIndex++];
+        if (range.placementIndex != admission.placementIndex ||
+            range.sourceIndex != admission.sourceIndex ||
+            range.uniqueObjectDefinitionIndex !=
+                admission.uniqueObjectDefinitionIndex ||
+            range.targetRoom != admission.targetRoom ||
+            range.firstMeshSlot != expectedObjectMeshSlot ||
+            range.firstInstanceIndex != expectedObjectInstanceIndex ||
+            !rangeWithin(objectMeshProvenanceIndex, range.meshCount,
+                         room.levelObjectMeshProvenance.size()) ||
+            !rangeWithin(objectInstanceProvenanceIndex, range.instanceCount,
+                         room.levelObjectInstanceProvenance.size()) ||
+            !rangeWithin(range.firstMeshSlot, range.meshCount,
+                         room.model.meshes.size()) ||
+            !rangeWithin(range.firstInstanceIndex, range.instanceCount,
+                         room.model.instances.size())) {
+            return indexedIssue(MissionWorldRoomPublicationIssueKind::
+                                    levelObjectPlacementRangeMismatch,
+                                selectedRangeIndex - 1U);
+        }
+
+        for (std::size_t localMesh = 0U; localMesh < range.meshCount;
+             ++localMesh) {
+            const auto finalSlot = range.firstMeshSlot + localMesh;
+            const auto &provenance =
+                room.levelObjectMeshProvenance[objectMeshProvenanceIndex +
+                                               localMesh];
+            if (provenance.placementIndex != admission.placementIndex ||
+                provenance.sourceIndex != admission.sourceIndex ||
+                provenance.uniqueObjectDefinitionIndex !=
+                    admission.uniqueObjectDefinitionIndex ||
+                provenance.targetRoom != admission.targetRoom ||
+                provenance.finalMeshSlot != finalSlot) {
+                return indexedIssue(MissionWorldRoomPublicationIssueKind::
+                                        levelObjectMeshProvenanceMismatch,
+                                    objectMeshProvenanceIndex + localMesh);
+            }
+            for (const auto &material :
+                 room.model.meshes[finalSlot].materials) {
+                const auto assetOutOfRange = [&](const auto &asset) {
+                    return asset.has_value() &&
+                           asset->value >= room.textures.size();
+                };
+                if (assetOutOfRange(material.primary) ||
+                    assetOutOfRange(material.secondary) ||
+                    assetOutOfRange(material.environment)) {
+                    return indexedIssue(MissionWorldRoomPublicationIssueKind::
+                                            levelObjectMaterialAssetOutOfRange,
+                                        objectMeshProvenanceIndex + localMesh);
+                }
+            }
+        }
+        for (std::size_t localInstance = 0U;
+             localInstance < range.instanceCount; ++localInstance) {
+            const auto finalIndex = range.firstInstanceIndex + localInstance;
+            const auto &provenance =
+                room.levelObjectInstanceProvenance
+                    [objectInstanceProvenanceIndex + localInstance];
+            if (provenance.placementIndex != admission.placementIndex ||
+                provenance.sourceIndex != admission.sourceIndex ||
+                provenance.uniqueObjectDefinitionIndex !=
+                    admission.uniqueObjectDefinitionIndex ||
+                provenance.targetRoom != admission.targetRoom ||
+                provenance.finalInstanceIndex != finalIndex ||
+                provenance.finalMeshSlot < range.firstMeshSlot ||
+                provenance.finalMeshSlot >=
+                    range.firstMeshSlot + range.meshCount) {
+                return indexedIssue(MissionWorldRoomPublicationIssueKind::
+                                        levelObjectInstanceProvenanceMismatch,
+                                    objectInstanceProvenanceIndex +
+                                        localInstance);
+            }
+            const auto &instance = room.model.instances[finalIndex];
+            const auto expectedTransform = render::tryComposeNodeTransforms(
+                admission.placementRoot, provenance.local);
+            if (static_cast<std::size_t>(instance.meshSlot) !=
+                    provenance.finalMeshSlot ||
+                !expectedTransform.has_value() ||
+                !sameMatBits(expectedTransform->linear, instance.modelLinear) ||
+                !sameVecBits(expectedTransform->translation,
+                             instance.modelTranslation)) {
+                return indexedIssue(MissionWorldRoomPublicationIssueKind::
+                                        levelObjectTransformMismatch,
+                                    objectInstanceProvenanceIndex +
+                                        localInstance);
+            }
+        }
+
+        expectedObjectMeshSlot += range.meshCount;
+        expectedObjectInstanceIndex += range.instanceCount;
+        objectMeshProvenanceIndex += range.meshCount;
+        objectInstanceProvenanceIndex += range.instanceCount;
+    }
+    if (objectMeshProvenanceIndex != room.levelObjectMeshProvenance.size() ||
+        objectInstanceProvenanceIndex !=
+            room.levelObjectInstanceProvenance.size()) {
+        return issue(MissionWorldRoomPublicationIssueKind::
+                         levelObjectPlacementRangeMismatch);
+    }
+
     if (hasPlayer) {
         const auto &binding = *room.playerActorBinding;
         std::size_t finalMeshCount = 0U;
@@ -864,12 +1080,11 @@ validateMissionWorldRoomPublication(
             return issue(MissionWorldRoomPublicationIssueKind::
                              playerActorBindingRangeOverflow);
         }
-        if (room.meshProvenance.size() != binding.firstMeshSlot) {
+        if (expectedObjectMeshSlot != binding.firstMeshSlot) {
             return issue(MissionWorldRoomPublicationIssueKind::
                              staticMeshProvenancePrefixMismatch);
         }
-        if (room.instanceProvenance.size() !=
-            binding.firstInstanceIndex) {
+        if (expectedObjectInstanceIndex != binding.firstInstanceIndex) {
             return issue(MissionWorldRoomPublicationIssueKind::
                              staticInstanceProvenancePrefixMismatch);
         }

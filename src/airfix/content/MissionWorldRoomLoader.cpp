@@ -38,13 +38,112 @@ struct PinnedMissionWorldRoomManifestInput {
     std::vector<assets::MissionStartPosition> startPositions;
     bool worldHasBackdrop{};
     std::size_t objectEntryCount{};
+    std::vector<assets::LevelObjectPlacement> objectPlacements;
     std::vector<std::size_t> objectDefinitionIndices;
+    std::vector<MissionUniqueObjectDefinition> uniqueObjectDefinitions;
     std::uint64_t setupSourceFootprintBytes{};
     std::uint64_t plannedCcfSourceFootprintBytes{};
     std::uint64_t plannedPlayerVisualCcfSourceFootprintBytes{};
     std::uint64_t plannedTotalCcfSourceFootprintBytes{};
     std::optional<MissionPlayerVisualDescriptor> playerVisual;
 };
+
+[[nodiscard]] char asciiLower(const char value) noexcept {
+    const auto byte = static_cast<std::uint8_t>(value);
+    if (byte >= static_cast<std::uint8_t>('A') &&
+        byte <= static_cast<std::uint8_t>('Z')) {
+        return static_cast<char>(byte + ('a' - 'A'));
+    }
+    return value;
+}
+
+[[nodiscard]] bool validAsciiName(const std::string_view value,
+                                  const std::size_t maximumBytes) noexcept {
+    if (value.size() > maximumBytes) {
+        return false;
+    }
+    for (const char character : value) {
+        const auto byte = static_cast<std::uint8_t>(character);
+        if (byte == 0U || byte >= 0x80U) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool asciiCaseEqual(const std::string_view left,
+                                  const std::string_view right) noexcept {
+    if (left.size() != right.size()) {
+        return false;
+    }
+    for (std::size_t index = 0U; index < left.size(); ++index) {
+        if (asciiLower(left[index]) != asciiLower(right[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] std::optional<render::LevelObjectTargetRoomIdentity>
+resolveLevelObjectRoom(const assets::MissionWorldRoomCatalog &catalog,
+                       const std::string_view authoredRoom,
+                       const std::size_t maximumLoadedSourceIndex,
+                       const std::size_t maximumNameBytes) noexcept {
+    if (!catalog.complete() || authoredRoom.empty() ||
+        !validAsciiName(authoredRoom, maximumNameBytes)) {
+        return std::nullopt;
+    }
+
+    // CcName(const char*) yields a present name and present-empty prefix.
+    // GetRoomByName compares that full identity to root before scanning the
+    // immutable newest-first ordinary-room snapshot by name only.
+    const auto &root = catalog.rooms.front().ccName;
+    std::optional<std::size_t> worldRoomIndex;
+    if (root.name.has_value() && root.prefix.has_value() &&
+        root.prefix->empty() && asciiCaseEqual(*root.name, authoredRoom)) {
+        worldRoomIndex = 0U;
+    } else {
+        for (std::size_t index = 1U; index < catalog.rooms.size(); ++index) {
+            const auto &room = catalog.rooms[index];
+            const auto &name = room.ccName.name;
+            // The final catalogue retains every contributor in physical load
+            // order. Its first contributor is the room-creation seam, so
+            // excluding rooms created by later sources reconstructs the
+            // catalogue prefix that existed at this placement's two native
+            // GetRoomByName calls.
+            if (!room.contributors.empty() &&
+                room.contributors.front().sourceIndex <=
+                    maximumLoadedSourceIndex &&
+                name.has_value() && asciiCaseEqual(*name, authoredRoom)) {
+                worldRoomIndex = index;
+                break;
+            }
+        }
+    }
+    if (!worldRoomIndex.has_value()) {
+        return std::nullopt;
+    }
+    const auto legacyId =
+        assets::legacyCcRoomIdForWorldRoomIndex(catalog, *worldRoomIndex);
+    if (!legacyId.has_value()) {
+        return std::nullopt;
+    }
+    return render::LevelObjectTargetRoomIdentity{
+        .worldRoomIndex = *worldRoomIndex,
+        .legacyCcRoomId = *legacyId,
+    };
+}
+
+[[nodiscard]] render::Mat3 scaled(const render::Mat3 &matrix,
+                                  const float scalar) noexcept {
+    auto result = matrix;
+    for (auto &column : result.columns) {
+        column.x *= scalar;
+        column.y *= scalar;
+        column.z *= scalar;
+    }
+    return result;
+}
 
 [[nodiscard]] MissionWorldRoomLoadIssue
 makeIssue(const MissionWorldRoomLoadIssueKind kind) noexcept {
@@ -63,8 +162,10 @@ makeIssue(const MissionWorldRoomLoadIssueKind kind) noexcept {
         .roomSceneIssue = std::nullopt,
         .startIssue = std::nullopt,
         .textureBindingIssue = std::nullopt,
+        .objectTextureBindingIssue = std::nullopt,
         .texturePreparationIssue = std::nullopt,
         .drawAssemblyIssue = std::nullopt,
+        .levelObjectSceneAssemblyIssue = std::nullopt,
         .submissionIssue = std::nullopt,
         .playerTextureBindingIssue = std::nullopt,
         .playerVisualAssemblyIssue = std::nullopt,
@@ -614,8 +715,11 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             externalManifest.playerVisual();
         const auto externalObjectEntryCount =
             externalManifest.objectEntries().size();
+        const auto &externalObjectPlacements = externalManifest.level().objects;
         const auto &externalObjectDefinitionIndices =
             externalManifest.objectDefinitionIndices();
+        const auto &externalUniqueObjectDefinitions =
+            externalManifest.uniqueObjectDefinitions();
         const auto playerSemanticSourceCount =
             externalPlayerVisual.has_value() ? 1U : 0U;
         if (externalDescriptors.size() > limits.maximumCcfSources ||
@@ -627,10 +731,22 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             return result;
         }
         if (externalObjectEntryCount > limits.maximumCcfSources ||
-            externalObjectDefinitionIndices.size() >
-                limits.maximumCcfSources) {
+            externalObjectEntryCount >
+                limits.objectTextureBindings.maximumSources ||
+            externalObjectPlacements.size() != externalObjectEntryCount ||
+            externalObjectDefinitionIndices.size() !=
+                externalObjectEntryCount ||
+            externalUniqueObjectDefinitions.size() >
+                limits.objectTextureBindings.maximumUniqueDefinitions) {
             addIssue(result, MissionWorldRoomLoadIssueKind::invalidManifest);
             return result;
+        }
+        for (const auto uniqueIndex : externalObjectDefinitionIndices) {
+            if (uniqueIndex >= externalUniqueObjectDefinitions.size()) {
+                addIssue(result,
+                         MissionWorldRoomLoadIssueKind::invalidManifest);
+                return result;
+            }
         }
         for (std::size_t index = 0U; index < externalDescriptors.size();
              ++index) {
@@ -765,7 +881,9 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             .startPositions = externalStartPositions,
             .worldHasBackdrop = externalManifest.world().backdrop.has_value(),
             .objectEntryCount = externalObjectEntryCount,
+            .objectPlacements = externalObjectPlacements,
             .objectDefinitionIndices = externalObjectDefinitionIndices,
+            .uniqueObjectDefinitions = externalUniqueObjectDefinitions,
             .setupSourceFootprintBytes =
                 externalManifest.setupSourceFootprintBytes(),
             .plannedCcfSourceFootprintBytes =
@@ -830,6 +948,8 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             return result;
         }
         if (pinnedManifest.objectEntryCount !=
+                pinnedManifest.objectPlacements.size() ||
+            pinnedManifest.objectEntryCount !=
                 pinnedManifest.objectDefinitionIndices.size() ||
             descriptors.empty()) {
             addIssue(result, MissionWorldRoomLoadIssueKind::invalidManifest);
@@ -1300,6 +1420,124 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             return result;
         }
 
+        std::vector<LevelObjectAdmission> levelObjectAdmissions;
+        levelObjectAdmissions.reserve(pinnedManifest.objectPlacements.size());
+        // The catalogue is immutable from this point through scene publication.
+        // One resolved identity therefore authenticates both recovered native
+        // GetRoomByName seams without permitting a room-list mutation between
+        // them.
+        if (!pinnedManifest.objectPlacements.empty() &&
+            !report(result, stopToken, guardedProgress,
+                    MissionWorldRoomLoadPhase::admittingLevelObjects, 0U,
+                    pinnedManifest.objectPlacements.size())) {
+            return result;
+        }
+        for (std::size_t placementIndex = 0U;
+             placementIndex < pinnedManifest.objectPlacements.size();
+             ++placementIndex) {
+            if (placementIndex >
+                std::numeric_limits<std::size_t>::max() - objectSourceBegin) {
+                addIssue(result,
+                         MissionWorldRoomLoadIssueKind::integerOverflow);
+                return result;
+            }
+            const auto sourceIndex = objectSourceBegin + placementIndex;
+            if (sourceIndex >= descriptors.size() ||
+                sourceIndex >= cacheIndexByLoadSource.size()) {
+                addIssue(result,
+                         MissionWorldRoomLoadIssueKind::invalidManifest);
+                return result;
+            }
+            const auto &descriptor = descriptors[sourceIndex];
+            const auto uniqueIndex =
+                pinnedManifest.objectDefinitionIndices[placementIndex];
+            const auto cacheIndex = cacheIndexByLoadSource[sourceIndex];
+            if (descriptor.sourceIndex != sourceIndex ||
+                descriptor.role != MissionCcfLoadRole::objectPlacement ||
+                descriptor.objectPlacementIndex !=
+                    std::optional{placementIndex} ||
+                descriptor.uniqueObjectDefinitionIndex !=
+                    std::optional{uniqueIndex} ||
+                uniqueIndex >= pinnedManifest.uniqueObjectDefinitions.size() ||
+                cacheIndex >= cachedCcfs.size()) {
+                auto issue =
+                    makeIssue(MissionWorldRoomLoadIssueKind::invalidManifest);
+                issue.sourceIndex = sourceIndex;
+                addIssue(result, std::move(issue));
+                return result;
+            }
+
+            const auto &placement =
+                pinnedManifest.objectPlacements[placementIndex];
+            const auto &definition =
+                pinnedManifest.uniqueObjectDefinitions[uniqueIndex].definition;
+            const auto &ccf = cachedCcfs[cacheIndex].metadata;
+            const auto targetRoom = resolveLevelObjectRoom(
+                catalog, placement.room, sourceIndex,
+                limits.catalog.maximumNameComponentBytes);
+            const auto resolution = assets::resolveObjectSceneDependencies(
+                definition, ccf, limits.objectTextureBindings.dependencies);
+            std::optional<render::ConvertedNodeTransform> placementRoot;
+            if (resolution.rootBlueprintIndex.has_value() &&
+                *resolution.rootBlueprintIndex < ccf.blueprints.size()) {
+                placementRoot = render::tryConvertLegacyAxisRotationWorldPose(
+                    render::Vec3{placement.position[0], placement.position[1],
+                                 placement.position[2]},
+                    placement.axisRotation, request.basis);
+                if (placementRoot.has_value()) {
+                    const auto &rootBlueprint =
+                        ccf.blueprints[*resolution.rootBlueprintIndex];
+                    const float rootScalar =
+                        rootBlueprint.kind == assets::CcfBlueprintKind::mesh
+                            ? 1.0F
+                            : rootBlueprint.authoredTransform.rawScalar;
+                    if (!std::isfinite(rootScalar) || rootScalar == 0.0F) {
+                        placementRoot.reset();
+                    } else {
+                        placementRoot->linear =
+                            scaled(placementRoot->linear, rootScalar);
+                        placementRoot->rawScalar = rootScalar;
+                        const auto determinant =
+                            render::determinant(placementRoot->linear);
+                        if (!std::isfinite(determinant) ||
+                            determinant == 0.0F) {
+                            placementRoot.reset();
+                        }
+                    }
+                }
+            }
+            if (!targetRoom.has_value() || !definition.meshName.has_value() ||
+                !resolution.issues.empty() || !resolution.graphIssues.empty() ||
+                resolution.selectorStatus !=
+                    assets::BlueprintSelectorStatus::unique ||
+                !resolution.rootBlueprintIndex.has_value() ||
+                resolution.blueprintIndices.empty() ||
+                resolution.blueprintIndices.front() !=
+                    *resolution.rootBlueprintIndex ||
+                resolution.meshes.empty() || !placementRoot.has_value()) {
+                auto issue = makeIssue(
+                    MissionWorldRoomLoadIssueKind::levelObjectAdmissionFailure);
+                issue.sourceIndex = sourceIndex;
+                addIssue(result, std::move(issue));
+                return result;
+            }
+
+            levelObjectAdmissions.push_back({
+                .placementIndex = placementIndex,
+                .sourceIndex = sourceIndex,
+                .uniqueObjectDefinitionIndex = uniqueIndex,
+                .ccfCacheIndex = cacheIndex,
+                .targetRoom = *targetRoom,
+                .placementRoot = *placementRoot,
+            });
+            if (!report(result, stopToken, guardedProgress,
+                        MissionWorldRoomLoadPhase::admittingLevelObjects,
+                        placementIndex + 1U,
+                        pinnedManifest.objectPlacements.size())) {
+                return result;
+            }
+        }
+
         if (!report(result, stopToken, guardedProgress,
                     MissionWorldRoomLoadPhase::buildingSpatialArena, 0U,
                     1U)) {
@@ -1559,8 +1797,101 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             return result;
         }
 
-        std::optional<render::PlayerActorTextureBindings>
-            playerTextureBindings;
+        std::vector<std::size_t> selectedObjectAdmissionIndices;
+        std::vector<render::ObjectTextureBindingSource>
+            selectedObjectTextureSources;
+        selectedObjectAdmissionIndices.reserve(levelObjectAdmissions.size());
+        selectedObjectTextureSources.reserve(levelObjectAdmissions.size());
+        for (std::size_t admissionIndex = 0U;
+             admissionIndex < levelObjectAdmissions.size(); ++admissionIndex) {
+            const auto &admission = levelObjectAdmissions[admissionIndex];
+            if (admission.targetRoom.worldRoomIndex !=
+                selection->worldRoomIndex) {
+                continue;
+            }
+            selectedObjectAdmissionIndices.push_back(admissionIndex);
+            selectedObjectTextureSources.push_back({
+                .definitionIndex = admission.uniqueObjectDefinitionIndex,
+                .object = &pinnedManifest
+                               .uniqueObjectDefinitions
+                                   [admission.uniqueObjectDefinitionIndex]
+                               .definition,
+                .ccf = &cachedCcfs[admission.ccfCacheIndex].metadata,
+            });
+        }
+
+        std::optional<render::ObjectTextureBindings> objectTextureBindings;
+        if (!selectedObjectTextureSources.empty()) {
+            if (!report(
+                    result, stopToken, guardedProgress,
+                    MissionWorldRoomLoadPhase::planningObjectTextureBindings,
+                    0U, 1U)) {
+                return result;
+            }
+            auto objectTextureLimits = limits.objectTextureBindings;
+            objectTextureLimits.maximumSources = std::min(
+                objectTextureLimits.maximumSources, limits.maximumCcfSources);
+            objectTextureLimits.maximumBaseImports =
+                std::min(objectTextureLimits.maximumBaseImports,
+                         limits.maximumTextureAssets);
+            objectTextureLimits.maximumGlobalImports =
+                std::min(objectTextureLimits.maximumGlobalImports,
+                         limits.maximumTextureAssets);
+            try {
+                objectTextureBindings = render::buildObjectTextureBindings(
+                    binding.imports, selectedObjectTextureSources, archive,
+                    objectTextureLimits);
+            } catch (const std::bad_alloc &) {
+                throw;
+            } catch (...) {
+                addIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::objectTextureBindingFailure);
+                return result;
+            }
+            if (!objectTextureBindings->complete()) {
+                for (const auto &upstream : objectTextureBindings->issues) {
+                    auto issue = makeIssue(MissionWorldRoomLoadIssueKind::
+                                               objectTextureBindingFailure);
+                    if (upstream.sourceIndex.has_value() &&
+                        *upstream.sourceIndex <
+                            selectedObjectAdmissionIndices.size()) {
+                        issue.sourceIndex =
+                            levelObjectAdmissions[selectedObjectAdmissionIndices
+                                                      [*upstream.sourceIndex]]
+                                .sourceIndex;
+                    }
+                    issue.sourceFileIndex = upstream.archiveFileIndex;
+                    issue.objectTextureBindingIssue = upstream.kind;
+                    addIssue(result, std::move(issue));
+                }
+                if (objectTextureBindings->issues.empty()) {
+                    addIssue(result, MissionWorldRoomLoadIssueKind::
+                                         objectTextureBindingFailure);
+                }
+                return result;
+            }
+            if (objectTextureBindings->definitionBindingIndexBySource.size() !=
+                    selectedObjectTextureSources.size() ||
+                objectTextureBindings->imports.size() <
+                    binding.imports.size() ||
+                !std::equal(binding.imports.begin(), binding.imports.end(),
+                            objectTextureBindings->imports.begin())) {
+                addIssue(
+                    result,
+                    MissionWorldRoomLoadIssueKind::objectTextureBindingFailure);
+                return result;
+            }
+            binding.imports = objectTextureBindings->imports;
+            if (!report(
+                    result, stopToken, guardedProgress,
+                    MissionWorldRoomLoadPhase::planningObjectTextureBindings,
+                    1U, 1U)) {
+                return result;
+            }
+        }
+
+        std::optional<render::PlayerActorTextureBindings> playerTextureBindings;
         if (pinnedManifest.playerVisual.has_value()) {
             if (!playerObjectDefinition.has_value() ||
                 playerCcf == nullptr) {
@@ -1730,6 +2061,9 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             !accountPublished(publishedCpuBytes, cacheIndexByLoadSource.size(),
                               sizeof(std::size_t),
                               limits.maximumPublishedCpuBytes) ||
+            !accountPublished(publishedCpuBytes, levelObjectAdmissions.size(),
+                              sizeof(LevelObjectAdmission),
+                              limits.maximumPublishedCpuBytes) ||
             !checkedMissionWorldRoomByteAdd(
                 publishedCpuBytes,
                 spatialArena.retainedPayloadBytes) ||
@@ -1764,6 +2098,10 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             .model = {},
             .meshProvenance = {},
             .instanceProvenance = {},
+            .levelObjectAdmissions = std::move(levelObjectAdmissions),
+            .levelObjectMeshProvenance = {},
+            .levelObjectInstanceProvenance = {},
+            .levelObjectPlacementRanges = {},
             .playerVisual = pinnedManifest.playerVisual,
             .playerActorMeshProvenance = {},
             .playerActorInstanceProvenance = {},
@@ -1776,6 +2114,8 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             .classicTextureCount = 0U,
             .textureFallbackCount = 0U,
             .semanticCcfSourceCount = descriptors.size(),
+            .uniqueObjectDefinitionCount =
+                pinnedManifest.uniqueObjectDefinitions.size(),
             .uniqueCcfSourceCount = cachedCcfs.size(),
             .uniqueCcfSourceFootprintBytes = uniqueCcfFootprintBytes,
             .retainedCcfMetadataBytes = retainedMetadataBytes,
@@ -2170,6 +2510,113 @@ loadMissionWorldRoom(VerifiedContentSession &session,
             return result;
         }
 
+        render::DrawModelPayload staticSceneModel = std::move(assembly.model);
+        if (!selectedObjectAdmissionIndices.empty()) {
+            if (!objectTextureBindings.has_value() ||
+                objectTextureBindings->definitionBindingIndexBySource.size() !=
+                    selectedObjectAdmissionIndices.size()) {
+                addIssue(result,
+                         MissionWorldRoomLoadIssueKind::internalFailure);
+                return result;
+            }
+            if (!report(result, stopToken, guardedProgress,
+                        MissionWorldRoomLoadPhase::assemblingLevelObjects, 0U,
+                        1U)) {
+                return result;
+            }
+            std::vector<render::LevelObjectDrawSource> objectDrawSources;
+            objectDrawSources.reserve(selectedObjectAdmissionIndices.size());
+            for (std::size_t selectedIndex = 0U;
+                 selectedIndex < selectedObjectAdmissionIndices.size();
+                 ++selectedIndex) {
+                const auto admissionIndex =
+                    selectedObjectAdmissionIndices[selectedIndex];
+                if (admissionIndex >= candidate.levelObjectAdmissions.size()) {
+                    addIssue(result,
+                             MissionWorldRoomLoadIssueKind::internalFailure);
+                    return result;
+                }
+                const auto &admission =
+                    candidate.levelObjectAdmissions[admissionIndex];
+                const auto bindingIndex =
+                    objectTextureBindings
+                        ->definitionBindingIndexBySource[selectedIndex];
+                if (bindingIndex >= objectTextureBindings->definitions.size() ||
+                    objectTextureBindings->definitions[bindingIndex]
+                            .definitionIndex !=
+                        admission.uniqueObjectDefinitionIndex) {
+                    addIssue(result, MissionWorldRoomLoadIssueKind::
+                                         objectTextureBindingFailure);
+                    return result;
+                }
+                objectDrawSources.push_back({
+                    .placementIndex = admission.placementIndex,
+                    .sourceIndex = admission.sourceIndex,
+                    .uniqueObjectDefinitionIndex =
+                        admission.uniqueObjectDefinitionIndex,
+                    .placement =
+                        &pinnedManifest
+                             .objectPlacements[admission.placementIndex],
+                    .objectDefinition =
+                        &pinnedManifest
+                             .uniqueObjectDefinitions
+                                 [admission.uniqueObjectDefinitionIndex]
+                             .definition,
+                    .ccf = &cachedCcfs[admission.ccfCacheIndex].metadata,
+                    .materialBindings =
+                        objectTextureBindings->definitions[bindingIndex]
+                            .materials,
+                    .targetRoom = admission.targetRoom,
+                });
+            }
+
+            auto objectSceneLimits = limits.levelObjectScene;
+            objectSceneLimits.maximumPlacements = std::min(
+                objectSceneLimits.maximumPlacements, limits.maximumCcfSources);
+            objectSceneLimits.maximumTotalBytes =
+                std::min(objectSceneLimits.maximumTotalBytes,
+                         clampToSize(remaining(limits.maximumPublishedCpuBytes,
+                                               publishedCpuBytes)));
+            render::LevelObjectSceneAssembly objectScene;
+            try {
+                objectScene = render::buildLevelObjectSceneAssembly(
+                    std::move(staticSceneModel), objectDrawSources,
+                    request.basis, request.uvPolicy, objectSceneLimits);
+            } catch (const std::bad_alloc &) {
+                throw;
+            } catch (...) {
+                addIssue(result, MissionWorldRoomLoadIssueKind::
+                                     levelObjectSceneAssemblyFailure);
+                return result;
+            }
+            if (!objectScene.complete()) {
+                for (const auto &upstream : objectScene.issues) {
+                    auto issue = makeIssue(MissionWorldRoomLoadIssueKind::
+                                               levelObjectSceneAssemblyFailure);
+                    issue.sourceIndex = upstream.sourceIndex;
+                    issue.levelObjectSceneAssemblyIssue = upstream.kind;
+                    addIssue(result, std::move(issue));
+                }
+                if (objectScene.issues.empty()) {
+                    addIssue(result, MissionWorldRoomLoadIssueKind::
+                                         levelObjectSceneAssemblyFailure);
+                }
+                return result;
+            }
+            staticSceneModel = std::move(objectScene.model);
+            candidate.levelObjectMeshProvenance =
+                std::move(objectScene.objectMeshProvenance);
+            candidate.levelObjectInstanceProvenance =
+                std::move(objectScene.objectInstanceProvenance);
+            candidate.levelObjectPlacementRanges =
+                std::move(objectScene.placementRanges);
+            if (!report(result, stopToken, guardedProgress,
+                        MissionWorldRoomLoadPhase::assemblingLevelObjects, 1U,
+                        1U)) {
+                return result;
+            }
+        }
+
         if (candidate.playerVisual.has_value()) {
             if (!playerObjectDefinition.has_value() ||
                 playerCcf == nullptr ||
@@ -2345,12 +2792,10 @@ loadMissionWorldRoom(VerifiedContentSession &session,
                         limits.maximumPublishedCpuBytes,
                         publishedCpuBytes)));
             try {
-                requireExpectedSession(
-                    session, expectedIdentity, expectedRevision);
-                actorScene =
-                    render::buildPlayerActorSceneAssembly(
-                        std::move(assembly.model),
-                        std::move(actorVisual),
+                requireExpectedSession(session, expectedIdentity,
+                                       expectedRevision);
+                actorScene = render::buildPlayerActorSceneAssembly(
+                    std::move(staticSceneModel), std::move(actorVisual),
                         actorWorldFrom(candidate.playerSpawnPose),
                         playerSceneLimits);
                 requireExpectedSession(
@@ -2401,7 +2846,7 @@ loadMissionWorldRoom(VerifiedContentSession &session,
                 return result;
             }
         } else {
-            candidate.model = std::move(assembly.model);
+            candidate.model = std::move(staticSceneModel);
         }
 
         auto modelPublished = publishedCpuBytes;
@@ -2410,8 +2855,16 @@ loadMissionWorldRoom(VerifiedContentSession &session,
                           sizeof(render::MissionWorldRoomMeshProvenance)) ||
             !accountCount(modelPublished, candidate.instanceProvenance.size(),
                           sizeof(render::MissionWorldRoomInstanceProvenance)) ||
-            !accountCount(
-                modelPublished,
+            !accountCount(modelPublished,
+                          candidate.levelObjectMeshProvenance.size(),
+                          sizeof(render::LevelObjectSceneMeshProvenance)) ||
+            !accountCount(modelPublished,
+                          candidate.levelObjectInstanceProvenance.size(),
+                          sizeof(render::LevelObjectSceneInstanceProvenance)) ||
+            !accountCount(modelPublished,
+                          candidate.levelObjectPlacementRanges.size(),
+                          sizeof(render::LevelObjectScenePlacementRange)) ||
+            !accountCount(modelPublished,
                 candidate.playerActorMeshProvenance.size(),
                 sizeof(render::PlayerActorSceneMeshProvenance)) ||
             !accountCount(
