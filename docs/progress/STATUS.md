@@ -1,12 +1,19 @@
 # Project status
 
-**Updated:** 2026-08-04
+**Updated:** 2026-08-08
 **Stage:** Phase 1 — static analysis and archive recovery in progress
 
 ## Now
 
 - Planning and documentation system established.
 - Original installation inventoried without executing binaries.
+- Static Level `OBJE` scene assembly is now separately specified: physical
+  placement order selects only a definition's `0x3000` subtree, overwrites its
+  root with the external Z-X-Y-radian pose, performs two native
+  root-first/newest-ordinary room lookups, and dispatches root-kind `SetRoom`.
+  Missing selector, first room, or instance fails the complete Level candidate;
+  per-placement skip is non-native policy. This is documentation evidence only;
+  runtime assembly and the dynamic parity oracle remain pending.
 - Port strategy recorded in ADR-0001.
 - Playable Windows x64 and private iOS ARM64 are accepted as parallel products
   over one portable C++20 core. Windows is the primary rapid-debug/parity

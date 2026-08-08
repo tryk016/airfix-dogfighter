@@ -123,6 +123,13 @@ publication now derives and atomically commits that authenticated pose.
 cloning, slot-0 visibility/object-ID assignment, and the root-local zero plus
 Y(pi) override. It also proves that every descendant must be derived relative
 to the selected authored root before the player world pose is applied once.
+`EV-20260808-001` closes the analogous static Level `OBJE` boundary: physical
+placement order, selected-blueprint subtree cloning, root-pose overwrite,
+Z-X-Y radians, kind-aware root scalar, two native room lookups, root-kind
+`SetRoom`, and fail-atomic whole-Level rejection for a missing selector, first
+room, or instance. It authorizes only semantic future scene assembly;
+per-placement skip is explicit non-native policy, while x87/trigonometric bit
+parity and renderer list order remain outside that gate.
 Physical units, runtime contact traces, a retained runtime-room catalogue,
 dynamic actor-to-instance publication, projectile creation, and the original
 damaged/destroyed visibility transitions remain open. See

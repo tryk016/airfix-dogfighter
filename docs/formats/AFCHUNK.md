@@ -116,6 +116,8 @@ original corpus.
 `FHOU` exposes singleton `GCCS`, singleton world path `HOUS`, and repeated
 static `OBJE` placements. Each static placement is exactly six float32 values
 followed by room and object-definition NUL strings with no trailing bytes.
+The native consumption order and selected-subtree placement contract are
+recorded in [EV-20260808-001](../re/systems/LEVEL-OBJECT-ASSEMBLY.md).
 
 `MODL` begins with the same transform/room/object identity. The game serializer
 then writes three ordered NUL-string/u32 pairs and one compatibility u32; the

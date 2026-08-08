@@ -643,6 +643,12 @@ the selected node and its descendants only; it does not include ancestors.
 Consequently a null blueprint is a valid transform-group root and cannot be
 replaced by an arbitrary mesh child.
 
+The later Level `OBJE` path applies one external root pose and named-room
+admission after this subtree clone; it does not substitute a `0x4000` record or
+independently place every selected node. The exact sequence, root-scalar
+distinction, and room-lookup gate are in
+[EV-20260808-001](../re/systems/LEVEL-OBJECT-ASSEMBLY.md).
+
 When a scene load does include `0x4000`, its object/null/light records form a
 separate placed-node graph. The loader likewise defers nonzero parent links
 until the table is complete and applies the same `SetParent(child, parent)`
