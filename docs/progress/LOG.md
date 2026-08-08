@@ -5810,8 +5810,10 @@ superseded evidence.
   and the existing authored-world to parent-relative transform proof.
 - The native room query is explicitly bounded without reusing mission-start
   policy: root/full-name first, then newest ordinary room by ASCII-folded name;
-  missing rooms skip the placement and duplicate ordinary matches select the
-  first native list candidate. No runtime C++20 code changed.
+  duplicate ordinary matches select the first native list candidate. Static
+  closed-diff review corrected the initial publication: missing selector, first
+  room, or instance fails the complete Level load rather than skipping one
+  placement. No runtime C++20 code changed.
 - The gate is GO for semantic fail-closed future assembly and NO-GO for
   bit-identical x87/trigonometry or renderer-order claims. A minimal read-only
   post-`GetWorldRelation` oracle is recorded for later confirmation.

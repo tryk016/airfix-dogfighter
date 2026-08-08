@@ -22,23 +22,32 @@ The returned root is mutated in this exact sequence: write XYZ to `+0x94`,
 `+0x98`, `+0x9C`; call `SetAxisRotation` at `0x1000E910..0x1000E92F`; store
 axis XYZ through `CcAxisRot::Set` at `0x1002BAF0..0x1002BB07` into
 `+0xD0..+0xD8`; notify; set the native unique-name field; and invoke virtual
-`SetRoom(resolvedRoom, true)`. The external root pose overwrites prototype-root
-position and rotation. It is not a transform composition with that root.
+`SetRoom(resolvedRoom, true)` through `[vtable + 0x04]` at VA `0x1002E682`.
+The external root pose overwrites prototype-root position and rotation. It is
+not a transform composition with that root.
 
-An absent selector, unresolved selected blueprint, failed clone, or unresolved
-room admits no placement and continues the outer loop. This path has no
-receiver-room fallback.
+An absent selector branches from `0x1002E5B1` to failure cleanup at
+`0x1002E90D`. A null first room lookup branches from `0x1002E5E5`, and a null
+instance branches from `0x1002E5FD`, to cleanup at `0x1002E92B`. Both cleanup
+paths reach the false return at `0x1002E97C..0x1002E988`. Only success at
+`0x1002E7DE` returns to the physical loop at `0x1002E407`. Native behavior is
+therefore complete-Level failure with no successful partial result, not
+per-placement skip. A skip-and-continue option is a non-native resilience
+policy and cannot be described as parity. This path has no receiver-room
+fallback.
 
 The room query is a `CcName` constructed from the `OBJE` room string and is
 passed directly to `CcWorld::GetRoomByName` (RVA `0x000117B0`), not to mission
-start selection. Native lookup checks the shared root with full name/prefix
-comparison, then ordinary rooms newest-created-first with ASCII
-case-insensitive name comparison only. It has no ambiguity error: the first
-matching ordinary linked-list node wins. A missing match returns no room and
-therefore skips the placement. In the observed object-load sequence the shared
-root has a void name, so it is not an implicit fallback for a non-void room
-query. The no-collision corpus result is not used to weaken this explicit static
-collision rule.
+start selection. `LoadLevel` calls it for admission at VA `0x1002E5E3`, tests
+that result, then repeats the lookup at VA `0x1002E67D` and passes the second
+result without another null test to virtual `SetRoom` at VA `0x1002E682`.
+Native lookup checks the shared root with full name/prefix comparison, then
+ordinary rooms newest-created-first with ASCII case-insensitive name comparison
+only. It has no ambiguity error: the first matching ordinary linked-list node
+wins. A missing first match fails the complete Level load. In the observed
+object-load sequence the shared root has a void name, so it is not an implicit
+fallback for a non-void room query. The no-collision corpus result is not used
+to weaken this explicit static collision rule.
 
 ## Subtree, rooms, and transforms
 
@@ -47,7 +56,16 @@ light clone paths are distinct; each child is recursively made before
 `CcSrtNode::SetParent` (`0x1000E0F0..0x1000E26B`) attaches it. Child traversal
 retains the source physical order. New nodes start in the mission world;
 recursive `SetRoom(..., true)` moves the completed subtree to the selected
-room. The evidence proves admission order, not a renderer draw order.
+room. The dispatch is not one generic implementation:
+
+| Dynamic target | Exact VA range | Room operation |
+|---|---|---|
+| `CcSrtNode::SetRoom` | `[0x1000EC90, 0x1000ECC1)` | stores `+0xF4`; optional recursive child dispatch |
+| `CcNull::SetRoom` | `[0x1000FFD0, 0x1001000F)` | changed-nonnull null attachment; optional recursive dispatch |
+| `CcLight::SetRoom` | `[0x100076A0, 0x100076DF)` | changed-nonnull light attachment; optional recursive dispatch |
+| `CcObject::SetRoom` | `[0x10015260, 0x100152AC)` | changed-nonnull unlink/link; children receive stored `+0xF4` |
+
+The evidence proves admission order, not a renderer draw order.
 
 `SetParent` materializes the child world relation, attaches it, and derives a
 local relation. `GetWorldRelation` (`0x1000E440..0x1000E4FC`) composes parent
@@ -70,9 +88,9 @@ universal scalar application rule.
 ## Confidence and gates
 
 High static confidence: function boundaries, six-field record order, `0x2000`
-mask, selected-root/descendant scope, overwrite order, room skip behavior,
-Z-X-Y radians, field offsets, and the column-vector translation of native
-parent-relative composition.
+mask, selected-root/descendant scope, overwrite order, both room lookup sites,
+fail-atomic branches, virtual room target bodies, Z-X-Y radians, field offsets,
+and the column-vector translation of native parent-relative composition.
 
 Medium/conditional: the effect of native unique-name contents and native room
 list insertion on later render order. Unknown: live x87 control/exception
@@ -80,11 +98,12 @@ state, bit-exact trigonometry/matrix behavior, and any renderer ordering beyond
 the proven scene-graph traversal.
 
 **GO:** semantic, fail-closed `LevelObjectSceneAssembly` that preserves the
-stated order, placement skip rules, kind-aware scalar policy, room binding, and
-subtree-relative transforms. Its authentic-content lookup must model
-root-first/full-name then newest-ordinary/name-only ASCII-fold traversal; a
-separate stricter importer policy for duplicate rooms must be labelled as a
-port policy, not native parity.
+stated order, whole-candidate failure rules, kind-aware scalar policy, dynamic
+room binding, and subtree-relative transforms. Its authentic-content lookup
+must model root-first/full-name then newest-ordinary/name-only ASCII-fold
+traversal at both recovered call sites. A separate stricter importer policy for
+duplicate rooms, or a per-placement skip mode, must be labelled as port policy,
+not native parity.
 
 **NO-GO:** bit-identical transform math or renderer-order compatibility until a
 read-only runtime oracle captures post-`GetWorldRelation` root/descendant

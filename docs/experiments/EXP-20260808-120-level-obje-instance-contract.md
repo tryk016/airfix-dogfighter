@@ -49,6 +49,9 @@ end-exclusive boundaries:
 | `CcSrtNode::SetParent` | `0x0000E0F0` | `[0x1000E0F0, 0x1000E26B)` |
 | `CcSrtNode::GetWorldRelation` | `0x0000E440` | `[0x1000E440, 0x1000E4FC)` |
 | `CcSrtNode::SetAxisRotation` | `0x0000E910` | `[0x1000E910, 0x1000E92F)` |
+| `CcSrtNode::SetRoom` | `0x0000EC90` | `[0x1000EC90, 0x1000ECC1)` |
+| `CcNull::SetRoom` | `0x0000FFD0` | `[0x1000FFD0, 0x1001000F)` |
+| `CcLight::SetRoom` | `0x000076A0` | `[0x100076A0, 0x100076DF)` |
 | `CcAxisRot::Set` | `0x0002BAF0` | `[0x1002BAF0, 0x1002BB07)` |
 | `CcObject::SetRoom` | `0x00015260` | `[0x10015260, 0x100152AC)` |
 
@@ -59,8 +62,8 @@ record, it reads six consecutive float32 values as `position.x`, `position.y`,
 `position.z`, `axis.x`, `axis.y`, `axis.z`, followed by the room string and the
 object-definition string. It resolves the definition's `CCFF`, loads it with
 `0x2000`, obtains its `MESH` selector, resolves that selector through the
-definition-local `0x3000` blueprint index, resolves the record's room through
-`CcWorld::GetRoomByName`, and calls:
+definition-local `0x3000` blueprint index, performs an admission lookup through
+`CcWorld::GetRoomByName` at VA `0x1002E5E3`, and calls:
 
 ```text
 root = CcBlueprint::MakeInstance(selectedBlueprint, missionWorld, true)
@@ -74,7 +77,8 @@ root.SetAxisRotation()                          // +0x90 = axis mode
 root.axis.Set(record.axis.x, record.axis.y, record.axis.z) // +0xD0..+0xD8
 root.NotifyChange()
 root.SetUniqueName(...)
-root.SetRoom(resolvedRoom, true)
+finalRoom = world.GetRoomByName(record.room)    // VA 0x1002E67D
+root.virtualSetRoom(finalRoom, true)             // [vtable + 0x04], VA 0x1002E682
 ```
 
 The external pose therefore overwrites the selected root's prototype pose; it
@@ -86,24 +90,39 @@ default axis path, effective rotation is radians in Z-X-Y application order:
 
 The object CCF load keeps room/resource admission active but suppresses its
 `0x4000` placed-scene table. The only instance source here is the selected
-blueprint subtree. A missing selector, unresolved blueprint, failed instance,
-or unresolved room skips this `OBJE` instance and continues the outer physical
-loop; no receiver/root-room fallback is established for the placement.
+blueprint subtree. A missing selector, unresolved room, or failed instance is a
+whole-`LoadLevel` failure, not a skipped placement:
+
+| Gate | Direct branch | Result |
+|---|---|---|
+| selector is null | `0x1002E5B1 -> 0x1002E90D` | failure cleanup |
+| first room lookup is null | `0x1002E5E5 -> 0x1002E92B` | failure cleanup |
+| `MakeInstance` returns null | `0x1002E5FD -> 0x1002E92B` | failure cleanup |
+
+Both cleanup paths converge on `xor al, al; ret 8` at
+`0x1002E97C..0x1002E988`. Only the successful next-record test at
+`0x1002E7DE` branches back to `0x1002E407`. The native transaction therefore
+fails as a complete Level load and exposes no successful partial placement
+result. Per-placement skip-and-continue is available only as an explicit
+non-native resilience policy.
 
 ### Room lookup is a native lookup, not a start resolver
 
 The room string is wrapped as a `CcName` and passed to
 `CcWorld::GetRoomByName` at RVA `0x000117B0`; no start-position selector or
-portable resolver participates. Static control flow first compares the shared
-root room by full `CcName` identity (name and prefix), then walks ordinary rooms
+portable resolver participates. `LoadLevel` calls it first at VA `0x1002E5E3`
+as the admission gate and again at VA `0x1002E67D` immediately before the
+virtual `SetRoom` call at VA `0x1002E682`. The second result is passed without
+another null test. Static control flow first compares the shared root room by
+full `CcName` identity (name and prefix), then walks ordinary rooms
 newest-created-first and compares their name component using ASCII
-case-insensitive matching. The ordinary-room branch does not perform a
-prefix fallback.
+case-insensitive matching. The ordinary-room branch does not perform a prefix
+fallback.
 
 The native lookup has no ambiguity rejection: if multiple ordinary rooms match
 under that fold, the first linked-list candidate wins, which is the newest
-created matching room. A missing query returns no room and therefore takes the
-already-observed placement-skip path. The shared mission root is void during
+created matching room. A missing first query returns no room and fails the
+complete Level load. The shared mission root is void during
 the observed object-load sequence, so it does not substitute for an unresolved
 non-void placement string. The selected corpus has no matching ordinary-name
 collisions; the collision rule is established by static traversal rather than a
@@ -116,8 +135,19 @@ mission-start resolver.
 then recursively visits its child list in retained physical order. It selects
 only that root and descendants: ancestors are excluded. A mesh root receives a
 mesh object; null and light roots retain their respective clone paths. Every
-new node initially belongs to `missionWorld`; `root.SetRoom(target, true)` then
-rebinds the root and recursively rebinds children in child-list order.
+new node initially belongs to `missionWorld`. The later virtual
+`SetRoom(target, true)` rebinds the root and recursively rebinds children in
+child-list order. Its dynamic implementation is root-kind dependent:
+
+| Root implementation | Exact VA range | Confirmed behavior |
+|---|---|---|
+| base `CcSrtNode::SetRoom` | `[0x1000EC90, 0x1000ECC1)` | writes `+0xF4`, then optionally forwards the supplied room through each child's virtual slot `+0x04` |
+| `CcNull::SetRoom` | `[0x1000FFD0, 0x1001000F)` | attaches on changed nonnull room, then optionally forwards the supplied room to children |
+| `CcLight::SetRoom` | `[0x100076A0, 0x100076DF)` | same admission shape as the null override through its light attachment path |
+| `CcObject::SetRoom` | `[0x10015260, 0x100152AC)` | unlinks and links on changed nonnull room, then optionally forwards its stored `+0xF4` room to children |
+
+The call site itself is an indirect call through `[vtable + 0x04]`; no single
+generic implementation may be substituted for these targets.
 
 `CcSrtNode::SetParent` first materializes each child's previous world relation,
 then derives its local relation against its newly attached parent. In the port's
@@ -148,9 +178,12 @@ may preserve physical `OBJE` order and source provenance; load only the
 definition `0x3000` selection/subtree; derive descendant locals from authored
 world transforms; apply one external Z-X-Y-radian root pose; retain the
 mesh-versus-null/light scalar distinction; use the native root-then-newest
-ordinary ASCII-fold room lookup for valid input; bind the resulting room; and
-skip unresolved placements without aborting the mission. It should reuse the
-existing geometry/material/texture assembly rather than duplicate it.
+ordinary ASCII-fold room lookup for valid input; repeat the lookup at the two
+recovered seams; dispatch kind-correct room rebinding; and fail the complete
+candidate atomically on any missing selector, missing room, or instance
+failure. It should reuse the existing geometry/material/texture assembly rather
+than duplicate it. An optional skip-and-continue mode must be labelled as a
+non-native resilience policy and cannot claim parity.
 
 **NO-GO (bit parity):** exact native floating-point parity is not established.
 Portable trigonometry and matrix arithmetic have not been compared under the
@@ -171,9 +204,19 @@ patch memory, save a dump, or publish binaries or asset-derived data. A second
 minimal lookup witness should compare root, missing, and available case-fold
 duplicate ordinary-room queries without using the start resolver.
 
+## Closed-diff correction
+
+The initial documentation commit incorrectly described the three null gates as
+per-placement skip paths. The closed-diff review followed their direct branches
+through the shared cleanup and false return, verified the sole successful loop
+edge, recovered the second room lookup and virtual call site, and re-exported
+all five relevant Cc functions with both Ghidra and Rizin. This report now
+supersedes that earlier wording with the fail-atomic contract above.
+
 ## Result
 
 The prediction is supported at high static confidence for sequence, field
-offsets, selected-subtree scope, room admission, axis order, and transform
-composition. The runtime implementation remains intentionally unchanged by this
-experiment.
+offsets, selected-subtree scope, two-stage room admission, kind-specific
+`SetRoom` dispatch, fail-atomic control flow, axis order, and transform
+composition. The runtime implementation remains intentionally unchanged by
+this experiment.

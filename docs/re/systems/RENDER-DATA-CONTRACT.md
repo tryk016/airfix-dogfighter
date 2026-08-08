@@ -337,14 +337,18 @@ does not publish its `0x4000` records. A later semantic
 `LevelObjectSceneAssembly` must consume each physical Level `OBJE` record in
 order, select only the named `0x3000` subtree, derive descendants relative to
 the selected authored root, and apply one external root pose. It must not emit
-one independent world transform per selected node. Missing selector, blueprint,
-clone, or room skips only that placement.
+one independent world transform per selected node. Missing selector, first
+room lookup, or clone fails the complete candidate atomically; no successfully
+partial Level assembly is published. Per-placement skipping can exist only as
+an explicitly non-native resilience policy.
 
 The native room query is distinct from start selection: root/full-name lookup
-precedes newest-ordinary/name-only ASCII-fold lookup. A future strict duplicate
-room rejection is permitted only as explicit port policy; it is not native
-lookup parity. This record specifies scene admission and provenance, not GPU
-draw order. The C++20 runtime boundary remains pending.
+precedes newest-ordinary/name-only ASCII-fold lookup. `LoadLevel` performs the
+admission lookup at VA `0x1002E5E3`, repeats it at VA `0x1002E67D`, then calls
+the root-kind virtual `SetRoom` through `[vtable + 0x04]` at VA `0x1002E682`.
+A future strict duplicate-room rejection is permitted only as explicit port
+policy; it is not native lookup parity. This record specifies scene admission
+and provenance, not GPU draw order. The C++20 runtime boundary remains pending.
 
 ## Metal handoff
 
