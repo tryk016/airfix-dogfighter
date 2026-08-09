@@ -62,3 +62,7 @@ __pycache__/
 
 # Private converted runtime content
 *.afpack
+*.afmission
+*.afmission.backup
+*.afmission.partial
+*.afmission.backup.partial

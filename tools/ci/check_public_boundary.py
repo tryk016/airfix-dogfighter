@@ -11,6 +11,7 @@ import sys
 
 BLOCKED_SUFFIXES = {
     ".afpack",
+    ".afmission",
     ".up",
     ".gti",
     ".ccf",
@@ -87,6 +88,9 @@ BLOCKED_PATH_PREFIXES = {
 }
 
 BLOCKED_FILE_ENDINGS = {
+    ".afmission.backup",
+    ".afmission.partial",
+    ".afmission.backup.partial",
     ".jsonl.bak",
     ".ndjson.bak",
     ".aircraft-capture.jsonl",

@@ -101,6 +101,16 @@ def main() -> int:
             "archives/private-textures.tar.gz",
             "forbidden file type",
         )
+        assert_blocked(
+            root,
+            "private/first-mission.afmission",
+            "forbidden file type",
+        )
+        assert_blocked(
+            root,
+            "private/mission-selection.afmission.backup",
+            "forbidden file type",
+        )
         assert_blocked(root, "notes/function.bndb", "forbidden file type")
         assert_blocked(root, "notes/session.trace32", "forbidden file type")
         assert_blocked(root, "notes/session.dd32.bak", "forbidden file type")

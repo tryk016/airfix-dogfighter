@@ -69,6 +69,9 @@ and a single audited manifest/container is easier to validate and support.
 - No original PE module crosses the content boundary; plugin registration is
   reconstructed in native code.
 - Missing CD music is represented explicitly and remains non-fatal.
+- AFPACK v1 remains content-only. An explicit owner-private AFMS companion
+  selects a setup/Level/start without changing, repacking, or trusting the
+  authenticated container; filled AFMS documents also remain outside Git/CI.
 
 ## Revisit conditions
 
@@ -85,5 +88,6 @@ and a single audited manifest/container is easier to validate and support.
 2. [x] Implement a portable bounded metadata parser and malformed-input tests.
 3. [x] Implement the deterministic, allowlisted, streaming local writer.
 4. [x] Add bounded entry regions and nested UDSP validation.
-5. [ ] Implement the atomic iOS verifier/import transaction.
+5. [x] Implement the atomic iOS verifier/import transaction.
 6. [ ] Exercise cancellation, low-storage, corruption, and rollback on device.
+7. [x] Add the bounded AFMS mission-selection companion and durable iOS import.

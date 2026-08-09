@@ -9,10 +9,13 @@
 #include "airfix/content/LegacyAircraftHudInstrumentsTextureSet.hpp"
 #include "airfix/content/LegacyAircraftHudRollingDigitsTextureSet.hpp"
 #include "airfix/content/LegacyAircraftHudWeaponPanelTextureSet.hpp"
+#include "airfix/content/MissionLaunchSelectionCodec.hpp"
+#include "airfix/content/MissionLaunchSelectionStore.hpp"
 #include "airfix/content/MissionLoadManifest.hpp"
 #include "airfix/content/MissionWorldRoomLoader.hpp"
 #include "airfix/content/VerifiedContentSession.hpp"
 #include "airfix/content/WorldRoomPublicationGate.hpp"
+#include "airfix/io/DurableFile.hpp"
 #include "airfix/package/AfPackInstaller.hpp"
 #include "airfix/package/AfPackRecovery.hpp"
 #include "airfix/texture/TextureModeState.hpp"
@@ -61,6 +64,7 @@ struct StoredInspectionOutcome final {
 typedef NS_ENUM(NSInteger, AirfixDocumentPickerPurpose) {
   AirfixDocumentPickerPurposeNone,
   AirfixDocumentPickerPurposeContentPackage,
+  AirfixDocumentPickerPurposeMissionSelection,
   AirfixDocumentPickerPurposeTexturePackage,
 };
 
@@ -81,7 +85,8 @@ typedef NS_ENUM(NSInteger, AirfixDocumentPickerPurpose) {
 
 [[nodiscard]] airfix::texture::TexturePackageAvailability
 textureAvailabilityForInspection(
-    const airfix::texture::InstalledTexturePackInspection &inspection) noexcept {
+    const airfix::texture::InstalledTexturePackInspection
+        &inspection) noexcept {
   switch (inspection.status) {
   case airfix::texture::InstalledTexturePackStatus::ready:
     return airfix::texture::TexturePackageAvailability::ready;
@@ -97,8 +102,8 @@ textureAvailabilityForInspection(
   return airfix::texture::TexturePackageAvailability::unavailable;
 }
 
-[[nodiscard]] airfix::texture::TextureMode textureMode(
-    const AirfixMissionTextureMode mode) noexcept {
+[[nodiscard]] airfix::texture::TextureMode
+textureMode(const AirfixMissionTextureMode mode) noexcept {
   return mode == AirfixMissionTextureModeEnhanced
              ? airfix::texture::TextureMode::enhanced
              : airfix::texture::TextureMode::classic;
@@ -281,6 +286,7 @@ using CopyProgress = std::function<void(std::uint64_t, std::uint64_t)>;
 
 void copyRegularFile(const std::filesystem::path &source,
                      const std::filesystem::path &destination,
+                     const std::uint64_t maximumBytes,
                      const std::stop_token stopToken,
                      const CopyProgress &progress) {
   checkStop(stopToken);
@@ -297,7 +303,8 @@ void copyRegularFile(const std::filesystem::path &source,
       throw std::runtime_error("selected content is not a regular file");
     }
     const auto expectedBytes = static_cast<std::uint64_t>(sourceInfo.st_size);
-    if (expectedBytes == 0U || expectedBytes > kMaximumImportedPackBytes) {
+    if (maximumBytes == 0U || expectedBytes == 0U ||
+        expectedBytes > maximumBytes) {
       throw std::runtime_error("selected content size is outside limits");
     }
 
@@ -327,7 +334,7 @@ void copyRegularFile(const std::filesystem::path &source,
         break;
       }
       const auto receivedBytes = static_cast<std::uint64_t>(received);
-      if (receivedBytes > kMaximumImportedPackBytes - copiedBytes) {
+      if (receivedBytes > maximumBytes - copiedBytes) {
         throw std::runtime_error("selected content grew beyond limits");
       }
 
@@ -410,6 +417,7 @@ NSString *canonicalTransactionIdentifier(void) {
 @property(nonatomic, strong) UILabel *statusLabel;
 @property(nonatomic, strong) UIProgressView *progressView;
 @property(nonatomic, strong) UIButton *importButton;
+@property(nonatomic, strong) UIButton *missionSelectionImportButton;
 @property(nonatomic, strong) UIButton *textureImportButton;
 @property(nonatomic, strong) UIButton *rollbackButton;
 @property(nonatomic, readwrite) AirfixContentReadiness readiness;
@@ -429,13 +437,14 @@ NSString *canonicalTransactionIdentifier(void) {
     (airfix::texture::TexturePackageAvailability)availability;
 - (void)reloadMissionForTextureStateIfNeeded;
 - (void)beginTextureInstallFromURL:(NSURL *)selectedURL;
+- (void)beginMissionSelectionImportFromURL:(NSURL *)selectedURL;
 - (void)beginTextureOperationWithText:(NSString *)text;
 - (void)completeInspectionWithErrorText:(NSString *)text
                       operationIdentity:(NSObject *)operationIdentity
                       lifecycleIdentity:(NSObject *)lifecycleIdentity;
 - (void)finishTextureOperationWithAvailability:
             (airfix::texture::TexturePackageAvailability)availability
-                                         text:(NSString *)text;
+                                          text:(NSString *)text;
 @end
 
 @implementation AirfixContentCoordinator
@@ -448,8 +457,7 @@ NSString *canonicalTransactionIdentifier(void) {
   }
   _presentingViewController = viewController;
   _readiness = AirfixContentReadinessMissing;
-  _texturePackageAvailability =
-      AirfixTexturePackageAvailabilityNotConfigured;
+  _texturePackageAvailability = AirfixTexturePackageAvailabilityNotConfigured;
   _requestedTextureMode = airfix::texture::TextureMode::classic;
   _textureAvailability =
       airfix::texture::TexturePackageAvailability::notConfigured;
@@ -517,9 +525,25 @@ NSString *canonicalTransactionIdentifier(void) {
       forControlEvents:UIControlEventTouchUpInside];
   self.importButton = import;
 
+  UIButton *missionSelectionImport =
+      [UIButton buttonWithType:UIButtonTypeSystem];
+  [missionSelectionImport setTitle:@"Import Mission Selection"
+                          forState:UIControlStateNormal];
+  missionSelectionImport.titleLabel.font =
+      [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
+  missionSelectionImport.titleLabel.adjustsFontForContentSizeCategory = YES;
+  missionSelectionImport.titleLabel.numberOfLines = 0;
+  missionSelectionImport.titleLabel.lineBreakMode = NSLineBreakByWordWrapping;
+  missionSelectionImport.titleLabel.textAlignment = NSTextAlignmentCenter;
+  missionSelectionImport.accessibilityHint =
+      @"Choose a private AFMS mission selection document";
+  [missionSelectionImport addTarget:self
+                             action:@selector(missionSelectionImportPressed:)
+                   forControlEvents:UIControlEventTouchUpInside];
+  self.missionSelectionImportButton = missionSelectionImport;
+
   UIButton *textureImport = [UIButton buttonWithType:UIButtonTypeSystem];
-  [textureImport setTitle:@"Import HD Textures"
-                 forState:UIControlStateNormal];
+  [textureImport setTitle:@"Import HD Textures" forState:UIControlStateNormal];
   textureImport.titleLabel.font =
       [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
   textureImport.titleLabel.adjustsFontForContentSizeCategory = YES;
@@ -548,9 +572,9 @@ NSString *canonicalTransactionIdentifier(void) {
       forControlEvents:UIControlEventTouchUpInside];
   self.rollbackButton = rollback;
 
-  UIStackView *buttons =
-      [[UIStackView alloc]
-          initWithArrangedSubviews:@[ import, textureImport, rollback ]];
+  UIStackView *buttons = [[UIStackView alloc] initWithArrangedSubviews:@[
+    import, missionSelectionImport, textureImport, rollback
+  ]];
   buttons.axis = UILayoutConstraintAxisVertical;
   buttons.spacing = 10.0;
   buttons.alignment = UIStackViewAlignmentFill;
@@ -570,6 +594,8 @@ NSString *canonicalTransactionIdentifier(void) {
     [stack.trailingAnchor constraintEqualToAnchor:container.trailingAnchor],
     [progress.widthAnchor constraintGreaterThanOrEqualToConstant:220.0],
     [import.heightAnchor constraintGreaterThanOrEqualToConstant:44.0],
+    [missionSelectionImport.heightAnchor
+        constraintGreaterThanOrEqualToConstant:44.0],
     [textureImport.heightAnchor constraintGreaterThanOrEqualToConstant:44.0],
     [rollback.heightAnchor constraintGreaterThanOrEqualToConstant:44.0],
   ]];
@@ -618,9 +644,9 @@ NSString *canonicalTransactionIdentifier(void) {
   _textureAvailability = availability;
   self.texturePackageAvailability = publicTextureAvailability(availability);
   id<AirfixContentCoordinatorDelegate> delegate = self.delegate;
-  if ([delegate respondsToSelector:
-                    @selector(contentCoordinator:
-                        didChangeTexturePackageAvailability:)]) {
+  if ([delegate
+          respondsToSelector:@selector(contentCoordinator:
+                                       didChangeTexturePackageAvailability:)]) {
     [delegate contentCoordinator:self
         didChangeTexturePackageAvailability:self.texturePackageAvailability];
   }
@@ -631,8 +657,7 @@ NSString *canonicalTransactionIdentifier(void) {
   NSAssert(NSThread.isMainThread,
            @"Mission texture reload decisions are main-thread confined");
   const auto resolved = airfix::texture::resolveTextureModeState(
-      _requestedTextureMode, _textureAvailability,
-      _activeMissionTextureState);
+      _requestedTextureMode, _textureAvailability, _activeMissionTextureState);
   if (!resolved.complete()) {
     return;
   }
@@ -640,9 +665,8 @@ NSString *canonicalTransactionIdentifier(void) {
       .requestedMode = resolved.state->requestedMode,
       .effectiveMode = resolved.state->effectiveMode,
   };
-  const bool loadingDifferent =
-      _loadingMissionTextureState.has_value() &&
-      *_loadingMissionTextureState != target;
+  const bool loadingDifferent = _loadingMissionTextureState.has_value() &&
+                                *_loadingMissionTextureState != target;
   if (!resolved.state->missionReloadRequired && !loadingDifferent) {
     return;
   }
@@ -695,12 +719,40 @@ NSString *canonicalTransactionIdentifier(void) {
   self.pickerPresented = YES;
   self.pickerPurpose = AirfixDocumentPickerPurposeContentPackage;
   self.importButton.enabled = NO;
+  self.missionSelectionImportButton.enabled = NO;
   self.textureImportButton.enabled = NO;
   self.rollbackButton.hidden = YES;
   self.rollbackButton.enabled = NO;
   UIDocumentPickerViewController *picker =
       [[UIDocumentPickerViewController alloc]
           initForOpeningContentTypes:@[ UTTypeData ]
+                              asCopy:NO];
+  picker.delegate = self;
+  picker.allowsMultipleSelection = NO;
+  picker.modalPresentationStyle = UIModalPresentationFormSheet;
+  [self.presentingViewController presentViewController:picker
+                                              animated:YES
+                                            completion:nil];
+}
+
+- (void)missionSelectionImportPressed:(UIButton *)sender {
+  (void)sender;
+  if (self.busy || self.presentingViewController == nil ||
+      self.presentingViewController.presentedViewController != nil) {
+    return;
+  }
+  self.pickerPresented = YES;
+  self.pickerPurpose = AirfixDocumentPickerPurposeMissionSelection;
+  self.importButton.enabled = NO;
+  self.missionSelectionImportButton.enabled = NO;
+  self.textureImportButton.enabled = NO;
+  self.rollbackButton.hidden = YES;
+  self.rollbackButton.enabled = NO;
+  UTType *const missionType =
+      [UTType typeWithFilenameExtension:@"afmission"] ?: UTTypeData;
+  UIDocumentPickerViewController *picker =
+      [[UIDocumentPickerViewController alloc]
+          initForOpeningContentTypes:@[ missionType ]
                               asCopy:NO];
   picker.delegate = self;
   picker.allowsMultipleSelection = NO;
@@ -719,6 +771,7 @@ NSString *canonicalTransactionIdentifier(void) {
   self.pickerPresented = YES;
   self.pickerPurpose = AirfixDocumentPickerPurposeTexturePackage;
   self.importButton.enabled = NO;
+  self.missionSelectionImportButton.enabled = NO;
   self.textureImportButton.enabled = NO;
   self.rollbackButton.hidden = YES;
   self.rollbackButton.enabled = NO;
@@ -751,6 +804,7 @@ NSString *canonicalTransactionIdentifier(void) {
   self.pickerPurpose = AirfixDocumentPickerPurposeNone;
   if (selected == nil || self.busy) {
     self.importButton.enabled = !self.busy;
+    self.missionSelectionImportButton.enabled = !self.busy;
     self.textureImportButton.enabled = !self.busy;
     self.rollbackButton.hidden = !self.rollbackEligible;
     self.rollbackButton.enabled = self.rollbackEligible && !self.busy;
@@ -758,10 +812,13 @@ NSString *canonicalTransactionIdentifier(void) {
   }
   if (purpose == AirfixDocumentPickerPurposeTexturePackage) {
     [self beginTextureInstallFromURL:selected];
+  } else if (purpose == AirfixDocumentPickerPurposeMissionSelection) {
+    [self beginMissionSelectionImportFromURL:selected];
   } else if (purpose == AirfixDocumentPickerPurposeContentPackage) {
     [self beginInstallFromURL:selected];
   } else {
     self.importButton.enabled = YES;
+    self.missionSelectionImportButton.enabled = YES;
     self.textureImportButton.enabled = YES;
   }
 }
@@ -772,6 +829,7 @@ NSString *canonicalTransactionIdentifier(void) {
   self.pickerPresented = NO;
   self.pickerPurpose = AirfixDocumentPickerPurposeNone;
   self.importButton.enabled = !self.busy;
+  self.missionSelectionImportButton.enabled = !self.busy;
   self.textureImportButton.enabled = !self.busy;
   self.rollbackButton.hidden = !self.rollbackEligible;
   self.rollbackButton.enabled = self.rollbackEligible && !self.busy;
@@ -806,11 +864,13 @@ NSString *canonicalTransactionIdentifier(void) {
     const std::filesystem::path parentPath = fileSystemPath(parent);
     requirePrivateDirectory(parentPath);
     cleanupOwnedFiles(parentPath / "incoming", "import-", ".afpack");
+    cleanupOwnedFiles(parentPath / "incoming", "import-", ".afmission");
     const auto contentPath = parentPath / "content";
     requirePrivateDirectory(contentPath);
     cleanupOwnedFiles(contentPath / "staging", "import-", ".afpack.partial");
     cleanupOwnedFiles(contentPath, "active-", ".afac.partial");
     requirePrivateDirectory(parentPath / "texture-packs");
+    requirePrivateDirectory(parentPath / "mission-selection");
   } catch (...) {
     return nil;
   }
@@ -827,6 +887,7 @@ NSString *canonicalTransactionIdentifier(void) {
   self.progressView.progress = 0.0F;
   self.progressView.hidden = YES;
   self.importButton.enabled = NO;
+  self.missionSelectionImportButton.enabled = NO;
   self.textureImportButton.enabled = NO;
   self.rollbackButton.hidden = YES;
   self.rollbackButton.enabled = NO;
@@ -843,17 +904,17 @@ NSString *canonicalTransactionIdentifier(void) {
   self.progressView.progress = 0.0F;
   self.progressView.hidden = YES;
   self.importButton.enabled = NO;
+  self.missionSelectionImportButton.enabled = NO;
   self.textureImportButton.enabled = NO;
   self.rollbackButton.hidden = YES;
   self.rollbackButton.enabled = NO;
   _textureAvailability =
       airfix::texture::TexturePackageAvailability::validating;
-  self.texturePackageAvailability =
-      AirfixTexturePackageAvailabilityValidating;
+  self.texturePackageAvailability = AirfixTexturePackageAvailabilityValidating;
   id<AirfixContentCoordinatorDelegate> delegate = self.delegate;
-  if ([delegate respondsToSelector:
-                    @selector(contentCoordinator:
-                        didChangeTexturePackageAvailability:)]) {
+  if ([delegate
+          respondsToSelector:@selector(contentCoordinator:
+                                       didChangeTexturePackageAvailability:)]) {
     [delegate contentCoordinator:self
         didChangeTexturePackageAvailability:
             AirfixTexturePackageAvailabilityValidating];
@@ -891,6 +952,7 @@ NSString *canonicalTransactionIdentifier(void) {
                              UIApplication.sharedApplication.applicationState ==
                                  UIApplicationStateActive;
   self.importButton.enabled = !canInspectNow;
+  self.missionSelectionImportButton.enabled = !canInspectNow;
   self.textureImportButton.enabled = !canInspectNow;
   if (canInspectNow) {
     NSObject *const currentLifecycleIdentity = _lifecycleIdentity;
@@ -931,8 +993,8 @@ NSString *canonicalTransactionIdentifier(void) {
                             lifecycleIdentity:lifecycleIdentity]) {
     return;
   }
-  [self publishTextureAvailability:
-            airfix::texture::TexturePackageAvailability::unavailable];
+  [self publishTextureAvailability:airfix::texture::TexturePackageAvailability::
+                                       unavailable];
   self.inspectWhenIdle = NO;
   [self finishOperationWithErrorText:text];
 }
@@ -945,6 +1007,7 @@ NSString *canonicalTransactionIdentifier(void) {
   self.busy = NO;
   self.progressView.hidden = YES;
   self.importButton.enabled = YES;
+  self.missionSelectionImportButton.enabled = YES;
   self.textureImportButton.enabled = YES;
 
   self.rollbackEligible =
@@ -984,6 +1047,7 @@ NSString *canonicalTransactionIdentifier(void) {
   self.statusLabel.text = text;
   self.progressView.hidden = YES;
   self.importButton.enabled = YES;
+  self.missionSelectionImportButton.enabled = YES;
   self.textureImportButton.enabled = YES;
   self.rollbackButton.hidden = YES;
   self.rollbackButton.enabled = NO;
@@ -1000,13 +1064,14 @@ NSString *canonicalTransactionIdentifier(void) {
 
 - (void)finishTextureOperationWithAvailability:
             (const airfix::texture::TexturePackageAvailability)availability
-                                         text:(NSString *)text {
+                                          text:(NSString *)text {
   NSAssert(NSThread.isMainThread,
            @"Texture package completion is main-thread confined");
   self.busy = NO;
   self.statusLabel.text = text;
   self.progressView.hidden = YES;
   self.importButton.enabled = YES;
+  self.missionSelectionImportButton.enabled = YES;
   self.textureImportButton.enabled = YES;
   self.rollbackButton.hidden = !self.rollbackEligible;
   self.rollbackButton.enabled = self.rollbackEligible;
@@ -1176,10 +1241,8 @@ NSString *canonicalTransactionIdentifier(void) {
   }
 
   const auto request = *_rememberedMissionRequest;
-  const auto textureModeResolution =
-      airfix::texture::resolveTextureModeState(
-          _requestedTextureMode, _textureAvailability,
-          _activeMissionTextureState);
+  const auto textureModeResolution = airfix::texture::resolveTextureModeState(
+      _requestedTextureMode, _textureAvailability, _activeMissionTextureState);
   if (!textureModeResolution.complete()) {
     self.statusLabel.text =
         @"The mission texture policy could not be resolved.";
@@ -1469,8 +1532,8 @@ NSString *canonicalTransactionIdentifier(void) {
     return;
   }
   [self cancelMissionLoadClearingRevision:YES];
-  [self publishTextureAvailability:
-            airfix::texture::TexturePackageAvailability::validating];
+  [self publishTextureAvailability:airfix::texture::TexturePackageAvailability::
+                                       validating];
   [self beginOperationWithText:@"Checking private game content..."];
   const std::stop_token stopToken = _operationStop.get_token();
   NSObject *const operationIdentity = _operationIdentity;
@@ -1492,13 +1555,14 @@ NSString *canonicalTransactionIdentifier(void) {
           throw std::runtime_error("application support is unavailable");
         }
         const auto contentRoot = fileSystemPath(rootURL);
-        auto textureInspection =
-            airfix::texture::inspectInstalledTexturePack(
-                contentRoot.parent_path() / "texture-packs");
+        const auto storedMissionSelection =
+            airfix::content::loadMissionLaunchSelection(
+                contentRoot.parent_path() / "mission-selection");
+        auto textureInspection = airfix::texture::inspectInstalledTexturePack(
+            contentRoot.parent_path() / "texture-packs");
         const auto textureAvailability =
             textureAvailabilityForInspection(textureInspection);
-        strongSelf->_texturePackSession =
-            std::move(textureInspection.session);
+        strongSelf->_texturePackSession = std::move(textureInspection.session);
         auto inspected = airfix::afpack::inspectActiveContent(
             contentRoot, {}, stopToken,
             [weakSelf, operationIdentity, lifecycleIdentity](
@@ -1527,6 +1591,17 @@ NSString *canonicalTransactionIdentifier(void) {
           } else {
             coordinator->_roomPublicationGate.clearActiveRevision();
           }
+          if (!coordinator->_rememberedMissionRequest.has_value() &&
+              storedMissionSelection.selection.has_value()) {
+            const auto &selection = *storedMissionSelection.selection;
+            coordinator->_missionRequestIdentity = [NSObject new];
+            coordinator->_rememberedMissionRequest = RememberedMissionRequest{
+                .setupLogicalPath = selection.setupLogicalPath,
+                .levelLogicalPath = selection.levelLogicalPath,
+                .playerObjectLogicalPath = selection.playerObjectLogicalPath,
+                .requestedStartIndex = selection.requestedStartIndex,
+            };
+          }
           [coordinator publishTextureAvailability:textureAvailability];
           [coordinator finishOperationWithInspectionStatus:outcome.status];
         });
@@ -1536,8 +1611,8 @@ NSString *canonicalTransactionIdentifier(void) {
           [coordinator
               completeInspectionWithErrorText:
                   @"Content check was paused. It will retry in the foreground."
-                           operationIdentity:operationIdentity
-                           lifecycleIdentity:lifecycleIdentity];
+                            operationIdentity:operationIdentity
+                            lifecycleIdentity:lifecycleIdentity];
         });
       } catch (const std::exception &) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -1545,8 +1620,8 @@ NSString *canonicalTransactionIdentifier(void) {
           [coordinator
               completeInspectionWithErrorText:
                   @"Content could not be checked. Try again in the foreground."
-                           operationIdentity:operationIdentity
-                           lifecycleIdentity:lifecycleIdentity];
+                            operationIdentity:operationIdentity
+                            lifecycleIdentity:lifecycleIdentity];
         });
       } catch (...) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -1554,8 +1629,144 @@ NSString *canonicalTransactionIdentifier(void) {
           [coordinator
               completeInspectionWithErrorText:
                   @"Content could not be checked. Try again in the foreground."
+                            operationIdentity:operationIdentity
+                            lifecycleIdentity:lifecycleIdentity];
+        });
+      }
+    };
+    performWork();
+
+    AirfixContentCoordinator *const releaseOnMain = strongSelf;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      (void)releaseOnMain;
+    });
+  });
+}
+
+- (void)beginMissionSelectionImportFromURL:(NSURL *)selectedURL {
+  if (self.busy) {
+    return;
+  }
+  [self cancelMissionLoadClearingRevision:NO];
+  [self beginOperationWithText:@"Importing private mission selection..."];
+  const std::stop_token stopToken = _operationStop.get_token();
+  NSObject *const operationIdentity = _operationIdentity;
+  NSObject *const lifecycleIdentity = _lifecycleIdentity;
+  NSString *transaction = canonicalTransactionIdentifier();
+  __weak AirfixContentCoordinator *weakSelf = self;
+  dispatch_async(_workQueue, ^{
+    AirfixContentCoordinator *strongSelf = weakSelf;
+    if (strongSelf == nil) {
+      return;
+    }
+    void (^performWork)(void) = ^{
+      std::filesystem::path privateCopy;
+      try {
+        NSURL *rootURL = [strongSelf prepareContentRoot];
+        if (rootURL == nil) {
+          throw std::runtime_error("application support is unavailable");
+        }
+        const auto contentRoot = fileSystemPath(rootURL);
+        privateCopy =
+            contentRoot.parent_path() / "incoming" /
+            (std::string("import-") + transaction.UTF8String + ".afmission");
+        {
+          ScopedSecurityAccess securityAccess(selectedURL);
+          NSFileCoordinator *fileCoordinator =
+              [[NSFileCoordinator alloc] initWithFilePresenter:nil];
+          __block std::exception_ptr copyFailure;
+          NSError *coordinationError = nil;
+          [fileCoordinator
+              coordinateReadingItemAtURL:selectedURL
+                                 options:0
+                                   error:&coordinationError
+                              byAccessor:^(NSURL *coordinatedURL) {
+                                try {
+                                  copyRegularFile(
+                                      fileSystemPath(coordinatedURL),
+                                      privateCopy,
+                                      airfix::content::
+                                          maximumMissionSelectionDocumentBytes,
+                                      stopToken, {});
+                                } catch (...) {
+                                  copyFailure = std::current_exception();
+                                }
+                              }];
+          if (copyFailure != nullptr) {
+            std::rethrow_exception(copyFailure);
+          }
+          if (coordinationError != nil) {
+            throw std::runtime_error("document coordination failed");
+          }
+        }
+        const auto bytes = airfix::io::readBoundedRegularFile(
+            privateCopy, airfix::content::maximumMissionSelectionDocumentBytes);
+        const auto selection =
+            airfix::content::decodeMissionLaunchSelection(bytes);
+        const auto selectionDirectory =
+            contentRoot.parent_path() / "mission-selection";
+        try {
+          (void)airfix::content::saveMissionLaunchSelection(selectionDirectory,
+                                                            selection);
+        } catch (const airfix::content::MissionSelectionStoreError &error) {
+          if (error.kind() !=
+              airfix::content::MissionSelectionStoreErrorKind::commitUnknown) {
+            throw;
+          }
+          const auto readback =
+              airfix::content::loadMissionLaunchSelection(selectionDirectory);
+          if (!readback.selection.has_value() ||
+              *readback.selection != selection) {
+            throw;
+          }
+        }
+        removeFile(privateCopy);
+        privateCopy.clear();
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+          AirfixContentCoordinator *coordinator = strongSelf;
+          if (coordinator == nil ||
+              ![coordinator
+                  consumeTerminalOperationIdentity:operationIdentity
+                                 lifecycleIdentity:lifecycleIdentity]) {
+            return;
+          }
+          [coordinator cancelMissionLoadClearingRevision:NO];
+          coordinator->_missionRequestIdentity = [NSObject new];
+          coordinator->_rememberedMissionRequest = RememberedMissionRequest{
+              .setupLogicalPath = selection.setupLogicalPath,
+              .levelLogicalPath = selection.levelLogicalPath,
+              .playerObjectLogicalPath = selection.playerObjectLogicalPath,
+              .requestedStartIndex = selection.requestedStartIndex,
+          };
+          coordinator.busy = NO;
+          coordinator.progressView.hidden = YES;
+          coordinator.inspectWhenIdle = NO;
+          coordinator.statusLabel.text =
+              @"Private mission selection saved. Checking content...";
+          [coordinator beginInspection];
+        });
+      } catch (const std::exception &) {
+        removeFile(privateCopy);
+        dispatch_async(dispatch_get_main_queue(), ^{
+          AirfixContentCoordinator *coordinator = strongSelf;
+          [coordinator
+              completeOperationWithErrorText:
+                  @"The mission selection is invalid or could not be saved."
                            operationIdentity:operationIdentity
-                           lifecycleIdentity:lifecycleIdentity];
+                           lifecycleIdentity:lifecycleIdentity
+                          inspectAfterFinish:YES];
+        });
+      } catch (...) {
+        removeFile(privateCopy);
+        dispatch_async(dispatch_get_main_queue(), ^{
+          AirfixContentCoordinator *coordinator = strongSelf;
+          [coordinator
+              completeOperationWithErrorText:
+                  @"The mission selection is invalid or could not be saved."
+                           operationIdentity:operationIdentity
+                           lifecycleIdentity:lifecycleIdentity
+                          inspectAfterFinish:YES];
         });
       }
     };
@@ -1616,7 +1827,8 @@ NSString *canonicalTransactionIdentifier(void) {
                                 try {
                                   copyRegularFile(
                                       fileSystemPath(coordinatedURL),
-                                      privateCopy, stopToken,
+                                      privateCopy, kMaximumImportedPackBytes,
+                                      stopToken,
                                       [weakSelf, operationIdentity,
                                        lifecycleIdentity](
                                           const std::uint64_t completed,
@@ -1709,62 +1921,66 @@ NSString *canonicalTransactionIdentifier(void) {
         removeFile(privateCopy);
         dispatch_async(dispatch_get_main_queue(), ^{
           [strongSelf completeOperationWithErrorText:
-                        @"The package was processed. Active content will be "
-                        @"checked in the foreground."
-                                 operationIdentity:operationIdentity
-                                 lifecycleIdentity:lifecycleIdentity
-                                inspectAfterFinish:YES];
+                          @"The package was processed. Active content will be "
+                          @"checked in the foreground."
+                                   operationIdentity:operationIdentity
+                                   lifecycleIdentity:lifecycleIdentity
+                                  inspectAfterFinish:YES];
         });
       } catch (const airfix::afpack::InstallCommitUnknown &) {
         removeFile(privateCopy);
         dispatch_async(dispatch_get_main_queue(), ^{
           [strongSelf completeOperationWithErrorText:
-                        @"Package activation could not be confirmed. Content "
-                        @"will be checked again."
-                                 operationIdentity:operationIdentity
-                                 lifecycleIdentity:lifecycleIdentity
-                                inspectAfterFinish:YES];
+                          @"Package activation could not be confirmed. Content "
+                          @"will be checked again."
+                                   operationIdentity:operationIdentity
+                                   lifecycleIdentity:lifecycleIdentity
+                                  inspectAfterFinish:YES];
         });
       } catch (const std::exception &) {
         removeFile(privateCopy);
         if (installReturned) {
           dispatch_async(dispatch_get_main_queue(), ^{
-            [strongSelf completeOperationWithErrorText:
-                          @"The package was processed. Active content will be "
-                          @"checked again."
-                                   operationIdentity:operationIdentity
-                                   lifecycleIdentity:lifecycleIdentity
-                                  inspectAfterFinish:YES];
+            [strongSelf
+                completeOperationWithErrorText:
+                    @"The package was processed. Active content will be "
+                    @"checked again."
+                             operationIdentity:operationIdentity
+                             lifecycleIdentity:lifecycleIdentity
+                            inspectAfterFinish:YES];
           });
         } else {
           dispatch_async(dispatch_get_main_queue(), ^{
-            [strongSelf completeOperationWithErrorText:
-                          @"The package could not be imported. Choose a valid "
-                          @"AFPACK and try again."
-                                   operationIdentity:operationIdentity
-                                   lifecycleIdentity:lifecycleIdentity
-                                  inspectAfterFinish:YES];
+            [strongSelf
+                completeOperationWithErrorText:
+                    @"The package could not be imported. Choose a valid "
+                    @"AFPACK and try again."
+                             operationIdentity:operationIdentity
+                             lifecycleIdentity:lifecycleIdentity
+                            inspectAfterFinish:YES];
           });
         }
       } catch (...) {
         removeFile(privateCopy);
         if (installReturned) {
           dispatch_async(dispatch_get_main_queue(), ^{
-            [strongSelf completeOperationWithErrorText:
-                          @"The package was processed. Active content will be "
-                          @"checked again."
-                                   operationIdentity:operationIdentity
-                                   lifecycleIdentity:lifecycleIdentity
-                                  inspectAfterFinish:YES];
+            [strongSelf
+                completeOperationWithErrorText:
+                    @"The package was processed. Active content will be "
+                    @"checked again."
+                             operationIdentity:operationIdentity
+                             lifecycleIdentity:lifecycleIdentity
+                            inspectAfterFinish:YES];
           });
         } else {
           dispatch_async(dispatch_get_main_queue(), ^{
-            [strongSelf completeOperationWithErrorText:
-                          @"The package could not be imported. Choose a valid "
-                          @"AFPACK and try again."
-                                   operationIdentity:operationIdentity
-                                   lifecycleIdentity:lifecycleIdentity
-                                  inspectAfterFinish:YES];
+            [strongSelf
+                completeOperationWithErrorText:
+                    @"The package could not be imported. Choose a valid "
+                    @"AFPACK and try again."
+                             operationIdentity:operationIdentity
+                             lifecycleIdentity:lifecycleIdentity
+                            inspectAfterFinish:YES];
           });
         }
       }
@@ -1820,19 +2036,19 @@ NSString *canonicalTransactionIdentifier(void) {
           NSError *coordinationError = nil;
           [fileCoordinator
               coordinateWritingItemAtURL:selectedURL
-                                  options:NSFileCoordinatorWritingForMoving
-                                    error:&coordinationError
-                               byAccessor:^(NSURL *coordinatedURL) {
-                                 try {
-                                   *installResultSlot = airfix::texture::
-                                       installImportedTexturePack(
-                                           textureRoot,
-                                           fileSystemPath(coordinatedURL),
-                                           packageDirectoryName);
-                                 } catch (...) {
-                                   installFailure = std::current_exception();
-                                 }
-                               }];
+                                 options:NSFileCoordinatorWritingForMoving
+                                   error:&coordinationError
+                              byAccessor:^(NSURL *coordinatedURL) {
+                                try {
+                                  *installResultSlot = airfix::texture::
+                                      installImportedTexturePack(
+                                          textureRoot,
+                                          fileSystemPath(coordinatedURL),
+                                          packageDirectoryName);
+                                } catch (...) {
+                                  installFailure = std::current_exception();
+                                }
+                              }];
           if (installFailure != nullptr) {
             std::rethrow_exception(installFailure);
           }
@@ -1842,8 +2058,7 @@ NSString *canonicalTransactionIdentifier(void) {
         }
         installed = installResult.success();
         if (installed) {
-          strongSelf->_texturePackSession =
-              std::move(installResult.session);
+          strongSelf->_texturePackSession = std::move(installResult.session);
           availability = airfix::texture::TexturePackageAvailability::ready;
         }
       } catch (...) {
@@ -1861,9 +2076,8 @@ NSString *canonicalTransactionIdentifier(void) {
       dispatch_async(dispatch_get_main_queue(), ^{
         AirfixContentCoordinator *coordinator = strongSelf;
         if (coordinator == nil ||
-            ![coordinator
-                consumeTerminalOperationIdentity:operationIdentity
-                               lifecycleIdentity:lifecycleIdentity]) {
+            ![coordinator consumeTerminalOperationIdentity:operationIdentity
+                                         lifecycleIdentity:lifecycleIdentity]) {
           return;
         }
         NSString *message = nil;
@@ -1966,33 +2180,35 @@ NSString *canonicalTransactionIdentifier(void) {
                            strongSelf->_verifiedSession);
         dispatch_async(dispatch_get_main_queue(), ^{
           [strongSelf completeOperationWithErrorText:
-                        @"Restore was paused. Active content will be checked "
-                        @"in the foreground."
-                                 operationIdentity:operationIdentity
-                                 lifecycleIdentity:lifecycleIdentity
-                                inspectAfterFinish:YES];
+                          @"Restore was paused. Active content will be checked "
+                          @"in the foreground."
+                                   operationIdentity:operationIdentity
+                                   lifecycleIdentity:lifecycleIdentity
+                                  inspectAfterFinish:YES];
         });
       } catch (const std::exception &) {
         clearWorkerContent(strongSelf->_inspection,
                            strongSelf->_verifiedSession);
         dispatch_async(dispatch_get_main_queue(), ^{
-          [strongSelf completeOperationWithErrorText:
-                        @"The previous package could not be restored. Content "
-                        @"will be checked again."
-                                 operationIdentity:operationIdentity
-                                 lifecycleIdentity:lifecycleIdentity
-                                inspectAfterFinish:YES];
+          [strongSelf
+              completeOperationWithErrorText:
+                  @"The previous package could not be restored. Content "
+                  @"will be checked again."
+                           operationIdentity:operationIdentity
+                           lifecycleIdentity:lifecycleIdentity
+                          inspectAfterFinish:YES];
         });
       } catch (...) {
         clearWorkerContent(strongSelf->_inspection,
                            strongSelf->_verifiedSession);
         dispatch_async(dispatch_get_main_queue(), ^{
-          [strongSelf completeOperationWithErrorText:
-                        @"The previous package could not be restored. Content "
-                        @"will be checked again."
-                                 operationIdentity:operationIdentity
-                                 lifecycleIdentity:lifecycleIdentity
-                                inspectAfterFinish:YES];
+          [strongSelf
+              completeOperationWithErrorText:
+                  @"The previous package could not be restored. Content "
+                  @"will be checked again."
+                           operationIdentity:operationIdentity
+                           lifecycleIdentity:lifecycleIdentity
+                          inspectAfterFinish:YES];
         });
       }
     };

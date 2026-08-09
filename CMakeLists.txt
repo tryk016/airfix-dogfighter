@@ -577,6 +577,8 @@ add_library(airfix_content
     src/airfix/content/LegacyWeaponCrosshairTextureSet.cpp
     src/airfix/content/LegacyWeaponCrosshairBinding.cpp
     src/airfix/content/LegacyWeaponCrosshairSpriteSubmission.cpp
+    src/airfix/content/MissionLaunchSelectionCodec.cpp
+    src/airfix/content/MissionLaunchSelectionStore.cpp
     src/airfix/content/MissionLoadManifest.cpp
     src/airfix/content/MissionWorldRoomPublication.cpp
     src/airfix/content/MissionWorldRoomLoader.cpp
@@ -610,6 +612,9 @@ if(AIRFIX_BUILD_TOOLS)
 
     add_executable(afpack-install tools/afpack-install/main.cpp)
     target_link_libraries(afpack-install PRIVATE airfix::afpack)
+
+    add_executable(afmission-create tools/afmission-create/main.cpp)
+    target_link_libraries(afmission-create PRIVATE airfix::content airfix::io)
 
     add_executable(gti-preview tools/gti-preview/main.cpp)
     target_link_libraries(gti-preview PRIVATE airfix::assets airfix::udsp)
@@ -983,6 +988,20 @@ if(AIRFIX_BUILD_TESTS)
     target_link_libraries(airfix_mission_entry_resolver_tests PRIVATE airfix::assets)
     add_test(NAME airfix_mission_entry_resolver_tests
         COMMAND airfix_mission_entry_resolver_tests)
+
+    add_executable(airfix_mission_launch_selection_codec_tests
+        tests/MissionLaunchSelectionCodecTests.cpp)
+    target_link_libraries(airfix_mission_launch_selection_codec_tests
+        PRIVATE airfix::content airfix::crypto)
+    add_test(NAME airfix_mission_launch_selection_codec_tests
+        COMMAND airfix_mission_launch_selection_codec_tests)
+
+    add_executable(airfix_mission_launch_selection_store_tests
+        tests/MissionLaunchSelectionStoreTests.cpp)
+    target_link_libraries(airfix_mission_launch_selection_store_tests
+        PRIVATE airfix::content airfix::io)
+    add_test(NAME airfix_mission_launch_selection_store_tests
+        COMMAND airfix_mission_launch_selection_store_tests)
 
     add_executable(airfix_mission_setup_tests
         tests/MissionSetupTests.cpp)

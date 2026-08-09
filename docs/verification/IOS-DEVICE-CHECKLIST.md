@@ -113,10 +113,12 @@ controls respect the safe area, and no private data is already present.
 1. Import the owner-local AFPACK using the system document picker.
 2. Observe validation and installation without revealing the source path in
    the application UI.
-3. Load the configured mission and wait for the private-mission-ready status.
-4. If the optional HD package is configured, test Classic first and Enhanced
+3. Import the matching owner-local `.afmission` with `Import Mission
+   Selection`. Confirm that neither logical paths nor checksums appear in UI.
+4. Wait for the authenticated private mission to load.
+5. If the optional HD package is configured, test Classic first and Enhanced
    second. A rejected or absent HD package must leave Classic usable.
-5. Kill and relaunch the app. Confirm that the authenticated installed package
+6. Kill and relaunch the app. Confirm that the authenticated installed package
    and durable settings recover without another source-file dependency.
 
 Pass: import is atomic, a complete room snapshot appears, failed optional HD
