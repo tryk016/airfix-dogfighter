@@ -47,6 +47,49 @@ def valid_result() -> dict[str, object]:
     }
 
 
+def diagnostic_record(
+    sequence: int, event: str, fields: dict[str, object]
+) -> dict[str, object]:
+    return {
+        "elapsedMs": sequence,
+        "event": event,
+        "fields": fields,
+        "schema": MODULE.JOURNAL_SCHEMA,
+        "sequence": sequence,
+    }
+
+
+def valid_diagnostic_records() -> list[dict[str, object]]:
+    return [
+        diagnostic_record(1, "session.started", {}),
+        diagnostic_record(2, "renderer.initialized", {"succeeded": True}),
+        diagnostic_record(3, "content.state", {"state": "missing"}),
+        diagnostic_record(
+            4, "lifecycle.transition", {"state": "resign-active"}
+        ),
+        diagnostic_record(5, "lifecycle.transition", {"state": "background"}),
+        diagnostic_record(6, "lifecycle.transition", {"state": "foreground"}),
+        diagnostic_record(7, "lifecycle.transition", {"state": "active"}),
+    ]
+
+
+def write_valid_diagnostic_workspace(documents: Path) -> None:
+    (documents / "README.txt").write_bytes(
+        MODULE.WORKSPACE_README.encode("utf-8")
+    )
+    (documents / "Imports").mkdir()
+    diagnostics = documents / "Diagnostics"
+    diagnostics.mkdir()
+    journal = diagnostics / "latest.jsonl"
+    journal.write_text(
+        "".join(
+            json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n"
+            for record in valid_diagnostic_records()
+        ),
+        encoding="utf-8",
+    )
+
+
 class ResultValidationTests(unittest.TestCase):
     def test_accepts_complete_result(self) -> None:
         self.assertEqual(MODULE.validate_result(valid_result())["status"], "pass")
@@ -162,6 +205,81 @@ class RuntimeSelectionTests(unittest.TestCase):
 
 
 class DiagnosticHardeningTests(unittest.TestCase):
+    def test_accepts_bounded_path_free_diagnostic_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            documents = Path(directory)
+            write_valid_diagnostic_workspace(documents)
+            records = MODULE.validate_diagnostic_workspace(documents)
+        self.assertEqual(len(records), 7)
+
+    def test_accepts_rotated_journal_with_continuation_marker(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            documents = Path(directory)
+            write_valid_diagnostic_workspace(documents)
+            journal = documents / "Diagnostics" / "latest.jsonl"
+            records = valid_diagnostic_records()
+            records[0]["event"] = "session.continued"
+            journal.write_text(
+                "".join(json.dumps(record) + "\n" for record in records),
+                encoding="utf-8",
+            )
+            validated = MODULE.validate_diagnostic_workspace(documents)
+        self.assertEqual(validated[0]["event"], "session.continued")
+
+    def test_rejects_unknown_diagnostic_event_and_field(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            documents = Path(directory)
+            write_valid_diagnostic_workspace(documents)
+            journal = documents / "Diagnostics" / "latest.jsonl"
+            invalid = diagnostic_record(
+                8, "private.path", {"path": "/private/value"}
+            )
+            with journal.open("a", encoding="utf-8") as output:
+                output.write(json.dumps(invalid) + "\n")
+            with self.assertRaisesRegex(
+                MODULE.SmokeFailure, "identity is invalid"
+            ):
+                MODULE.validate_diagnostic_workspace(documents)
+
+    def test_rejects_diagnostic_lifecycle_reordering(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            documents = Path(directory)
+            write_valid_diagnostic_workspace(documents)
+            journal = documents / "Diagnostics" / "latest.jsonl"
+            records = valid_diagnostic_records()
+            records[-1]["fields"]["state"] = "background"
+            journal.write_text(
+                "".join(json.dumps(record) + "\n" for record in records),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                MODULE.SmokeFailure, "lifecycle sequence changed"
+            ):
+                MODULE.validate_diagnostic_workspace(documents)
+
+    def test_rejects_oversized_diagnostic_journal(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            documents = Path(directory)
+            write_valid_diagnostic_workspace(documents)
+            journal = documents / "Diagnostics" / "latest.jsonl"
+            journal.write_bytes(b"x" * (MODULE.MAX_JOURNAL_BYTES + 1))
+            with self.assertRaisesRegex(
+                MODULE.SmokeFailure, "invalid type or size"
+            ):
+                MODULE.validate_diagnostic_workspace(documents)
+
+    def test_rejects_changed_workspace_readme(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            documents = Path(directory)
+            write_valid_diagnostic_workspace(documents)
+            (documents / "README.txt").write_text(
+                "private/path/value\n", encoding="utf-8"
+            )
+            with self.assertRaisesRegex(
+                MODULE.SmokeFailure, "README content changed"
+            ):
+                MODULE.validate_diagnostic_workspace(documents)
+
     def test_launch_uses_fresh_standard_acknowledged_path(self) -> None:
         command = MODULE.simulator_launch_command(
             "00000000-0000-0000-0000-000000000000"
@@ -392,6 +510,7 @@ class DiagnosticHardeningTests(unittest.TestCase):
             root = Path(directory)
             result_path = root / "result.json"
             output = root / "validated.json"
+            write_valid_diagnostic_workspace(root)
             result_path.write_text(json.dumps(valid_result()), encoding="utf-8")
             with mock.patch("builtins.print"):
                 completed = MODULE.consume_result_if_present(result_path, output)

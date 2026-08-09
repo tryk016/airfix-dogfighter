@@ -72,6 +72,8 @@ def populate_app(app: Path, executable: bytes | None = None) -> None:
         "CFBundlePackageType": "APPL",
         "MinimumOSVersion": "16.4",
         "LSRequiresIPhoneOS": True,
+        "LSSupportsOpeningDocumentsInPlace": True,
+        "UIFileSharingEnabled": True,
     }
     (app / "Info.plist").write_bytes(plistlib.dumps(document, sort_keys=True))
     (app / "AirfixDogfighter").write_bytes(executable or macho())
@@ -172,12 +174,23 @@ def test_source_boundary(root: Path) -> None:
         "CFBundlePackageType": "APPL",
         "MinimumOSVersion": "16.4",
         "LSRequiresIPhoneOS": 1,
+        "LSSupportsOpeningDocumentsInPlace": True,
+        "UIFileSharingEnabled": True,
     }
     expect_failure(
         lambda: ipa.validate_info_plist(
             plistlib.dumps(invalid_plist, sort_keys=True), BUNDLE_ID
         ),
         "LSRequiresIPhoneOS",
+    )
+    missing_workspace_key = dict(invalid_plist)
+    missing_workspace_key["LSRequiresIPhoneOS"] = True
+    del missing_workspace_key["UIFileSharingEnabled"]
+    expect_failure(
+        lambda: ipa.validate_info_plist(
+            plistlib.dumps(missing_workspace_key, sort_keys=True), BUNDLE_ID
+        ),
+        "UIFileSharingEnabled",
     )
 
 

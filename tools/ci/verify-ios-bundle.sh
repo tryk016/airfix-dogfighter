@@ -36,6 +36,13 @@ if [[ "$minimum_os" != "16.4" ]]; then
     exit 1
 fi
 
+file_sharing="$(plutil -extract UIFileSharingEnabled raw -o - "$plist")"
+open_in_place="$(plutil -extract LSSupportsOpeningDocumentsInPlace raw -o - "$plist")"
+if [[ "$file_sharing" != "true" || "$open_in_place" != "true" ]]; then
+    echo "the owner-local Documents workspace is not enabled" >&2
+    exit 1
+fi
+
 executable_name="$(plutil -extract CFBundleExecutable raw -o - "$plist")"
 executable="$bundle/$executable_name"
 if [[ ! -f "$executable" ]]; then

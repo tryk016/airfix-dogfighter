@@ -1,7 +1,8 @@
 # First iOS device acceptance checklist
 
-**Status:** device scenarios ready; public unsigned artifact and owner-local
-signature/installation pending
+**Status:** first owner-local installation, AFPACK import, mission-selection
+import, static mission rendering, touch UI, settings, and lifecycle have been
+observed on one device; systematic two-phone acceptance remains pending
 
 Use this checklist for the first installation on the registered iPhone 17 Pro
 Max and iPhone SE (3rd generation). It validates the native iOS product shell,
@@ -120,6 +121,10 @@ controls respect the safe area, and no private data is already present.
    second. A rejected or absent HD package must leave Classic usable.
 6. Kill and relaunch the app. Confirm that the authenticated installed package
    and durable settings recover without another source-file dependency.
+7. In Files, open `On My iPhone/Airfix Dogfighter`. Confirm that `README.txt`,
+   `Imports`, and `Diagnostics` exist. Files copied into `Imports` must still
+   require an explicit validated import in the app; they must never
+   auto-activate.
 
 Pass: import is atomic, a complete room snapshot appears, failed optional HD
 content cannot prevent Classic fallback, and relaunch finds a valid installed
@@ -211,6 +216,26 @@ Pass: no automatic resume, stuck input, continuing sound, corrupted installed
 content, crash, or progressive rendering failure. Ten minutes is a first-spike
 observation, not final `SCN-IOS-009` thermal acceptance.
 
+### 8. Owner-local diagnostic journal
+
+1. Open `On My iPhone/Airfix Dogfighter/Diagnostics/latest.jsonl` in Files or
+   copy it to the owner-controlled computer after the preceding tests.
+2. Confirm the file is non-empty and no larger than 1 MiB. A single optional
+   `previous.jsonl` may exist after restart or rotation.
+3. Confirm records begin with `session.started` (or `session.continued` after a
+   size rotation) and include renderer/content states, mission load result,
+   lifecycle transitions, pause/resume, and bounded input samples.
+4. Search the copied journal for original filenames, mission logical paths,
+   AFPACK/HD checksums, source URLs, device-container paths, Apple account data,
+   and signing material. None may appear.
+5. Relaunch once and confirm the former `latest.jsonl` becomes
+   `previous.jsonl`, a new `latest.jsonl` is created, and total app-written log
+   storage remains bounded to two 1 MiB files.
+
+Pass: the owner can retrieve actionable path-free evidence without a Mac,
+network upload, or screenshot transcription; file sharing does not bypass any
+private-content validation or installation transaction.
+
 ## Result record
 
 Keep the completed record private. Include:
@@ -221,7 +246,8 @@ Keep the completed record private. Include:
 - AFPACK schema/source-build identity and SHA-256 without its local path;
 - Classic/Enhanced selection and render/UI scales;
 - one result per checklist row plus reproduction steps for failures;
-- FPS/thermal/memory observations; and
+- FPS/thermal/memory observations;
+- the copied `latest.jsonl`/`previous.jsonl` journal when applicable; and
 - crash identifier or a small redacted diagnostic excerpt when applicable.
 
 Do not commit filled records, screenshots containing private game assets,

@@ -43,6 +43,11 @@ high-resolution `Classic` profile alongside `Enhanced`.
 > save-for-next-launch only. Trusted `main` iOS builds now publish a strictly
 > verified, data-less unsigned IPA and source/toolchain/hash manifest; Xcode or
 > an owner-selected local sideloader signs only during private installation.
+> An owner-installed build has now authenticated a local AFPACK plus separate
+> mission selection and rendered the first static private mission snapshot on
+> an iPhone. The next device builds expose a bounded, path-free diagnostic
+> journal under the app's Files container; original assets remain outside the
+> log and repository.
 > Neither target is **yet a complete playable release**.
 
 **Lawfully owned original game data is required for private use and is not

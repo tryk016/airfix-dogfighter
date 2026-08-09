@@ -1,7 +1,9 @@
 # GitHub Actions iOS build and local-signing design
 
 **Status:** public unsigned device package and data-less simulator runtime smoke
-implemented; physical installation pending local signing and device observation
+implemented; owner-local signing, installation, AFPACK import, mission-selection
+import, first static mission rendering, controls, and lifecycle have been
+observed on one physical device; the complete two-phone matrix remains pending
 
 **Related decision:** ADR-0004
 
@@ -208,6 +210,37 @@ for explicit owner-local experiments. They are not secrets encryption and are
 always empty in public CI, in the public unsigned IPA, and in the provided local
 Xcode configuration script.
 
+### Owner-local Files workspace and diagnostic journal
+
+The iOS bundle enables `UIFileSharingEnabled` together with
+`LSSupportsOpeningDocumentsInPlace`. iOS therefore exposes the application's
+`Documents` container in Files as `On My iPhone/Airfix Dogfighter`. The app
+creates two bounded-purpose directories:
+
+- `README.txt` explains the workspace without containing a device path or
+  private value.
+- `Imports` is a convenient owner-local staging location for `.afpack` and
+  `.afmission` documents. Placing a file there does not trust or activate it;
+  the corresponding in-app import control still performs coordinated,
+  bounded, atomic validation and protected installation. After a successful
+  import, the staging copy may be removed because runtime uses the validated
+  private installation rather than the mutable Documents file.
+- `Diagnostics` contains `latest.jsonl` and at most one rotated
+  `previous.jsonl`. Each file is capped at 1 MiB and 4096 records. Records use
+  the fixed `airfix.ios-diagnostics-v1` schema and contain only controlled
+  state names, booleans, counters, input samples, and deterministic state
+  hashes.
+
+The journal never receives an AFPACK or mission logical path, filename,
+checksum, source URL, device-local path, signing identity, or original byte.
+It records lifecycle, content readiness, mission load stages, successful
+mesh/texture/draw counts, explicit pause/resume, controller connection,
+rate-limited input/simulation samples, and memory warnings. It is support
+evidence, not telemetry: the app performs no upload and the owner decides
+whether to copy or share a log. Public simulator CI independently validates
+the directories, the bounded JSONL schema, renderer/content milestones, and
+the exact no-auto-resume lifecycle suffix.
+
 ## Artifact and security policy
 
 - Public Actions uploads only the deterministic unsigned IPA and its
@@ -236,13 +269,14 @@ Xcode configuration script.
 
 ## Next sequence
 
-1. Merge the public unsigned-package workflow.
-2. Download the seven-day artifact and verify it locally.
-3. Choose Xcode or a reviewed local sideloader for the first installation.
-4. Sign and install on iPhone 17 Pro Max, then repeat independently on SE 3.
-5. Import the owner-local AFPACK and `.afmission`; test Classic and optional
-   Enhanced fallback.
-6. Execute `IOS-DEVICE-CHECKLIST.md` and retain the filled record privately.
+1. Download each trusted-main seven-day artifact and verify it locally.
+2. Sign locally with Xcode or a reviewed sideloader and update without deleting
+   the installed app when persistence is under test.
+3. Confirm the Files workspace and retain a private copy of its diagnostic log.
+4. Repeat the complete checklist independently on iPhone 17 Pro Max and SE 3.
+5. Test Classic and optional Enhanced fallback with the owner-local AFPACK and
+   `.afmission`.
+6. Retain the filled `IOS-DEVICE-CHECKLIST.md` record privately.
 7. Move to a local Mac only when LLDB, Metal diagnostics, Instruments, or rapid
    physical-device iteration materially requires it.
 

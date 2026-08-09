@@ -172,6 +172,8 @@ def validate_info_plist(data: bytes, bundle_id: str) -> None:
         "CFBundlePackageType": "APPL",
         "MinimumOSVersion": MINIMUM_IOS,
         "LSRequiresIPhoneOS": True,
+        "LSSupportsOpeningDocumentsInPlace": True,
+        "UIFileSharingEnabled": True,
     }
     for key, value in expected.items():
         actual = document.get(key)
