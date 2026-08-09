@@ -1223,13 +1223,12 @@ NSString *canonicalTransactionIdentifier(void) {
       return;
     }
 
-    [&] {
-      // Materialize ownership inside the C++ IIFE. Objective-C blocks queued
-      // after it returns must not capture outer ARC storage by reference.
-      AirfixContentCoordinator *const completionCoordinator = strongSelf;
+    // Keep deferred nested captures under ARC; a C++ IIFE would expose its
+    // short-lived capture storage to blocks queued after the IIFE returns.
+    void (^performWork)(void) = ^{
       void (^publishFailure)(void) = ^{
         dispatch_async(dispatch_get_main_queue(), ^{
-          AirfixContentCoordinator *coordinator = completionCoordinator;
+          AirfixContentCoordinator *coordinator = strongSelf;
           if (coordinator == nil || !coordinator->_roomPublicationGate.abandon(
                                         *ticket, ticket->expectedRevision)) {
             return;
@@ -1418,7 +1417,7 @@ NSString *canonicalTransactionIdentifier(void) {
                 std::move(*hudIdentityStatusResult.textures),
                 missionTextureState);
         dispatch_async(dispatch_get_main_queue(), ^{
-          AirfixContentCoordinator *coordinator = completionCoordinator;
+          AirfixContentCoordinator *coordinator = strongSelf;
           if (coordinator == nil || !coordinator->_roomPublicationGate.accepts(
                                         *ticket, resultRevision)) {
             return;
@@ -1453,7 +1452,8 @@ NSString *canonicalTransactionIdentifier(void) {
         // No C++ exception may cross a GCD/Objective-C boundary.
         publishFailure();
       }
-    }();
+    };
+    performWork();
 
     // Ensure the worker's retain cannot be the final release. UIKit ivars
     // and coordinator deallocation are handed back to the main queue.
@@ -1481,10 +1481,9 @@ NSString *canonicalTransactionIdentifier(void) {
     if (strongSelf == nil) {
       return;
     }
-    [&] {
-      // Materialize ownership inside the C++ IIFE. Objective-C blocks queued
-      // after it returns must not capture outer ARC storage by reference.
-      AirfixContentCoordinator *const completionCoordinator = strongSelf;
+    // Keep deferred nested captures under ARC; a C++ IIFE would expose its
+    // short-lived capture storage to blocks queued after the IIFE returns.
+    void (^performWork)(void) = ^{
       clearWorkerContent(strongSelf->_inspection, strongSelf->_verifiedSession);
       strongSelf->_texturePackSession.reset();
       try {
@@ -1515,7 +1514,7 @@ NSString *canonicalTransactionIdentifier(void) {
                                                    strongSelf->_verifiedSession,
                                                    std::move(inspected));
         dispatch_async(dispatch_get_main_queue(), ^{
-          AirfixContentCoordinator *coordinator = completionCoordinator;
+          AirfixContentCoordinator *coordinator = strongSelf;
           if (coordinator == nil ||
               ![coordinator
                   consumeTerminalOperationIdentity:operationIdentity
@@ -1533,7 +1532,7 @@ NSString *canonicalTransactionIdentifier(void) {
         });
       } catch (const airfix::afpack::RecoveryCancelled &) {
         dispatch_async(dispatch_get_main_queue(), ^{
-          AirfixContentCoordinator *coordinator = completionCoordinator;
+          AirfixContentCoordinator *coordinator = strongSelf;
           [coordinator
               completeInspectionWithErrorText:
                   @"Content check was paused. It will retry in the foreground."
@@ -1542,7 +1541,7 @@ NSString *canonicalTransactionIdentifier(void) {
         });
       } catch (const std::exception &) {
         dispatch_async(dispatch_get_main_queue(), ^{
-          AirfixContentCoordinator *coordinator = completionCoordinator;
+          AirfixContentCoordinator *coordinator = strongSelf;
           [coordinator
               completeInspectionWithErrorText:
                   @"Content could not be checked. Try again in the foreground."
@@ -1551,7 +1550,7 @@ NSString *canonicalTransactionIdentifier(void) {
         });
       } catch (...) {
         dispatch_async(dispatch_get_main_queue(), ^{
-          AirfixContentCoordinator *coordinator = completionCoordinator;
+          AirfixContentCoordinator *coordinator = strongSelf;
           [coordinator
               completeInspectionWithErrorText:
                   @"Content could not be checked. Try again in the foreground."
@@ -1559,7 +1558,8 @@ NSString *canonicalTransactionIdentifier(void) {
                            lifecycleIdentity:lifecycleIdentity];
         });
       }
-    }();
+    };
+    performWork();
 
     AirfixContentCoordinator *const releaseOnMain = strongSelf;
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -1584,10 +1584,9 @@ NSString *canonicalTransactionIdentifier(void) {
     if (strongSelf == nil) {
       return;
     }
-    [&] {
-      // Materialize ownership inside the C++ IIFE. Objective-C blocks queued
-      // after it returns must not capture outer ARC storage by reference.
-      AirfixContentCoordinator *const completionCoordinator = strongSelf;
+    // Keep deferred nested captures under ARC; a C++ IIFE would expose its
+    // short-lived capture storage to blocks queued after the IIFE returns.
+    void (^performWork)(void) = ^{
       std::filesystem::path privateCopy;
       bool installReturned = false;
       // Close every authenticated reader before the serialized writer starts.
@@ -1671,7 +1670,7 @@ NSString *canonicalTransactionIdentifier(void) {
                                                    strongSelf->_verifiedSession,
                                                    std::move(inspected));
         dispatch_async(dispatch_get_main_queue(), ^{
-          AirfixContentCoordinator *coordinator = completionCoordinator;
+          AirfixContentCoordinator *coordinator = strongSelf;
           if (coordinator == nil ||
               ![coordinator
                   consumeTerminalOperationIdentity:operationIdentity
@@ -1689,7 +1688,7 @@ NSString *canonicalTransactionIdentifier(void) {
       } catch (const NativeCopyCancelled &) {
         removeFile(privateCopy);
         dispatch_async(dispatch_get_main_queue(), ^{
-          [completionCoordinator
+          [strongSelf
               completeOperationWithErrorText:@"Import was paused. It can be "
                                              @"started again in the foreground."
                            operationIdentity:operationIdentity
@@ -1699,7 +1698,7 @@ NSString *canonicalTransactionIdentifier(void) {
       } catch (const airfix::afpack::InstallCancelled &) {
         removeFile(privateCopy);
         dispatch_async(dispatch_get_main_queue(), ^{
-          [completionCoordinator
+          [strongSelf
               completeOperationWithErrorText:@"Import was paused. It can be "
                                              @"started again in the foreground."
                            operationIdentity:operationIdentity
@@ -1709,7 +1708,7 @@ NSString *canonicalTransactionIdentifier(void) {
       } catch (const airfix::afpack::RecoveryCancelled &) {
         removeFile(privateCopy);
         dispatch_async(dispatch_get_main_queue(), ^{
-          [completionCoordinator completeOperationWithErrorText:
+          [strongSelf completeOperationWithErrorText:
                         @"The package was processed. Active content will be "
                         @"checked in the foreground."
                                  operationIdentity:operationIdentity
@@ -1719,7 +1718,7 @@ NSString *canonicalTransactionIdentifier(void) {
       } catch (const airfix::afpack::InstallCommitUnknown &) {
         removeFile(privateCopy);
         dispatch_async(dispatch_get_main_queue(), ^{
-          [completionCoordinator completeOperationWithErrorText:
+          [strongSelf completeOperationWithErrorText:
                         @"Package activation could not be confirmed. Content "
                         @"will be checked again."
                                  operationIdentity:operationIdentity
@@ -1730,7 +1729,7 @@ NSString *canonicalTransactionIdentifier(void) {
         removeFile(privateCopy);
         if (installReturned) {
           dispatch_async(dispatch_get_main_queue(), ^{
-            [completionCoordinator completeOperationWithErrorText:
+            [strongSelf completeOperationWithErrorText:
                           @"The package was processed. Active content will be "
                           @"checked again."
                                    operationIdentity:operationIdentity
@@ -1739,7 +1738,7 @@ NSString *canonicalTransactionIdentifier(void) {
           });
         } else {
           dispatch_async(dispatch_get_main_queue(), ^{
-            [completionCoordinator completeOperationWithErrorText:
+            [strongSelf completeOperationWithErrorText:
                           @"The package could not be imported. Choose a valid "
                           @"AFPACK and try again."
                                    operationIdentity:operationIdentity
@@ -1751,7 +1750,7 @@ NSString *canonicalTransactionIdentifier(void) {
         removeFile(privateCopy);
         if (installReturned) {
           dispatch_async(dispatch_get_main_queue(), ^{
-            [completionCoordinator completeOperationWithErrorText:
+            [strongSelf completeOperationWithErrorText:
                           @"The package was processed. Active content will be "
                           @"checked again."
                                    operationIdentity:operationIdentity
@@ -1760,7 +1759,7 @@ NSString *canonicalTransactionIdentifier(void) {
           });
         } else {
           dispatch_async(dispatch_get_main_queue(), ^{
-            [completionCoordinator completeOperationWithErrorText:
+            [strongSelf completeOperationWithErrorText:
                           @"The package could not be imported. Choose a valid "
                           @"AFPACK and try again."
                                    operationIdentity:operationIdentity
@@ -1769,7 +1768,8 @@ NSString *canonicalTransactionIdentifier(void) {
           });
         }
       }
-    }();
+    };
+    performWork();
 
     AirfixContentCoordinator *const releaseOnMain = strongSelf;
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -1795,10 +1795,9 @@ NSString *canonicalTransactionIdentifier(void) {
     if (strongSelf == nil) {
       return;
     }
-    [&] {
-      // Materialize ownership inside the C++ IIFE. Objective-C blocks queued
-      // after it returns must not capture outer ARC storage by reference.
-      AirfixContentCoordinator *const completionCoordinator = strongSelf;
+    // Keep deferred nested captures under ARC; a C++ IIFE would expose its
+    // short-lived capture storage to blocks queued after the IIFE returns.
+    void (^performWork)(void) = ^{
       std::filesystem::path textureRoot;
       bool installed = false;
       auto availability =
@@ -1860,7 +1859,7 @@ NSString *canonicalTransactionIdentifier(void) {
       }
 
       dispatch_async(dispatch_get_main_queue(), ^{
-        AirfixContentCoordinator *coordinator = completionCoordinator;
+        AirfixContentCoordinator *coordinator = strongSelf;
         if (coordinator == nil ||
             ![coordinator
                 consumeTerminalOperationIdentity:operationIdentity
@@ -1881,7 +1880,8 @@ NSString *canonicalTransactionIdentifier(void) {
         [coordinator finishTextureOperationWithAvailability:availability
                                                        text:message];
       });
-    }();
+    };
+    performWork();
 
     AirfixContentCoordinator *const releaseOnMain = strongSelf;
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -1906,10 +1906,9 @@ NSString *canonicalTransactionIdentifier(void) {
     if (strongSelf == nil) {
       return;
     }
-    [&] {
-      // Materialize ownership inside the C++ IIFE. Objective-C blocks queued
-      // after it returns must not capture outer ARC storage by reference.
-      AirfixContentCoordinator *const completionCoordinator = strongSelf;
+    // Keep deferred nested captures under ARC; a C++ IIFE would expose its
+    // short-lived capture storage to blocks queued after the IIFE returns.
+    void (^performWork)(void) = ^{
       try {
         // A ready session and rollback inspection are mutually exclusive,
         // but close a session defensively before entering the writer.
@@ -1947,7 +1946,7 @@ NSString *canonicalTransactionIdentifier(void) {
                                                    strongSelf->_verifiedSession,
                                                    std::move(inspected));
         dispatch_async(dispatch_get_main_queue(), ^{
-          AirfixContentCoordinator *coordinator = completionCoordinator;
+          AirfixContentCoordinator *coordinator = strongSelf;
           if (coordinator == nil ||
               ![coordinator
                   consumeTerminalOperationIdentity:operationIdentity
@@ -1966,7 +1965,7 @@ NSString *canonicalTransactionIdentifier(void) {
         clearWorkerContent(strongSelf->_inspection,
                            strongSelf->_verifiedSession);
         dispatch_async(dispatch_get_main_queue(), ^{
-          [completionCoordinator completeOperationWithErrorText:
+          [strongSelf completeOperationWithErrorText:
                         @"Restore was paused. Active content will be checked "
                         @"in the foreground."
                                  operationIdentity:operationIdentity
@@ -1977,7 +1976,7 @@ NSString *canonicalTransactionIdentifier(void) {
         clearWorkerContent(strongSelf->_inspection,
                            strongSelf->_verifiedSession);
         dispatch_async(dispatch_get_main_queue(), ^{
-          [completionCoordinator completeOperationWithErrorText:
+          [strongSelf completeOperationWithErrorText:
                         @"The previous package could not be restored. Content "
                         @"will be checked again."
                                  operationIdentity:operationIdentity
@@ -1988,7 +1987,7 @@ NSString *canonicalTransactionIdentifier(void) {
         clearWorkerContent(strongSelf->_inspection,
                            strongSelf->_verifiedSession);
         dispatch_async(dispatch_get_main_queue(), ^{
-          [completionCoordinator completeOperationWithErrorText:
+          [strongSelf completeOperationWithErrorText:
                         @"The previous package could not be restored. Content "
                         @"will be checked again."
                                  operationIdentity:operationIdentity
@@ -1996,7 +1995,8 @@ NSString *canonicalTransactionIdentifier(void) {
                                 inspectAfterFinish:YES];
         });
       }
-    }();
+    };
+    performWork();
 
     AirfixContentCoordinator *const releaseOnMain = strongSelf;
     dispatch_async(dispatch_get_main_queue(), ^{
