@@ -383,6 +383,7 @@ def test_repository_policy() -> None:
         (
             "configuration=Release",
             "package_ios_unsigned_ipa.py package",
+            "xcrun --sdk iphoneos strip -S -x",
             "github.event_name != 'pull_request'",
             "github.ref == 'refs/heads/main'",
             "AirfixDogfighter-unsigned-${{ github.sha }}",

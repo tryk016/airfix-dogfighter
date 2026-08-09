@@ -138,6 +138,7 @@ jobs:
             exit 1
           fi
           bundle="$(printf '%s\n' "$bundles" | sed -n '1p')"
+          xcrun --sdk iphoneos strip -S -x "$bundle/AirfixDogfighter"
           output_root="$RUNNER_TEMP/airfix-ios-unsigned-$GITHUB_RUN_ID"
           mkdir -p -- "$output_root"
           python3 tools/ci/package_ios_unsigned_ipa.py package \

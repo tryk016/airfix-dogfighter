@@ -84,6 +84,9 @@ The workflow uses `macos-26` and the pinned Xcode 26.6 installation.
 - The simulator-only smoke harness is excluded from every `iphoneos` binary.
 - Pushes to trusted `main` and manual runs on `main` additionally package the
   verified device bundle as a public unsigned IPA and retain it for seven days.
+  Apple `strip -S -x` first removes debug and local-symbol metadata from the
+  unsigned Release executable; the packager then revalidates the resulting
+  Mach-O and the complete bundle.
 - Pull requests never upload an IPA, so an unreviewed branch cannot be mistaken
   for a device candidate.
 
