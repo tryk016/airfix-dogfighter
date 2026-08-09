@@ -407,6 +407,9 @@ def test_repository_policy() -> None:
             "AIRFIX_IOS_ENABLE_LOCAL_SIGNING",
             "AIRFIX_IOS_LOCAL_DEVELOPMENT_TEAM",
             "must be a 10-character Apple team ID",
+            "-ffile-prefix-map=${CMAKE_BINARY_DIR}=airfix-build",
+            "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=airfix-source",
+            "-fdebug-compilation-dir=airfix-build",
         ),
     )
     if "AIRFIX_IOS_ENABLE_SIGNING" in root_cmake:
@@ -417,8 +420,6 @@ def test_repository_policy() -> None:
             "XCODE_ATTRIBUTE_CODE_SIGN_STYLE",
             "XCODE_ATTRIBUTE_DEVELOPMENT_TEAM",
             "AIRFIX_IOS_LOCAL_DEVELOPMENT_TEAM",
-            "-ffile-prefix-map=${CMAKE_BINARY_DIR}=airfix-build",
-            "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=airfix-source",
         ),
     )
     require_text(
