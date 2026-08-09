@@ -33,6 +33,7 @@ MAX_IPA_BYTES = 256 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
 MAX_FILE_BYTES = 256 * 1024 * 1024
 MAX_MANIFEST_BYTES = 64 * 1024
+MAX_DEPENDENCY_LOCK_BYTES = 1024 * 1024
 CANONICAL_ZIP_VERSION = 20
 SOURCE_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 RUN_ID_PATTERN = re.compile(r"^[1-9][0-9]*$")
@@ -69,6 +70,24 @@ def sha256_file(path: Path) -> str:
         while block := source.read(1024 * 1024):
             digest.update(block)
     return digest.hexdigest()
+
+
+def sha256_normalized_text_file(path: Path, field: str) -> str:
+    require_regular_file(path, field, MAX_DEPENDENCY_LOCK_BYTES)
+    try:
+        data = path.read_bytes()
+    except OSError as error:
+        raise UnsignedIpaFailure(f"{field} could not be read") from error
+    if not data or len(data) > MAX_DEPENDENCY_LOCK_BYTES:
+        raise UnsignedIpaFailure(f"{field} is empty or oversized")
+    try:
+        text = data.decode("utf-8")
+    except UnicodeError as error:
+        raise UnsignedIpaFailure(f"{field} is not valid UTF-8 text") from error
+    normalized = text.replace("\r\n", "\n")
+    if "\r" in normalized:
+        raise UnsignedIpaFailure(f"{field} contains a non-canonical line ending")
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 def require_safe_metadata(value: str, field: str) -> str:
@@ -415,7 +434,9 @@ def write_manifest(
     require_safe_metadata(xcode_version, "Xcode version")
     require_safe_metadata(compiler, "compiler")
     require_safe_metadata(sdk_version, "SDK version")
-    require_regular_file(dependency_lock, "dependency lock")
+    dependency_lock_sha256 = sha256_normalized_text_file(
+        dependency_lock, "dependency lock"
+    )
     expected_name = f"AirfixDogfighter-{source_sha}-unsigned.ipa"
     if ipa.name != expected_name:
         raise UnsignedIpaFailure("unsigned IPA filename does not match its source SHA")
@@ -440,7 +461,7 @@ def write_manifest(
             "architecture": "arm64",
             "minimumOS": MINIMUM_IOS,
             "bundleIdentifier": bundle_id,
-            "dependencyLockSha256": sha256_file(dependency_lock),
+            "dependencyLockSha256": dependency_lock_sha256,
         },
         "contentPolicy": {
             "dataLess": True,
@@ -553,8 +574,10 @@ def load_and_validate_manifest(
             raise UnsignedIpaFailure("unsigned IPA manifest metadata is invalid")
         require_safe_metadata(value, field)
     if expected_dependency_lock is not None:
-        require_regular_file(expected_dependency_lock, "dependency lock")
-        if build["dependencyLockSha256"] != sha256_file(expected_dependency_lock):
+        expected_lock_sha256 = sha256_normalized_text_file(
+            expected_dependency_lock, "dependency lock"
+        )
+        if build["dependencyLockSha256"] != expected_lock_sha256:
             raise UnsignedIpaFailure("unsigned IPA dependency lock is unexpected")
     if any(type(policy[key]) is not bool for key in policy) or policy != {
         "dataLess": True,

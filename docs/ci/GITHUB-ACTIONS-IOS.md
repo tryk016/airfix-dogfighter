@@ -115,7 +115,8 @@ and paths. The adjacent `build-manifest.json` records:
 - source SHA and workflow run ID;
 - runner, compiler, SDK, configuration, platform, architecture, minimum OS, and
   bundle identifier;
-- dependency-lock SHA-256;
+- dependency-lock SHA-256 after strict UTF-8 and LF normalization, so the same
+  committed text has one identity in macOS and Windows checkouts;
 - IPA filename, size, and SHA-256; and
 - explicit booleans proving that the package is unsigned, data-less, not
   installable before local signing, and contains no original data, HD package,
