@@ -326,6 +326,35 @@ def test_manifest_boundary(root: Path) -> None:
         "not a regular file",
     )
 
+    lf_lock = root / "lock-lf.md"
+    crlf_lock = root / "lock-crlf.md"
+    lf_lock.write_bytes(b"first\nsecond\n")
+    crlf_lock.write_bytes(b"first\r\nsecond\r\n")
+    if ipa.sha256_normalized_text_file(
+        lf_lock, "dependency lock"
+    ) != ipa.sha256_normalized_text_file(crlf_lock, "dependency lock"):
+        raise AssertionError("dependency lock identity depends on checkout line endings")
+    bare_cr_lock = root / "lock-bare-cr.md"
+    bare_cr_lock.write_bytes(b"first\rsecond\r")
+    expect_failure(
+        lambda: ipa.sha256_normalized_text_file(bare_cr_lock, "dependency lock"),
+        "non-canonical line ending",
+    )
+    oversized_lock = root / "lock-oversized.md"
+    oversized_lock.write_bytes(b"x" * (ipa.MAX_DEPENDENCY_LOCK_BYTES + 1))
+    expect_failure(
+        lambda: ipa.sha256_normalized_text_file(oversized_lock, "dependency lock"),
+        "empty or oversized",
+    )
+    invalid_utf8_lock = root / "lock-invalid-utf8.md"
+    invalid_utf8_lock.write_bytes(b"valid\n\xff\n")
+    expect_failure(
+        lambda: ipa.sha256_normalized_text_file(
+            invalid_utf8_lock, "dependency lock"
+        ),
+        "not valid UTF-8",
+    )
+
 
 def require_text(path: Path, fragments: tuple[str, ...]) -> str:
     text = path.read_text(encoding="utf-8")

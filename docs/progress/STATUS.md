@@ -1889,8 +1889,11 @@ These questions do not block static analysis or the archive work.
   simulator code, unexpected files/directories, unsafe ZIP metadata, host paths,
   wrong ARM64/iOS/minimum-OS metadata, and manifest drift. A separate local
   Xcode gate generates an automatic-development-signing project only after an
-  explicit Team ID. The first actual public package awaits the merge and green
-  `main` Actions run.
+  explicit Team ID. The first actual public package built and uploaded on
+  `main`; its cross-platform local verification exposed that a raw text-file
+  hash differed between LF and CRLF checkouts. The follow-up verifier now hashes
+  a strict UTF-8/LF-normalized dependency lock and requires one replacement
+  `main` artifact before device handoff.
 
 - None for Phase 1 static analysis.
 - No owner action is required to begin the Windows x64 product spike. The
