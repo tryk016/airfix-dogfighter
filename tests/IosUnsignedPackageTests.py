@@ -417,6 +417,8 @@ def test_repository_policy() -> None:
             "XCODE_ATTRIBUTE_CODE_SIGN_STYLE",
             "XCODE_ATTRIBUTE_DEVELOPMENT_TEAM",
             "AIRFIX_IOS_LOCAL_DEVELOPMENT_TEAM",
+            "-ffile-prefix-map=${CMAKE_BINARY_DIR}=airfix-build",
+            "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=airfix-source",
         ),
     )
     require_text(

@@ -163,6 +163,10 @@ target_compile_options(airfix_ios PRIVATE
     -Wextra
     -Wpedantic
     -Werror=unguarded-availability-new
+    # Keep compiler diagnostics and assertion metadata useful without
+    # embedding owner-local or hosted-runner roots in the public executable.
+    "-ffile-prefix-map=${CMAKE_BINARY_DIR}=airfix-build"
+    "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=airfix-source"
 )
 target_link_libraries(airfix_ios PRIVATE
     airfix::afpack
