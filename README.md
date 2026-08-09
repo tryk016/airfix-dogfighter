@@ -516,9 +516,14 @@ mission cannot silently mix content revisions or source handles. Windows uses
 an owner-local import/storage adapter; iOS imports into its sandbox.
 
 Public source and tests remain data-less. AFPACK v1 deliberately contains no
-mission-launch metadata.
+mission-launch metadata. On iOS, the owner imports a separate bounded
+`.afmission` document created locally with `afmission-create`; it stores only
+canonical logical paths and a start ordinal, persists through an atomic
+current/backup transaction, and is resolved solely inside the authenticated
+AFPACK. Filled mission-selection documents remain private and outside Git/CI.
 
-See the [AFPACK format and trust boundary](docs/formats/AFPACK.md) and
+See the [AFPACK format and trust boundary](docs/formats/AFPACK.md),
+[AFMS mission-selection format](docs/formats/AFMS.md), and
 [GitHub Actions iOS design](docs/ci/GITHUB-ACTIONS-IOS.md).
 
 ## Platform builds and CI

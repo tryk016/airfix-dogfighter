@@ -197,6 +197,12 @@ and imports it with the system document picker. The app validates and copies it
 atomically into Application Support. Optional HD content uses the separately
 validated private root and always falls back safely to Classic GTI content.
 
+AFPACK v1 deliberately contains no launch catalogue. The public build therefore
+accepts a separate owner-local `.afmission` document through `Import Mission
+Selection`. The file is created by `afmission-create`, contains only bounded
+logical paths plus a start ordinal, and is persisted privately with current and
+backup recovery. Public Actions never create, read, or upload a filled document.
+
 The three historical CMake initial-mission Base64 inputs remain available only
 for explicit owner-local experiments. They are not secrets encryption and are
 always empty in public CI, in the public unsigned IPA, and in the provided local
@@ -234,7 +240,8 @@ Xcode configuration script.
 2. Download the seven-day artifact and verify it locally.
 3. Choose Xcode or a reviewed local sideloader for the first installation.
 4. Sign and install on iPhone 17 Pro Max, then repeat independently on SE 3.
-5. Import the owner-local AFPACK; test Classic and optional Enhanced fallback.
+5. Import the owner-local AFPACK and `.afmission`; test Classic and optional
+   Enhanced fallback.
 6. Execute `IOS-DEVICE-CHECKLIST.md` and retain the filled record privately.
 7. Move to a local Mac only when LLDB, Metal diagnostics, Instruments, or rapid
    physical-device iteration materially requires it.
