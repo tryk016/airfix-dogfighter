@@ -1,7 +1,7 @@
 # First iOS device acceptance checklist
 
-**Status:** device scenarios ready; signed artifact pending owner-controlled
-private-boundary and signing setup
+**Status:** device scenarios ready; public unsigned artifact and owner-local
+signature/installation pending
 
 Use this checklist for the first installation on the registered iPhone 17 Pro
 Max and iPhone SE (3rd generation). It validates the native iOS product shell,
@@ -26,14 +26,17 @@ not substitute the synthetic audio probe for `SCN-AUDIO-001` parity evidence.
 
 ## Prerequisites
 
-- Use a signed IPA produced inside the approved private signing boundary from
-  one trusted `main` commit through the manual `Private signed iOS IPA`
-  workflow. Do not sign code from a pull request, tag, fork, or public-repository
-  run.
-- The provisioning profile must contain the target device and match the
-  application bundle identifier and signing team.
-- Keep the IPA, certificate, profile, device identifiers, AFPACK, HD textures,
-  screenshots, and filled result record outside the public repository.
+- Start from one trusted `main` source revision. Either build and sign that exact
+  revision locally through Xcode, or download its public unsigned IPA and
+  manifest and verify both before local sideloader signing.
+- Never attempt to install the unsigned IPA directly. Xcode or the selected
+  local sideloader must produce a valid development signature/profile for the
+  target device and bundle identifier.
+- Keep the signed IPA, certificate, profile, Apple session, device identifiers,
+  AFPACK, HD textures, screenshots, and filled result record outside the public
+  repository and GitHub artifacts.
+- A sideloader must sign locally. Do not upload the IPA, Apple credentials, or
+  signing material to a cloud-signing service.
 - Transfer the owner-local AFPACK through a private channel. The IPA itself
   must remain data-less.
 - Charge the phone, disable Low Power Mode for the performance observation,
@@ -41,26 +44,34 @@ not substitute the synthetic audio probe for `SCN-AUDIO-001` parity evidence.
 - For controller checks, pair one supported Bluetooth extended gamepad through
   iOS Settings. The application does not implement Bluetooth pairing UI.
 
-## Artifact preflight
+## Source and installation preflight
 
 Record these values in a private result record before installation:
 
 | Field | Required evidence |
 |---|---|
 | Source revision | full trusted commit SHA |
-| Build identity | workflow run and non-sensitive build-manifest ID |
-| IPA identity | SHA-256 computed after download |
+| Installation route | local Xcode build or reviewed local sideloader |
 | Product | ARM64 `iphoneos`, minimum OS 16.4, expected bundle identifier |
-| Signing | valid application signature, expected team and profile, unexpired profile |
+| Local signing | chosen local method, resulting bundle identifier, profile/signature expiry, target device eligibility |
 | Payload boundary | no AFPACK, original files, HD textures, signing material, local paths, or simulator-smoke marker |
 
-Stop before installation if any value is missing or differs from the private
-build manifest.
+For the recommended Xcode route, record the clean checkout SHA, active Xcode
+version, selected Apple Team, and locally built product identity. Xcode builds
+and signs that source revision directly; the downloaded unsigned Actions IPA is
+optional comparison evidence and is not the binary installed by Xcode.
 
-The workflow and its validators can be reviewed in the public source, but the
-current public remote intentionally cannot produce the artifact. Configure the
-`ios-private` environment only after establishing the approved private signing
-boundary described in [the iOS CI design](../ci/GITHUB-ACTIONS-IOS.md).
+For the sideloader route, additionally record the public workflow run and
+manifest schema, then verify that the downloaded unsigned IPA SHA-256 equals the
+manifest before giving it to the local signer. Stop before signing if the IPA,
+source revision, or dependency-lock identity differs from the public manifest.
+
+For either route, stop before installation if the local signer changes the
+payload unexpectedly or cannot produce a valid device signature.
+
+The public `Unsigned iOS` workflow produces the unsigned artifact only from
+trusted `main`; pull requests build but do not upload an IPA. Detailed Xcode and
+sideloader boundaries are in [the iOS CI design](../ci/GITHUB-ACTIONS-IOS.md).
 
 ## Device matrix
 
@@ -86,7 +97,7 @@ for every `FAIL` or `NOT RUN`.
 
 ### 1. Installation and data-less boot
 
-1. Remove any older test build and install the candidate IPA.
+1. Remove any older test build and install the locally signed candidate.
 2. Enable Airplane Mode before the first launch.
 3. Launch the application without an AFPACK.
 4. Confirm that the paused/import surface appears, remains responsive, and does
@@ -202,7 +213,8 @@ observation, not final `SCN-IOS-009` thermal acceptance.
 
 Keep the completed record private. Include:
 
-- source SHA, workflow run, IPA SHA-256, manifest ID, and provisioning expiry;
+- source SHA, workflow run, unsigned IPA SHA-256, manifest schema, local signing
+  method, resulting bundle identifier, and provisioning expiry;
 - device model, exact iOS version, available storage, and controller model;
 - AFPACK schema/source-build identity and SHA-256 without its local path;
 - Classic/Enhanced selection and render/UI scales;
@@ -220,7 +232,8 @@ summary and a source revision.
 The first device spike is complete only when both phones have a recorded result
 for every row. A failure does not authorize weakening the invariant or hiding
 the result; return to a synthetic/local reproduction where possible, fix it,
-produce a new signed IPA, and rerun the affected row on both devices.
+produce a new unsigned build, sign it locally, and rerun the affected row on
+both devices.
 
 See also:
 

@@ -331,10 +331,11 @@ optimization.
 
 ## 15. Build, signing, and private installation
 
-- Reproducible CMake/native build for the portable core and Xcode build/signing
-  through GitHub Actions on an explicit hosted macOS runner. No local Mac/Xcode
-  environment is required for portable development and compile validation;
-  use local Apple tools for interactive device debugging and profiling. (P0)
+- Reproducible CMake/native build for the portable core and unsigned Xcode
+  build through GitHub Actions on an explicit hosted macOS runner. No local
+  Mac/Xcode environment is required for portable development and compile
+  validation; signing occurs only on an owner-controlled computer, and local
+  Apple tools remain the reference for device debugging and profiling. (P0)
 - Separate debug/development, internal test, and release configurations; release
   excludes analysis tools and private fixtures. (P0)
 - Automated check that no original executable, Ghidra database, dump, trace, or
@@ -345,9 +346,10 @@ optimization.
   17 Pro Max/iOS 26.6 and iPhone SE 3/iOS 26.3. Record device registration,
   certificate/profile, install, renew, and recovery steps without committing
   credentials. (P0)
-- Pull requests build without secrets. Signed IPA export is a protected,
-  manually triggered workflow using an ephemeral keychain and environment
-  secrets. (P0)
+- Pull requests build without secrets and publish no IPA. Trusted `main` builds
+  publish a strictly verified data-less unsigned IPA; Xcode or an accepted
+  local sideloader signs during installation. GitHub never receives signing
+  credentials, profiles, device IDs, or signed outputs. (P0)
 - Verify the iOS 16.4 deployment target and API/dependency availability at build
   time; clearly report that no iOS 16.4 runtime test exists. (P0)
 - App Store metadata, review, public support, and public distribution artifacts
@@ -379,15 +381,18 @@ optimization.
 - Minimum deployment target iOS 16.4.
 - Runtime devices: iPhone 17 Pro Max/iOS 26.6 and iPhone SE 3/iOS 26.3; Apple
   Developer account available.
-- All iOS compilation/signing uses GitHub Actions hosted macOS runners; no local
-  Mac is required.
+- GitHub Actions compiles and validates only a public, data-less unsigned device
+  package. Signing is owner-local at installation time: Xcode on a Mac is the
+  recommended path, while an independently reviewed local sideloader may be used
+  without uploading the package or credentials to a cloud service.
 - Version 1.0 excludes House Editor, Paint Room, and multiplayer.
 - Original CD image/audio tracks are unavailable, so original music is absent.
 
 ## Decisions that need owner input later
 
-- Which Windows-compatible method installs the signed Actions IPA on both
-  registered iPhones.
+- Which reviewed Windows-compatible sideloader will locally sign and install the
+  verified unsigned Actions IPA on both registered iPhones, if the Xcode path is
+  not used.
 - Whether the available legacy videos are retained in v1.0 after codec testing.
 
 None of these blocks executable analysis, `UDSP` work, or the portable engine

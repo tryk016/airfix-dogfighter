@@ -60,9 +60,10 @@ runtime behavior on iOS 16.4. The accepted 16.4 boundary is build-time only:
 deployment metadata, API availability, linker/dependency checks, and compile
 coverage. Runtime testing below iOS 26.3 is not planned.
 
-GitHub Actions supplies Xcode on a hosted macOS runner. The signed IPA contains
-no game data; a private `.afpack` produced locally is imported separately on
-each device.
+GitHub Actions supplies Xcode on a hosted macOS runner and publishes only a
+verified data-less unsigned IPA. Xcode or an owner-selected local sideloader
+signs during installation; a private `.afpack` produced locally is imported
+separately on each device.
 
 Portable development and unsigned compile validation run through GitHub
 Actions. Interactive physical-device debugging and profiling use local Xcode
@@ -150,8 +151,8 @@ Version 1.0 is complete when:
 
 ### iOS acceptance
 
-1. The application builds/signs reproducibly through GitHub Actions and
-   installs privately from Windows on both owner devices.
+1. The application builds reproducibly through GitHub Actions, is signed only
+   on an owner-controlled computer, and installs privately on both devices.
 2. The campaign is completable with touch only and with a supported physical
    controller after launch.
 3. Pause, controller loss, audio interruption, background/foreground, safe
@@ -163,8 +164,8 @@ Version 1.0 is complete when:
 
 - Which D3D feature-level floor, exact Windows 10 release floor, and private
   packaging procedure will be supported?
-- Which Windows-compatible IPA installation method will be used after Actions
-  produces the signed artifact?
+- Which reviewed local Windows sideloader will sign and install the verified
+  unsigned Actions artifact?
 
 These decisions are proven through bounded platform spikes. They do not block
 portable reconstruction, static analysis, archive decoding, or headless parity

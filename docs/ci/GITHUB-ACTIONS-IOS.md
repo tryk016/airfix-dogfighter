@@ -1,372 +1,245 @@
-# GitHub Actions iOS build and signing design
+# GitHub Actions iOS build and local-signing design
 
-**Status:** unsigned shell and data-less simulator runtime smoke implemented;
-private signed-IPA workflow implemented but fail-closed until an approved
-private signing boundary and owner credentials are configured
+**Status:** public unsigned device package and data-less simulator runtime smoke
+implemented; physical installation pending local signing and device observation
 
 **Related decision:** ADR-0004
 
-## Goals
+## Decision summary
 
-- Build all iOS configurations on GitHub-hosted macOS runners.
-- Require no locally owned Mac or local Xcode installation.
-- Keep the iOS 16.4 deployment target while testing physical devices on iOS
-  26.x.
-- Produce a private signed IPA for the registered owner devices.
-- Never upload original Airfix files, converted game assets, signing credentials,
-  or reverse-engineering dumps as repository content, cache, logs, or workflow
-  artifacts.
-- Make every IPA traceable to source commit, workflow run, compiler, SDK, and
-  asset-package schema.
+The source repository remains public. GitHub Actions compiles and validates the
+iOS application without any Apple signing identity, provisioning profile,
+device identifier, private mission selector, original game file, or HD texture.
 
-The connected source repository is currently public. The manual signed-IPA
-workflow is present for review, but its first job refuses every public-repository
-run before checkout or secret access. Before it can succeed, either this remote
-must become private or signing must move to a separate private repository and
-protected workflow. No certificate, profile, UDID, signed IPA, or private asset
-package may enter the public remote or a publicly downloadable artifact.
+For trusted `main` builds, Actions publishes a deterministic, data-less
+`iphoneos` Release package named `AirfixDogfighter-<SHA>-unsigned.ipa` with a
+strict build manifest. The package is deliberately **not installable as-is**.
+It is an input to one of two owner-local signing paths:
+
+1. **Xcode on a Mac — recommended:** generate the Xcode project from the same
+   trusted source revision, opt in to automatic development signing, select a
+   connected iPhone, and choose Product > Run. Xcode signs during the local
+   build/install operation.
+2. **Local sideloader:** download and verify the public unsigned IPA and
+   manifest, then allow a reviewed local sideloader to re-sign and install it.
+   The project does not select, bundle, automate, or upload credentials to a
+   third-party signing service.
+
+Signing material and signed outputs never enter GitHub. Original and converted
+game data remain separate and are imported locally after installation.
 
 ## Accepted device matrix
 
 | Device | Runtime OS | Primary purpose |
 |---|---|---|
-| iPhone 17 Pro Max | iOS 26.6 | large Dynamic Island display, 120 Hz behavior, high-end Metal, heat and controller/touch soak |
-| iPhone SE (3rd generation) | iOS 26.3 | compact 4.7-inch display, Home-button geometry, A15 performance floor for available hardware |
+| iPhone 17 Pro Max | iOS 26.6 | Dynamic Island, high-refresh behavior, high-end Metal, touch/controller and short thermal observation |
+| iPhone SE (3rd generation) | iOS 26.3 | compact safe area, Home-button geometry, A15 performance floor |
 
-The deployment target remains iOS 16.4. No runtime test on iOS 16.4 is planned.
-Compatibility at that boundary is build-time and static: deployment metadata,
-availability guards, dependency minimum versions, and API/link checks. Runtime
-behavior is verified only on the two listed iOS 26.x devices unless the matrix is
-expanded later.
+The deployment target remains iOS 16.4. Runtime compatibility is accepted only
+on the devices above; the 16.4 boundary is verified through build metadata,
+availability diagnostics, dependencies, and API/link checks.
 
 ## Build topology
 
 ```mermaid
 flowchart TD
-    R["Public source repository (unsigned only)"] --> V["Validate and unit tests"]
-    R --> S["macOS simulator build"]
-    P["Protected private signing boundary"] --> D["Manual signed device workflow"]
-    D --> K["Ephemeral keychain from GitHub secrets"]
-    K --> I["Signed data-less IPA"]
-    I --> P1["iPhone 17 Pro Max / iOS 26.6"]
-    I --> P2["iPhone SE 3 / iOS 26.3"]
-    O["Original files remain local"] --> C["Local Windows asset converter"]
-    C --> A["Private AirfixData package"]
-    A --> P1
-    A --> P2
+    R["Public source repository"] --> V["Portable tests and public-boundary scan"]
+    R --> S["Unsigned simulator build and real Metal smoke"]
+    R --> U["Unsigned ARM64 iphoneos Release build"]
+    U --> P["Deterministic data-less unsigned IPA plus manifest"]
+    P --> L["Owner-local signature and installation"]
+    L --> A["iPhone 17 Pro Max"]
+    L --> B["iPhone SE 3"]
+    O["Original files stay owner-local"] --> C["Private AFPACK / optional HD package"]
+    C --> A
+    C --> B
 ```
 
-The application and game data are separate deliverables. CI never needs the
-original installation.
+The application and the game-data package are separate deliverables. The public
+application starts without an AFPACK and presents an import surface.
 
-The public source defaults are also launch-data-less: no setup or Level path is
-committed, inferred, or embedded unless a private build explicitly supplies
-the optional configuration described below.
+## Public workflows
 
-## Workflow layers
+### Portable validation
 
-### 1. `validate`
+The portable workflow runs source-boundary, documentation, parser, C++20, and
+platform checks on Linux, macOS, and Windows. It also runs the synthetic unsigned
+iOS package suite. No job reads Apple credentials or private game data.
 
-Trigger: every pull request and push.
+### `ios-unsigned`
 
-Runs portable unit tests, format-parser tests using synthetic fixtures, lint,
-formatting, generated-file checks, and checks that forbidden original/signing
-files are absent. It can use Windows/Linux runners where appropriate.
+The workflow uses `macos-26` and the pinned Xcode 26.6 installation.
 
-No secrets. No signed outputs.
+- Pull requests compile unsigned ARM64 `iphoneos` Release and ARM64
+  `iphonesimulator` Debug bundles, but publish no device artifact.
+- The simulator job boots a new isolated device and requires an atomic result
+  from a real public Metal command buffer plus the paused lifecycle sequence.
+- A pre-launch CoreSimulator failure may retry once on a second fresh device.
+  After a valid launch PID, a crash, timeout, structured application failure,
+  or missing result is authoritative and is not retried.
+- The simulator-only smoke harness is excluded from every `iphoneos` binary.
+- Pushes to trusted `main` and manual runs on `main` additionally package the
+  verified device bundle as a public unsigned IPA and retain it for seven days.
+- Pull requests never upload an IPA, so an unreviewed branch cannot be mistaken
+  for a device candidate.
 
-### 2. `ios-unsigned`
+The simulator uses direct shared/tracked Metal resources for its bounded public
+snapshot because the hosted runtime rejects shared-storage heaps. Physical
+`iphoneos` builds retain the measured shared-heap path. Simulator GPU accounting
+is explicitly reported as estimated; the device path retains backend-measured
+accounting.
 
-Trigger: every pull request and push after the iOS target exists.
+## Unsigned IPA contract
 
-- Use the explicit GitHub `macos-26` runner label, not the moving
-  `macos-latest` alias.
-- Select `/Applications/Xcode_26.6.app/Contents/Developer`; preflight fails if
-  it disappears. This currently provides the iOS 26.5 SDK.
-- Print `xcodebuild -version`, SDK version, compiler version, CMake version, and
-  runner image metadata into a build manifest.
-- Build ARM64 `iphoneos` and ARM64 `iphonesimulator` bundles with code signing
-  disabled.
-- The simulator configuration alone enables the explicit
-  `AIRFIX_IOS_SIMULATOR_SMOKE` harness. CI boots a fresh simulator, installs
-  and launches the app through the standard bounded `simctl launch`
-  acknowledgement path without requesting termination of a pre-existing app
-  process, which cannot exist on this newly created device. It then resolves
-  the data container after launch and requires a bounded JSON result written
-  atomically inside that container. The
-  result proves that the normal renderer
-  completed a command buffer containing the public synthetic scene, then that
-  the existing resign-active, background, foreground, and active lifecycle
-  calls left both the session and `MTKView` paused without auto-resume.
-  This is an immediate handler-contract check: it invokes the same four native
-  handlers in order inside the app, rather than claiming to validate
-  SpringBoard's delivery timing.
-- A paused `MTKView` is retried for a bounded 40 seconds while the fresh
-  simulator establishes its presentation surface. If no completed command
-  buffer is observed, or a later lifecycle invariant fails, the app writes the
-  same atomic result file with a strict, allow-listed simulator-only failure
-  stage. CI can therefore distinguish a missing drawable, presentation
-  mismatch, resource gate, submitted buffer that never completed, Metal
-  failure, or lifecycle failure without recording paths, checksums, or private
-  data.
-- An independent simulator-only watchdog is armed before Metal renderer
-  initialization. It reports an initializer or synchronous draw stall without
-  relying on the main run loop. Result serialization, creation of the
-  application Documents directory, and the atomic write are checked; failures
-  emit only a fixed path-free diagnostic marker. Its 42-second deadline fits
-  inside the runner's 60-second result window with explicit launch and write
-  margin. A short set of fixed, path-free milestones distinguishes watchdog
-  arming, renderer completion, first-draw entry/return, and result publication.
-- Failure while creating or booting the fresh device, waiting for boot
-  readiness, installing the bundle, or obtaining a valid positive launch PID
-  is treated as an inconclusive pre-launch CoreSimulator startup. The runner
-  discards that device and retries exactly once with a second isolated device.
-  After a valid PID acknowledgement, a structured failure or missing atomic
-  result is authoritative and is never retried. The 30-minute job ceiling
-  bounds both isolated pre-launch attempts, configuration, build, diagnostics,
-  and cleanup.
-- The current Metal Simulator runtime rejects shared-storage heaps. The public
-  smoke snapshot therefore uses directly allocated shared/tracked buffers and
-  textures on `TARGET_OS_SIMULATOR`. It also avoids heap size/alignment queries
-  and direct-resource `allocatedSize` queries. Instead it reserves the full
-  64 MiB ceiling independently for the public snapshot and persistent fallback
-  before allocation, so either owner can be destroyed without releasing the
-  other's conservative debit. Simulator presentation targets likewise use
-  their checked logical size plus an explicit 128 KiB policy estimate. That
-  estimate is not presented as a backend-exact allocation bound: diagnostics
-  label simulator GPU memory as estimated and report the ledger rather than
-  querying driver allocation metadata. Physical `iphoneos` retains measured
-  shared-heap planning and reconciliation. A private-heap staging/blit
-  pipeline is not introduced for this small CPU-populated CI snapshot.
-- The harness is not compiled into ordinary simulator builds or any `iphoneos`
-  build. CMake rejects the option for a non-simulator SDK, and bundle
-  verification scans the device executable for the harness schema marker.
-- Keep every pull-request invocation data-less. This workflow never reads
-  repository secrets or forwards private initial-mission inputs.
-- Do not upload either bundle from the public repository.
-- Verify `IPHONEOS_DEPLOYMENT_TARGET=16.4` and fail if a dependency raises it.
+`tools/ci/package_ios_unsigned_ipa.py` implements both packaging and independent
+verification. It rejects the candidate unless all of these are true:
 
-The first compile-only green run was `29898694161`: device build and bundle
-validation took 45 seconds; simulator build and validation took 66 seconds.
-Current simulator success additionally requires application launch, a real
-public Metal submission, and the lifecycle paused invariant; compilation alone
-cannot satisfy the job.
+- exactly one `Payload/AirfixDogfighter.app` exists;
+- the file tree is the exact allow-listed data-less product tree;
+- no symlink, encrypted entry, duplicate canonical path, traversal, ZIP extra
+  field, archive comment, unexpected directory, or unexpected file exists;
+- the executable is a thin ARM64 Mach-O `MH_EXECUTE` for platform iOS with
+  minimum OS 16.4;
+- no Mach-O code-signature command, `_CodeSignature`, or
+  `embedded.mobileprovision` exists;
+- the simulator-smoke marker is absent;
+- the processed Info.plist has the expected executable, bundle identifier,
+  package type, `LSRequiresIPhoneOS`, and minimum OS;
+- the offline Metal library and third-party license are present;
+- no absolute Windows, macOS-user, or Linux-home path is embedded; and
+- total file, archive, entry, and expanded sizes remain within fixed bounds.
 
-### 3. `ios-private-ipa`
+Packaging uses canonical member order, permissions, timestamps, compression,
+and paths. The adjacent `build-manifest.json` records:
 
-Trigger: manual `workflow_dispatch` only. The implementation is
-`.github/workflows/ios-private-ipa.yml`; it accepts only the current
-`refs/heads/main` SHA and never runs for pull requests, tags, schedules, forks,
-or untrusted branches.
+- source SHA and workflow run ID;
+- runner, compiler, SDK, configuration, platform, architecture, minimum OS, and
+  bundle identifier;
+- dependency-lock SHA-256;
+- IPA filename, size, and SHA-256; and
+- explicit booleans proving that the package is unsigned, data-less, not
+  installable before local signing, and contains no original data, HD package,
+  or signing material.
 
-- A no-secret Ubuntu boundary job first requires a private repository, trusted
-  `main` ref, and full source SHA.
-- The macOS signing job is attached to the protected `ios-private` GitHub
-  Environment. Configure required reviewers before adding secrets.
-- Import certificate/profile into a temporary keychain on the ephemeral runner.
-- Build/archive/export a signed ARM64 IPA for the registered devices.
-- Verify signature, entitlements, provisioning profile, bundle identifier,
-  both expected device identifiers, minimum OS, architecture, and forbidden
-  files. Synthetic tests exercise malformed profiles, unsafe IPA archive paths,
-  forbidden payloads, and the static workflow boundary in public CI.
-- Upload only the final IPA plus a non-sensitive build manifest and checksums.
-- Retain the protected artifact for exactly one day, then remove the runner copy
-  in an `if: always()` cleanup step. Signing inputs and generated keychains never
-  enter an artifact or cache.
+After downloading the two files, verify them before giving the IPA to any local
+signer:
 
-Physical installation and testing are manual after artifact download. GitHub
-Actions does not replace the device test pass.
+```powershell
+python tools/ci/package_ios_unsigned_ipa.py verify `
+  --ipa AirfixDogfighter-<SHA>-unsigned.ipa `
+  --manifest build-manifest.json `
+  --expected-source-sha <FULL_40_CHARACTER_SHA>
 
-## Optional private initial-mission configuration
+Get-FileHash AirfixDogfighter-<SHA>-unsigned.ipa -Algorithm SHA256
+```
 
-The iOS target accepts four optional CMake cache inputs for a future protected
-private build workflow or an explicit local build:
+The Python verifier is portable and does not contact a network service.
 
-| Protected input | Generated value |
+## Local Xcode signing — recommended
+
+Apple documents Xcode automatic signing as the normal development-device path.
+On the Mac that will run the device test:
+
+1. Check out the exact manifest `sourceSha` from the public repository.
+2. Sign in under Xcode > Settings > Accounts.
+3. Connect and trust the iPhone and enable Developer Mode on the phone.
+4. Run:
+
+   ```bash
+   bash tools/ios/configure-local-xcode.sh \
+     --source-sha <FULL_40_CHARACTER_SHA> \
+     --team-id ABCDE12345 \
+     --bundle-id com.tryk016.airfixdogfighter
+   ```
+
+5. Open the one generated `.xcodeproj`, select the `airfix_ios` scheme and the
+   connected iPhone, then choose Product > Run.
+
+The script keeps every optional initial-mission value empty. Xcode uses
+automatic development signing only after the explicit
+`AIRFIX_IOS_ENABLE_LOCAL_SIGNING=ON` gate and a validated ten-character Team ID.
+It also requires an exact clean tracked checkout matching the requested source
+SHA. The default CI configuration continues to forbid signing.
+
+The local Team ID, Xcode account state, device ID, provisioning profile, and
+resulting signature remain on the Mac/Apple account. Do not paste them into
+chat, commit them, or upload the generated build directory.
+
+## Local sideloader contract
+
+A sideloader path is acceptable only when it:
+
+- runs locally on an owner-controlled computer;
+- signs the verified unsigned IPA locally rather than uploading the binary or
+  credentials to a cloud-signing service;
+- uses an owner-controlled Apple account/certificate and a profile valid for
+  the target device;
+- does not inject libraries, plugins, advertisements, extra entitlements, or
+  payload files; and
+- clearly reports the resulting bundle identifier and signature lifetime.
+
+The project intentionally does not automate Apple credentials for third-party
+software. Selection of a concrete sideloader and acceptance of its signed
+output happen during the first Windows-to-iPhone installation spike. Xcode is
+the fallback and reference path whenever a local Mac is available.
+
+## Private content separation
+
+The public IPA is always data-less. It contains no AFPACK, GTI, CCF, object,
+level, audio corpus, HD PNG, private manifest, reverse-engineering database, or
+original executable.
+
+After installation, the owner transfers the AFPACK through a private channel
+and imports it with the system document picker. The app validates and copies it
+atomically into Application Support. Optional HD content uses the separately
+validated private root and always falls back safely to Classic GTI content.
+
+The three historical CMake initial-mission Base64 inputs remain available only
+for explicit owner-local experiments. They are not secrets encryption and are
+always empty in public CI, in the public unsigned IPA, and in the provided local
+Xcode configuration script.
+
+## Artifact and security policy
+
+- Public Actions uploads only the deterministic unsigned IPA and its
+  non-sensitive manifest.
+- The artifact is retained for seven days and is not a permanent release.
+- Signing keys, profiles, Apple session data, device IDs, signed IPA files, and
+  filled device-test records remain owner-local.
+- Original/converted resources, private HD data, crash dumps containing private
+  content, and screenshots of game assets are never uploaded to public CI.
+- A successful unsigned build is not evidence of installability or physical
+  behavior; both require the device checklist.
+
+## Required gates
+
+| Gate | Evidence |
 |---|---|
-| `AIRFIX_IOS_INITIAL_SETUP_LOGICAL_PATH_BASE64` | Base64 of the explicit private setup logical path |
-| `AIRFIX_IOS_INITIAL_LEVEL_LOGICAL_PATH_BASE64` | Base64 of the explicit private Level logical path |
-| `AIRFIX_IOS_INITIAL_PLAYER_OBJECT_LOGICAL_PATH_BASE64` | Base64 of the optional exact player object-definition logical path |
-| `AIRFIX_IOS_INITIAL_START_INDEX` | decimal unsigned start index in `0..4294967295` |
+| portable code | Linux, macOS, and Windows build/test jobs pass |
+| Windows x64 shell | D3D11/XAudio2/SDL3 product job passes |
+| iOS API boundary | ARM64 iphoneos Release build at minimum iOS 16.4 |
+| simulator runtime | fresh-device Metal/audio-probe/lifecycle result passes |
+| public package boundary | unsigned package synthetic suite and actual-package verifier pass |
+| source identity | manifest source SHA equals the trusted downloaded revision |
+| artifact identity | downloaded IPA SHA-256 equals manifest SHA-256 |
+| local signing | Xcode or accepted local sideloader signs for the selected phone |
+| physical behavior | every row is recorded independently on both iPhones |
 
-The public `ios-unsigned` workflow deliberately leaves all four values at their
-defaults. A separate protected private workflow may forward them only after
-manual environment approval and only from trusted source. CMake validates the
-Base64 alphabet/padding and `uint32_t` range, then `configure_file` generates
-`AirfixPrivateMissionConfig.h` inside the build directory. The generated header
-and decoded logical paths are never source files and must not be uploaded as
-artifacts or caches. Base64 is a safe source-generation transport, not
-encryption.
+## Next sequence
 
-All path inputs default to empty in public and unconfigured builds. Automatic
-loading is disabled unless setup and Level both decode as non-empty UTF-8;
-supplying only one is treated as incomplete configuration. The player object
-path is optional, but a non-empty value is rejected unless the setup/Level pair
-is complete and it decodes as non-empty UTF-8. The start index defaults to zero.
-After the private package is authenticated, the native coordinator submits the
-explicit setup + Level + optional player object + `uint32_t` request and builds
-the mission manifest and aggregate room through the same verified session.
-
-AFPACK v1 deliberately contains no launch metadata. A future AFPACK v2 may
-replace these build inputs with an authenticated, bounded mission catalogue,
-but that schema is not implemented. Until then, no private logical path belongs
-in the repository or workflow YAML.
-
-## Signing environment
-
-Create an `ios-private` GitHub Environment inside the approved private boundary,
-enable required-reviewer approval, and add these secrets directly in GitHub.
-Never paste their values into chat, an issue, a pull request, or the repository:
-
-| Secret | Contents |
-|---|---|
-| `BUILD_CERTIFICATE_BASE64` | base64-encoded `.p12` signing certificate/private key |
-| `P12_PASSWORD` | password for the `.p12` |
-| `BUILD_PROVISION_PROFILE_BASE64` | base64-encoded `.mobileprovision` containing both device UDIDs |
-| `KEYCHAIN_PASSWORD` | random password for the temporary runner keychain |
-| `AIRFIX_IOS_DEVICE_UDID_PRIMARY` | registered iPhone 17 Pro Max device identifier |
-| `AIRFIX_IOS_DEVICE_UDID_SECONDARY` | registered iPhone SE 3 device identifier |
-| `AIRFIX_IOS_INITIAL_SETUP_LOGICAL_PATH_BASE64` | optional private setup logical path |
-| `AIRFIX_IOS_INITIAL_LEVEL_LOGICAL_PATH_BASE64` | optional private Level logical path |
-| `AIRFIX_IOS_INITIAL_PLAYER_OBJECT_LOGICAL_PATH_BASE64` | optional private player definition logical path |
-
-Configure these environment variables:
-
-| Variable | Required value |
-|---|---|
-| `AIRFIX_IOS_TEAM_ID` | ten-character Apple Team ID |
-| `AIRFIX_IOS_BUNDLE_IDENTIFIER` | explicit App ID/bundle identifier in the Ad Hoc profile |
-| `AIRFIX_IOS_PROFILE_NAME` | exact provisioning-profile name |
-| `AIRFIX_IOS_SIGNING_IDENTITY` | exactly `Apple Distribution` |
-| `AIRFIX_IOS_INITIAL_START_INDEX` | optional decimal `uint32_t`, default `0` |
-
-The three optional logical-path secrets must either be empty or provide setup
-and Level together; player is accepted only with that pair. No Apple account
-password or long-lived interactive login belongs in the workflow.
-
-Rules:
-
-- Never echo secrets or decoded paths/content.
-- GitHub-hosted VMs are ephemeral, but cleanup runs under `if: always()` as
-  defense in depth.
-- Rotate/revoke the certificate/profile if logs or artifacts could have exposed
-  them.
-- Restrict `GITHUB_TOKEN` to `contents: read` unless a job proves it needs more.
-- Pin third-party actions to reviewed commit SHAs; minimize the action set.
-- Workflows receiving signing secrets never run code from forks or untrusted
-  pull requests.
-
-## Game-data separation
-
-The original folder exists only on the Windows analysis machine. The local asset
-pipeline produces a versioned package, provisionally named
-`AirfixData-<schema>-<sourceBuild>.afpack`.
-
-The CI-built application:
-
-- starts without the package and shows an import/install screen;
-- remains data-less and does not auto-load a mission when the optional private
-  configuration is empty;
-- imports the package through an iOS Files/document-picker or another private
-  transfer path selected during the device spike;
-- copies it atomically into Application Support after validating header,
-  schema, source-build ID, required entries, checksums, sizes, and available
-  storage;
-- never writes into the imported source file;
-- can replace/recover the package without deleting saves;
-- treats music as optional and absent in the current content set.
-
-CI uses only generated/synthetic fixtures. The `.afpack`, extracted files,
-original videos, converted textures/models/audio, and full game screenshots are
-forbidden in GitHub Actions uploads and caches.
-
-## Artifact policy
-
-- The source repository may remain public only for unsigned jobs; a private
-  boundary is mandatory before signing can succeed. The committed workflow
-  enforces this in both its boundary job and signing script.
-- Signed IPA artifact retention starts at one day.
-- Test logs/results may use a longer documented retention only when they contain
-  no private content.
-- Never upload crash dumps, memory dumps, source-derived gameplay captures, or
-  full asset-package listings without review.
-- Build manifest includes commit SHA, workflow run ID, runner image, Xcode/SDK,
-  deployment target, architecture, dependency lock hash, and IPA SHA-256.
-- The downloaded IPA is stored privately by the owner; GitHub is not a permanent
-  release archive.
-
-## Required CI checks
-
-| Check | Failure means |
-|---|---|
-| deployment target equals 16.4 | dependency/project silently raised minimum OS |
-| ARM64 device slice exists | invalid device artifact |
-| simulator build succeeds | Apple-platform boundary/compiler regression |
-| signature and entitlements verify | IPA cannot be trusted/installed as planned |
-| provisioning includes expected bundle/device set | wrong profile |
-| forbidden-file scan is empty | private/original/signing material leaked into output |
-| app boots without asset package | CI build accidentally depends on local data |
-| synthetic package import tests pass | asset installer regression |
-| unit/replay tests pass | portable behavior regression |
-
-## Device test handoff
-
-For every candidate IPA, record:
-
-- IPA SHA-256 and build manifest ID;
-- device model and exact iOS version;
-- installation method and provisioning expiration;
-- imported `.afpack` SHA-256/schema/source build;
-- touch/controller model and mapping profile;
-- passed/failed scenario IDs;
-- crash/thermal/performance notes.
-
-The Windows-compatible IPA installation method is selected during the first
-signed device spike. It is separate from compilation and must not require App
-Store publication.
-
-## Risks and mitigations
-
-| Risk | Mitigation |
-|---|---|
-| runner image removes/pivots Xcode | explicit runner/Xcode pin plus preflight and planned upgrades |
-| private-repo macOS minute cost | keep PR jobs narrow; cache only dependencies; signed build manual |
-| signing secret exposure | protected environment, manual approval, minimal permissions, short logs/artifacts |
-| original assets uploaded by mistake | forbidden-file/hash scan and data-less app architecture |
-| IPA cannot reach device without Mac | validate Windows installation path in the first device spike |
-| iOS 16.4 regression remains unseen | label it build-time compatibility only; add older runtime/device only if required |
-| Actions success mistaken for device success | separate physical scenario checklist on both phones |
-| cloud/device feedback loop becomes too slow | use a local Mac for interactive profiling and debugging |
-
-## Implementation order
-
-1. Connect the source repository and enforce a public/private file boundary.
-2. Add the portable validation workflow and CMake test skeleton.
-3. Add data-less iOS simulator/device builds with deployment target 16.4.
-4. Implement the synthetic `.afpack` parser and package tests.
-5. Review the fail-closed manual signed-IPA workflow and synthetic validators.
-6. Establish the approved private signing boundary.
-7. Register both device UDIDs and create the Ad Hoc provisioning profile and
-   Apple Distribution `.p12`.
-8. Configure the protected `ios-private` environment, reviewers, secrets, and
-   variables listed above.
-9. Dispatch `Private signed iOS IPA` from trusted `main`, download the one-day
-   artifact, and compare its manifest and SHA-256 before installation.
-10. Select/verify the Windows-to-iPhone IPA installation method.
-11. Import the locally converted private data package.
-12. Execute device scenarios on iOS 26.6 and 26.3.
-13. Use local Xcode, LLDB, Metal tooling, or Instruments when interactive
-    device profiling and debugging begin.
+1. Merge the public unsigned-package workflow.
+2. Download the seven-day artifact and verify it locally.
+3. Choose Xcode or a reviewed local sideloader for the first installation.
+4. Sign and install on iPhone 17 Pro Max, then repeat independently on SE 3.
+5. Import the owner-local AFPACK; test Classic and optional Enhanced fallback.
+6. Execute `IOS-DEVICE-CHECKLIST.md` and retain the filled record privately.
+7. Move to a local Mac only when LLDB, Metal diagnostics, Instruments, or rapid
+   physical-device iteration materially requires it.
 
 ## Authoritative references
 
-- GitHub-hosted runners
-  <https://docs.github.com/en/actions/reference/runners/github-hosted-runners>
-- GitHub macOS 26 runner image inventory
-  <https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md>
-- GitHub Apple certificate and provisioning-profile workflow
-  <https://docs.github.com/actions/deployment/deploying-xcode-applications/installing-an-apple-certificate-on-macos-runners-for-xcode-development>
-- GitHub Actions secrets
-  <https://docs.github.com/en/actions/reference/security/secrets>
-- Workflow artifacts and retention
-  <https://docs.github.com/en/actions/concepts/workflows-and-actions/workflow-artifacts>
+- [Running an app on a physical device with Xcode](https://developer.apple.com/documentation/Xcode/running-your-app-on-simulated-or-physical-devices)
+- [Creating a development provisioning profile](https://developer.apple.com/help/account/provisioning-profiles/create-a-development-provisioning-profile)
+- [Distributing to registered devices](https://developer.apple.com/documentation/Xcode/distributing-your-app-to-registered-devices)
+- [GitHub-hosted runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
+- [Workflow artifacts](https://docs.github.com/en/actions/concepts/workflows-and-actions/workflow-artifacts)

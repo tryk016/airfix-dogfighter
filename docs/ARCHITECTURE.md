@@ -272,4 +272,5 @@ private-fixtures/         # original-derived fixtures; ignored by Git
   contract but has no accepted runtime test device.
 - Whether `GCVirtualController` is useful for the first device spike before the
   final custom touch overlay is ready.
-- Windows-compatible installation method for the signed IPA produced by Actions.
+- Concrete local Windows sideloader for the verified unsigned IPA produced by
+  Actions; Xcode remains the reference local-signing path.

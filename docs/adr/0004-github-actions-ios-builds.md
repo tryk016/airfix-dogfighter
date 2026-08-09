@@ -1,99 +1,107 @@
-# ADR-0004: GitHub Actions builds signed data-less iOS application
+# ADR-0004: Public unsigned iOS builds with owner-local signing
 
-**Status:** Accepted
+**Status:** Accepted, superseding the hosted private-signing variant
 
-**Date:** 2026-07-21
+**Date:** 2026-07-21; revised 2026-08-09
 
 **Deciders:** project owner and implementation lead
 
 ## Context
 
-The owner does not require a local Mac/Xcode environment and wants iOS builds to
-run through GitHub Actions. Original game data exists only in the owner-provided
-source directory and must not be uploaded. The application is a private sideload
-with deployment target iOS 16.4. Physical tests use iPhone 17 Pro Max on iOS
-26.6 and iPhone SE (3rd generation) on iOS 26.3.
+The repository is intentionally public. Original game data and private HD
+derivatives must stay owner-local. The first physical tests target iPhone 17 Pro
+Max on iOS 26.6 and iPhone SE (3rd generation) on iOS 26.3, while the deployment
+target remains iOS 16.4.
+
+An earlier revision prepared a protected GitHub workflow that would import an
+Apple certificate and provisioning profile. The owner subsequently selected a
+simpler boundary: GitHub compiles only unsigned, data-less products; signing is
+performed locally at installation time through Xcode or an owner-selected local
+sideloader. The public repository therefore needs no signing secrets and does
+not need to change visibility.
 
 ## Decision
 
-Use an explicit GitHub-hosted macOS runner and pinned installed Xcode for iOS
-compilation. Pull requests build/test without secrets or signing. A protected,
-manually triggered workflow imports a certificate and provisioning profile from
-GitHub environment secrets into an ephemeral keychain and exports a private IPA.
+Use the pinned GitHub-hosted macOS/Xcode environment for:
 
-The application bundle contains no original or converted Airfix data. A local
-Windows converter creates a versioned private `.afpack`, transferred to and
-validated/imported by the installed app. CI uses synthetic fixtures only.
+- unsigned ARM64 `iphoneos` Release compilation;
+- unsigned ARM64 simulator compilation and real public Metal/lifecycle smoke;
+- deterministic construction of a strictly allow-listed, data-less unsigned
+  IPA on trusted `main`; and
+- a path-free manifest containing source, toolchain, dependency-lock, and IPA
+  identity.
 
-Set the deployment target to iOS 16.4. Do not claim runtime testing on 16.4; the
-accepted runtime matrix is iOS 26.6 and 26.3 on the two owner devices.
+Do not sign in GitHub Actions. Do not configure GitHub environments, Apple
+certificates, profiles, device IDs, account sessions, or private mission inputs.
+
+Use either of these local paths:
+
+1. Generate a local Xcode project from the exact trusted revision, explicitly
+   enable automatic development signing, select a connected iPhone, and run.
+2. Verify the downloaded unsigned IPA and manifest, then pass the IPA to a
+   reviewed local sideloader that signs without uploading code or credentials.
+
+The installed application imports the private AFPACK and optional HD package
+after installation. Neither belongs in the application artifact.
 
 ## Options considered
 
-### A. GitHub-hosted macOS plus separate data package — selected
+### A. Public unsigned build plus local signing — selected
 
 | Dimension | Assessment |
 |---|---|
-| Local Mac dependency | None |
-| Original-data exposure | Low |
-| Reproducibility | High |
-| Signing complexity | Medium |
-| Device feedback speed | Medium |
+| Public-source compatibility | High |
+| Signing-secret exposure | None in GitHub |
+| Reproducible compilation | High |
+| Reproducible signature | Local-tool dependent |
+| Windows-only installation | Possible through an accepted local sideloader |
+| Official Apple debugging path | Xcode on Mac |
 
-### B. GitHub-hosted macOS with assets stored as CI secrets/artifacts
+### B. Protected hosted signing workflow
 
-Rejected because the resource set is large, copyrighted, difficult to rotate,
-and likely to leak through caches, logs, or artifacts. GitHub secrets are not a
-content-distribution system.
+Rejected for the current project. It requires a private signing boundary,
+GitHub environment secrets, certificate/profile rotation, and protected signed
+artifacts even though the owner needs only private device installation.
 
-### C. Local/self-hosted Mac build
+### C. Commit or upload game data with the application
 
-Rejected as the planned primary path because the owner explicitly selected
-GitHub Actions and no local Mac is needed. It remains an emergency fallback only
-if hosted-runner/Xcode constraints make a required build impossible.
+Rejected. Copyrighted original files and private derived textures are not CI
+inputs, repository content, or public artifacts.
 
 ## Consequences
 
-- No local Mac is a project blocker.
-- The public source repository remains data-less. macOS Actions minutes, a
-  signing certificate, a provisioning profile containing both device UDIDs,
-  protected environment secrets, and a non-public signed-artifact transfer path
-  are required before signed builds.
-- Build workflows pin runner/Xcode and record actual tool versions.
-- Signed IPA generation is manual/protected; untrusted contributions never see
-  signing secrets.
-- The application must boot without game data and implement secure `.afpack`
-  import/replacement before the first full device slice.
-- Physical testing remains manual. CI cannot certify touch, controllers, audio,
-  thermals, or rendering on either iPhone.
-- iOS 16.4 is a deployment/availability contract without runtime coverage in the
-  accepted device matrix.
-- The Windows-compatible installation path for the produced IPA must be proven
-  during the first device spike.
-- A local Mac is not a prerequisite for portable development or unsigned
-  compile validation. It becomes part of the toolchain for interactive device
-  debugging and profiling.
+- The GitHub repository remains public.
+- GitHub Actions publishes a public **unsigned** package only from trusted
+  `main`; pull requests publish no device IPA.
+- The unsigned IPA is not installable until a local tool signs it.
+- Xcode remains the reference signing and debugging path. A Mac is not needed
+  for ordinary development or CI, but is needed for the official Product > Run,
+  LLDB, Metal, and Instruments workflows.
+- A sideloader must be assessed independently and must sign locally. Cloud
+  signing and binary upload are outside the accepted boundary.
+- The manifest proves compilation/package identity, not the later local
+  signature or device behavior.
+- Physical touch, controller, audio, lifecycle, safe-area, Metal, memory, and
+  thermal observations remain manual.
+- Original and converted resources remain outside the IPA and are imported
+  privately after installation.
 
 ## Revisit conditions
 
-- GitHub hosted images cannot provide a compatible Xcode/SDK.
-- Actions costs or queue times become unacceptable.
-- A secure/private content transfer method cannot be made usable.
-- The owner later provides a local Mac or self-hosted macOS runner and prefers it.
-- Interactive LLDB, Metal, Instruments, or physical-device iteration begins.
-- Actual runtime verification on iOS 16.4 becomes a requirement.
+- Apple changes local development signing or device-installation requirements.
+- No acceptable local Windows sideloader supports the unsigned package.
+- The owner chooses TestFlight, App Store, or managed external distribution.
+- Repeated physical debugging makes a permanent local/self-hosted Mac pipeline
+  materially faster.
+- The public artifact boundary needs additional executable or resource files.
 
 ## Action items
 
-1. [x] Connect the source remote; keep signing disabled while it is public.
-2. [x] Add explicit macOS runner/Xcode preflight workflow.
-3. [x] Build signing-free simulator and device targets at deployment target
-   16.4.
-4. [x] Define and implement the private `.afpack` package boundary.
-5. [x] Implement a manual signed-IPA workflow that fails closed in a public
-   repository and validates its Ad Hoc profile, signature, architecture,
-   deployment target, payload boundary, and one-day artifact manifest.
-6. [ ] Establish the approved private signing boundary.
-7. [ ] Register both device UDIDs and create/export signing materials.
-8. [ ] Configure the protected `ios-private` environment and secrets.
-9. [ ] Build, download, install, and verify the first IPA on both phones.
+1. [x] Keep repository and CI data-less.
+2. [x] Build unsigned simulator and device targets at deployment target 16.4.
+3. [x] Run a real public simulator Metal/audio-probe/lifecycle smoke.
+4. [x] Add deterministic unsigned IPA packaging and synthetic boundary tests.
+5. [x] Add explicit local-Xcode automatic-signing project generation.
+6. [ ] Download and independently verify the first `main` unsigned artifact.
+7. [ ] Select Xcode or a reviewed local sideloader and sign during installation.
+8. [ ] Execute the physical checklist independently on both iPhones.

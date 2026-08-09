@@ -99,8 +99,12 @@ jobs:
 
       - name: Build without signing
         run: |
+          configuration=Debug
+          if [[ "${{ matrix.sdk }}" == "iphoneos" ]]; then
+            configuration=Release
+          fi
           cmake --build "build-${{ matrix.sdk }}" \
-            --config Debug --target airfix_ios -- \
+            --config "$configuration" --target airfix_ios -- \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
 
       - name: Verify data-less bundle
@@ -120,3 +124,50 @@ jobs:
             --app "$bundle" \
             --result-output "build-${{ matrix.sdk }}/simulator-smoke-result.json" \
             --timeout-seconds 60
+
+      - name: Package public data-less unsigned IPA
+        if: >-
+          matrix.sdk == 'iphoneos' &&
+          github.event_name != 'pull_request' &&
+          github.ref == 'refs/heads/main'
+        run: |
+          bundles="$(find "build-${{ matrix.sdk }}" -type d -name AirfixDogfighter.app -print)"
+          bundle_count="$(printf '%s\n' "$bundles" | sed '/^$/d' | wc -l | tr -d ' ')"
+          if [[ "$bundle_count" != "1" ]]; then
+            echo "expected exactly one iphoneos application bundle" >&2
+            exit 1
+          fi
+          bundle="$(printf '%s\n' "$bundles" | sed -n '1p')"
+          output_root="$RUNNER_TEMP/airfix-ios-unsigned-$GITHUB_RUN_ID"
+          mkdir -p -- "$output_root"
+          python3 tools/ci/package_ios_unsigned_ipa.py package \
+            --app "$bundle" \
+            --ipa-output "$output_root/AirfixDogfighter-$GITHUB_SHA-unsigned.ipa" \
+            --manifest-output "$output_root/build-manifest.json" \
+            --source-sha "$GITHUB_SHA" \
+            --workflow-run-id "$GITHUB_RUN_ID" \
+            --runner-image "$ImageOS/$ImageVersion" \
+            --xcode-version "$(xcodebuild -version | paste -s -d ' ' -)" \
+            --compiler "$(xcrun --sdk iphoneos clang --version | sed -n '1p')" \
+            --sdk-version "$(xcrun --sdk iphoneos --show-sdk-version)" \
+            --dependency-lock docs/toolchain/LOCK.md
+
+      - name: Upload public unsigned IPA
+        if: >-
+          matrix.sdk == 'iphoneos' &&
+          github.event_name != 'pull_request' &&
+          github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: AirfixDogfighter-unsigned-${{ github.sha }}
+          path: ${{ runner.temp }}/airfix-ios-unsigned-${{ github.run_id }}
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Remove public unsigned package staging directory
+        if: >-
+          always() && matrix.sdk == 'iphoneos' &&
+          github.event_name != 'pull_request' &&
+          github.ref == 'refs/heads/main'
+        run: rm -rf -- "$RUNNER_TEMP/airfix-ios-unsigned-$GITHUB_RUN_ID"

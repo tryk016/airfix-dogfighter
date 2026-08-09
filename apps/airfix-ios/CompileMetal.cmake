@@ -24,11 +24,14 @@ set(work_dir "${AIRFIX_METAL_WORK_BASE}/$ENV{CONFIGURATION}")
 set(air_file "${work_dir}/AirfixShaders.air")
 set(bundle_dir "$ENV{TARGET_BUILD_DIR}/$ENV{WRAPPER_NAME}")
 set(library_file "${bundle_dir}/default.metallib")
+get_filename_component(metal_source_directory "${AIRFIX_METAL_SOURCE}" DIRECTORY)
+get_filename_component(metal_source_name "${AIRFIX_METAL_SOURCE}" NAME)
 file(MAKE_DIRECTORY "${work_dir}")
 
 execute_process(
     COMMAND "${AIRFIX_XCRUN_EXECUTABLE}" -sdk "${AIRFIX_METAL_SDK}"
-        metal -c "${AIRFIX_METAL_SOURCE}" -o "${air_file}"
+        metal -c "${metal_source_name}" -o "${air_file}"
+    WORKING_DIRECTORY "${metal_source_directory}"
     RESULT_VARIABLE compile_result
     OUTPUT_VARIABLE compile_output
     ERROR_VARIABLE compile_error)

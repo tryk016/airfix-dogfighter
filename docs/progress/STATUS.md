@@ -1,6 +1,6 @@
 # Project status
 
-**Updated:** 2026-08-08
+**Updated:** 2026-08-09
 **Stage:** Phase 1 — static analysis and archive recovery in progress
 
 ## Now
@@ -1158,12 +1158,13 @@
   Runtime room switching now has retained pointer-free BSP and portal-room
   data; applying it to the stateful simulation/camera coordinator remains.
 - Added optional build-generated initial mission configuration. Public defaults
-  are empty/data-less. A future protected private workflow may supply Base64
-  setup, Level, and optional player-object logical paths plus a decimal
-  `uint32_t` start index; CMake validates them and generates a local header
-  without committing private paths. Public pull-request workflows never read
-  these inputs or signing secrets. AFPACK v1 contains no launch metadata; an
-  authenticated bounded mission catalogue remains a target for AFPACK v2.
+  and every GitHub Actions value are empty/data-less. Owner-local experiments
+  may supply Base64 setup, Level, and optional player-object logical paths plus
+  a decimal `uint32_t` start index; CMake validates them and generates a local
+  header without committing private paths. Public workflows never read these
+  inputs and never receive signing material. AFPACK v1 contains no launch
+  metadata; an authenticated bounded mission catalogue remains a target for
+  AFPACK v2.
 - Recovered AirCraft sound ID `0x20` as the `enginedive` sample. On the shared
   fifth-call audio pass, health `<= 0` starts or retains it and applies
   `clamp(-0.15 * velocity.y - 0.2, 0, 1)` volume; positive health stops it.
@@ -1364,10 +1365,10 @@
   product requirements on both platforms. Classic preserves the original
   model-kit art direction at high resolution; Enhanced adds modern rendering
   features without affecting deterministic gameplay or physics.
-- GitHub Actions hosted macOS/Xcode currently provides unsigned iOS compile
-  validation. Interactive device debugging and profiling later use local Apple
-  tooling; private signing must keep original data local in an imported
-  `.afpack`.
+- GitHub Actions hosted macOS/Xcode provides unsigned iOS compile validation,
+  simulator runtime smoke, and the trusted-main public data-less unsigned
+  package. Interactive device signing/debugging/profiling uses owner-local
+  tooling; original data remains separate in an imported `.afpack`.
 
 ## Next
 
@@ -1503,8 +1504,8 @@
 
 - Which D3D feature-level floor, exact Windows 10 release floor, and private
   packaging procedure will be used?
-- Which Windows-compatible method will install the signed Actions IPA on both
-  registered phones?
+- Which reviewed Windows-compatible sideloader will locally sign and install the
+  verified unsigned Actions IPA on both registered phones if Xcode is not used?
 These questions do not block static analysis or the archive work.
 
 ## Latest validation
@@ -1880,22 +1881,22 @@ These questions do not block static analysis or the archive work.
 
 ## Blockers
 
-- The private signed-IPA implementation is now source-complete: an explicit
-  `iphoneos` CMake signing gate, manual trusted-`main` workflow, ephemeral
-  keychain archive/export, strict two-device Ad Hoc profile and signed-bundle
-  verification, forbidden-payload scan, and one-day manifest artifact are
-  covered by synthetic public tests. Its first real execution intentionally
-  remains blocked until the owner establishes a private signing boundary and
-  configures the protected certificate, profile, variables, and both device
-  identifiers outside the public repository.
+- The owner selected a permanent public repository and owner-local signing.
+  Hosted signing, GitHub Apple secrets, and the private-environment blocker have
+  been removed. Trusted `main` now builds a Release `iphoneos` app and packages
+  a deterministic, exact-tree, data-less unsigned IPA plus source/toolchain/hash
+  manifest; PRs publish no IPA. Synthetic tests reject signatures, profiles,
+  simulator code, unexpected files/directories, unsafe ZIP metadata, host paths,
+  wrong ARM64/iOS/minimum-OS metadata, and manifest drift. A separate local
+  Xcode gate generates an automatic-development-signing project only after an
+  explicit Team ID. The first actual public package awaits the merge and green
+  `main` Actions run.
 
 - None for Phase 1 static analysis.
 - No owner action is required to begin the Windows x64 product spike. The
   platform API/minimum-OS choices are engineering decisions, not blockers.
-- The connected repository is public. Before the first signed device spike,
-  signed IPA artifacts must be encrypted/protected (or repository visibility
-  deliberately changed), because provisioning data must not be published.
-- A signing certificate/profile for both device UDIDs, protected Actions
-  secrets, and a Windows IPA installation path are required before that spike.
+- The remaining device boundary is local: verify the downloaded unsigned IPA,
+  select Xcode or a reviewed local Windows sideloader, sign without uploading
+  code/credentials, install, and execute the private checklist on both phones.
 - No public distribution is planned; private signed/converted artifacts must not
   be shared.
