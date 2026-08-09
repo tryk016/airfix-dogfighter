@@ -85,6 +85,8 @@ add_executable(airfix_ios MACOSX_BUNDLE
     AirfixIOSAudioOutputProbe.mm
     AirfixContentCoordinator.h
     AirfixContentCoordinator.mm
+    AirfixDiagnosticsCoordinator.h
+    AirfixDiagnosticsCoordinator.mm
     AirfixMissionWorldRoomSnapshot.h
     AirfixMissionWorldRoomSnapshot.mm
     AirfixMissionWorldRoomSnapshot+Private.hpp

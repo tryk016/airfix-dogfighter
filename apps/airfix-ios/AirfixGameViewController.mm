@@ -4,6 +4,7 @@
 #import "AirfixContentCoordinator.h"
 #import "AirfixControllerCalibrationPanelViewController.h"
 #import "AirfixControllerInputProfileCoordinator.h"
+#import "AirfixDiagnosticsCoordinator.h"
 #include "AirfixIOSAudioOutputProbe.hpp"
 #import "AirfixIOSControllerInputProfileStore.h"
 #import "AirfixIOSInputCoordinator.h"
@@ -136,6 +137,8 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
 @property(nonatomic, strong) UILabel *statusLabel;
 @property(nonatomic, strong) UILabel *inputDiagnosticsLabel;
 @property(nonatomic, strong) AirfixContentCoordinator *contentCoordinator;
+@property(nonatomic, strong)
+    AirfixDiagnosticsCoordinator *diagnosticsCoordinator;
 @property(nonatomic, strong) AirfixTouchControlsView *touchControlsView;
 @property(nonatomic, strong) AirfixIOSInputCoordinator *inputCoordinator;
 @property(nonatomic, strong)
@@ -213,6 +216,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   metalView.paused = YES;
   metalView.enableSetNeedsDisplay = NO;
   self.view = metalView;
+  self.diagnosticsCoordinator = [AirfixDiagnosticsCoordinator new];
 #if AIRFIX_IOS_SIMULATOR_SMOKE
   self.simulatorSmokeHarness =
       [[AirfixSimulatorSmokeHarness alloc] initWithGameViewController:self];
@@ -223,6 +227,8 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   self.renderer =
       [[AirfixMetalRenderer alloc] initWithMetalView:metalView
                                                error:&rendererError];
+  [self.diagnosticsCoordinator
+      recordRendererInitializationSucceeded:self.renderer != nil];
 #if AIRFIX_IOS_SIMULATOR_SMOKE
   [self.simulatorSmokeHarness noteRendererInitializationCompleted];
 #endif
@@ -882,6 +888,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   _session.pause();
   ((MTKView *)self.view).paused = YES;
   if (wasRunning) {
+    [self.diagnosticsCoordinator
+        recordGameplayPausedForReason:AirfixDiagnosticPauseReasonLifecycle];
     self.statusLabel.text =
         @"Airfix Dogfighter reconstruction\n"
         @"Gameplay paused; press pause or controller menu to resume";
@@ -908,6 +916,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   }
 
   [self stopAudioOutputProbe];
+  [self.diagnosticsCoordinator
+      recordGameplayPausedForReason:AirfixDiagnosticPauseReasonSettings];
   _audioBackend->setActive(false);
   _session.pause();
   ((MTKView *)self.view).paused = YES;
@@ -997,6 +1007,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   }
 
   [self stopAudioOutputProbe];
+  [self.diagnosticsCoordinator
+      recordGameplayPausedForReason:AirfixDiagnosticPauseReasonSettings];
   _audioBackend->setActive(false);
   _session.pause();
   ((MTKView *)self.view).paused = YES;
@@ -1098,6 +1110,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   }
 
   [self stopAudioOutputProbe];
+  [self.diagnosticsCoordinator
+      recordGameplayPausedForReason:AirfixDiagnosticPauseReasonSettings];
   _audioBackend->setActive(false);
   _session.pause();
   ((MTKView *)self.view).paused = YES;
@@ -1327,6 +1341,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   [self refreshTouchControlsVisibility];
   [self refreshAudioOutputProbeAvailability];
   self.statusLabel.text = @"Airfix Dogfighter reconstruction\nGameplay running";
+  [self.diagnosticsCoordinator recordGameplayResumed];
 }
 
 - (void)refreshTouchControlsVisibility {
@@ -1402,6 +1417,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
 }
 
 - (void)applicationWillResignActive {
+  [self.diagnosticsCoordinator
+      recordLifecycleEvent:AirfixDiagnosticLifecycleEventResignActive];
   [self.inputCoordinator applicationWillResignActive];
   [self.contentCoordinator applicationWillResignActive];
   [self stopAudioOutputProbe];
@@ -1411,6 +1428,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
 }
 
 - (void)applicationDidEnterBackground {
+  [self.diagnosticsCoordinator
+      recordLifecycleEvent:AirfixDiagnosticLifecycleEventBackground];
   [self.inputCoordinator applicationDidEnterBackground];
   [self.contentCoordinator applicationDidEnterBackground];
   [self stopAudioOutputProbe];
@@ -1420,6 +1439,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
 }
 
 - (void)applicationWillEnterForeground {
+  [self.diagnosticsCoordinator
+      recordLifecycleEvent:AirfixDiagnosticLifecycleEventForeground];
   [self.inputCoordinator applicationWillEnterForeground];
   [self.contentCoordinator applicationWillEnterForeground];
   [self stopAudioOutputProbe];
@@ -1429,6 +1450,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
 }
 
 - (void)applicationDidBecomeActive {
+  [self.diagnosticsCoordinator
+      recordLifecycleEvent:AirfixDiagnosticLifecycleEventActive];
   if (_session.lifecycleState() !=
       airfix::runtime::LifecycleState::foregroundPaused) {
     _session.enterForeground();
@@ -1604,22 +1627,29 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   (void)coordinator;
   airfix::runtime::ContentState contentState =
       airfix::runtime::ContentState::missing;
+  AirfixDiagnosticContentState diagnosticContentState =
+      AirfixDiagnosticContentStateMissing;
   switch (readiness) {
   case AirfixContentReadinessMissing:
     contentState = airfix::runtime::ContentState::missing;
+    diagnosticContentState = AirfixDiagnosticContentStateMissing;
     break;
   case AirfixContentReadinessValidating:
     contentState = airfix::runtime::ContentState::validating;
+    diagnosticContentState = AirfixDiagnosticContentStateValidating;
     break;
   case AirfixContentReadinessReady:
     // A valid AFPACK is necessary but not renderable until the requested
     // mission has also passed portable loading and the Metal transaction.
     contentState = airfix::runtime::ContentState::validating;
+    diagnosticContentState = AirfixDiagnosticContentStateReady;
     break;
   case AirfixContentReadinessRejected:
     contentState = airfix::runtime::ContentState::rejected;
+    diagnosticContentState = AirfixDiagnosticContentStateRejected;
     break;
   }
+  [self.diagnosticsCoordinator recordContentState:diagnosticContentState];
   _session.setContentState(contentState);
   if (contentState != airfix::runtime::ContentState::ready) {
     [self stopAudioOutputProbe];
@@ -1642,6 +1672,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
 - (void)contentCoordinatorDidBeginLoadingMission:
     (AirfixContentCoordinator *)coordinator {
   (void)coordinator;
+  [self.diagnosticsCoordinator recordMissionLoadStarted];
   [self stopAudioOutputProbe];
   _audioBackend->setActive(false);
   _session.setContentState(airfix::runtime::ContentState::validating);
@@ -1671,6 +1702,9 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
     self.touchControlsView.hidden = YES;
     self.statusLabel.text =
         @"Airfix Dogfighter reconstruction\nMetal renderer unavailable";
+    [self.diagnosticsCoordinator
+        recordMissionLoadFailedAtStage:
+            AirfixDiagnosticMissionFailureStageHandoff];
     return;
   }
 
@@ -1756,6 +1790,9 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
                 ? @"Airfix Dogfighter reconstruction\nRoom preparation failed"
                 : [@"Airfix Dogfighter reconstruction\n"
                       stringByAppendingString:reason];
+        [strongSelf.diagnosticsCoordinator
+            recordMissionLoadFailedAtStage:
+                AirfixDiagnosticMissionFailureStageMetalPreparation];
         return;
       }
 
@@ -1772,6 +1809,9 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
         strongSelf.touchControlsView.hidden = YES;
         strongSelf.statusLabel.text = @"Airfix Dogfighter reconstruction\n"
                                       @"Player start publication failed";
+        [strongSelf.diagnosticsCoordinator
+            recordMissionLoadFailedAtStage:
+                AirfixDiagnosticMissionFailureStagePlayerSpawn];
         return;
       }
       if (![renderer validatePreparedRoomForCommit:preparedRoom
@@ -1789,6 +1829,9 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
                 ? @"Airfix Dogfighter reconstruction\nRoom publication failed"
                 : [@"Airfix Dogfighter reconstruction\n"
                       stringByAppendingString:reason];
+        [strongSelf.diagnosticsCoordinator
+            recordMissionLoadFailedAtStage:
+                AirfixDiagnosticMissionFailureStagePublication];
         return;
       }
 
@@ -1805,6 +1848,9 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
         strongSelf.touchControlsView.hidden = YES;
         strongSelf.statusLabel.text = @"Airfix Dogfighter reconstruction\n"
                                       @"Player pose runtime publication failed";
+        [strongSelf.diagnosticsCoordinator
+            recordMissionLoadFailedAtStage:
+                AirfixDiagnosticMissionFailureStagePlayerPose];
         return;
       }
 
@@ -1821,6 +1867,9 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
         strongSelf.statusLabel.text =
             @"Airfix Dogfighter reconstruction\n"
             @"Gameplay camera runtime publication failed";
+        [strongSelf.diagnosticsCoordinator
+            recordMissionLoadFailedAtStage:
+                AirfixDiagnosticMissionFailureStageCamera];
         return;
       }
 
@@ -1836,6 +1885,9 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
         strongSelf.touchControlsView.hidden = YES;
         strongSelf.statusLabel.text = @"Airfix Dogfighter reconstruction\n"
                                       @"Aircraft audio bindings are invalid";
+        [strongSelf.diagnosticsCoordinator
+            recordMissionLoadFailedAtStage:
+                AirfixDiagnosticMissionFailureStageAudio];
         return;
       }
 
@@ -1870,6 +1922,9 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
         strongSelf.touchControlsView.hidden = YES;
         strongSelf.statusLabel.text = @"Airfix Dogfighter reconstruction\n"
                                       @"Aircraft audio preparation failed";
+        [strongSelf.diagnosticsCoordinator
+            recordMissionLoadFailedAtStage:
+                AirfixDiagnosticMissionFailureStageAudio];
         return;
       }
       preparedAudioBackend->setForcedPauseHandler(
@@ -1913,6 +1968,10 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
       strongSelf.touchControlsView.hidden = YES;
       strongSelf.resumeButton.hidden =
           [strongSelf isSettingsPanelOpen] || !inputOperational;
+      [strongSelf.diagnosticsCoordinator
+          recordMissionReadyWithMeshCount:snapshot.meshCount
+                             textureCount:snapshot.textureCount
+                            drawCallCount:snapshot.drawCommandCount];
       if (inputOperational) {
         strongSelf.statusLabel.text = [NSString
             stringWithFormat:
@@ -1940,6 +1999,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
 - (void)contentCoordinatorDidFailLoadingMission:
     (AirfixContentCoordinator *)coordinator {
   (void)coordinator;
+  [self.diagnosticsCoordinator recordMissionLoadFailedAtStage:
+                                   AirfixDiagnosticMissionFailureStageContent];
   [self stopAudioOutputProbe];
   _audioBackend->setActive(false);
   _playerAircraftAudioBindings.reset();
@@ -1962,6 +2023,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   MTKView *metalView = (MTKView *)self.view;
   if ([self isSettingsPanelOpen] &&
       reason == AirfixInputPauseReasonUserControl) {
+    [self.diagnosticsCoordinator
+        recordGameplayPausedForReason:AirfixDiagnosticPauseReasonSettings];
     [self stopAudioOutputProbe];
     _audioBackend->setActive(false);
     _session.pause();
@@ -1970,6 +2033,17 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
     return;
   }
   if (reason != AirfixInputPauseReasonUserControl) {
+    AirfixDiagnosticPauseReason diagnosticReason =
+        AirfixDiagnosticPauseReasonLifecycle;
+    if (reason == AirfixInputPauseReasonControllerDisconnected) {
+      diagnosticReason = AirfixDiagnosticPauseReasonControllerDisconnected;
+    } else if (reason == AirfixInputPauseReasonInputOverflow) {
+      diagnosticReason = AirfixDiagnosticPauseReasonInputOverflow;
+    } else if (reason == AirfixInputPauseReasonInputPipelineFailure) {
+      diagnosticReason = AirfixDiagnosticPauseReasonInputFailure;
+    }
+    [self.diagnosticsCoordinator
+        recordGameplayPausedForReason:diagnosticReason];
     [self stopAudioOutputProbe];
     _audioBackend->setActive(false);
     _session.pause();
@@ -2002,6 +2076,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   }
 
   if (_session.lifecycleState() == airfix::runtime::LifecycleState::running) {
+    [self.diagnosticsCoordinator
+        recordGameplayPausedForReason:AirfixDiagnosticPauseReasonUser];
     [self stopAudioOutputProbe];
     _audioBackend->setActive(false);
     _session.pause();
@@ -2021,6 +2097,15 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
 
 - (void)handleAudioForcedPause:
     (const airfix::ios::AirfixIOSAudioPauseReason)reason {
+  AirfixDiagnosticPauseReason diagnosticReason =
+      AirfixDiagnosticPauseReasonAudioInterruption;
+  if (reason == airfix::ios::AirfixIOSAudioPauseReason::outputRouteLost) {
+    diagnosticReason = AirfixDiagnosticPauseReasonAudioRoute;
+  } else if (reason ==
+             airfix::ios::AirfixIOSAudioPauseReason::mediaServicesReset) {
+    diagnosticReason = AirfixDiagnosticPauseReasonAudioServices;
+  }
+  [self.diagnosticsCoordinator recordGameplayPausedForReason:diagnosticReason];
   [self stopAudioOutputProbe];
   _session.pause();
   [self.inputCoordinator resetForGameplayBoundary];
@@ -2053,7 +2138,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   if (coordinator != self.inputCoordinator) {
     return;
   }
-  (void)state;
+  [self.diagnosticsCoordinator recordControllerConnected:state.isConnected];
   [self refreshTouchControlsVisibility];
 }
 
@@ -2138,6 +2223,27 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
     return;
   }
   [self updateDiagnosticsLabelWithInputDiagnostics:diagnostics];
+  AirfixDiagnosticInputSource source = AirfixDiagnosticInputSourceNone;
+  if (diagnostics.lastMeaningfulSource == AirfixInputSourceTouch) {
+    source = AirfixDiagnosticInputSourceTouch;
+  } else if (diagnostics.lastMeaningfulSource == AirfixInputSourceController) {
+    source = AirfixDiagnosticInputSourceController;
+  }
+  const auto &simulation = _playerAircraftPresentation.state();
+  [self.diagnosticsCoordinator
+      recordInputSampleWithTick:diagnostics.tick
+                           bank:diagnostics.bank
+                          pitch:diagnostics.pitch
+                       fireHeld:diagnostics.primaryHeld
+            controllerConnected:diagnostics.isControllerConnected
+                         source:source
+                 simulationStep:simulation.completedSteps
+                 simulationHash:_playerAircraftPresentation.stateHash()];
+}
+
+- (void)didReceiveMemoryWarning {
+  [super didReceiveMemoryWarning];
+  [self.diagnosticsCoordinator recordMemoryWarning];
 }
 
 - (void)updateDiagnosticsLabelWithInputDiagnostics:

@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 import sys
 import time
@@ -57,6 +58,35 @@ FAILURE_STAGES = {
     "unknown-draw-stage",
 }
 MAX_DIAGNOSTIC_BYTES = 32_000
+MAX_JOURNAL_BYTES = 1024 * 1024
+MAX_JOURNAL_RECORD_BYTES = 8 * 1024
+MAX_JOURNAL_RECORDS = 4096
+JOURNAL_SCHEMA = "airfix.ios-diagnostics-v1"
+WORKSPACE_README = (
+    "Airfix Dogfighter owner-local files\n\n"
+    "Imports: place .afpack and .afmission files here, then select them "
+    "with the matching button in the app. After a successful import, the app "
+    "uses its validated private copy and the staging file may be removed.\n"
+    "Diagnostics: latest.jsonl is the current bounded diagnostic journal; "
+    "previous.jsonl is the preceding session or rotation.\n\n"
+    "Diagnostic journals contain controlled runtime states and counters. "
+    "They do not contain original assets, logical game paths, checksums, or "
+    "device-local paths.\n"
+)
+JOURNAL_EVENTS = {
+    "session.started",
+    "session.continued",
+    "renderer.initialized",
+    "content.state",
+    "mission.load.started",
+    "mission.load.ready",
+    "mission.load.failed",
+    "gameplay.state",
+    "lifecycle.transition",
+    "controller.connection",
+    "input.sample",
+    "memory.warning",
+}
 
 
 class SmokeFailure(RuntimeError):
@@ -197,6 +227,200 @@ def load_json(path: Path) -> object:
         raise SmokeFailure(f"result is not valid UTF-8 JSON: {error}") from error
 
 
+def require_journal_integer(
+    value: object, name: str, minimum: int, maximum: int
+) -> None:
+    if type(value) is not int or value < minimum or value > maximum:
+        raise SmokeFailure(f"diagnostic journal {name} is outside bounds")
+
+
+def validate_journal_fields(event: str, fields: object) -> None:
+    if not isinstance(fields, dict):
+        raise SmokeFailure("diagnostic journal fields are malformed")
+    if event in {
+        "session.started",
+        "session.continued",
+        "mission.load.started",
+        "memory.warning",
+    }:
+        if fields:
+            raise SmokeFailure("diagnostic journal empty event has fields")
+        return
+    if event == "renderer.initialized":
+        if set(fields) != {"succeeded"}:
+            raise SmokeFailure("diagnostic renderer event has unexpected fields")
+        require_bool(fields["succeeded"], "diagnostics.renderer.succeeded")
+        return
+    if event == "content.state":
+        if set(fields) != {"state"} or fields["state"] not in {
+            "missing", "validating", "ready", "rejected"
+        }:
+            raise SmokeFailure("diagnostic content state is invalid")
+        return
+    if event == "mission.load.ready":
+        if set(fields) != {"drawCalls", "meshes", "textures"}:
+            raise SmokeFailure("diagnostic mission-ready fields are invalid")
+        for name in fields:
+            require_journal_integer(fields[name], name, 1, 1_000_000)
+        return
+    if event == "mission.load.failed":
+        if set(fields) != {"stage"} or fields["stage"] not in {
+            "content", "handoff", "metal-preparation", "player-spawn",
+            "publication", "player-pose", "camera", "audio",
+        }:
+            raise SmokeFailure("diagnostic mission failure stage is invalid")
+        return
+    if event == "gameplay.state":
+        if fields == {"state": "running"}:
+            return
+        if set(fields) != {"reason", "state"} or fields["state"] != "paused":
+            raise SmokeFailure("diagnostic gameplay state is invalid")
+        if fields["reason"] not in {
+            "user", "settings", "lifecycle", "controller-disconnected",
+            "input-overflow", "input-failure", "audio-interruption",
+            "audio-route", "audio-services",
+        }:
+            raise SmokeFailure("diagnostic pause reason is invalid")
+        return
+    if event == "lifecycle.transition":
+        if set(fields) != {"state"} or fields["state"] not in {
+            "resign-active", "background", "foreground", "active"
+        }:
+            raise SmokeFailure("diagnostic lifecycle state is invalid")
+        return
+    if event == "controller.connection":
+        if set(fields) != {"connected"}:
+            raise SmokeFailure("diagnostic controller fields are invalid")
+        require_bool(fields["connected"], "diagnostics.controller.connected")
+        return
+    if event == "input.sample":
+        expected = {
+            "bank", "controllerConnected", "fireHeld", "pitch",
+            "simulationHash", "simulationStep", "source", "tick",
+        }
+        if set(fields) != expected:
+            raise SmokeFailure("diagnostic input fields are invalid")
+        require_journal_integer(fields["bank"], "bank", -32768, 32767)
+        require_journal_integer(fields["pitch"], "pitch", -32768, 32767)
+        require_journal_integer(fields["tick"], "tick", 0, (1 << 64) - 1)
+        require_journal_integer(
+            fields["simulationStep"], "simulationStep", 0, (1 << 64) - 1
+        )
+        require_bool(
+            fields["controllerConnected"],
+            "diagnostics.input.controllerConnected",
+        )
+        require_bool(fields["fireHeld"], "diagnostics.input.fireHeld")
+        if fields["source"] not in {"none", "touch", "controller"}:
+            raise SmokeFailure("diagnostic input source is invalid")
+        if not isinstance(fields["simulationHash"], str) or not re.fullmatch(
+            r"[0-9A-F]{16}", fields["simulationHash"]
+        ):
+            raise SmokeFailure("diagnostic simulation hash is invalid")
+        return
+    raise SmokeFailure("diagnostic journal event has no field contract")
+
+
+def validate_diagnostic_workspace(documents: Path) -> list[dict[str, object]]:
+    imports = documents / "Imports"
+    diagnostics = documents / "Diagnostics"
+    journal = diagnostics / "latest.jsonl"
+    readme = documents / "README.txt"
+    for path, kind in ((imports, "imports"), (diagnostics, "diagnostics")):
+        try:
+            metadata = path.lstat()
+        except OSError as error:
+            raise SmokeFailure(f"{kind} directory is unavailable") from error
+        if not stat.S_ISDIR(metadata.st_mode) or path.is_symlink():
+            raise SmokeFailure(f"{kind} directory has an invalid type")
+    try:
+        readme_metadata = readme.lstat()
+        readme_bytes = readme.read_bytes()
+    except OSError as error:
+        raise SmokeFailure("workspace README is unavailable") from error
+    if (
+        not stat.S_ISREG(readme_metadata.st_mode)
+        or readme.is_symlink()
+        or len(readme_bytes) != readme_metadata.st_size
+        or len(readme_bytes) > 4096
+    ):
+        raise SmokeFailure("workspace README has an invalid type or size")
+    try:
+        if readme_bytes.decode("utf-8", errors="strict") != WORKSPACE_README:
+            raise SmokeFailure("workspace README content changed")
+    except UnicodeError as error:
+        raise SmokeFailure("workspace README is not strict UTF-8") from error
+    try:
+        metadata = journal.lstat()
+    except OSError as error:
+        raise SmokeFailure("diagnostic journal is unavailable") from error
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or journal.is_symlink()
+        or metadata.st_size <= 0
+        or metadata.st_size > MAX_JOURNAL_BYTES
+    ):
+        raise SmokeFailure("diagnostic journal has an invalid type or size")
+    try:
+        raw = journal.read_bytes()
+        if len(raw) != metadata.st_size or len(raw) > MAX_JOURNAL_BYTES:
+            raise SmokeFailure("diagnostic journal changed during validation")
+        text = raw.decode("utf-8", errors="strict")
+    except (OSError, UnicodeError) as error:
+        raise SmokeFailure("diagnostic journal is not strict UTF-8") from error
+
+    records: list[dict[str, object]] = []
+    previous_sequence = -1
+    for line in text.splitlines():
+        if not line or len(line.encode("utf-8")) > MAX_JOURNAL_RECORD_BYTES:
+            raise SmokeFailure("diagnostic journal record is outside bounds")
+        if len(records) >= MAX_JOURNAL_RECORDS:
+            raise SmokeFailure("diagnostic journal has too many records")
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as error:
+            raise SmokeFailure("diagnostic journal record is malformed") from error
+        if not isinstance(record, dict) or set(record) != {
+            "elapsedMs", "event", "fields", "schema", "sequence"
+        }:
+            raise SmokeFailure("diagnostic journal record schema is invalid")
+        if record["schema"] != JOURNAL_SCHEMA or record["event"] not in JOURNAL_EVENTS:
+            raise SmokeFailure("diagnostic journal identity is invalid")
+        require_journal_integer(record["elapsedMs"], "elapsedMs", 0, 30 * 86400 * 1000)
+        require_journal_integer(record["sequence"], "sequence", 1, (1 << 64) - 1)
+        if record["sequence"] <= previous_sequence:
+            raise SmokeFailure("diagnostic journal sequence is not increasing")
+        previous_sequence = record["sequence"]
+        validate_journal_fields(record["event"], record["fields"])
+        records.append(record)
+    if not records:
+        raise SmokeFailure("diagnostic journal is empty")
+
+    event_names = [record["event"] for record in records]
+    if records[0]["event"] not in {"session.started", "session.continued"}:
+        raise SmokeFailure("diagnostic journal is missing its session marker")
+    if not any(
+        record["event"] == "renderer.initialized"
+        and record["fields"] == {"succeeded": True}
+        for record in records
+    ):
+        raise SmokeFailure("diagnostic journal is missing renderer success")
+    if not any(
+        record["event"] == "content.state"
+        and record["fields"] == {"state": "missing"}
+        for record in records
+    ):
+        raise SmokeFailure("diagnostic journal is missing data-less content state")
+    lifecycle = [
+        record["fields"]["state"]
+        for record in records
+        if record["event"] == "lifecycle.transition"
+    ]
+    if lifecycle[-4:] != ["resign-active", "background", "foreground", "active"]:
+        raise SmokeFailure("diagnostic journal lifecycle sequence changed")
+    return records
+
+
 def select_runtime_from_payload(payload: object) -> str:
     if not isinstance(payload, dict) or not isinstance(payload.get("runtimes"), list):
         raise SmokeFailure("simctl returned an invalid runtime catalogue")
@@ -306,6 +530,7 @@ def consume_result_if_present(result_path: Path, output: Path) -> bool:
     if not result_path.is_file():
         return False
     document = validate_result(load_json(result_path))
+    validate_diagnostic_workspace(result_path.parent)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
         json.dumps(document, sort_keys=True, indent=2) + "\n",
