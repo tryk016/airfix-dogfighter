@@ -63,4 +63,5 @@ for v1.0.
 2. [x] Mark multiplayer and editor parity scenarios deferred for v1.0.
 3. [x] Set the iOS deployment target to 16.4 when the Xcode target is created.
 4. [ ] Register and test both iPhones with the developer account.
-5. [ ] Configure GitHub Actions build/signing per ADR-0004.
+5. [x] Configure public unsigned GitHub Actions builds and owner-local signing
+   per ADR-0004.

@@ -319,16 +319,17 @@ Tasks:
   runner. Local Xcode/Mac access is not required.
 - Set the deployment target to iOS 16.4 and use availability guards for any
   newer API.
-- Maintain unsigned simulator CI for pull requests. The protected, manually
-  triggered signed-IPA workflow, ephemeral keychain, Ad Hoc validators, and
-  one-day artifact policy are implemented; its first execution waits for the
-  approved private signing boundary and owner-controlled GitHub environment.
+- Maintain unsigned simulator/device CI for pull requests. Trusted `main`
+  additionally publishes a deterministic data-less unsigned IPA and manifest;
+  signing is performed only on an owner-controlled computer through Xcode or a
+  reviewed local sideloader.
 - Register and use the available Apple Developer account with iPhone 17 Pro Max
   on iOS 26.6 and iPhone SE (3rd generation) on iOS 26.3. Set 16.4 in build
   metadata and availability checks, but do not claim runtime coverage on 16.4.
 - Make the app boot without data and implement atomic `.afpack` import before the
   first full device slice.
-- Select and document a Windows-compatible installation path for the signed IPA.
+- Select and document a reviewed Windows sideloader that locally signs and
+  installs the verified public unsigned IPA.
 - Use local Xcode, LLDB, Metal tools, and Instruments when interactive
   physical-device debugging and profiling begin.
 - Implement native UIKit/Game Controller adapters first. Add an SDL3 desktop or
@@ -507,10 +508,13 @@ Tasks:
 - Verify the native Windows x64 architecture, data-less public package, private
   content import, symbols/diagnostics, input devices, audio devices, display
   transitions, and faithful-reference capture path.
-- Verify signature, provisioning, entitlements, ARM64 slice, iOS 16.4 minimum,
-  IPA checksum, and forbidden-file scan in CI.
-- Verify that the signed application and converted assets are not placed in any
-  public artifact, repository, package feed, or distribution channel.
+- Verify the unsigned package's exact payload, absent signature/profile, ARM64
+  slice, iOS 16.4 minimum, IPA checksum, source/toolchain manifest, and
+  forbidden-file scan in CI. Verify the local signature/profile immediately
+  before device installation.
+- Verify that the locally signed application and converted assets are not
+  placed in any public artifact, repository, package feed, or distribution
+  channel.
 
 Exit gate:
 

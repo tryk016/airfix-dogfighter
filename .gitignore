@@ -52,7 +52,7 @@ __pycache__/
 # Generated inventories
 /artifacts/
 
-# Apple signing and private distribution outputs
+# Local iOS packages and Apple signing outputs (CI stages public IPA outside Git)
 *.ipa
 *.p12
 *.cer

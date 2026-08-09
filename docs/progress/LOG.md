@@ -5817,3 +5817,25 @@ superseded evidence.
 - The gate is GO for semantic fail-closed future assembly and NO-GO for
   bit-identical x87/trigonometry or renderer-order claims. A minimal read-only
   post-`GetWorldRelation` oracle is recorded for later confirmation.
+
+## 2026-08-09 - public unsigned iOS package and local signing boundary
+
+- The owner retained the public GitHub repository and selected signing only on
+  an owner-controlled computer during installation. The unused hosted signing
+  workflow, certificate/profile ingestion, and GitHub private-environment
+  requirement were removed; no Apple credential or device ID enters Actions.
+- Trusted `main` now prepares a Release ARM64 `iphoneos` application and a
+  deterministic data-less unsigned IPA plus strict source/toolchain/hash
+  manifest. Pull requests still compile both Apple targets but publish no IPA.
+  The public artifact explicitly has no signature/profile and cannot be
+  installed until locally signed.
+- The portable packager/verifier enforces an exact app/archive tree, bounded
+  canonical ZIP metadata, thin ARM64 iOS 16.4 Mach-O without a code-signature
+  command, exact Info.plist identity, absent simulator marker, absent host paths,
+  and strict manifest booleans. Tests use only synthetic Mach-O, plist, Metal,
+  and license bytes.
+- A separate opt-in CMake gate and helper generate an Xcode project with
+  automatic development signing after a local Team ID. Xcode is the reference
+  path; a future Windows sideloader must sign locally without cloud upload or
+  payload injection. Original AFPACK and optional HD content remain separate
+  owner-local imports after installation.

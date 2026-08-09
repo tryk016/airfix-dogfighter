@@ -7,8 +7,10 @@ option(AIRFIX_BUILD_TOOLS "Build desktop reconstruction tools" ON)
 option(AIRFIX_BUILD_IOS_APP "Build the data-less iOS application shell" OFF)
 option(AIRFIX_IOS_SIMULATOR_SMOKE
     "Enable the CI-only iPhoneSimulator runtime smoke harness" OFF)
-option(AIRFIX_IOS_ENABLE_SIGNING
-    "Allow explicit manual code signing for a private iphoneos build" OFF)
+option(AIRFIX_IOS_ENABLE_LOCAL_SIGNING
+    "Allow Xcode automatic signing for a local iphoneos device build" OFF)
+set(AIRFIX_IOS_LOCAL_DEVELOPMENT_TEAM "" CACHE STRING
+    "Apple development team used only by an opted-in local Xcode build")
 option(AIRFIX_BUILD_WINDOWS_APP "Build the data-less Windows x64 application shell" OFF)
 set(AIRFIX_IOS_DEPLOYMENT_TARGET "16.4" CACHE STRING
     "Minimum iOS version supported by the application")
@@ -22,22 +24,26 @@ if(AIRFIX_IOS_SIMULATOR_SMOKE AND NOT AIRFIX_BUILD_IOS_APP)
         "AIRFIX_IOS_SIMULATOR_SMOKE requires AIRFIX_BUILD_IOS_APP=ON")
 endif()
 
-if(AIRFIX_IOS_ENABLE_SIGNING AND NOT AIRFIX_BUILD_IOS_APP)
+if(AIRFIX_IOS_ENABLE_LOCAL_SIGNING AND NOT AIRFIX_BUILD_IOS_APP)
     message(FATAL_ERROR
-        "AIRFIX_IOS_ENABLE_SIGNING requires AIRFIX_BUILD_IOS_APP=ON")
+        "AIRFIX_IOS_ENABLE_LOCAL_SIGNING requires AIRFIX_BUILD_IOS_APP=ON")
 endif()
 
-if(AIRFIX_IOS_ENABLE_SIGNING AND AIRFIX_IOS_SIMULATOR_SMOKE)
+if(AIRFIX_IOS_ENABLE_LOCAL_SIGNING AND AIRFIX_IOS_SIMULATOR_SMOKE)
     message(FATAL_ERROR
-        "AIRFIX_IOS_ENABLE_SIGNING cannot be combined with the simulator smoke harness")
+        "AIRFIX_IOS_ENABLE_LOCAL_SIGNING cannot be combined with the simulator smoke harness")
 endif()
 
-if(AIRFIX_IOS_ENABLE_SIGNING)
+if(AIRFIX_IOS_ENABLE_LOCAL_SIGNING)
     string(TOLOWER "${CMAKE_OSX_SYSROOT}" _airfix_ios_signing_sysroot_lower)
     if(NOT _airfix_ios_signing_sysroot_lower MATCHES
             "(^|[/\\\\])iphoneos(\\.sdk)?$")
         message(FATAL_ERROR
-            "AIRFIX_IOS_ENABLE_SIGNING is restricted to iphoneos builds")
+            "AIRFIX_IOS_ENABLE_LOCAL_SIGNING is restricted to iphoneos builds")
+    endif()
+    if(NOT AIRFIX_IOS_LOCAL_DEVELOPMENT_TEAM MATCHES "^[A-Za-z0-9]{10}$")
+        message(FATAL_ERROR
+            "AIRFIX_IOS_LOCAL_DEVELOPMENT_TEAM must be a 10-character Apple team ID")
     endif()
 endif()
 

@@ -40,7 +40,9 @@ high-resolution `Classic` profile alongside `Enhanced`.
 > shared controller-settings draft: four-axis calibration with exact
 > raw/adjusted preview plus a bounded seven-action text picker. Conflicts cancel
 > by default, swaps require a separate confirmation, and durable changes remain
-> save-for-next-launch only.
+> save-for-next-launch only. Trusted `main` iOS builds now publish a strictly
+> verified, data-less unsigned IPA and source/toolchain/hash manifest; Xcode or
+> an owner-selected local sideloader signs only during private installation.
 > Neither target is **yet a complete playable release**.
 
 **Lawfully owned original game data is required for private use and is not
@@ -523,7 +525,9 @@ See the [AFPACK format and trust boundary](docs/formats/AFPACK.md) and
 
 Public workflows validate portable C++ and compile the data-less UIKit/Metal
 shell for `iphoneos` and `iphonesimulator` with deployment target 16.4 and no
-code signing. The Windows CI job builds the native x64 SDL3/D3D11/XAudio2
+code signing. Trusted `main` additionally publishes a deterministic public
+unsigned IPA plus a strict manifest for local verification and signing; pull
+requests publish no IPA. The Windows CI job builds the native x64 SDL3/D3D11/XAudio2
 product with Visual Studio and runs its hidden data-less GPU/audio smoke test.
 Pull-request workflows do not read private content configuration or signing
 secrets. Documentation-only pull requests take a conservative fast path that
@@ -533,9 +537,11 @@ matrix. Supported portable C/C++ jobs use a pinned compiler cache; a weekly
 complete run and cold-by-default manual dispatch bypass it. See the
 [CI execution policy](docs/ci/CI-EXECUTION-POLICY.md).
 
-Optional private launch inputs, signing, and installation belong to a
-protected, manually approved workflow. Signed IPAs, credentials, profiles,
-original assets, and AFPACK content must never be public artifacts.
+Signing and installation occur only on an owner-controlled computer through
+Xcode or a reviewed local sideloader. Signed IPAs, Apple credentials, profiles,
+device identifiers, original assets, and AFPACK content must never be public
+artifacts. The public unsigned IPA contains none of them and cannot be installed
+until locally signed.
 
 ## Documentation
 

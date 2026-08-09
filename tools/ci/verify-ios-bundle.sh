@@ -79,6 +79,16 @@ if [[ "$sdk" == "iphoneos" ]] &&
     exit 1
 fi
 
+if [[ -e "$bundle/embedded.mobileprovision" ||
+      -e "$bundle/_CodeSignature" ]]; then
+    echo "unsigned CI bundle unexpectedly contains signing output" >&2
+    exit 1
+fi
+if codesign --verify --strict "$bundle" >/dev/null 2>&1; then
+    echo "unsigned CI bundle unexpectedly passes code-signature verification" >&2
+    exit 1
+fi
+
 forbidden="$(find "$bundle" -type f \( \
     -iname '*.afpack' -o -iname '*.up' -o -iname '*.gti' -o \
     -iname '*.ccf' -o -iname '*.exe' -o -iname '*.dll' -o \

@@ -1,10 +1,10 @@
 set(AIRFIX_IOS_BUNDLE_IDENTIFIER "com.tryk016.airfixdogfighter" CACHE STRING
     "Bundle identifier used by the unsigned iOS shell")
 
-if(AIRFIX_IOS_ENABLE_SIGNING)
+if(AIRFIX_IOS_ENABLE_LOCAL_SIGNING)
     set(_airfix_ios_code_signing_allowed YES)
     set(_airfix_ios_code_signing_required YES)
-    set(_airfix_ios_code_sign_style Manual)
+    set(_airfix_ios_code_sign_style Automatic)
 else()
     set(_airfix_ios_code_signing_allowed NO)
     set(_airfix_ios_code_signing_required NO)
@@ -206,6 +206,8 @@ set_target_properties(airfix_ios PROPERTIES
     XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED
         "${_airfix_ios_code_signing_required}"
     XCODE_ATTRIBUTE_CODE_SIGN_STYLE "${_airfix_ios_code_sign_style}"
+    XCODE_ATTRIBUTE_DEVELOPMENT_TEAM
+        "${AIRFIX_IOS_LOCAL_DEVELOPMENT_TEAM}"
     XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET
         "${AIRFIX_IOS_DEPLOYMENT_TARGET}"
     XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER

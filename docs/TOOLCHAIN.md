@@ -41,7 +41,7 @@ offline workflow.
 | Tests | lightweight C++ test runner selected with the skeleton |
 | iOS platform/input/controller | UIKit and Game Controller behind Objective-C++ adapters |
 | iOS graphics | Metal with MetalKit/Objective-C++ bridge as needed |
-| iOS build/signing | Pinned Xcode on explicit GitHub-hosted macOS runner |
+| iOS build/signing | Pinned Xcode in GitHub Actions for unsigned compile validation; owner-local Xcode or reviewed local sideloader for signing/install |
 
 Windows x64 and iOS are parallel products over the same portable core. Windows
 is the primary rapid-debug and reference-comparison environment; iOS retains
@@ -85,19 +85,21 @@ runner with no output endpoint.
 The Windows workstation hosts static analysis, local conversion of private game
 data, the portable core, and the native Windows x64 product/debug build. GitHub
 Actions supplies an ephemeral macOS runner with Xcode for simulator compilation
-and signed IPA
-export, so no owner-operated Mac/Xcode installation is required for portable
-development and compile validation. Interactive device debugging and profiling
-later use local Xcode and Apple developer tools.
+and the public data-less unsigned `iphoneos` package, so no owner-operated
+Mac/Xcode installation is required for portable development and compile
+validation. Signing occurs only on an owner-controlled computer during local
+installation. Interactive device debugging and profiling use local Xcode and
+Apple developer tools.
 
 Use an explicit runner label such as `macos-26`, select an explicit installed
 stable Xcode, and record runner/Xcode/SDK versions. Do not rely on the moving
 `macos-latest` alias. The accepted deployment target is iOS 16.4; runtime device
 tests are iPhone 17 Pro Max/iOS 26.6 and iPhone SE 3/iOS 26.3.
 
-Signing uses a protected Actions environment, temporary keychain, certificate,
-and provisioning profile covering both devices. See
-`docs/ci/GITHUB-ACTIONS-IOS.md`.
+The default and hosted builds forbid signing. An explicit local CMake gate can
+generate an automatically signed Xcode project when a ten-character Apple Team
+ID is supplied outside Git. A reviewed local sideloader may instead consume the
+verified public unsigned IPA. See `docs/ci/GITHUB-ACTIONS-IOS.md`.
 
 ## Local Linux validation
 
