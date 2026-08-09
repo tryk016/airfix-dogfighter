@@ -167,6 +167,10 @@ def test_source_boundary(root: Path) -> None:
     else:
         raise AssertionError("host-path diagnostic fixture was accepted")
 
+    # A bare home-root prefix is neither a file nor a source/build path. It can
+    # occur as an SDK/runtime string and must not create a binary false alarm.
+    ipa.scan_public_bytes(b"prefix /Users/runner/\x01suffix", "executable")
+
     (app / "private-notes.txt").write_text("not allowed", encoding="utf-8")
     expect_failure(
         lambda: ipa.collect_source_app(app, BUNDLE_ID), "missing or unexpected files"

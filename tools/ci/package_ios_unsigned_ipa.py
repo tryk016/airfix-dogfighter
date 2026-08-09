@@ -39,8 +39,10 @@ SOURCE_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 RUN_ID_PATTERN = re.compile(r"^[1-9][0-9]*$")
 SAFE_METADATA_PATTERN = re.compile(r"^[ -~]{1,256}$")
 HOST_PATH_PATTERN = re.compile(
-    rb"(?<![A-Za-z0-9])(?:[A-Za-z]:[\\/]|/(?:Users|home)/[^/\x00]+/)"
-    rb"[^\x00\r\n]{0,512}",
+    rb"(?<![A-Za-z0-9])(?:"
+    rb"[A-Za-z]:[\\/](?=[A-Za-z0-9._~-])|"
+    rb"/(?:Users|home)/[^/\x00]+/(?=[A-Za-z0-9._~-])"
+    rb")[^\x00\r\n]{1,512}",
     re.IGNORECASE,
 )
 HOST_PATH_TOKEN_PATTERN = re.compile(rb"[A-Za-z0-9._~:+/\\-]")
