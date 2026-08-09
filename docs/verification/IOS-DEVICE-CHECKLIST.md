@@ -231,6 +231,10 @@ observation, not final `SCN-IOS-009` thermal acceptance.
 5. Relaunch once and confirm the former `latest.jsonl` becomes
    `previous.jsonl`, a new `latest.jsonl` is created, and total app-written log
    storage remains bounded to two 1 MiB files.
+6. During a resumed mission, move the flight stick and throttle and press then
+   release primary fire. Confirm a later `input.sample` contains the non-zero
+   axis values and that fire press/release edges are present even when they
+   occur between periodic samples.
 
 Pass: the owner can retrieve actionable path-free evidence without a Mac,
 network upload, or screenshot transcription; file sharing does not bypass any

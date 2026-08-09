@@ -239,11 +239,12 @@ The journal never receives an AFPACK or mission logical path, filename,
 checksum, source URL, device-local path, signing identity, or original byte.
 It records lifecycle, content readiness, mission load stages, successful
 mesh/texture/draw counts, explicit pause/resume, controller connection,
-rate-limited input/simulation samples, and memory warnings. It is support
-evidence, not telemetry: the app performs no upload and the owner decides
-whether to copy or share a log. Public simulator CI independently validates
-the directories, the bounded JSONL schema, renderer/content milestones, and
-the exact no-auto-resume lifecycle suffix.
+rate-limited bank/pitch/throttle and simulation samples, immediate primary-fire
+edges, and memory warnings. It is support evidence, not telemetry: the app
+performs no upload and the owner decides whether to copy or share a log.
+Public simulator CI independently validates the directories, the bounded JSONL
+schema, renderer/content milestones, and the exact no-auto-resume lifecycle
+suffix.
 
 ## Artifact and security policy
 

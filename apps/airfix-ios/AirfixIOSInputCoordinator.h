@@ -46,6 +46,7 @@ typedef NS_ENUM(NSInteger, AirfixNativeInputContext) {
 @property(nonatomic, readonly) uint64_t tick;
 @property(nonatomic, readonly) int16_t bank;
 @property(nonatomic, readonly) int16_t pitch;
+@property(nonatomic, readonly) int16_t throttle;
 @property(nonatomic, readonly) BOOL primaryPressed;
 @property(nonatomic, readonly) BOOL primaryHeld;
 @property(nonatomic, readonly) BOOL primaryReleased;

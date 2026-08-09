@@ -1,4 +1,6 @@
 #import "AirfixContentCoordinator.h"
+
+#include "AirfixIOSContentLifecyclePolicy.hpp"
 #import "AirfixMissionWorldRoomSnapshot+Private.hpp"
 
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
@@ -411,6 +413,14 @@ NSString *canonicalTransactionIdentifier(void) {
   __strong NSObject *_operationIdentity;
   __strong NSObject *_lifecycleIdentity;
   __strong NSObject *_missionRequestIdentity;
+
+  // A completed, authenticated mission remains valid while the application
+  // is inactive: installed AFPACK state lives outside the Files-visible
+  // Documents directory and cannot change behind this coordinator. Only an
+  // interrupted content transaction requires a new inspection. An in-flight
+  // mission load can instead be restarted against the retained revision.
+  BOOL _inspectAfterLifecycle;
+  BOOL _resumeMissionLoadAfterLifecycle;
 }
 @property(nonatomic, weak) UIViewController *presentingViewController;
 @property(nonatomic, strong, readwrite) UIView *controlsView;
@@ -432,6 +442,7 @@ NSString *canonicalTransactionIdentifier(void) {
 
 - (void)cancelMissionLoadClearingRevision:(BOOL)clearRevision;
 - (void)invalidateContentOperationLifecycle;
+- (void)pauseContentForLifecycle;
 - (void)startRememberedMissionLoadIfPossible;
 - (void)publishTextureAvailability:
     (airfix::texture::TexturePackageAvailability)availability;
@@ -680,33 +691,72 @@ NSString *canonicalTransactionIdentifier(void) {
   _lifecycleIdentity = [NSObject new];
 }
 
-- (void)applicationWillResignActive {
+- (void)pauseContentForLifecycle {
+  NSAssert(NSThread.isMainThread, @"Content lifecycle is main-thread confined");
+  const auto decision = airfix::ios::content_lifecycle_policy::pauseDecision({
+      .inspectionAlreadyRequired = static_cast<bool>(_inspectAfterLifecycle),
+      .contentOperationActive = static_cast<bool>(self.busy),
+      .operationIdentityPresent = _operationIdentity != nil,
+      .inspectionQueued = static_cast<bool>(self.inspectWhenIdle),
+      .missionRestartAlreadyRequired =
+          static_cast<bool>(_resumeMissionLoadAfterLifecycle),
+      .missionLoadActive = _loadingMissionTextureState.has_value(),
+      .publicationTicketOutstanding =
+          _roomPublicationGate.hasOutstandingTicket(),
+  });
+  _inspectAfterLifecycle = decision.inspectAfterLifecycle;
+  _resumeMissionLoadAfterLifecycle = decision.restartMissionLoadAfterLifecycle;
+
   [self invalidateContentOperationLifecycle];
-  [self cancelMissionLoadClearingRevision:YES];
+  // A content transaction may have crossed its commit boundary and must be
+  // re-inspected fail-closed. A normal lifecycle pause merely invalidates an
+  // outstanding load ticket while preserving the authenticated revision and
+  // the already published renderer snapshot.
+  [self cancelMissionLoadClearingRevision:decision.clearActiveRevision];
+}
+
+- (void)applicationWillResignActive {
+  [self pauseContentForLifecycle];
 }
 
 - (void)applicationDidEnterBackground {
-  [self invalidateContentOperationLifecycle];
-  [self cancelMissionLoadClearingRevision:YES];
+  [self pauseContentForLifecycle];
 }
 
 - (void)applicationWillEnterForeground {
-  [self cancelMissionLoadClearingRevision:YES];
-  // The active record may have changed at a commit boundary while the app was
-  // leaving the foreground. Inspection is intentionally restarted only once
-  // the application is active again.
+  // Work remains paused until the application becomes active. The decision
+  // to preserve, restart, or re-inspect was captured before cancellation.
 }
 
 - (void)applicationDidBecomeActive {
-  [self cancelMissionLoadClearingRevision:YES];
-  if (!self.started || self.pickerPresented) {
+  const auto action = airfix::ios::content_lifecycle_policy::activationAction({
+      .started = static_cast<bool>(self.started),
+      .pickerPresented = static_cast<bool>(self.pickerPresented),
+      .contentOperationActive = static_cast<bool>(self.busy),
+      .inspectionRequired = static_cast<bool>(_inspectAfterLifecycle),
+      .inspectionQueued = static_cast<bool>(self.inspectWhenIdle),
+      .missionRestartRequired =
+          static_cast<bool>(_resumeMissionLoadAfterLifecycle),
+  });
+  using airfix::ios::content_lifecycle_policy::ActivationAction;
+  switch (action) {
+  case ActivationAction::unavailable:
+  case ActivationAction::preservePublishedMission:
     return;
-  }
-  if (self.busy) {
+  case ActivationAction::waitForContentOperation:
     self.inspectWhenIdle = YES;
-  } else {
+    _inspectAfterLifecycle = YES;
+    return;
+  case ActivationAction::inspectContent:
+    _inspectAfterLifecycle = NO;
+    _resumeMissionLoadAfterLifecycle = NO;
     self.inspectWhenIdle = NO;
     [self beginInspection];
+    return;
+  case ActivationAction::restartMissionLoad:
+    _resumeMissionLoadAfterLifecycle = NO;
+    [self startRememberedMissionLoadIfPossible];
+    return;
   }
 }
 
@@ -1531,6 +1581,8 @@ NSString *canonicalTransactionIdentifier(void) {
   if (self.busy) {
     return;
   }
+  _inspectAfterLifecycle = NO;
+  _resumeMissionLoadAfterLifecycle = NO;
   [self cancelMissionLoadClearingRevision:YES];
   [self publishTextureAvailability:airfix::texture::TexturePackageAvailability::
                                        validating];

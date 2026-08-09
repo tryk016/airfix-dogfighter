@@ -2234,7 +2234,10 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
       recordInputSampleWithTick:diagnostics.tick
                            bank:diagnostics.bank
                           pitch:diagnostics.pitch
+                       throttle:diagnostics.throttle
+                    firePressed:diagnostics.primaryPressed
                        fireHeld:diagnostics.primaryHeld
+                   fireReleased:diagnostics.primaryReleased
             controllerConnected:diagnostics.isControllerConnected
                          source:source
                  simulationStep:simulation.completedSteps

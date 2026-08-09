@@ -453,7 +453,10 @@ inputSourceName(const AirfixDiagnosticInputSource source) noexcept {
 - (void)recordInputSampleWithTick:(uint64_t)tick
                              bank:(int16_t)bank
                             pitch:(int16_t)pitch
+                         throttle:(int16_t)throttle
+                      firePressed:(BOOL)firePressed
                          fireHeld:(BOOL)fireHeld
+                     fireReleased:(BOOL)fireReleased
               controllerConnected:(BOOL)controllerConnected
                            source:(AirfixDiagnosticInputSource)source
                    simulationStep:(uint64_t)simulationStep
@@ -461,10 +464,13 @@ inputSourceName(const AirfixDiagnosticInputSource source) noexcept {
   NSAssert(NSThread.isMainThread,
            @"Diagnostic input samples belong to the main thread");
   const NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
-  if (now < _nextInputSampleAt) {
+  const BOOL actionEdge = firePressed || fireReleased;
+  if (now < _nextInputSampleAt && !actionEdge) {
     return;
   }
-  _nextInputSampleAt = now + kInputSampleIntervalSeconds;
+  if (now >= _nextInputSampleAt) {
+    _nextInputSampleAt = now + kInputSampleIntervalSeconds;
+  }
   NSString *const hash = [NSString
       stringWithFormat:@"%016llX",
                        static_cast<unsigned long long>(simulationHash)];
@@ -473,10 +479,13 @@ inputSourceName(const AirfixDiagnosticInputSource source) noexcept {
                @"bank" : @(bank),
                @"controllerConnected" : @(controllerConnected),
                @"fireHeld" : @(fireHeld),
+               @"firePressed" : @(firePressed),
+               @"fireReleased" : @(fireReleased),
                @"pitch" : @(pitch),
                @"simulationHash" : hash,
                @"simulationStep" : @(simulationStep),
                @"source" : inputSourceName(source),
+               @"throttle" : @(throttle),
                @"tick" : @(tick),
              }
               flush:NO];

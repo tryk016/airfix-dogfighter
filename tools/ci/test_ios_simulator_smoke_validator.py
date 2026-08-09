@@ -205,6 +205,30 @@ class RuntimeSelectionTests(unittest.TestCase):
 
 
 class DiagnosticHardeningTests(unittest.TestCase):
+    def test_validates_extended_input_sample_contract(self) -> None:
+        fields = {
+            "bank": -12000,
+            "controllerConnected": False,
+            "fireHeld": True,
+            "firePressed": True,
+            "fireReleased": False,
+            "pitch": 8000,
+            "simulationHash": "0123456789ABCDEF",
+            "simulationStep": 120,
+            "source": "touch",
+            "throttle": 24576,
+            "tick": 240,
+        }
+        MODULE.validate_journal_fields("input.sample", fields)
+        for name in ("firePressed", "fireReleased", "throttle"):
+            with self.subTest(name=name):
+                invalid = dict(fields)
+                del invalid[name]
+                with self.assertRaisesRegex(
+                    MODULE.SmokeFailure, "input fields are invalid"
+                ):
+                    MODULE.validate_journal_fields("input.sample", invalid)
+
     def test_accepts_bounded_path_free_diagnostic_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             documents = Path(directory)

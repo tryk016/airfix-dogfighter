@@ -101,6 +101,7 @@ add_executable(airfix_ios MACOSX_BUNDLE
     AirfixIOSInputCoordinator.h
     AirfixIOSInputCoordinator.mm
     AirfixIOSInputCoordinator+Private.hpp
+    AirfixIOSContentLifecyclePolicy.hpp
     AirfixIOSInputStartupPolicy.hpp
     AirfixIOSHapticFeedbackRouter.h
     AirfixIOSHapticFeedbackRouter.mm
