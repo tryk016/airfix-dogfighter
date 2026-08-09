@@ -72,8 +72,10 @@ The workflow uses `macos-26` and the pinned Xcode 26.6 installation.
 
 - Pull requests compile unsigned ARM64 `iphoneos` Release and ARM64
   `iphonesimulator` Debug bundles, but publish no device artifact.
-- The simulator job boots a new isolated device and requires an atomic result
-  from a real public Metal command buffer plus the paused lifecycle sequence.
+- The simulator job boots a new isolated device, completes the same
+  asynchronous no-content inspection used by device startup, and then requires
+  an atomic result from a real public Metal command buffer plus the paused
+  lifecycle sequence.
 - A pre-launch CoreSimulator failure may retry once on a second fresh device.
   After a valid launch PID, a crash, timeout, structured application failure,
   or missing result is authoritative and is not retried.

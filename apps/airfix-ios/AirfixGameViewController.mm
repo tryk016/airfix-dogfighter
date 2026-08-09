@@ -164,6 +164,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
 @property(nonatomic, strong) AirfixSimulatorSmokeHarness *simulatorSmokeHarness;
 @property(nonatomic) NSUInteger simulatorSmokeDrawAttemptCount;
 @property(nonatomic) BOOL simulatorSmokeFrameResolved;
+@property(nonatomic) BOOL simulatorSmokeContentInspectionPassed;
 @property(nonatomic, copy, nullable) void (^simulatorSmokeCompletion)
     (NSDictionary<NSString *, id> *result);
 #endif
@@ -548,10 +549,11 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   ]];
   [self setPausedSettingsSelection:0U announce:NO];
 #if AIRFIX_IOS_SIMULATOR_SMOKE
-  // Headless CoreSimulator can launch the process without delivering
-  // viewDidAppear. Start after the renderer and complete view hierarchy exist;
-  // the bounded draw retry waits for any later layout/presentation readiness.
-  [self startSimulatorSmokeIfNeeded];
+  // Headless CoreSimulator can launch without delivering viewDidAppear. Run
+  // the same asynchronous data-less content inspection that starts the device
+  // UI, then begin the renderer smoke only after its terminal callback. This
+  // keeps the native ARC/GCD completion path inside the CI acceptance gate.
+  [self.contentCoordinator start];
 #endif
 }
 
@@ -1474,7 +1476,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
           airfix::runtime::LifecycleState::foregroundPaused &&
       !_session.simulationRunning() && metalView.paused;
   if (self.renderer == nil || metalView == nil || !_audioOutputProbe ||
-      !privateInputsAbsent || !initialPaused) {
+      !privateInputsAbsent || !initialPaused ||
+      !self.simulatorSmokeContentInspectionPassed) {
     completion(@{
       @"schema" : @"airfix.ios-simulator-smoke",
       @"version" : @1,
@@ -1627,6 +1630,13 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
     self.resumeButton.hidden = YES;
   }
   [self refreshAudioOutputProbeAvailability];
+#if AIRFIX_IOS_SIMULATOR_SMOKE
+  if (readiness != AirfixContentReadinessValidating) {
+    self.simulatorSmokeContentInspectionPassed =
+        readiness == AirfixContentReadinessMissing;
+    [self startSimulatorSmokeIfNeeded];
+  }
+#endif
 }
 
 - (void)contentCoordinatorDidBeginLoadingMission:
