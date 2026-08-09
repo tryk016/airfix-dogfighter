@@ -39,10 +39,13 @@ SOURCE_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 RUN_ID_PATTERN = re.compile(r"^[1-9][0-9]*$")
 SAFE_METADATA_PATTERN = re.compile(r"^[ -~]{1,256}$")
 HOST_PATH_PATTERN = re.compile(
-    rb"(?<![A-Za-z0-9])(?:[A-Za-z]:[\\/]|/(?:Users|home)/[^/\x00]+/)"
-    rb"[^\x00\r\n]{0,512}",
+    rb"(?<![A-Za-z0-9])(?:"
+    rb"[A-Za-z]:[\\/](?=[A-Za-z0-9._~-])|"
+    rb"/(?:Users|home)/[^/\x00]+/(?=[A-Za-z0-9._~-])"
+    rb")[^\x00\r\n]{1,512}",
     re.IGNORECASE,
 )
+HOST_PATH_TOKEN_PATTERN = re.compile(rb"[A-Za-z0-9._~:+/\\-]")
 SIMULATOR_MARKER = b"airfix.ios-simulator-smoke"
 
 REQUIRED_APP_FILES = {
@@ -184,8 +187,23 @@ def validate_info_plist(data: bytes, bundle_id: str) -> None:
 def scan_public_bytes(data: bytes, field: str) -> None:
     if SIMULATOR_MARKER in data:
         raise UnsignedIpaFailure(f"{field} contains the simulator-only harness")
-    if HOST_PATH_PATTERN.search(data):
-        raise UnsignedIpaFailure(f"{field} contains a local host path")
+    match = HOST_PATH_PATTERN.search(data)
+    if match:
+        token = bytearray()
+        for value in match.group(0):
+            if not HOST_PATH_TOKEN_PATTERN.fullmatch(bytes((value,))):
+                break
+            token.append(value)
+        description = token.decode("ascii", errors="strict").replace("\\", "/")
+        description = re.sub(
+            r"(?i)^[A-Za-z]:/(?:Users/[^/]+/)?", "<host-root>/", description
+        )
+        description = re.sub(
+            r"(?i)^/(?:Users|home)/[^/]+/", "<host-root>/", description
+        )
+        raise UnsignedIpaFailure(
+            f"{field} contains a local host path ({description[:240]})"
+        )
 
 
 def collect_source_app(app: Path, bundle_id: str) -> dict[PurePosixPath, bytes]:

@@ -126,10 +126,7 @@ jobs:
             --timeout-seconds 60
 
       - name: Package public data-less unsigned IPA
-        if: >-
-          matrix.sdk == 'iphoneos' &&
-          github.event_name != 'pull_request' &&
-          github.ref == 'refs/heads/main'
+        if: matrix.sdk == 'iphoneos'
         run: |
           bundles="$(find "build-${{ matrix.sdk }}" -type d -name AirfixDogfighter.app -print)"
           bundle_count="$(printf '%s\n' "$bundles" | sed '/^$/d' | wc -l | tr -d ' ')"
@@ -167,8 +164,5 @@ jobs:
           compression-level: 0
 
       - name: Remove public unsigned package staging directory
-        if: >-
-          always() && matrix.sdk == 'iphoneos' &&
-          github.event_name != 'pull_request' &&
-          github.ref == 'refs/heads/main'
+        if: always() && matrix.sdk == 'iphoneos'
         run: rm -rf -- "$RUNNER_TEMP/airfix-ios-unsigned-$GITHUB_RUN_ID"

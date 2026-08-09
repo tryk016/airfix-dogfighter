@@ -73,7 +73,8 @@ iOS package suite. No job reads Apple credentials or private game data.
 The workflow uses `macos-26` and the pinned Xcode 26.6 installation.
 
 - Pull requests compile unsigned ARM64 `iphoneos` Release and ARM64
-  `iphonesimulator` Debug bundles, but publish no device artifact.
+  `iphonesimulator` Debug bundles. They also strip and fully validate a local
+  data-less IPA candidate, but publish no device artifact.
 - The simulator job boots a new isolated device, completes the same
   asynchronous no-content inspection used by device startup, and then requires
   an atomic result from a real public Metal command buffer plus the paused

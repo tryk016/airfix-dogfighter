@@ -153,6 +153,24 @@ def test_positive_and_deterministic(root: Path) -> None:
 def test_source_boundary(root: Path) -> None:
     app = root / "boundary" / "AirfixDogfighter.app"
     populate_app(app)
+
+    try:
+        ipa.scan_public_bytes(
+            b"prefix /Users/alice/work/airfix/source.mm\x00suffix", "executable"
+        )
+    except ipa.UnsignedIpaFailure as error:
+        message = str(error)
+        if "<host-root>/work/airfix/source.mm" not in message:
+            raise AssertionError("host-path diagnostic lost its useful suffix")
+        if "alice" in message:
+            raise AssertionError("host-path diagnostic exposed the host user")
+    else:
+        raise AssertionError("host-path diagnostic fixture was accepted")
+
+    # A bare home-root prefix is neither a file nor a source/build path. It can
+    # occur as an SDK/runtime string and must not create a binary false alarm.
+    ipa.scan_public_bytes(b"prefix /Users/runner/\x01suffix", "executable")
+
     (app / "private-notes.txt").write_text("not allowed", encoding="utf-8")
     expect_failure(
         lambda: ipa.collect_source_app(app, BUNDLE_ID), "missing or unexpected files"
@@ -384,6 +402,7 @@ def test_repository_policy() -> None:
             "configuration=Release",
             "package_ios_unsigned_ipa.py package",
             "xcrun --sdk iphoneos strip -S -x",
+            "if: matrix.sdk == 'iphoneos'",
             "github.event_name != 'pull_request'",
             "github.ref == 'refs/heads/main'",
             "AirfixDogfighter-unsigned-${{ github.sha }}",
