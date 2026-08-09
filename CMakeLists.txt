@@ -62,6 +62,15 @@ endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     enable_language(OBJCXX)
+
+    # Public device artifacts must not retain owner-local or hosted-runner
+    # roots in linked libraries, assertion metadata, or debug compilation
+    # units. Apply the mapping before any project or fetched target is added.
+    add_compile_options(
+        "-ffile-prefix-map=${CMAKE_BINARY_DIR}=airfix-build"
+        "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=airfix-source"
+        "-fdebug-compilation-dir=airfix-build"
+    )
 endif()
 
 include(FetchContent)
