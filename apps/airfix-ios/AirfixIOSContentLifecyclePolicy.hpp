@@ -43,6 +43,7 @@ enum class ActivationAction {
 };
 
 struct ActivationState final {
+  bool lifecyclePauseObserved{false};
   bool started{false};
   bool pickerPresented{false};
   bool contentOperationActive{false};
@@ -53,7 +54,8 @@ struct ActivationState final {
 
 [[nodiscard]] constexpr ActivationAction
 activationAction(const ActivationState state) noexcept {
-  if (!state.started || state.pickerPresented) {
+  if (!state.lifecyclePauseObserved || !state.started ||
+      state.pickerPresented) {
     return ActivationAction::unavailable;
   }
   if (state.contentOperationActive) {
