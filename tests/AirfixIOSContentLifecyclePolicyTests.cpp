@@ -14,12 +14,18 @@ void require(const bool condition, const char *const message) {
 
 void stablePublishedMissionSurvivesLifecycle() {
   using namespace airfix::ios::content_lifecycle_policy;
+  require(activationAction({
+              .started = true,
+              .contentOperationActive = true,
+          }) == ActivationAction::unavailable,
+          "initial activation was mistaken for a lifecycle resume");
   const auto pause = pauseDecision({});
   require(!pause.inspectAfterLifecycle &&
               !pause.restartMissionLoadAfterLifecycle &&
               !pause.clearActiveRevision,
           "stable mission lifecycle pause invalidated authenticated content");
   require(activationAction({
+              .lifecyclePauseObserved = true,
               .started = true,
           }) == ActivationAction::preservePublishedMission,
           "stable foreground transition reloaded the published mission");
@@ -36,6 +42,7 @@ void interruptedMissionLoadRestartsWithoutInspection() {
               !pause.clearActiveRevision,
           "mission-only cancellation discarded its authenticated revision");
   require(activationAction({
+              .lifecyclePauseObserved = true,
               .started = true,
               .missionRestartRequired = true,
           }) == ActivationAction::restartMissionLoad,
@@ -53,6 +60,7 @@ void interruptedContentTransactionForcesInspection() {
               pause.clearActiveRevision,
           "interrupted content transaction retained an unverified revision");
   require(activationAction({
+              .lifecyclePauseObserved = true,
               .started = true,
               .inspectionRequired = pause.inspectAfterLifecycle,
               .missionRestartRequired = pause.restartMissionLoadAfterLifecycle,
@@ -71,17 +79,20 @@ void lifecycleDecisionsRemainFailClosedAcrossAsyncCompletion() {
               repeatedPause.clearActiveRevision,
           "repeated lifecycle callback forgot a pending inspection");
   require(activationAction({
+              .lifecyclePauseObserved = true,
               .started = true,
               .contentOperationActive = true,
               .inspectionRequired = true,
           }) == ActivationAction::waitForContentOperation,
           "active callback raced an unfinished content operation");
   require(activationAction({
+              .lifecyclePauseObserved = true,
               .started = true,
               .inspectionQueued = true,
           }) == ActivationAction::inspectContent,
           "async cancellation completion did not retain inspection intent");
   require(activationAction({
+              .lifecyclePauseObserved = true,
               .started = true,
               .pickerPresented = true,
               .inspectionRequired = true,

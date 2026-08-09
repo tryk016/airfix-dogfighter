@@ -421,6 +421,7 @@ NSString *canonicalTransactionIdentifier(void) {
   // mission load can instead be restarted against the retained revision.
   BOOL _inspectAfterLifecycle;
   BOOL _resumeMissionLoadAfterLifecycle;
+  BOOL _lifecyclePausePending;
 }
 @property(nonatomic, weak) UIViewController *presentingViewController;
 @property(nonatomic, strong, readwrite) UIView *controlsView;
@@ -693,6 +694,7 @@ NSString *canonicalTransactionIdentifier(void) {
 
 - (void)pauseContentForLifecycle {
   NSAssert(NSThread.isMainThread, @"Content lifecycle is main-thread confined");
+  _lifecyclePausePending = YES;
   const auto decision = airfix::ios::content_lifecycle_policy::pauseDecision({
       .inspectionAlreadyRequired = static_cast<bool>(_inspectAfterLifecycle),
       .contentOperationActive = static_cast<bool>(self.busy),
@@ -730,6 +732,7 @@ NSString *canonicalTransactionIdentifier(void) {
 
 - (void)applicationDidBecomeActive {
   const auto action = airfix::ios::content_lifecycle_policy::activationAction({
+      .lifecyclePauseObserved = static_cast<bool>(_lifecyclePausePending),
       .started = static_cast<bool>(self.started),
       .pickerPresented = static_cast<bool>(self.pickerPresented),
       .contentOperationActive = static_cast<bool>(self.busy),
@@ -741,19 +744,27 @@ NSString *canonicalTransactionIdentifier(void) {
   using airfix::ios::content_lifecycle_policy::ActivationAction;
   switch (action) {
   case ActivationAction::unavailable:
+    // Preserve a real pending transition while a picker is presented or the
+    // coordinator has not started. A first application activation has no
+    // pending transition and therefore cannot arm a future reinspection.
+    return;
   case ActivationAction::preservePublishedMission:
+    _lifecyclePausePending = NO;
     return;
   case ActivationAction::waitForContentOperation:
+    _lifecyclePausePending = NO;
     self.inspectWhenIdle = YES;
     _inspectAfterLifecycle = YES;
     return;
   case ActivationAction::inspectContent:
+    _lifecyclePausePending = NO;
     _inspectAfterLifecycle = NO;
     _resumeMissionLoadAfterLifecycle = NO;
     self.inspectWhenIdle = NO;
     [self beginInspection];
     return;
   case ActivationAction::restartMissionLoad:
+    _lifecyclePausePending = NO;
     _resumeMissionLoadAfterLifecycle = NO;
     [self startRememberedMissionLoadIfPossible];
     return;
@@ -1581,6 +1592,7 @@ NSString *canonicalTransactionIdentifier(void) {
   if (self.busy) {
     return;
   }
+  _lifecyclePausePending = NO;
   _inspectAfterLifecycle = NO;
   _resumeMissionLoadAfterLifecycle = NO;
   [self cancelMissionLoadClearingRevision:YES];

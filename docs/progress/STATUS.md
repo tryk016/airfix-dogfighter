@@ -5,17 +5,20 @@
 
 ## Now
 
-- The first owner-device run of the public unsigned iOS IPA is complete. The
+- Two owner-device runs of the public unsigned iOS IPA are complete. The
   Files-visible diagnostic journal confirmed Metal initialization, verified
   AFPACK readiness, a stable `195`-mesh/`142`-texture/`739`-draw mission,
-  non-zero touch flight input, explicit pause/resume, and pause-preserving
-  background/foreground transitions. It also exposed an unnecessary mission
-  republish after every foreground transition, which reset the simulation.
-  The native content lifecycle now preserves an authenticated published
-  mission, restarts only an interrupted mission load, and reserves full
-  re-inspection for an interrupted content transaction. The journal also adds
-  throttle samples and immediate primary-fire press/release edges for the next
-  device pass; original paths and content remain absent.
+  non-zero touch flight input, throttle changes, immediate primary-fire
+  press/release edges, explicit pause/resume, and pause-preserving
+  background/foreground transitions. The second journal proved that the first
+  lifecycle correction remained incomplete: startup inspection overlapped the
+  application's first active callback, which was mistaken for a resume and
+  armed a delayed re-inspection for the next real foreground transition. The
+  activation policy now requires an observed lifecycle pause before it can
+  preserve, restart, or re-inspect content. Authenticated published missions
+  remain preserved, interrupted mission loads restart, and only interrupted
+  content transactions force full inspection. One focused device re-test
+  remains; original paths and content remain absent.
 - Planning and documentation system established.
 - Original installation inventoried without executing binaries.
 - Static Level `OBJE` scene assembly is now separately specified: physical
