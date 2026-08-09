@@ -295,13 +295,17 @@ def validate_journal_fields(event: str, fields: object) -> None:
         return
     if event == "input.sample":
         expected = {
-            "bank", "controllerConnected", "fireHeld", "pitch",
-            "simulationHash", "simulationStep", "source", "tick",
+            "bank", "controllerConnected", "fireHeld", "firePressed",
+            "fireReleased", "pitch", "simulationHash", "simulationStep",
+            "source", "throttle", "tick",
         }
         if set(fields) != expected:
             raise SmokeFailure("diagnostic input fields are invalid")
         require_journal_integer(fields["bank"], "bank", -32768, 32767)
         require_journal_integer(fields["pitch"], "pitch", -32768, 32767)
+        require_journal_integer(
+            fields["throttle"], "throttle", -32768, 32767
+        )
         require_journal_integer(fields["tick"], "tick", 0, (1 << 64) - 1)
         require_journal_integer(
             fields["simulationStep"], "simulationStep", 0, (1 << 64) - 1
@@ -311,6 +315,8 @@ def validate_journal_fields(event: str, fields: object) -> None:
             "diagnostics.input.controllerConnected",
         )
         require_bool(fields["fireHeld"], "diagnostics.input.fireHeld")
+        require_bool(fields["firePressed"], "diagnostics.input.firePressed")
+        require_bool(fields["fireReleased"], "diagnostics.input.fireReleased")
         if fields["source"] not in {"none", "touch", "controller"}:
             raise SmokeFailure("diagnostic input source is invalid")
         if not isinstance(fields["simulationHash"], str) or not re.fullmatch(

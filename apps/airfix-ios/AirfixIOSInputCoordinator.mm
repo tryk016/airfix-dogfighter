@@ -210,6 +210,7 @@ static_assert(AirfixGameControllerDigitalControlDpadRight ==
 - (instancetype)initWithTick:(uint64_t)tick
                         bank:(int16_t)bank
                        pitch:(int16_t)pitch
+                    throttle:(int16_t)throttle
               primaryPressed:(BOOL)primaryPressed
                  primaryHeld:(BOOL)primaryHeld
              primaryReleased:(BOOL)primaryReleased
@@ -224,6 +225,7 @@ static_assert(AirfixGameControllerDigitalControlDpadRight ==
 - (instancetype)initWithTick:(uint64_t)tick
                         bank:(int16_t)bank
                        pitch:(int16_t)pitch
+                    throttle:(int16_t)throttle
               primaryPressed:(BOOL)primaryPressed
                  primaryHeld:(BOOL)primaryHeld
              primaryReleased:(BOOL)primaryReleased
@@ -234,6 +236,7 @@ static_assert(AirfixGameControllerDigitalControlDpadRight ==
         _tick = tick;
         _bank = bank;
         _pitch = pitch;
+        _throttle = throttle;
         _primaryPressed = primaryPressed;
         _primaryHeld = primaryHeld;
         _primaryReleased = primaryReleased;
@@ -396,6 +399,7 @@ static_assert(AirfixGameControllerDigitalControlDpadRight ==
             initWithTick:0U
                     bank:0
                    pitch:0
+                throttle:0
           primaryPressed:NO
              primaryHeld:NO
          primaryReleased:NO
@@ -687,6 +691,8 @@ static_assert(AirfixGameControllerDigitalControlDpadRight ==
         airfix::input::AnalogAxis::flightBank);
     const int16_t pitch = frame.analog(
         airfix::input::AnalogAxis::flightPitch);
+    const int16_t throttle = frame.analog(
+        airfix::input::AnalogAxis::flightThrottleSet);
     const BOOL primaryPressed = frame.pressed(
         airfix::input::DigitalAction::combatPrimaryFire);
     const BOOL primaryHeld = frame.held(
@@ -699,6 +705,7 @@ static_assert(AirfixGameControllerDigitalControlDpadRight ==
     const BOOL meaningfulChange =
         previous.bank != bank ||
         previous.pitch != pitch ||
+        previous.throttle != throttle ||
         previous.primaryHeld != primaryHeld ||
         primaryPressed ||
         primaryReleased ||
@@ -718,6 +725,7 @@ static_assert(AirfixGameControllerDigitalControlDpadRight ==
         initWithTick:_inputTick
                 bank:bank
                pitch:pitch
+            throttle:throttle
       primaryPressed:primaryPressed
          primaryHeld:primaryHeld
      primaryReleased:primaryReleased
@@ -883,6 +891,7 @@ lastMeaningfulSource:_lastMeaningfulSource];
         initWithTick:_inputTick
                 bank:0
                pitch:0
+            throttle:latchedTouchThrottle
       primaryPressed:NO
          primaryHeld:NO
      primaryReleased:NO

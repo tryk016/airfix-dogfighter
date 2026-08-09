@@ -70,7 +70,10 @@ typedef NS_ENUM(NSInteger, AirfixDiagnosticInputSource) {
 - (void)recordInputSampleWithTick:(uint64_t)tick
                              bank:(int16_t)bank
                             pitch:(int16_t)pitch
+                         throttle:(int16_t)throttle
+                      firePressed:(BOOL)firePressed
                          fireHeld:(BOOL)fireHeld
+                     fireReleased:(BOOL)fireReleased
               controllerConnected:(BOOL)controllerConnected
                            source:(AirfixDiagnosticInputSource)source
                    simulationStep:(uint64_t)simulationStep
