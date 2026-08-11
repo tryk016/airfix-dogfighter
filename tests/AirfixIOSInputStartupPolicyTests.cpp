@@ -75,11 +75,61 @@ void resumeRequiresTheCompletePausedMissionBoundary() {
           "unpublished mission rendering must hide resume");
 }
 
+void gameplayChromeIsMutuallyExclusiveAndModal() {
+  using airfix::ios::startup_policy::GameplayChromeState;
+  using airfix::ios::startup_policy::resolveGameplayChromeVisibility;
+
+  auto visibility = resolveGameplayChromeVisibility({
+      .viewVisible = true,
+      .applicationActive = true,
+      .simulationRunning = false,
+      .settingsPanelOpen = false,
+  });
+  require(visibility.pausedMenuVisible && !visibility.gameplayOverlayEligible,
+          "a visible paused app should show only the paused menu");
+
+  visibility = resolveGameplayChromeVisibility({
+      .viewVisible = true,
+      .applicationActive = true,
+      .simulationRunning = true,
+      .settingsPanelOpen = false,
+  });
+  require(!visibility.pausedMenuVisible && visibility.gameplayOverlayEligible,
+          "running gameplay should hide the menu behind the touch overlay");
+
+  for (const GameplayChromeState state : {
+           GameplayChromeState{
+               .viewVisible = false,
+               .applicationActive = true,
+               .simulationRunning = false,
+               .settingsPanelOpen = false,
+           },
+           GameplayChromeState{
+               .viewVisible = true,
+               .applicationActive = false,
+               .simulationRunning = true,
+               .settingsPanelOpen = false,
+           },
+           GameplayChromeState{
+               .viewVisible = true,
+               .applicationActive = true,
+               .simulationRunning = false,
+               .settingsPanelOpen = true,
+           },
+       }) {
+    visibility = resolveGameplayChromeVisibility(state);
+    require(!visibility.pausedMenuVisible &&
+                !visibility.gameplayOverlayEligible,
+            "hidden, inactive, and modal states must expose no base chrome");
+  }
+}
+
 } // namespace
 
 int main() {
   inputStartRequiresEveryGate();
   resumeRequiresTheCompletePausedMissionBoundary();
+  gameplayChromeIsMutuallyExclusiveAndModal();
   std::cout << "AirfixIOSInputStartupPolicyTests passed\n";
   return EXIT_SUCCESS;
 }

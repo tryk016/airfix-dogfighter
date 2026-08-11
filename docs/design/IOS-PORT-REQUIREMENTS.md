@@ -245,6 +245,13 @@ optimization.
   switching, camera, mission status, and pause. (P1)
 - Settings are reachable from the main menu and pause menu; dangerous resets are
   not placed next to resume. (P1)
+- The start/pause menu, gameplay control overlay, and modal settings panels are
+  mutually exclusive presentation layers. Running gameplay must not retain the
+  menu or its diagnostic text over the scene; opening a settings panel must
+  hide both underlying layers. (P1)
+- Developer input diagnostics live inside the safe-area-aware, scrollable pause
+  menu so they cannot overlap menu actions at large text sizes or compact
+  landscape heights. (P1)
 - Display the current control source and show correct action glyphs. (P1)
 - Provide an always-available control reference and a way to reset a broken
   custom layout. (P1)

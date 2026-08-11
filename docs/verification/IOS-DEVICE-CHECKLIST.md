@@ -142,10 +142,15 @@ generation.
    and safe FOV. Reopen settings and relaunch to verify persistence.
 5. Watch for a black frame, missing geometry, texture fallback, flicker,
    stretched projection, NaN geometry, or Metal validation failure.
+6. Resume gameplay and confirm that the complete pause/start menu and its input
+   diagnostics disappear. Pause again and confirm that the menu returns without
+   overlapping its buttons; open each settings panel and confirm that neither
+   the menu nor touch controls remain visible underneath it.
 
 Pass: the scene and paused UI remain legible and correctly framed on both
-devices and orientations. This is presentation acceptance only; the current
-bootstrap aircraft pose is not evidence of live flight physics.
+devices and orientations, with mutually exclusive gameplay, pause-menu, and
+settings layers. This is presentation acceptance only; the current bootstrap
+aircraft pose is not evidence of live flight physics.
 
 ### 4. Touch controls
 
