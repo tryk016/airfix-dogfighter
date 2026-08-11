@@ -136,6 +136,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
     AirfixRenderSettingsCoordinator *renderSettingsCoordinator;
 @property(nonatomic, strong) UILabel *statusLabel;
 @property(nonatomic, strong) UILabel *inputDiagnosticsLabel;
+@property(nonatomic, strong) UIScrollView *pausedMenuScrollView;
 @property(nonatomic, strong) AirfixContentCoordinator *contentCoordinator;
 @property(nonatomic, strong)
     AirfixDiagnosticsCoordinator *diagnosticsCoordinator;
@@ -192,6 +193,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
 - (void)updateAudioOutputProbeStatus:
     (airfix::ios::AirfixIOSAudioOutputProbeStatus)status;
 - (void)refreshTouchControlsVisibility;
+- (void)refreshGameplayChromeVisibility;
 - (void)updateDiagnosticsLabelWithInputDiagnostics:
     (AirfixInputDiagnostics *)diagnostics;
 - (void)handleAudioForcedPause:(airfix::ios::AirfixIOSAudioPauseReason)reason;
@@ -407,6 +409,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
     touchControlsSettingsButton,
     audioOutputProbeButton,
     self.contentCoordinator.controlsView,
+    inputDiagnosticsLabel,
   ]];
   stack.translatesAutoresizingMaskIntoConstraints = NO;
   stack.axis = UILayoutConstraintAxisVertical;
@@ -415,9 +418,11 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:CGRectZero];
   scrollView.translatesAutoresizingMaskIntoConstraints = NO;
   scrollView.alwaysBounceVertical = NO;
+  scrollView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.72];
+  scrollView.hidden = YES;
+  self.pausedMenuScrollView = scrollView;
   [metalView addSubview:scrollView];
   [scrollView addSubview:stack];
-  [metalView addSubview:inputDiagnosticsLabel];
 
   AirfixTouchControlsView *touchControlsView =
       [[AirfixTouchControlsView alloc] initWithFrame:CGRectZero];
@@ -504,6 +509,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
         strongSelf.statusLabel.text =
             @"Airfix Dogfighter reconstruction\n"
             @"Simulation halted after an invalid deterministic step";
+        [strongSelf refreshGameplayChromeVisibility];
         [strongSelf
             updateDiagnosticsLabelWithInputDiagnostics:strongSelf
                                                            .inputCoordinator
@@ -540,11 +546,6 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
     [stack.widthAnchor
         constraintEqualToAnchor:scrollView.frameLayoutGuide.widthAnchor
                        constant:-48.0],
-    [inputDiagnosticsLabel.bottomAnchor
-        constraintEqualToAnchor:safeArea.bottomAnchor
-                       constant:-8.0],
-    [inputDiagnosticsLabel.centerXAnchor
-        constraintEqualToAnchor:safeArea.centerXAnchor],
     [touchControlsView.topAnchor constraintEqualToAnchor:metalView.topAnchor],
     [touchControlsView.bottomAnchor
         constraintEqualToAnchor:metalView.bottomAnchor],
@@ -554,6 +555,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
         constraintEqualToAnchor:metalView.trailingAnchor],
   ]];
   [self setPausedSettingsSelection:0U announce:NO];
+  [self refreshGameplayChromeVisibility];
 #if AIRFIX_IOS_SIMULATOR_SMOKE
   // Headless CoreSimulator can launch without delivering viewDidAppear. Run
   // the same asynchronous data-less content inspection that starts the device
@@ -719,6 +721,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
 
 - (void)refreshPausedMissionReadiness {
   NSAssert(NSThread.isMainThread, @"Paused mission readiness belongs to main");
+  [self refreshGameplayChromeVisibility];
   if ([self isSettingsPanelOpen]) {
     [self.inputCoordinator setInputContext:AirfixNativeInputContextMenu];
     [self.inputCoordinator resetForGameplayBoundary];
@@ -868,6 +871,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
 - (void)viewDidAppear:(BOOL)animated {
   [super viewDidAppear:animated];
   _viewVisible = YES;
+  [self refreshGameplayChromeVisibility];
+  [self refreshTouchControlsVisibility];
   [self refreshAudioOutputProbeAvailability];
   [self.renderSettingsCoordinator start];
   [self.renderSettingsCoordinator notifyPresentationSurfaceAvailable];
@@ -894,6 +899,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
         @"Airfix Dogfighter reconstruction\n"
         @"Gameplay paused; press pause or controller menu to resume";
   }
+  [self refreshGameplayChromeVisibility];
+  [self refreshTouchControlsVisibility];
   [self.inputCoordinator stop];
   [super viewDidDisappear:animated];
 }
@@ -943,6 +950,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   ]];
   [panel didMoveToParentViewController:self];
   self.renderSettingsPanel = panel;
+  [self refreshGameplayChromeVisibility];
   self.renderSettingsButton.enabled = NO;
   self.controllerCalibrationButton.enabled = NO;
   self.touchControlsSettingsButton.enabled = NO;
@@ -964,6 +972,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   [panel.view removeFromSuperview];
   [panel removeFromParentViewController];
   self.renderSettingsPanel = nil;
+  [self refreshGameplayChromeVisibility];
   self.renderSettingsButton.enabled = self.renderSettingsCoordinator != nil;
   self.controllerCalibrationButton.enabled =
       self.controllerInputProfileCoordinator != nil &&
@@ -1031,6 +1040,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   ]];
   [panel didMoveToParentViewController:self];
   self.controllerCalibrationPanel = panel;
+  [self refreshGameplayChromeVisibility];
   self.renderSettingsButton.enabled = NO;
   self.controllerCalibrationButton.enabled = NO;
   self.touchControlsSettingsButton.enabled = NO;
@@ -1054,6 +1064,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   [panel.view removeFromSuperview];
   [panel removeFromParentViewController];
   self.controllerCalibrationPanel = nil;
+  [self refreshGameplayChromeVisibility];
   self.renderSettingsButton.enabled = self.renderSettingsCoordinator != nil;
   self.controllerCalibrationButton.enabled =
       self.controllerInputProfileCoordinator != nil &&
@@ -1134,6 +1145,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   ]];
   [panel didMoveToParentViewController:self];
   self.touchControlsSettingsPanel = panel;
+  [self refreshGameplayChromeVisibility];
   self.renderSettingsButton.enabled = NO;
   self.controllerCalibrationButton.enabled = NO;
   self.touchControlsSettingsButton.enabled = NO;
@@ -1156,6 +1168,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   [panel.view removeFromSuperview];
   [panel removeFromParentViewController];
   self.touchControlsSettingsPanel = nil;
+  [self refreshGameplayChromeVisibility];
   self.renderSettingsButton.enabled = self.renderSettingsCoordinator != nil;
   self.controllerCalibrationButton.enabled =
       self.controllerInputProfileCoordinator != nil &&
@@ -1338,10 +1351,28 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
 
   _audioBackend->setActive(true);
   self.resumeButton.hidden = YES;
+  [self refreshGameplayChromeVisibility];
   [self refreshTouchControlsVisibility];
   [self refreshAudioOutputProbeAvailability];
   self.statusLabel.text = @"Airfix Dogfighter reconstruction\nGameplay running";
   [self.diagnosticsCoordinator recordGameplayResumed];
+}
+
+- (void)refreshGameplayChromeVisibility {
+  NSAssert(NSThread.isMainThread,
+           @"Gameplay chrome visibility belongs to main");
+  const auto visibility =
+      airfix::ios::startup_policy::resolveGameplayChromeVisibility({
+          .viewVisible = static_cast<bool>(_viewVisible),
+          .applicationActive =
+              UIApplication.sharedApplication.applicationState ==
+              UIApplicationStateActive,
+          .simulationRunning = _session.simulationRunning(),
+          .settingsPanelOpen = static_cast<bool>([self isSettingsPanelOpen]),
+      });
+  const BOOL menuHidden = !visibility.pausedMenuVisible;
+  self.pausedMenuScrollView.hidden = menuHidden;
+  self.pausedMenuScrollView.accessibilityElementsHidden = menuHidden;
 }
 
 - (void)refreshTouchControlsVisibility {
@@ -1354,11 +1385,21 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
     return;
   }
 
+  const auto chrome =
+      airfix::ios::startup_policy::resolveGameplayChromeVisibility({
+          .viewVisible = static_cast<bool>(_viewVisible),
+          .applicationActive =
+              UIApplication.sharedApplication.applicationState ==
+              UIApplicationStateActive,
+          .simulationRunning = _session.simulationRunning(),
+          .settingsPanelOpen = static_cast<bool>([self isSettingsPanelOpen]),
+      });
   const BOOL gameplayActive =
+      chrome.gameplayOverlayEligible &&
       _session.lifecycleState() == airfix::runtime::LifecycleState::running &&
       _session.contentState() == airfix::runtime::ContentState::ready &&
-      ![self isSettingsPanelOpen] && self.inputPipelineReady &&
-      self.simulationPipelineReady && self.inputCoordinator.isOperational &&
+      self.inputPipelineReady && self.simulationPipelineReady &&
+      self.inputCoordinator.isOperational &&
       self.renderer.missionWorldRoomInstalled && !((MTKView *)self.view).paused;
   const auto decision = airfix::input::resolveTouchControlsVisibility(
       [preferencesCoordinator activePreferences], {
@@ -1425,6 +1466,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   _audioBackend->setActive(false);
   _session.enterInactive();
   ((MTKView *)self.view).paused = YES;
+  [self refreshGameplayChromeVisibility];
+  [self refreshTouchControlsVisibility];
 }
 
 - (void)applicationDidEnterBackground {
@@ -1436,6 +1479,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   _audioBackend->setActive(false);
   _session.enterBackground();
   ((MTKView *)self.view).paused = YES;
+  [self refreshGameplayChromeVisibility];
+  [self refreshTouchControlsVisibility];
 }
 
 - (void)applicationWillEnterForeground {
@@ -1447,6 +1492,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   _audioBackend->setActive(false);
   _session.enterForeground();
   ((MTKView *)self.view).paused = YES;
+  [self refreshGameplayChromeVisibility];
+  [self refreshTouchControlsVisibility];
 }
 
 - (void)applicationDidBecomeActive {
@@ -1474,6 +1521,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
         @"Airfix Dogfighter reconstruction\n"
         @"Gameplay paused; choose settings with the stick, A opens, B resumes";
   }
+  [self refreshGameplayChromeVisibility];
+  [self refreshTouchControlsVisibility];
   [self refreshAudioOutputProbeAvailability];
 }
 
@@ -1659,6 +1708,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
     self.touchControlsView.hidden = YES;
     self.resumeButton.hidden = YES;
   }
+  [self refreshGameplayChromeVisibility];
+  [self refreshTouchControlsVisibility];
   [self refreshAudioOutputProbeAvailability];
 #if AIRFIX_IOS_SIMULATOR_SMOKE
   if (readiness != AirfixContentReadinessValidating) {
@@ -1686,6 +1737,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   self.resumeButton.hidden = YES;
   self.statusLabel.text =
       @"Airfix Dogfighter reconstruction\nLoading private mission...";
+  [self refreshGameplayChromeVisibility];
+  [self refreshTouchControlsVisibility];
   [self refreshAudioOutputProbeAvailability];
 }
 
@@ -1991,6 +2044,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
             @"Private mission ready; input pipeline unavailable";
       }
       ((MTKView *)strongSelf.view).paused = YES;
+      [strongSelf refreshGameplayChromeVisibility];
+      [strongSelf refreshTouchControlsVisibility];
       [strongSelf refreshAudioOutputProbeAvailability];
     });
   });
@@ -2011,6 +2066,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   self.resumeButton.hidden = YES;
   self.statusLabel.text =
       @"Airfix Dogfighter reconstruction\nPrivate mission could not be loaded";
+  [self refreshGameplayChromeVisibility];
+  [self refreshTouchControlsVisibility];
   [self refreshAudioOutputProbeAvailability];
 }
 
@@ -2029,6 +2086,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
     _audioBackend->setActive(false);
     _session.pause();
     metalView.paused = YES;
+    [self refreshGameplayChromeVisibility];
+    [self refreshTouchControlsVisibility];
     [self refreshAudioOutputProbeAvailability];
     return;
   }
@@ -2071,6 +2130,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
       self.statusLabel.text = @"Airfix Dogfighter reconstruction\n"
                               @"Input stream reset; gameplay paused";
     }
+    [self refreshGameplayChromeVisibility];
+    [self refreshTouchControlsVisibility];
     [self refreshAudioOutputProbeAvailability];
     return;
   }
@@ -2088,6 +2149,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
     self.statusLabel.text =
         @"Airfix Dogfighter reconstruction\n"
         @"Gameplay paused; choose settings with the stick, A opens, B resumes";
+    [self refreshGameplayChromeVisibility];
+    [self refreshTouchControlsVisibility];
     [self refreshAudioOutputProbeAvailability];
     return;
   }
@@ -2130,6 +2193,8 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   }
   self.statusLabel.text =
       [@"Airfix Dogfighter reconstruction\n" stringByAppendingString:detail];
+  [self refreshGameplayChromeVisibility];
+  [self refreshTouchControlsVisibility];
   [self refreshAudioOutputProbeAvailability];
 }
 

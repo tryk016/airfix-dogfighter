@@ -31,4 +31,30 @@ shouldOfferResume(const PausedMissionState state) noexcept {
          state.inputOperational && state.settingsPanelClosed;
 }
 
+struct GameplayChromeState final {
+  bool viewVisible{false};
+  bool applicationActive{false};
+  bool simulationRunning{false};
+  bool settingsPanelOpen{false};
+};
+
+struct GameplayChromeVisibility final {
+  bool pausedMenuVisible{false};
+  bool gameplayOverlayEligible{false};
+};
+
+// The paused/start menu and the in-game overlay are mutually exclusive.
+// A child settings panel owns the complete presentation while it is open.
+[[nodiscard]] constexpr GameplayChromeVisibility
+resolveGameplayChromeVisibility(const GameplayChromeState state) noexcept {
+  if (!state.viewVisible || !state.applicationActive ||
+      state.settingsPanelOpen) {
+    return {};
+  }
+  return {
+      .pausedMenuVisible = !state.simulationRunning,
+      .gameplayOverlayEligible = state.simulationRunning,
+  };
+}
+
 } // namespace airfix::ios::startup_policy

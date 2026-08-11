@@ -1,10 +1,17 @@
 # Project status
 
-**Updated:** 2026-08-09
+**Updated:** 2026-08-11
 **Stage:** Phase 1 — static analysis and archive recovery in progress
 
 ## Now
 
+- The iOS presentation shell now treats the gameplay overlay, scrollable pause
+  menu, and modal settings panels as mutually exclusive layers. Input
+  diagnostics are part of the pause menu rather than a separate bottom overlay,
+  eliminating the menu/control collisions visible in the first owner-device
+  screenshots. The portable policy covers running, paused, inactive, hidden,
+  and modal states; final visual acceptance remains part of the next device
+  build rather than a prerequisite for continued reconstruction.
 - Two owner-device runs of the public unsigned iOS IPA are complete. The
   Files-visible diagnostic journal confirmed Metal initialization, verified
   AFPACK readiness, a stable `195`-mesh/`142`-texture/`739`-draw mission,
