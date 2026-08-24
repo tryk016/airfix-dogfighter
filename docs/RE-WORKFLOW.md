@@ -96,9 +96,17 @@ The targeted read-only exporters are:
 | `ExportCallersOfNamedFunctions.java` | join selected named callees to their callers |
 | `ExportIndirectCallsByDisplacement.java` | locate indirect calls containing one or more exact recovered vtable displacements and decompile their owning functions |
 | `ExportFloatingPointEnvironmentWrites.java` | enumerate decoded x87/SSE environment writes and direct calls to known CRT/fenv mutators across one program |
+| `ExportAirfixFunction.java` | emit one schema-versioned aggregate report with boundary, CFG, instructions, pseudocode, calls, xrefs, globals, `this` offsets, constants, switches, indirect calls, P-code, and x87 findings |
+| `ExportAirfixKnowledge.java` | export selected current names and signatures as non-applicable knowledge candidates |
+| `ApplyAirfixKnowledge.java` | transactionally apply only confirmed, evidence-backed knowledge for an exact module SHA-256 |
 
 Reports and Ghidra projects remain local and ignored. Only concise conclusions,
 stable IDs, scripts, and reproducible commands belong in Git.
+
+The higher-level `tools/Invoke-AirfixGhidraBridge.ps1` command validates these
+JSON reports, applies reviewed knowledge, and emits Ghidra–Rizin differences.
+Its schemas, trust gate, commands, and limitations are documented in
+[toolchain/GHIDRA-KNOWLEDGE-BRIDGE.md](toolchain/GHIDRA-KNOWLEDGE-BRIDGE.md).
 
 ## Reproducible Rizin reports
 

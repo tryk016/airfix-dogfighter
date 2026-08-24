@@ -1,0 +1,271 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://airfix-dogfighter-reconstruction.invalid/schemas/airfix-ghidra-function-v1.schema.json",
+  "title": "Airfix Ghidra Knowledge Bridge function report v1",
+  "description": "Path-free, deterministic evidence for exactly one PE32 function. RVAs are canonical uppercase eight-digit strings.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "source", "functions"],
+  "properties": {
+    "schema": { "const": "airfix.re.ghidra-function.v1" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256"],
+      "properties": { "sha256": { "$ref": "#/$defs/sha256" } }
+    },
+    "binary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["language", "compiler", "image_base", "format"],
+      "properties": {
+        "language": { "$ref": "#/$defs/identifier" },
+        "compiler": { "$ref": "#/$defs/identifier" },
+        "image_base": { "$ref": "#/$defs/identifier" },
+        "format": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "tools": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ghidra"],
+      "properties": {
+        "ghidra": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version"],
+          "properties": { "version": { "$ref": "#/$defs/identifier" } }
+        }
+      }
+    },
+    "functions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": { "$ref": "#/$defs/function" }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "rva": { "type": "string", "pattern": "^0x[0-9A-F]{8}$" },
+    "identifier": { "type": "string", "minLength": 1, "maxLength": 1000000, "pattern": "^[^\\u0000\\r\\n]+$" },
+    "range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start_rva", "end_rva_exclusive"],
+      "properties": {
+        "start_rva": { "$ref": "#/$defs/rva" },
+        "end_rva_exclusive": { "$ref": "#/$defs/rva" }
+      }
+    },
+    "cfgEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_rva", "target_rva", "flow"],
+      "properties": {
+        "source_rva": { "$ref": "#/$defs/rva" },
+        "target_rva": { "$ref": "#/$defs/rva" },
+        "flow": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "instruction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rva", "bytes", "mnemonic", "text"],
+      "properties": {
+        "rva": { "$ref": "#/$defs/rva" },
+        "bytes": { "type": "string", "pattern": "^(?:[0-9A-F]{2})+$" },
+        "mnemonic": { "$ref": "#/$defs/identifier" },
+        "text": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "anyOf": [{ "required": ["target_rva"] }, { "required": ["site_rva"] }],
+      "properties": {
+        "site_rva": { "$ref": "#/$defs/rva" },
+        "target_rva": { "$ref": "#/$defs/rva" },
+        "name": { "$ref": "#/$defs/identifier" },
+        "kind": { "$ref": "#/$defs/identifier" },
+        "site_space": { "$ref": "#/$defs/identifier" },
+        "target_space": { "$ref": "#/$defs/identifier" },
+        "text": { "$ref": "#/$defs/identifier" },
+        "direction": { "enum": ["incoming", "outgoing"] },
+        "candidate_displacements": { "type": "array", "items": { "$ref": "#/$defs/rva" } }
+      }
+    },
+    "constant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bits", "kind"],
+      "properties": {
+        "bits": { "type": "string", "pattern": "^0x[0-9A-F]{2,16}$" },
+        "kind": { "enum": ["integer", "f32", "f64"] },
+        "value": { "type": "string", "maxLength": 160 },
+        "width": { "type": "integer", "minimum": 1, "maximum": 8 },
+        "signed_value": { "type": "integer" },
+        "source_rva": { "$ref": "#/$defs/rva" }
+      },
+      "allOf": [
+        { "if": { "properties": { "kind": { "const": "f32" } } }, "then": { "properties": { "bits": { "pattern": "^0x[0-9A-F]{8}$" } } } },
+        { "if": { "properties": { "kind": { "const": "f64" } } }, "then": { "properties": { "bits": { "pattern": "^0x[0-9A-F]{16}$" } } } }
+      ]
+    },
+    "thisOffset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["offset", "basis", "sites"],
+      "properties": {
+        "offset": { "$ref": "#/$defs/rva" },
+        "basis": { "$ref": "#/$defs/identifier" },
+        "sites": { "type": "array", "items": { "$ref": "#/$defs/rva" } }
+      }
+    },
+    "switchTable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["site_rva", "cases"],
+      "properties": {
+        "site_rva": { "$ref": "#/$defs/rva" },
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["target_rva"],
+            "properties": {
+              "target_rva": { "$ref": "#/$defs/rva" },
+              "value": { "type": "integer" }
+            }
+          }
+        }
+      }
+    },
+    "indirectCall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["site_rva", "text", "candidate_displacements"],
+      "properties": {
+        "site_rva": { "$ref": "#/$defs/rva" },
+        "text": { "$ref": "#/$defs/identifier" },
+        "candidate_displacements": { "type": "array", "items": { "$ref": "#/$defs/rva" } }
+      }
+    },
+    "x87Finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["site_rva", "mnemonic", "kind"],
+      "properties": {
+        "site_rva": { "$ref": "#/$defs/rva" },
+        "mnemonic": { "$ref": "#/$defs/identifier" },
+        "kind": { "$ref": "#/$defs/identifier" },
+        "memory_width": { "type": "integer", "minimum": 1, "maximum": 16 },
+        "pops_stack": { "type": "boolean" },
+        "retains_x87_value": { "type": "boolean" },
+        "precision_control_sensitive": { "type": "boolean" },
+        "rounding_control_sensitive": { "type": "boolean" }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["calling_convention", "return_type", "arguments"],
+      "properties": {
+        "calling_convention": { "$ref": "#/$defs/identifier" },
+        "return_type": { "$ref": "#/$defs/identifier" },
+        "no_return": { "type": "boolean" },
+        "varargs": { "type": "boolean" },
+        "arguments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "type", "storage"],
+            "properties": {
+              "name": { "$ref": "#/$defs/identifier" },
+              "type": { "$ref": "#/$defs/identifier" },
+              "storage": { "$ref": "#/$defs/identifier" },
+              "ordinal": { "type": "integer", "minimum": 0 },
+              "auto": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "function": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "rva", "boundary", "signature", "cfg", "instructions", "pseudocode", "callers", "callees", "xrefs", "globals", "this_offsets", "constants", "switch_tables", "indirect_calls", "pcode", "x87"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^FN-[A-Z0-9][A-Z0-9_-]*-[0-9A-F]{8}$" },
+        "name": { "$ref": "#/$defs/identifier" },
+        "rva": { "$ref": "#/$defs/rva" },
+        "boundary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start_rva", "end_rva_exclusive"],
+          "properties": {
+            "start_rva": { "$ref": "#/$defs/rva" },
+            "end_rva_exclusive": { "$ref": "#/$defs/rva" },
+            "size": { "type": "integer", "minimum": 0 },
+            "ranges": { "type": "array", "items": { "$ref": "#/$defs/range" } }
+          }
+        },
+        "signature": { "$ref": "#/$defs/signature" },
+        "cfg": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["block_count"],
+          "properties": {
+            "block_count": { "type": "integer", "minimum": 0 },
+            "blocks": { "type": "array", "items": { "$ref": "#/$defs/range" } },
+            "edges": { "type": "array", "items": { "$ref": "#/$defs/cfgEdge" } }
+          }
+        },
+        "instructions": { "type": "array", "items": { "$ref": "#/$defs/instruction" } },
+        "pseudocode": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text"],
+          "properties": {
+            "text": { "type": "string", "maxLength": 1000000 },
+            "engine": { "$ref": "#/$defs/identifier" }
+          }
+        },
+        "callers": { "type": "array", "items": { "$ref": "#/$defs/reference" } },
+        "callees": { "type": "array", "items": { "$ref": "#/$defs/reference" } },
+        "xrefs": { "type": "array", "items": { "$ref": "#/$defs/reference" } },
+        "globals": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reads", "writes"],
+          "properties": {
+            "reads": { "type": "array", "items": { "$ref": "#/$defs/reference" } },
+            "writes": { "type": "array", "items": { "$ref": "#/$defs/reference" } }
+          }
+        },
+        "this_offsets": { "type": "array", "items": { "$ref": "#/$defs/thisOffset" } },
+        "constants": { "type": "array", "items": { "$ref": "#/$defs/constant" } },
+        "switch_tables": { "type": "array", "items": { "$ref": "#/$defs/switchTable" } },
+        "indirect_calls": { "type": "array", "items": { "$ref": "#/$defs/indirectCall" } },
+        "pcode": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["site_rva", "ordinal", "opcode", "inputs"],
+            "properties": {
+              "site_rva": { "$ref": "#/$defs/rva" },
+              "ordinal": { "type": "integer", "minimum": 0 },
+              "opcode": { "$ref": "#/$defs/identifier" },
+              "output": { "$ref": "#/$defs/identifier" },
+              "inputs": { "type": "array", "items": { "$ref": "#/$defs/identifier" } }
+            }
+          }
+        },
+        "x87": { "type": "array", "items": { "$ref": "#/$defs/x87Finding" } }
+      }
+    }
+  }
+}

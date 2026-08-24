@@ -147,6 +147,15 @@ exit /b %ERRORLEVEL%
         $arguments -notcontains '-import'
     ) -Message 'ProgramName mode does not import a private input file'
 
+    $jsonReport = & $wrapper @common `
+        -ProgramName 'AirCraft.type' `
+        -ReportSuffix 'bridge' `
+        -ReportExtension 'json' `
+        -PostScriptArguments @('10003F40')
+    Assert-True -Condition (
+        $jsonReport -eq (Join-Path $reports 'AirCraft.type.bridge.json')
+    ) -Message 'JSON report extension is deterministic and opt-in'
+
     $legacyReport = & $wrapper @common `
         -InputFile $inputFile `
         -ReuseProject `

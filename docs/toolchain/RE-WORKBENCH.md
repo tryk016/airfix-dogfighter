@@ -118,6 +118,12 @@ Use the exact locked Ghidra/JDK versions. Preserve the raw local report and
 publish only concise observations, contracts, constants, and evidence IDs.
 See [../RE-WORKFLOW.md](../RE-WORKFLOW.md) for all available exporters.
 
+For the schema-versioned knowledge loop and the aggregate one-function report,
+use `Invoke-AirfixGhidraBridge.ps1`. It can export current knowledge candidates,
+transactionally reapply reviewed facts by module SHA-256 and RVA, and compare a
+Ghidra aggregate report with normalized Rizin evidence. See
+[GHIDRA-KNOWLEDGE-BRIDGE.md](GHIDRA-KNOWLEDGE-BRIDGE.md).
+
 For a complete decoded-instruction audit of floating-point environment
 mutations in one already imported program:
 

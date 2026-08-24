@@ -74,6 +74,9 @@ jobs:
       - name: Test deterministic Rizin report normalization
         run: python3 tests/RizinExportTests.py
 
+      - name: Test Ghidra Knowledge Bridge normalization
+        run: python3 tests/AirfixGhidraKnowledgeBridgeTests.py
+
       - name: Test AirCraft runtime capture validation
         run: python3 tests/AircraftRuntimeCaptureValidatorTests.py
 
@@ -212,6 +215,7 @@ jobs:
         shell: pwsh
         run: |
           ./tests/Invoke-GhidraAnalysisTests.ps1
+          ./tests/Invoke-AirfixGhidraBridgeTests.ps1
           ./tests/Prepare-ReWorkingCopyTests.ps1
           ./tests/Invoke-RizinAnalysisTests.ps1
           python tests/RizinExportTests.py

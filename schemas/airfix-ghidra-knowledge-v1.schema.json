@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://airfix-dogfighter-reconstruction.invalid/schemas/airfix-ghidra-knowledge-v1.schema.json",
+  "title": "Airfix Ghidra Knowledge Bridge curated knowledge v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "modules"],
+  "properties": {
+    "schema": { "const": "airfix.re.ghidra-knowledge.v1" },
+    "modules": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/module" }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "rva": { "type": "string", "pattern": "^0x[0-9A-F]{8}$" },
+    "structureSize": {
+      "type": "string",
+      "pattern": "^0x00[0-9A-F]{6}$",
+      "not": { "const": "0x00000000" }
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[^\\u0000\\r\\n]+$"
+    },
+    "assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "confidence", "evidence", "apply_eligible"],
+      "properties": {
+        "status": {
+          "enum": ["confirmed", "conditional", "hypothesis", "unknown"]
+        },
+        "confidence": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence" }
+        },
+        "apply_eligible": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "apply_eligible": { "const": true } } },
+          "then": {
+            "properties": {
+              "status": { "const": "confirmed" },
+              "confidence": { "minimum": 2 },
+              "evidence": { "minItems": 1 }
+            }
+          }
+        }
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "summary"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^EV-[0-9]{8}-[0-9]{3}$" },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 1000 }
+      }
+    },
+    "notes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["comments", "hypotheses"],
+      "properties": {
+        "comments": { "type": "array", "items": { "type": "string", "maxLength": 4000 } },
+        "hypotheses": { "type": "array", "items": { "type": "string", "maxLength": 4000 } }
+      }
+    },
+    "argument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "$ref": "#/$defs/identifier" },
+        "type": { "$ref": "#/$defs/identifier" },
+        "storage": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "thisField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["offset", "name", "type", "assessment", "notes"],
+      "properties": {
+        "offset": { "$ref": "#/$defs/rva" },
+        "name": { "$ref": "#/$defs/identifier" },
+        "type": { "$ref": "#/$defs/identifier" },
+        "assessment": { "$ref": "#/$defs/assessment" },
+        "notes": { "$ref": "#/$defs/notes" }
+      }
+    },
+    "function": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rva", "name", "signature", "this_fields", "assessment", "notes"],
+      "properties": {
+        "rva": { "$ref": "#/$defs/rva" },
+        "name": { "$ref": "#/$defs/identifier" },
+        "signature": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["calling_convention", "return_type", "arguments"],
+          "properties": {
+            "calling_convention": { "$ref": "#/$defs/identifier" },
+            "return_type": { "$ref": "#/$defs/identifier" },
+            "arguments": { "type": "array", "items": { "$ref": "#/$defs/argument" } }
+          }
+        },
+        "this_fields": { "type": "array", "items": { "$ref": "#/$defs/thisField" } },
+        "assessment": { "$ref": "#/$defs/assessment" },
+        "notes": { "$ref": "#/$defs/notes" }
+      }
+    },
+    "structure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "size", "fields", "assessment", "notes"],
+      "properties": {
+        "name": { "$ref": "#/$defs/identifier" },
+        "size": { "$ref": "#/$defs/structureSize" },
+        "fields": { "type": "array", "items": { "$ref": "#/$defs/thisField" } },
+        "assessment": { "$ref": "#/$defs/assessment" },
+        "notes": { "$ref": "#/$defs/notes" }
+      }
+    },
+    "vtable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rva", "class_name", "slots", "assessment", "notes"],
+      "properties": {
+        "rva": { "$ref": "#/$defs/rva" },
+        "class_name": { "$ref": "#/$defs/identifier" },
+        "slots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["index", "target_rva", "assessment", "notes"],
+            "properties": {
+              "index": { "type": "integer", "minimum": 0, "maximum": 4095 },
+              "target_rva": { "$ref": "#/$defs/rva" },
+              "name": { "$ref": "#/$defs/identifier" },
+              "assessment": { "$ref": "#/$defs/assessment" },
+              "notes": { "$ref": "#/$defs/notes" }
+            }
+          }
+        },
+        "assessment": { "$ref": "#/$defs/assessment" },
+        "notes": { "$ref": "#/$defs/notes" }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "assessment", "notes"],
+      "properties": {
+        "id": { "$ref": "#/$defs/rva" },
+        "name": { "$ref": "#/$defs/identifier" },
+        "assessment": { "$ref": "#/$defs/assessment" },
+        "notes": { "$ref": "#/$defs/notes" }
+      }
+    },
+    "module": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "functions", "structures", "vtables", "event_ids"],
+      "properties": {
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "functions": { "type": "array", "items": { "$ref": "#/$defs/function" } },
+        "structures": { "type": "array", "items": { "$ref": "#/$defs/structure" } },
+        "vtables": { "type": "array", "items": { "$ref": "#/$defs/vtable" } },
+        "event_ids": { "type": "array", "items": { "$ref": "#/$defs/event" } }
+      }
+    }
+  }
+}
