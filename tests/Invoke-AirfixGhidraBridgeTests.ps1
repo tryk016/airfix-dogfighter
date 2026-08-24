@@ -362,9 +362,11 @@ if (-not (Test-Path -LiteralPath $fixturePath -PathType Leaf)) {
 exit /b %ERRORLEVEL%
 '@ | Set-Content -LiteralPath (Join-Path $fakeSupport 'analyzeHeadless.bat') -NoNewline
 
-    $pythonCommand = Get-Command python -CommandType Application -ErrorAction SilentlyContinue
+    $pythonCommand = Get-Command python -CommandType Application `
+        -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $pythonCommand) {
-        $pythonCommand = Get-Command python3 -CommandType Application -ErrorAction SilentlyContinue
+        $pythonCommand = Get-Command python3 -CommandType Application `
+            -ErrorAction SilentlyContinue | Select-Object -First 1
     }
     if (-not $pythonCommand) {
         throw 'A real Python CLI (python or python3) is required for this bridge test.'
