@@ -102,6 +102,17 @@ tree(const AirfixWindowsRenderSettingsPanel &panel) {
       }));
 }
 
+[[nodiscard]] const airfix::windows::AirfixWindowsUiSemanticNode &
+nodeForItem(const AirfixWindowsUiSemanticTree &tree,
+            const AirfixWindowsRenderSettingsItem item) {
+  const auto found =
+      std::find_if(tree.nodes.begin(), tree.nodes.begin() + tree.nodeCount,
+                   [item](const auto &node) { return node.item == item; });
+  require(found != tree.nodes.begin() + tree.nodeCount,
+          "expected semantic item was absent");
+  return *found;
+}
+
 void requireBoundedPathFreeTree(const AirfixWindowsUiSemanticTree &tree) {
   require(tree.complete(), "semantic tree is incomplete");
   std::array<std::uint16_t,
@@ -411,6 +422,47 @@ void controllerActionsCoverSevenActionsFourteenControlsAndSaving() {
           "saving row could not receive accessibility focus");
 }
 
+void controllerFaceLabelsUseConnectedHardwareGlyphsAndSafeFallbacks() {
+  auto panel = makeControllerPanel();
+  invoke(panel, AirfixWindowsRenderSettingsItem::controllerCalibration);
+  invoke(panel, AirfixWindowsRenderSettingsItem::buttonBindings);
+  for (std::size_t index = 0U; index < 4U; ++index) {
+    require(action(panel, AirfixWindowsRenderSettingsItem::bindingAssignment,
+                   AirfixWindowsAccessibilityAction::increment)
+                .accepted(),
+            "face-button fixture selection was rejected");
+  }
+
+  const auto generic = tree(panel);
+  require(
+      nodeForItem(generic, AirfixWindowsRenderSettingsItem::bindingAssignment)
+              .value.view() == L"South face button",
+      "unknown hardware glyph did not use the positional fallback");
+
+  panel.setControllerFaceButtonGlyphs({
+      .south = airfix::input::ControllerFaceButtonGlyph::cross,
+      .east = airfix::input::ControllerFaceButtonGlyph::circle,
+      .west = airfix::input::ControllerFaceButtonGlyph::square,
+      .north = airfix::input::ControllerFaceButtonGlyph::triangle,
+  });
+  const auto playStation = tree(panel);
+  require(nodeForItem(playStation,
+                      AirfixWindowsRenderSettingsItem::bindingAssignment)
+                  .value.view() == L"Cross button",
+          "connected controller glyph did not replace the positional label");
+
+  panel.setControllerFaceButtonGlyphs({
+      .south = airfix::input::ControllerFaceButtonGlyph::a,
+      .east = airfix::input::ControllerFaceButtonGlyph::b,
+      .west = airfix::input::ControllerFaceButtonGlyph::x,
+      .north = airfix::input::ControllerFaceButtonGlyph::y,
+  });
+  const auto abxy = tree(panel);
+  require(nodeForItem(abxy, AirfixWindowsRenderSettingsItem::bindingAssignment)
+                  .value.view() == L"A button",
+          "ABXY hardware glyph did not replace the positional label");
+}
+
 void staleGenerationRejectsSameScreenContextChanges() {
   auto panel = makeControllerPanel();
   invoke(panel, AirfixWindowsRenderSettingsItem::controllerCalibration);
@@ -549,6 +601,10 @@ void semanticActionsAdvertiseOnlySupportedOperations() {
       airfix::input::ControllerDigitalGameplayAction::count;
   requireRejected(invalid, "forged controller action was accepted");
   invalid = panel.snapshot();
+  invalid.controllerFaceButtonGlyphs.south =
+      static_cast<airfix::input::ControllerFaceButtonGlyph>(0xFFU);
+  requireRejected(invalid, "forged controller glyph was accepted");
+  invalid = panel.snapshot();
   invalid.controllerBindingPickerPhase =
       static_cast<airfix::settings::ControllerInputBindingPickerPhase>(0xFFU);
   requireRejected(invalid, "forged binding-picker phase was accepted");
@@ -566,6 +622,7 @@ int main() {
     offscreenRowsRemainDiscoverableButNotHitTestable();
     typedActionsMatchPanelPolicyAndFailClosed();
     controllerActionsCoverSevenActionsFourteenControlsAndSaving();
+    controllerFaceLabelsUseConnectedHardwareGlyphsAndSafeFallbacks();
     staleGenerationRejectsSameScreenContextChanges();
     semanticActionsAdvertiseOnlySupportedOperations();
   } catch (const std::exception &error) {

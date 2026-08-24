@@ -444,7 +444,7 @@
   samples. A Windows-only COM provider now attaches through `WM_GETOBJECT`,
   publishes stable bounded fragments and events, and returns typed actions to
   the SDL owner thread through a fixed 32-entry queue. Physical Narrator
-  acceptance, glyphs, gameplay haptics/controller rumble, live replacement,
+  acceptance, gameplay haptics/controller rumble, live replacement,
   and physical-device persistence acceptance remain.
 - Local Git repository initialized on branch `main`; planning baseline committed
   as `59828ed`.
@@ -607,7 +607,7 @@
   a bounded Apple extended-controller adapter feed a validated portable batch
   reconciler and renderer-independent fixed 60 Hz pump. Context transitions,
   controller generations, FIFO overflow, lifecycle and gameplay boundaries
-  reset fail closed. Remapping, profiles, menu UI, glyphs, simulation-owned
+  reset fail closed. Remapping, profiles, menu UI, simulation-owned
   gameplay feedback/controller rumble, and device acceptance remain pending.
 - Expanded the deterministic simulation consumer. Portable
   `PlayerAircraftState` preserves uninterpreted flight/throttle/camera Q15
@@ -1458,11 +1458,14 @@
    Connecting a controller during
    active gameplay
    hides through the existing cancel-all boundary; disconnect still releases
-   and pauses before touch controls may return. Add controller glyphs,
-   simulation-owned gameplay feedback, controller rumble,
-   free placement, and finished menu bindings before touch-only and
-   controller-only acceptance on both target iPhones. Never mutate
-   position-indexed active router state in place or accept a live caller's
+   and pauses before touch controls may return. Device-derived controller
+   labels and iOS SF Symbols now follow the current
+   system mapping, with neutral positional fallbacks and no persisted device
+   identity. Validate those glyphs on physical controllers, then add
+   simulation-owned gameplay feedback, controller rumble, free placement, and
+   finished menu bindings before touch-only and controller-only acceptance on
+   both target iPhones. Never mutate position-indexed active router state in
+   place or accept a live caller's
    unauthenticated mission claim.
 5. Connect the implemented weak camera-runtime endpoint to the recovered live
    AirCraft producer once it supplies distinct chase position, world anchor,

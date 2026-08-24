@@ -196,6 +196,7 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
 - (void)refreshGameplayChromeVisibility;
 - (void)updateDiagnosticsLabelWithInputDiagnostics:
     (AirfixInputDiagnostics *)diagnostics;
+- (NSString *)controllerResumeButtonName;
 - (void)handleAudioForcedPause:(airfix::ios::AirfixIOSAudioPauseReason)reason;
 #if AIRFIX_IOS_SIMULATOR_SMOKE
 - (void)startSimulatorSmokeIfNeeded;
@@ -204,6 +205,13 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
 @end
 
 @implementation AirfixGameViewController
+
+- (NSString *)controllerResumeButtonName {
+  NSString *localized = [self.inputCoordinator.controllerState
+      localizedNameForControl:AirfixGameControllerDigitalControlFaceSecondary];
+  return localized.length != 0U ? localized
+                                : NSLocalizedString(@"east face button", nil);
+}
 
 - (void)loadView {
   id<MTLDevice> device = MTLCreateSystemDefaultDevice();
@@ -754,9 +762,11 @@ actorWorldFrom(const airfix::simulation::PlayerSpawnPose &pose) noexcept {
   self.resumeButton.hidden = !gameplayReady;
   [self setPausedSettingsSelection:_pausedSettingsSelection announce:NO];
   if (gameplayReady) {
-    self.statusLabel.text = @"Airfix Dogfighter reconstruction\n"
-                            @"Private mission ready\n"
-                            @"Select Resume or press controller B to start";
+    self.statusLabel.text =
+        [NSString stringWithFormat:@"Airfix Dogfighter reconstruction\n"
+                                   @"Private mission ready\n"
+                                   @"Select Resume or press %@ to start",
+                                   [self controllerResumeButtonName]];
   } else if (!self.simulationPipelineReady) {
     self.statusLabel.text = @"Airfix Dogfighter reconstruction\n"
                             @"Simulation halted; gameplay cannot resume";
@@ -995,9 +1005,10 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   _session.pause();
   ((MTKView *)self.view).paused = YES;
   if (gameplayReady) {
-    self.statusLabel.text =
-        @"Airfix Dogfighter reconstruction\n"
-         "Settings closed; select Resume or press controller B";
+    self.statusLabel.text = [NSString
+        stringWithFormat:@"Airfix Dogfighter reconstruction\n"
+                         @"Settings closed; select Resume or press %@",
+                         [self controllerResumeButtonName]];
   }
   _pausedSettingsSelection = 0U;
   [self setPausedSettingsSelection:_pausedSettingsSelection announce:NO];
@@ -1027,6 +1038,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   AirfixControllerCalibrationPanelViewController *panel =
       [[AirfixControllerCalibrationPanelViewController alloc]
           initWithCoordinator:coordinator];
+  [panel updateControllerState:self.inputCoordinator.controllerState];
   panel.delegate = self;
   [self addChildViewController:panel];
   panel.view.translatesAutoresizingMaskIntoConstraints = NO;
@@ -1101,8 +1113,10 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   ((MTKView *)self.view).paused = YES;
   if (gameplayReady) {
     self.statusLabel.text =
-        @"Airfix Dogfighter reconstruction\n"
-         "Controller settings closed; select Resume or press controller B";
+        [NSString stringWithFormat:
+                      @"Airfix Dogfighter reconstruction\n"
+                      @"Controller settings closed; select Resume or press %@",
+                      [self controllerResumeButtonName]];
   }
   _pausedSettingsSelection = 1U;
   [self setPausedSettingsSelection:_pausedSettingsSelection announce:NO];
@@ -1191,9 +1205,10 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
   _session.pause();
   ((MTKView *)self.view).paused = YES;
   if (gameplayReady) {
-    self.statusLabel.text =
-        @"Airfix Dogfighter reconstruction\n"
-         "Touch settings closed; select Resume or press controller B";
+    self.statusLabel.text = [NSString
+        stringWithFormat:@"Airfix Dogfighter reconstruction\n"
+                         @"Touch settings closed; select Resume or press %@",
+                         [self controllerResumeButtonName]];
   }
   _pausedSettingsSelection = 2U;
   [self setPausedSettingsSelection:_pausedSettingsSelection announce:NO];
@@ -2030,10 +2045,11 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
             stringWithFormat:
                 @"Airfix Dogfighter reconstruction\n"
                 @"Private mission ready: %lu meshes, %lu textures, %lu draws\n"
-                @"Select Resume or press controller B to start",
+                @"Select Resume or press %@ to start",
                 static_cast<unsigned long>(snapshot.meshCount),
                 static_cast<unsigned long>(snapshot.textureCount),
-                static_cast<unsigned long>(snapshot.drawCommandCount)];
+                static_cast<unsigned long>(snapshot.drawCommandCount),
+                [strongSelf controllerResumeButtonName]];
       } else if (!strongSelf.simulationPipelineReady) {
         strongSelf.statusLabel.text =
             @"Airfix Dogfighter reconstruction\n"
@@ -2204,6 +2220,7 @@ simulatorSmokeFailureStage(const AirfixSimulatorSmokeDrawStage stage) {
     return;
   }
   [self.diagnosticsCoordinator recordControllerConnected:state.isConnected];
+  [self.controllerCalibrationPanel updateControllerState:state];
   [self refreshTouchControlsVisibility];
 }
 

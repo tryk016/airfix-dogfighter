@@ -144,7 +144,56 @@ actionTitle(const airfix::input::ControllerDigitalGameplayAction action) {
   return NSLocalizedString(@"Unknown action", nil);
 }
 
-[[nodiscard]] NSString *controlTitle(const airfix::input::ControlId control) {
+[[nodiscard]] std::optional<AirfixGameControllerDigitalControl>
+nativeDigitalControl(const airfix::input::ControlId control) noexcept {
+  using namespace airfix::input::controls::controller;
+  if (control == rightTrigger) {
+    return AirfixGameControllerDigitalControlPrimaryTrigger;
+  }
+  if (control == leftTrigger) {
+    return AirfixGameControllerDigitalControlSecondaryTrigger;
+  }
+  if (control == rightShoulder) {
+    return AirfixGameControllerDigitalControlRightShoulder;
+  }
+  if (control == leftShoulder) {
+    return AirfixGameControllerDigitalControlLeftShoulder;
+  }
+  if (control == facePrimary) {
+    return AirfixGameControllerDigitalControlFacePrimary;
+  }
+  if (control == faceSecondary) {
+    return AirfixGameControllerDigitalControlFaceSecondary;
+  }
+  if (control == faceLeft) {
+    return AirfixGameControllerDigitalControlFaceLeft;
+  }
+  if (control == faceTop) {
+    return AirfixGameControllerDigitalControlFaceTop;
+  }
+  if (control == rightStickClick) {
+    return AirfixGameControllerDigitalControlRightStickClick;
+  }
+  if (control == dpadUp) {
+    return AirfixGameControllerDigitalControlDpadUp;
+  }
+  if (control == dpadDown) {
+    return AirfixGameControllerDigitalControlDpadDown;
+  }
+  if (control == dpadLeft) {
+    return AirfixGameControllerDigitalControlDpadLeft;
+  }
+  if (control == dpadRight) {
+    return AirfixGameControllerDigitalControlDpadRight;
+  }
+  if (control == menu) {
+    return AirfixGameControllerDigitalControlPause;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] NSString *
+genericControlTitle(const airfix::input::ControlId control) {
   using namespace airfix::input::controls::controller;
   if (control == rightTrigger) {
     return NSLocalizedString(@"Right trigger", nil);
@@ -159,16 +208,16 @@ actionTitle(const airfix::input::ControllerDigitalGameplayAction action) {
     return NSLocalizedString(@"Left shoulder", nil);
   }
   if (control == facePrimary) {
-    return NSLocalizedString(@"Primary face button", nil);
+    return NSLocalizedString(@"South face button", nil);
   }
   if (control == faceSecondary) {
-    return NSLocalizedString(@"Secondary face button", nil);
+    return NSLocalizedString(@"East face button", nil);
   }
   if (control == faceLeft) {
-    return NSLocalizedString(@"Left face button", nil);
+    return NSLocalizedString(@"West face button", nil);
   }
   if (control == faceTop) {
-    return NSLocalizedString(@"Top face button", nil);
+    return NSLocalizedString(@"North face button", nil);
   }
   if (control == rightStickClick) {
     return NSLocalizedString(@"Right stick click", nil);
@@ -189,6 +238,28 @@ actionTitle(const airfix::input::ControllerDigitalGameplayAction action) {
     return NSLocalizedString(@"Menu button", nil);
   }
   return NSLocalizedString(@"Unknown control", nil);
+}
+
+[[nodiscard]] NSString *controlTitle(const airfix::input::ControlId control,
+                                     AirfixGameControllerState *state) {
+  const auto native = nativeDigitalControl(control);
+  if (native.has_value() && state != nil) {
+    NSString *localized = [state localizedNameForControl:*native];
+    if (localized.length != 0U) {
+      return localized;
+    }
+  }
+  return genericControlTitle(control);
+}
+
+[[nodiscard]] UIImage *controlImage(const airfix::input::ControlId control,
+                                    AirfixGameControllerState *state) {
+  const auto native = nativeDigitalControl(control);
+  if (!native.has_value() || state == nil) {
+    return nil;
+  }
+  NSString *symbolName = [state symbolNameForControl:*native];
+  return symbolName.length != 0U ? [UIImage systemImageNamed:symbolName] : nil;
 }
 
 [[nodiscard]] NSString *unavailableBindingTitle(
@@ -292,6 +363,7 @@ actionTitle(const airfix::input::ControllerDigitalGameplayAction action) {
   std::uint64_t _lastPreviewTick;
   std::array<int16_t, airfix::input::controllerProfileAxisCount>
       _rawPreviewAxes;
+  __strong AirfixGameControllerState *_controllerState;
 }
 
 @property(nonatomic, strong) UILabel *titleLabel;
@@ -386,6 +458,17 @@ actionTitle(const airfix::input::ControllerDigitalGameplayAction action) {
     self.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
   }
   return self;
+}
+
+- (void)updateControllerState:(AirfixGameControllerState *)state {
+  NSParameterAssert(state != nil);
+  NSAssert(NSThread.isMainThread,
+           @"Controller presentation metadata belongs to main");
+  _controllerState = state;
+  if (self.isViewLoaded) {
+    [self refreshBindingRows];
+    [self refreshPickerRows];
+  }
 }
 
 - (void)loadView {
@@ -722,7 +805,7 @@ actionTitle(const airfix::input::ControllerDigitalGameplayAction action) {
   const auto controls = airfix::input::controllerAssignableControlCatalog();
   for (NSUInteger index = 0U; index < controls.size(); ++index) {
     UIButton *button = makeActionButton(
-        controlTitle(controls[index].control),
+        controlTitle(controls[index].control, _controllerState),
         [NSString
             stringWithFormat:@"airfix.controller-settings.picker.control.%lu",
                              static_cast<unsigned long>(index)]);
@@ -1084,7 +1167,7 @@ actionTitle(const airfix::input::ControllerDigitalGameplayAction action) {
         stringWithFormat:NSLocalizedString(@"%@ is now assigned to %@.", nil),
                          actionTitle(_selectedAction),
                          result.control.has_value()
-                             ? controlTitle(*result.control)
+                             ? controlTitle(*result.control, _controllerState)
                              : NSLocalizedString(@"the selected control", nil)];
     const BOOL dirty = _model->dirty();
     [self showBindings];
@@ -1111,7 +1194,7 @@ actionTitle(const airfix::input::ControllerDigitalGameplayAction action) {
                              @"%@ is already assigned to %@. Swap %@ and %@?",
                              nil),
                          result.control.has_value()
-                             ? controlTitle(*result.control)
+                             ? controlTitle(*result.control, _controllerState)
                              : NSLocalizedString(@"This control", nil),
                          result.conflictingAction.has_value()
                              ? actionTitle(*result.conflictingAction)
@@ -1554,10 +1637,12 @@ actionTitle(const airfix::input::ControllerDigitalGameplayAction action) {
     const auto index = static_cast<NSUInteger>(descriptor.action);
     const auto lookup = _model->draftDigitalGameplayBinding(descriptor.action);
     NSString *value = unavailableBindingTitle(lookup.status);
+    UIImage *image = nil;
     if (lookup.editable()) {
       const auto *binding = _model->draftBinding(lookup.bindingIndex);
       if (binding != nullptr) {
-        value = controlTitle(binding->control);
+        value = controlTitle(binding->control, _controllerState);
+        image = controlImage(binding->control, _controllerState);
       }
     }
     UIButton *button = _bindingActionButtons[index];
@@ -1567,6 +1652,7 @@ actionTitle(const airfix::input::ControllerDigitalGameplayAction action) {
             forState:UIControlStateNormal];
     button.accessibilityLabel = actionTitle(descriptor.action);
     button.accessibilityValue = value;
+    [button setImage:image forState:UIControlStateNormal];
   }
 }
 
@@ -1579,7 +1665,7 @@ actionTitle(const airfix::input::ControllerDigitalGameplayAction action) {
         _bindingPicker.phase() !=
             airfix::settings::ControllerInputBindingPickerPhase::closed &&
         index == chosen;
-    NSString *title = controlTitle(controls[index].control);
+    NSString *title = controlTitle(controls[index].control, _controllerState);
     [button setTitle:(selected ? [NSString
                                      stringWithFormat:NSLocalizedString(
                                                           @"Selected: %@", nil),
@@ -1589,6 +1675,8 @@ actionTitle(const airfix::input::ControllerDigitalGameplayAction action) {
     button.accessibilityLabel = title;
     button.accessibilityValue =
         selected ? NSLocalizedString(@"Selected control", nil) : nil;
+    [button setImage:controlImage(controls[index].control, _controllerState)
+            forState:UIControlStateNormal];
     if (selected) {
       button.accessibilityTraits |= UIAccessibilityTraitSelected;
     } else {

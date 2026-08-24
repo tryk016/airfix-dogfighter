@@ -32,11 +32,9 @@ constexpr std::array<Item, 3U> pauseItemsWithControllerProfile{
     Item::resume,
 };
 constexpr std::array<Item, 9U> displaySettingsItems{
-    Item::renderScale,   Item::interfaceScale,
-    Item::presentation,  Item::verticalFovAdjustment,
-    Item::visualProfile, Item::textureMode,
-    Item::rendererStatistics, Item::apply,
-    Item::cancel,
+    Item::renderScale,           Item::interfaceScale, Item::presentation,
+    Item::verticalFovAdjustment, Item::visualProfile,  Item::textureMode,
+    Item::rendererStatistics,    Item::apply,          Item::cancel,
 };
 constexpr std::array<Item, 8U> controllerProfileItems{
     Item::leftStickX,
@@ -304,8 +302,7 @@ AirfixWindowsRenderSettingsPanel::create(
     const bool persistenceAvailable, const AirfixWindowsUiPixelExtent output,
     const AirfixWindowsRenderSettingsSessionOverrideMask sessionOverrideMask,
     const bool resumeAvailable,
-    std::optional<AirfixWindowsControllerProfilePanelState>
-        controllerProfile,
+    std::optional<AirfixWindowsControllerProfilePanelState> controllerProfile,
     const texture::TexturePackageAvailability texturePackageAvailability,
     std::optional<texture::ActiveMissionTextureState>
         activeMissionTextures) noexcept {
@@ -321,13 +318,12 @@ AirfixWindowsRenderSettingsPanel::create(
     };
   }
   auto model = settings::RenderPresentationSettingsMenuModel::create(
-      applied,
-      {
-          .persistenceAvailable = persistenceAvailable,
-          .enhancedTexturesAvailable =
-              texturePackageAvailability ==
-              texture::TexturePackageAvailability::ready,
-      });
+      applied, {
+                   .persistenceAvailable = persistenceAvailable,
+                   .enhancedTexturesAvailable =
+                       texturePackageAvailability ==
+                       texture::TexturePackageAvailability::ready,
+               });
   if (!model.has_value()) {
     return std::nullopt;
   }
@@ -577,6 +573,7 @@ AirfixWindowsRenderSettingsPanel::snapshot() const noexcept {
           input::ControllerDigitalGameplayBindingStatus::missing,
       .selectedControllerBindingControlIndex =
           airfixWindowsControllerBindingNoControlIndex,
+      .controllerFaceButtonGlyphs = controllerFaceButtonGlyphs_,
       .controllerBindingPickerPhase = controllerBindingPicker_.phase(),
       .conflictingControllerBindingAction =
           controllerBindingPicker_.conflictingAction(),
@@ -834,14 +831,19 @@ void AirfixWindowsRenderSettingsPanel::setControllerAxisInput(
   controllerAxisInput_ = input;
 }
 
+void AirfixWindowsRenderSettingsPanel::setControllerFaceButtonGlyphs(
+    const input::ControllerFaceButtonGlyphs glyphs) noexcept {
+  const AccessibilityMutationGuard mutation{*this};
+  controllerFaceButtonGlyphs_ = glyphs;
+}
+
 void AirfixWindowsRenderSettingsPanel::setTextureModeReloadOutcome(
     const texture::TextureModeMissionReloadOutcome &outcome) noexcept {
   const AccessibilityMutationGuard mutation{*this};
   activeMissionTextures_ = outcome.activeMission;
-  if (outcome.status ==
-      texture::TextureModeMissionReloadStatus::reloadFailed) {
-    status_ = AirfixWindowsRenderSettingsStatus::
-        textureReloadFailedRestartRequired;
+  if (outcome.status == texture::TextureModeMissionReloadStatus::reloadFailed) {
+    status_ =
+        AirfixWindowsRenderSettingsStatus::textureReloadFailedRestartRequired;
   } else if (outcome.requestedState.fallbackToClassic()) {
     status_ = AirfixWindowsRenderSettingsStatus::enhancedTexturesUnavailable;
   }
@@ -1039,9 +1041,9 @@ void AirfixWindowsRenderSettingsPanel::adjustSelectedValue(
                                            : render::VisualProfile::enhanced);
       break;
     case Item::textureMode:
-      result = model_.setTextureMode(
-          direction < 0 ? texture::TextureMode::classic
-                        : texture::TextureMode::enhanced);
+      result =
+          model_.setTextureMode(direction < 0 ? texture::TextureMode::classic
+                                              : texture::TextureMode::enhanced);
       break;
     case Item::rendererStatistics:
       result = model_.setDiagnosticsOverlayEnabled(direction > 0);
@@ -1049,14 +1051,15 @@ void AirfixWindowsRenderSettingsPanel::adjustSelectedValue(
     default:
       return;
     }
-    status_ = result.accepted()
-                  ? AirfixWindowsRenderSettingsStatus::ready
-                  : (result.status == settings::
-                                          RenderPresentationSettingsMenuEditStatus::
-                                              enhancedTexturesUnavailable
-                         ? AirfixWindowsRenderSettingsStatus::
-                               enhancedTexturesUnavailable
-                         : AirfixWindowsRenderSettingsStatus::invalidSettings);
+    status_ =
+        result.accepted()
+            ? AirfixWindowsRenderSettingsStatus::ready
+            : (result.status ==
+                       settings::RenderPresentationSettingsMenuEditStatus::
+                           enhancedTexturesUnavailable
+                   ? AirfixWindowsRenderSettingsStatus::
+                         enhancedTexturesUnavailable
+                   : AirfixWindowsRenderSettingsStatus::invalidSettings);
     return;
   }
 

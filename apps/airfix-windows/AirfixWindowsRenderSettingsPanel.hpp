@@ -313,6 +313,7 @@ struct AirfixWindowsRenderSettingsViewSnapshot final {
       input::ControllerDigitalGameplayBindingStatus::editable};
   std::uint8_t selectedControllerBindingControlIndex{
       airfixWindowsControllerBindingNoControlIndex};
+  input::ControllerFaceButtonGlyphs controllerFaceButtonGlyphs;
   settings::ControllerInputBindingPickerPhase controllerBindingPickerPhase{
       settings::ControllerInputBindingPickerPhase::closed};
   std::optional<input::ControllerDigitalGameplayAction>
@@ -418,6 +419,8 @@ public:
   void setControllerProfilePersistenceAvailable(bool available) noexcept;
   void setControllerAxisInput(
       const AirfixWindowsControllerAxisInputSnapshot &input) noexcept;
+  void setControllerFaceButtonGlyphs(
+      input::ControllerFaceButtonGlyphs glyphs) noexcept;
   void setTextureModeReloadOutcome(
       const texture::TextureModeMissionReloadOutcome &outcome) noexcept;
 
@@ -511,6 +514,7 @@ private:
   std::optional<settings::ControllerInputProfileMenuSaveTicket>
       activeControllerProfileTicket_;
   AirfixWindowsControllerAxisInputSnapshot controllerAxisInput_;
+  input::ControllerFaceButtonGlyphs controllerFaceButtonGlyphs_;
   texture::TexturePackageAvailability texturePackageAvailability_{
       texture::TexturePackageAvailability::notConfigured};
   texture::ActiveMissionTextureState activeMissionTextures_;

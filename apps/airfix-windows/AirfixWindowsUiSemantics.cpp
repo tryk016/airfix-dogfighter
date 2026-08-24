@@ -71,16 +71,58 @@ template <typename... Args>
   return text(L"Unavailable");
 }
 
-[[nodiscard]] AirfixWindowsUiSemanticText
-controllerControlLabel(const std::uint8_t index) noexcept {
-  constexpr std::array<std::wstring_view, 14U> labels{
-      L"Right trigger",    L"Left trigger",        L"Right shoulder",
-      L"Left shoulder",    L"Primary face button", L"Secondary face button",
-      L"Left face button", L"Top face button",     L"Right stick click",
-      L"D-pad up",         L"D-pad down",          L"D-pad left",
+[[nodiscard]] constexpr std::wstring_view
+controllerFaceButtonLabel(const input::ControllerFaceButtonGlyph glyph,
+                          const std::wstring_view positionalFallback) noexcept {
+  using input::ControllerFaceButtonGlyph;
+  switch (glyph) {
+  case ControllerFaceButtonGlyph::a:
+    return L"A button";
+  case ControllerFaceButtonGlyph::b:
+    return L"B button";
+  case ControllerFaceButtonGlyph::x:
+    return L"X button";
+  case ControllerFaceButtonGlyph::y:
+    return L"Y button";
+  case ControllerFaceButtonGlyph::cross:
+    return L"Cross button";
+  case ControllerFaceButtonGlyph::circle:
+    return L"Circle button";
+  case ControllerFaceButtonGlyph::square:
+    return L"Square button";
+  case ControllerFaceButtonGlyph::triangle:
+    return L"Triangle button";
+  case ControllerFaceButtonGlyph::unknown:
+    return positionalFallback;
+  }
+  return positionalFallback;
+}
+
+[[nodiscard]] AirfixWindowsUiSemanticText controllerControlLabel(
+    const std::uint8_t index,
+    const input::ControllerFaceButtonGlyphs glyphs) noexcept {
+  constexpr std::array<std::wstring_view, 14U> genericLabels{
+      L"Right trigger",    L"Left trigger",      L"Right shoulder",
+      L"Left shoulder",    L"South face button", L"East face button",
+      L"West face button", L"North face button", L"Right stick click",
+      L"D-pad up",         L"D-pad down",        L"D-pad left",
       L"D-pad right",      L"Menu button",
   };
-  return text(index < labels.size() ? labels[index] : L"Unavailable");
+  if (index >= genericLabels.size()) {
+    return text(L"Unavailable");
+  }
+  switch (index) {
+  case 4U:
+    return text(controllerFaceButtonLabel(glyphs.south, genericLabels[index]));
+  case 5U:
+    return text(controllerFaceButtonLabel(glyphs.east, genericLabels[index]));
+  case 6U:
+    return text(controllerFaceButtonLabel(glyphs.west, genericLabels[index]));
+  case 7U:
+    return text(controllerFaceButtonLabel(glyphs.north, genericLabels[index]));
+  default:
+    return text(genericLabels[index]);
+  }
 }
 
 [[nodiscard]] bool
@@ -115,6 +157,15 @@ rectInsideOutput(const AirfixWindowsUiPixelRect rect,
 [[nodiscard]] constexpr bool
 emptyRect(const AirfixWindowsUiPixelRect rect) noexcept {
   return rect == AirfixWindowsUiPixelRect{};
+}
+
+[[nodiscard]] constexpr bool validControllerFaceButtonGlyphs(
+    const input::ControllerFaceButtonGlyphs glyphs) noexcept {
+  const auto valid = [](const input::ControllerFaceButtonGlyph glyph) {
+    return glyph <= input::ControllerFaceButtonGlyph::triangle;
+  };
+  return valid(glyphs.south) && valid(glyphs.east) && valid(glyphs.west) &&
+         valid(glyphs.north);
 }
 
 [[nodiscard]] constexpr bool
@@ -192,6 +243,7 @@ controllerScreen(const AirfixWindowsRenderSettingsScreen screen) noexcept {
           input::ControllerDigitalGameplayBindingStatus::unsupportedLayout ||
       snapshot.selectedControllerBindingControlIndex >
           airfixWindowsControllerBindingNoControlIndex ||
+      !validControllerFaceButtonGlyphs(snapshot.controllerFaceButtonGlyphs) ||
       snapshot.controllerBindingPickerPhase >
           settings::ControllerInputBindingPickerPhase::confirmingSwap ||
       snapshot.controllerPreviewRaw < -input::q15One ||
@@ -409,7 +461,8 @@ AirfixWindowsUiSemanticText airfixWindowsUiItemValue(
     return controllerActionLabel(snapshot.selectedControllerBindingAction);
   case AirfixWindowsRenderSettingsItem::bindingAssignment:
     return controllerControlLabel(
-        snapshot.selectedControllerBindingControlIndex);
+        snapshot.selectedControllerBindingControlIndex,
+        snapshot.controllerFaceButtonGlyphs);
   case AirfixWindowsRenderSettingsItem::innerDeadzone:
   case AirfixWindowsRenderSettingsItem::outerSaturation:
   case AirfixWindowsRenderSettingsItem::sensitivity:
@@ -517,8 +570,7 @@ AirfixWindowsUiSemanticText airfixWindowsUiStatus(
     return text(L"The selected display settings are invalid");
   case AirfixWindowsRenderSettingsStatus::enhancedTexturesUnavailable:
     return text(L"Enhanced textures require a validated private package");
-  case AirfixWindowsRenderSettingsStatus::
-      textureReloadFailedRestartRequired:
+  case AirfixWindowsRenderSettingsStatus::textureReloadFailedRestartRequired:
     return text(L"Saved - mission reload failed; restart to retry safely");
   case AirfixWindowsRenderSettingsStatus::controllerProfileReady:
     if (snapshot.screen ==

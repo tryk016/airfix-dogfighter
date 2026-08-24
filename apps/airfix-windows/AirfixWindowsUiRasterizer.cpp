@@ -26,6 +26,15 @@
 namespace airfix::windows {
 namespace {
 
+[[nodiscard]] constexpr bool validControllerFaceButtonGlyphs(
+    const input::ControllerFaceButtonGlyphs glyphs) noexcept {
+  const auto valid = [](const input::ControllerFaceButtonGlyph glyph) {
+    return glyph <= input::ControllerFaceButtonGlyph::triangle;
+  };
+  return valid(glyphs.south) && valid(glyphs.east) && valid(glyphs.west) &&
+         valid(glyphs.north);
+}
+
 using Microsoft::WRL::ComPtr;
 
 constexpr std::uint32_t maximumRasterDimension = 16384U;
@@ -127,6 +136,7 @@ rectInsideOutput(const AirfixWindowsUiPixelRect rect,
                                    unsupportedLayout) ||
       snapshot.selectedControllerBindingControlIndex >
           airfixWindowsControllerBindingNoControlIndex ||
+      !validControllerFaceButtonGlyphs(snapshot.controllerFaceButtonGlyphs) ||
       pickerPhaseValue >
           static_cast<std::uint8_t>(
               settings::ControllerInputBindingPickerPhase::confirmingSwap) ||
