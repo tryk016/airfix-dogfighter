@@ -457,6 +457,14 @@
   prepared but not yet executed x32dbg dynamic-analysis stage. Verified
   archives, databases, traces, working copies, and original-derived reports
   remain outside Git.
+- Added the headless Airfix Ghidra Knowledge Bridge v1: versioned public
+  knowledge/function schemas, deterministic normalization, an aggregate
+  function exporter, a SHA-256+RVA importer with confirmed-evidence gating and
+  transactional rollback, and difference-only Ghidra/Rizin comparison. The
+  first-pass report also inventories direct `this` offsets, indirect calls,
+  switch tables, normalized P-code, exact scalar bits, and x87 risk sites.
+  Cross-function class recovery and relocation-tolerant shared-engine Function
+  ID remain later compatible stages rather than inferred facts.
 - Established a dedicated, isolated `Airfix-Dev` WSL2 distribution. Automount
   and Windows interop are disabled; a native Linux CMake/Ninja build completed
   135 targets and passed all 39 tests without modifying other WSL

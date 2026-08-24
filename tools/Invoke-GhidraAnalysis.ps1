@@ -19,6 +19,9 @@ param(
 
     [string]$ReportSuffix = 'decomp',
 
+    [ValidateSet('txt', 'json')]
+    [string]$ReportExtension = 'txt',
+
     [Parameter(Mandatory = $true, ParameterSetName = 'ReuseByInput')]
     [Parameter(ParameterSetName = 'ReuseByProgram')]
     [switch]$ReuseProject
@@ -94,6 +97,7 @@ $reuseExisting = $PSBoundParameters.ContainsKey('ProgramName') -or [bool]$ReuseP
 Assert-FileName -Value $ProjectName -Name 'ProjectName'
 Assert-FileName -Value $PostScript -Name 'PostScript'
 Assert-FileName -Value $ReportSuffix -Name 'ReportSuffix'
+Assert-FileName -Value $ReportExtension -Name 'ReportExtension'
 
 $postScriptPath = Join-Path $scriptDirectory $PostScript
 if (-not (Test-Path -LiteralPath $postScriptPath -PathType Leaf)) {
@@ -113,7 +117,7 @@ else {
     $programToProcess = [System.IO.Path]::GetFileName($resolvedInput)
 }
 
-$reportName = $programToProcess + ".$ReportSuffix.txt"
+$reportName = $programToProcess + ".$ReportSuffix.$ReportExtension"
 $reportFile = Join-Path $reportPath $reportName
 
 if ($reuseExisting) {
