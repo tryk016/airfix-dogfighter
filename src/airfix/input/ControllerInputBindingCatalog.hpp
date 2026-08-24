@@ -40,6 +40,33 @@ struct ControllerAssignableControlDescriptor final {
              const ControllerAssignableControlDescriptor &) noexcept = default;
 };
 
+// Presentation-only labels reported by platform controller APIs. The input
+// contract remains positional (south/east/west/north); these values let a UI
+// show the marking that is actually printed on the connected controller
+// without identifying or persisting the device itself.
+enum class ControllerFaceButtonGlyph : std::uint8_t {
+  unknown = 0,
+  a,
+  b,
+  x,
+  y,
+  cross,
+  circle,
+  square,
+  triangle,
+};
+
+struct ControllerFaceButtonGlyphs final {
+  ControllerFaceButtonGlyph south{ControllerFaceButtonGlyph::unknown};
+  ControllerFaceButtonGlyph east{ControllerFaceButtonGlyph::unknown};
+  ControllerFaceButtonGlyph west{ControllerFaceButtonGlyph::unknown};
+  ControllerFaceButtonGlyph north{ControllerFaceButtonGlyph::unknown};
+
+  [[nodiscard]] friend constexpr bool
+  operator==(const ControllerFaceButtonGlyphs &,
+             const ControllerFaceButtonGlyphs &) noexcept = default;
+};
+
 enum class ControllerDigitalGameplayBindingStatus : std::uint8_t {
   editable = 0,
   missing,

@@ -383,6 +383,15 @@ void invalidDimensionsFailClosed() {
           "out-of-catalog binding action did not fail closed");
 
   snapshot = bindings.snapshot();
+  snapshot.controllerFaceButtonGlyphs.north =
+      static_cast<airfix::input::ControllerFaceButtonGlyph>(0xFFU);
+  const auto invalidGlyph = AirfixWindowsUiRasterizer{}.rasterize(snapshot);
+  require(!invalidGlyph.complete() && invalidGlyph.issue.has_value() &&
+              *invalidGlyph.issue ==
+                  AirfixWindowsUiRasterizeIssue::invalidSnapshot,
+          "out-of-catalog controller glyph did not fail closed");
+
+  snapshot = bindings.snapshot();
   snapshot.selectedControllerBindingControlIndex = static_cast<std::uint8_t>(
       airfix::input::controllerAssignableControlCount);
   const auto invalidControl = AirfixWindowsUiRasterizer{}.rasterize(snapshot);

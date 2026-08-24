@@ -1,5 +1,6 @@
 #pragma once
 
+#include "airfix/input/ControllerInputBindingCatalog.hpp"
 #include "airfix/input/DesktopInputBridge.hpp"
 
 #include <SDL3/SDL.h>
@@ -55,6 +56,8 @@ sdlMouseMotionValue(float relativeMotion) noexcept;
 sdlGamepadStickAxis(SDL_GamepadAxis axis) noexcept;
 [[nodiscard]] SdlGamepadButtonMapping
 sdlGamepadButton(SDL_GamepadButton button) noexcept;
+[[nodiscard]] airfix::input::ControllerFaceButtonGlyph
+sdlGamepadButtonGlyph(SDL_GamepadButtonLabel label) noexcept;
 [[nodiscard]] bool sdlGamepadTriggerPressed(Sint16 value) noexcept;
 
 class AirfixSdlInputAdapter final {
@@ -86,6 +89,8 @@ public:
   activeControllerProfile() const noexcept;
   [[nodiscard]] SdlControllerAxisSnapshot
   controllerAxisSnapshot() const noexcept;
+  [[nodiscard]] airfix::input::ControllerFaceButtonGlyphs
+  controllerFaceButtonGlyphs() const noexcept;
 
 private:
   [[nodiscard]] bool openGamepad(SDL_JoystickID instanceId) noexcept;

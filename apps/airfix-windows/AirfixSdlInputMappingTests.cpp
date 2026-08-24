@@ -7,6 +7,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace {
 
@@ -120,6 +121,30 @@ void testGamepadButtons() {
                 "D-pad right");
 }
 
+void testGamepadButtonGlyphs() {
+  using airfix::input::ControllerFaceButtonGlyph;
+  constexpr std::array cases{
+      std::pair{SDL_GAMEPAD_BUTTON_LABEL_UNKNOWN,
+                ControllerFaceButtonGlyph::unknown},
+      std::pair{SDL_GAMEPAD_BUTTON_LABEL_A, ControllerFaceButtonGlyph::a},
+      std::pair{SDL_GAMEPAD_BUTTON_LABEL_B, ControllerFaceButtonGlyph::b},
+      std::pair{SDL_GAMEPAD_BUTTON_LABEL_X, ControllerFaceButtonGlyph::x},
+      std::pair{SDL_GAMEPAD_BUTTON_LABEL_Y, ControllerFaceButtonGlyph::y},
+      std::pair{SDL_GAMEPAD_BUTTON_LABEL_CROSS,
+                ControllerFaceButtonGlyph::cross},
+      std::pair{SDL_GAMEPAD_BUTTON_LABEL_CIRCLE,
+                ControllerFaceButtonGlyph::circle},
+      std::pair{SDL_GAMEPAD_BUTTON_LABEL_SQUARE,
+                ControllerFaceButtonGlyph::square},
+      std::pair{SDL_GAMEPAD_BUTTON_LABEL_TRIANGLE,
+                ControllerFaceButtonGlyph::triangle},
+  };
+  for (const auto &[label, expected] : cases) {
+    require(airfix::windows::sdlGamepadButtonGlyph(label) == expected,
+            "SDL face-button label was not preserved for presentation");
+  }
+}
+
 void testPreparedProfileIsInstalledAtAdapterConstruction() {
   const auto initialRecord =
       airfix::input::makeDefaultControllerInputProfileRecord();
@@ -153,6 +178,7 @@ int main() {
     testMouseMappingAndScaling();
     testGamepadAxes();
     testGamepadButtons();
+    testGamepadButtonGlyphs();
     testPreparedProfileIsInstalledAtAdapterConstruction();
   } catch (const std::exception &error) {
     std::cerr << "AirfixSdlInputMappingTests failed: " << error.what() << '\n';

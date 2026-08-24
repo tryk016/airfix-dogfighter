@@ -159,6 +159,32 @@ sdlGamepadButton(const SDL_GamepadButton button) noexcept {
   return {};
 }
 
+airfix::input::ControllerFaceButtonGlyph
+sdlGamepadButtonGlyph(const SDL_GamepadButtonLabel label) noexcept {
+  using airfix::input::ControllerFaceButtonGlyph;
+  switch (label) {
+  case SDL_GAMEPAD_BUTTON_LABEL_A:
+    return ControllerFaceButtonGlyph::a;
+  case SDL_GAMEPAD_BUTTON_LABEL_B:
+    return ControllerFaceButtonGlyph::b;
+  case SDL_GAMEPAD_BUTTON_LABEL_X:
+    return ControllerFaceButtonGlyph::x;
+  case SDL_GAMEPAD_BUTTON_LABEL_Y:
+    return ControllerFaceButtonGlyph::y;
+  case SDL_GAMEPAD_BUTTON_LABEL_CROSS:
+    return ControllerFaceButtonGlyph::cross;
+  case SDL_GAMEPAD_BUTTON_LABEL_CIRCLE:
+    return ControllerFaceButtonGlyph::circle;
+  case SDL_GAMEPAD_BUTTON_LABEL_SQUARE:
+    return ControllerFaceButtonGlyph::square;
+  case SDL_GAMEPAD_BUTTON_LABEL_TRIANGLE:
+    return ControllerFaceButtonGlyph::triangle;
+  case SDL_GAMEPAD_BUTTON_LABEL_UNKNOWN:
+    break;
+  }
+  return ControllerFaceButtonGlyph::unknown;
+}
+
 bool sdlGamepadTriggerPressed(const Sint16 value) noexcept {
   return value >= triggerActuation;
 }
@@ -368,6 +394,23 @@ AirfixSdlInputAdapter::controllerAxisSnapshot() const noexcept {
               sample.lookY,
           },
       .connected = gamepad_ != nullptr,
+  };
+}
+
+airfix::input::ControllerFaceButtonGlyphs
+AirfixSdlInputAdapter::controllerFaceButtonGlyphs() const noexcept {
+  if (gamepad_ == nullptr) {
+    return {};
+  }
+  return {
+      .south = sdlGamepadButtonGlyph(
+          SDL_GetGamepadButtonLabel(gamepad_, SDL_GAMEPAD_BUTTON_SOUTH)),
+      .east = sdlGamepadButtonGlyph(
+          SDL_GetGamepadButtonLabel(gamepad_, SDL_GAMEPAD_BUTTON_EAST)),
+      .west = sdlGamepadButtonGlyph(
+          SDL_GetGamepadButtonLabel(gamepad_, SDL_GAMEPAD_BUTTON_WEST)),
+      .north = sdlGamepadButtonGlyph(
+          SDL_GetGamepadButtonLabel(gamepad_, SDL_GAMEPAD_BUTTON_NORTH)),
   };
 }
 

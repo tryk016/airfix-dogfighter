@@ -4,6 +4,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @class AirfixControllerInputProfileCoordinator;
 @class AirfixControllerCalibrationPanelViewController;
+@class AirfixGameControllerState;
 @class AirfixUIInputSnapshot;
 
 @protocol AirfixControllerCalibrationPanelViewControllerDelegate <NSObject>
@@ -38,6 +39,10 @@ NS_ASSUME_NONNULL_BEGIN
 // through every settings screen. Preview axes are raw standardized Q15 values
 // and are transformed with the shared portable calibration path.
 - (void)consumeUIInputSnapshot:(AirfixUIInputSnapshot *)input;
+
+// Replaces presentation-only names and SF Symbols when the assigned
+// controller changes. Device identity never enters the persisted profile.
+- (void)updateControllerState:(AirfixGameControllerState *)state;
 
 @end
 

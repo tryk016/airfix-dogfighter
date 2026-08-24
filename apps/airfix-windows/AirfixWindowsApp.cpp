@@ -600,8 +600,8 @@ struct LoadedPrivateContent final {
 
   std::optional<LoadedPrivateMissionVisuals> missionVisuals;
   if (mission.has_value()) {
-    missionVisuals.emplace(loadPrivateMissionVisuals(
-        session, *mission, textureReplacement));
+    missionVisuals.emplace(
+        loadPrivateMissionVisuals(session, *mission, textureReplacement));
   }
 
   for (const auto &clip : audioResult.clips->clipViews()) {
@@ -665,15 +665,14 @@ struct PublishedPrivateMissionState final {
   }
 };
 
-[[nodiscard]] PublishedPrivateMissionState publishPrivateMissionVisuals(
-    airfix::windows::AirfixD3D11Renderer &renderer,
-    LoadedPrivateMissionVisuals &&visuals) {
+[[nodiscard]] PublishedPrivateMissionState
+publishPrivateMissionVisuals(airfix::windows::AirfixD3D11Renderer &renderer,
+                             LoadedPrivateMissionVisuals &&visuals) {
   const auto spawn = visuals.missionRoom.playerSpawnPose;
   std::cout << "Mission textures: enhanced="
             << visuals.missionRoom.enhancedTextureCount
             << " classic=" << visuals.missionRoom.classicTextureCount
-            << " fallback=" << visuals.missionRoom.textureFallbackCount
-            << '\n';
+            << " fallback=" << visuals.missionRoom.textureFallbackCount << '\n';
   renderer.installLoadedMissionRoom(
       std::move(visuals.missionRoom),
       std::move(visuals.weaponCrosshairTextures),
@@ -717,8 +716,8 @@ struct WindowsMissionTextureReloadContext final {
   }
 
   try {
-    const auto replacement = missionTextureReplacementContext(
-        effectiveMode, context->texturePack);
+    const auto replacement =
+        missionTextureReplacementContext(effectiveMode, context->texturePack);
     auto inspection =
         airfix::afpack::inspectActiveContent(*context->contentRoot);
     if (inspection.status() != airfix::afpack::ActiveContentStatus::ready) {
@@ -726,10 +725,10 @@ struct WindowsMissionTextureReloadContext final {
     }
     auto session = airfix::content::VerifiedContentSession::adopt(
         std::move(inspection).takeReadyLease());
-    auto visuals = loadPrivateMissionVisuals(
-        session, *context->mission, replacement);
-    auto published = publishPrivateMissionVisuals(
-        *context->renderer, std::move(visuals));
+    auto visuals =
+        loadPrivateMissionVisuals(session, *context->mission, replacement);
+    auto published =
+        publishPrivateMissionVisuals(*context->renderer, std::move(visuals));
 
     // installLoadedMissionRoom prepares every GPU resource before its no-fail
     // swap. Only after that swap do the simulation-facing weak endpoints move
@@ -1190,7 +1189,8 @@ int run(const int argumentCount, char *arguments[]) {
     privateContent.emplace(loadPrivateContent(
         *activeContentRoot, options.mission, audio, textureReplacement));
   }
-  if (privateContent.has_value() && privateContent->missionVisuals.has_value()) {
+  if (privateContent.has_value() &&
+      privateContent->missionVisuals.has_value()) {
     auto published = publishPrivateMissionVisuals(
         renderer, std::move(*privateContent->missionVisuals));
     privateContent->missionVisuals.reset();
@@ -1392,6 +1392,8 @@ int run(const int argumentCount, char *arguments[]) {
       return;
     }
     renderSettingsPanel->setResumeAvailable(mayResumeSimulation());
+    renderSettingsPanel->setControllerFaceButtonGlyphs(
+        input.controllerFaceButtonGlyphs());
     const auto snapshot = renderSettingsPanel->snapshot();
     if (publishedPanelSnapshot.has_value() &&
         *publishedPanelSnapshot == snapshot) {

@@ -6,6 +6,27 @@ NS_ASSUME_NONNULL_BEGIN
 
 @class AirfixGameControllerAdapter;
 
+typedef NS_ENUM(uint8_t, AirfixGameControllerDigitalControl) {
+  AirfixGameControllerDigitalControlPrimaryTrigger = 0,
+  AirfixGameControllerDigitalControlPause = 1,
+  AirfixGameControllerDigitalControlSecondaryTrigger = 2,
+  AirfixGameControllerDigitalControlDpadUp = 3,
+  AirfixGameControllerDigitalControlDpadDown = 4,
+  AirfixGameControllerDigitalControlRightShoulder = 5,
+  AirfixGameControllerDigitalControlLeftShoulder = 6,
+  AirfixGameControllerDigitalControlFaceLeft = 7,
+  AirfixGameControllerDigitalControlFaceTop = 8,
+  AirfixGameControllerDigitalControlFacePrimary = 9,
+  AirfixGameControllerDigitalControlFaceSecondary = 10,
+  AirfixGameControllerDigitalControlRightStickClick = 11,
+  AirfixGameControllerDigitalControlDpadLeft = 12,
+  AirfixGameControllerDigitalControlDpadRight = 13,
+};
+
+enum {
+  AirfixGameControllerDigitalControlCount = 14,
+};
+
 // Immutable, presentation-safe information about the single controller
 // assigned to player one. Runtime device identifiers are deliberately not
 // exposed or persisted.
@@ -13,74 +34,64 @@ NS_ASSUME_NONNULL_BEGIN
 
 @property(nonatomic, readonly, getter=isConnected) BOOL connected;
 @property(nonatomic, readonly) uint64_t generation;
-@property(nonatomic, copy, readonly) NSString* vendorName;
-@property(nonatomic, copy, readonly) NSString* productCategory;
+@property(nonatomic, copy, readonly) NSString *vendorName;
+@property(nonatomic, copy, readonly) NSString *productCategory;
+
+// Game Controller supplies names and SF Symbols for the connected device,
+// including system-level remapping. Empty strings mean that the platform did
+// not provide presentation metadata; callers must use a positional fallback.
+- (NSString *)localizedNameForControl:
+    (AirfixGameControllerDigitalControl)control;
+- (NSString *)symbolNameForControl:(AirfixGameControllerDigitalControl)control;
 
 - (instancetype)init NS_UNAVAILABLE;
 
 @end
 
 typedef struct AirfixGameControllerSample {
-    int16_t bank;
-    int16_t pitch;
-    int16_t lookX;
-    int16_t lookY;
-    int16_t primaryTrigger;
-    int16_t secondaryTrigger;
-    BOOL dpadUpPressed;
-    BOOL dpadDownPressed;
-    BOOL dpadLeftPressed;
-    BOOL dpadRightPressed;
-    BOOL rightShoulderPressed;
-    BOOL leftShoulderPressed;
-    BOOL faceLeftPressed;
-    BOOL faceTopPressed;
-    BOOL facePrimaryPressed;
-    BOOL faceSecondaryPressed;
-    BOOL rightStickClickPressed;
-    BOOL menuPressed;
-    BOOL optionsPressed;
+  int16_t bank;
+  int16_t pitch;
+  int16_t lookX;
+  int16_t lookY;
+  int16_t primaryTrigger;
+  int16_t secondaryTrigger;
+  BOOL dpadUpPressed;
+  BOOL dpadDownPressed;
+  BOOL dpadLeftPressed;
+  BOOL dpadRightPressed;
+  BOOL rightShoulderPressed;
+  BOOL leftShoulderPressed;
+  BOOL faceLeftPressed;
+  BOOL faceTopPressed;
+  BOOL facePrimaryPressed;
+  BOOL faceSecondaryPressed;
+  BOOL rightStickClickPressed;
+  BOOL menuPressed;
+  BOOL optionsPressed;
 } AirfixGameControllerSample;
 
-typedef NS_ENUM(uint8_t, AirfixGameControllerDigitalControl) {
-    AirfixGameControllerDigitalControlPrimaryTrigger = 0,
-    AirfixGameControllerDigitalControlPause = 1,
-    AirfixGameControllerDigitalControlSecondaryTrigger = 2,
-    AirfixGameControllerDigitalControlDpadUp = 3,
-    AirfixGameControllerDigitalControlDpadDown = 4,
-    AirfixGameControllerDigitalControlRightShoulder = 5,
-    AirfixGameControllerDigitalControlLeftShoulder = 6,
-    AirfixGameControllerDigitalControlFaceLeft = 7,
-    AirfixGameControllerDigitalControlFaceTop = 8,
-    AirfixGameControllerDigitalControlFacePrimary = 9,
-    AirfixGameControllerDigitalControlFaceSecondary = 10,
-    AirfixGameControllerDigitalControlRightStickClick = 11,
-    AirfixGameControllerDigitalControlDpadLeft = 12,
-    AirfixGameControllerDigitalControlDpadRight = 13,
-};
-
 enum {
-    AirfixGameControllerDigitalEdgeCapacity = 64,
+  AirfixGameControllerDigitalEdgeCapacity = 64,
 };
 
 typedef struct AirfixGameControllerDigitalEdge {
-    uint64_t generation;
-    uint64_t order;
-    AirfixGameControllerDigitalControl control;
-    BOOL pressed;
+  uint64_t generation;
+  uint64_t order;
+  AirfixGameControllerDigitalControl control;
+  BOOL pressed;
 } AirfixGameControllerDigitalEdge;
 
 // Fixed-capacity, allocation-free handoff from the Game Controller callback
 // thread to the main input tick. Edges transition from startingState in array
 // order and finish at finalState. overflowed invalidates the whole batch.
 typedef struct AirfixGameControllerInputBatch {
-    uint64_t generation;
-    AirfixGameControllerSample startingState;
-    AirfixGameControllerSample finalState;
-    AirfixGameControllerDigitalEdge
-        edges[AirfixGameControllerDigitalEdgeCapacity];
-    NSUInteger edgeCount;
-    BOOL overflowed;
+  uint64_t generation;
+  AirfixGameControllerSample startingState;
+  AirfixGameControllerSample finalState;
+  AirfixGameControllerDigitalEdge
+      edges[AirfixGameControllerDigitalEdgeCapacity];
+  NSUInteger edgeCount;
+  BOOL overflowed;
 } AirfixGameControllerInputBatch;
 
 @protocol AirfixGameControllerAdapterDelegate <NSObject>
@@ -88,13 +99,13 @@ typedef struct AirfixGameControllerInputBatch {
 
 // Delivered on the main thread. State objects remain valid after a later
 // connection change.
-- (void)gameControllerAdapter:(AirfixGameControllerAdapter*)adapter
-               didChangeState:(AirfixGameControllerState*)state;
+- (void)gameControllerAdapter:(AirfixGameControllerAdapter *)adapter
+               didChangeState:(AirfixGameControllerState *)state;
 
 // Generation exhaustion is terminal for this adapter instance. Ordinary FIFO
 // overflow is reported in the next drained input batch.
-- (void)gameControllerAdapter:(AirfixGameControllerAdapter*)adapter
-        didFailInputForGeneration:(uint64_t)generation;
+- (void)gameControllerAdapter:(AirfixGameControllerAdapter *)adapter
+    didFailInputForGeneration:(uint64_t)generation;
 
 @end
 
@@ -103,9 +114,9 @@ typedef struct AirfixGameControllerInputBatch {
 // are main-thread-affine.
 @interface AirfixGameControllerAdapter : NSObject
 
-@property(nonatomic, weak, nullable)
-    id<AirfixGameControllerAdapterDelegate> delegate;
-@property(nonatomic, strong, readonly) AirfixGameControllerState* state;
+@property(nonatomic, weak, nullable) id<AirfixGameControllerAdapterDelegate>
+    delegate;
+@property(nonatomic, strong, readonly) AirfixGameControllerState *state;
 
 - (instancetype)initWithDelegate:
     (nullable id<AirfixGameControllerAdapterDelegate>)delegate
