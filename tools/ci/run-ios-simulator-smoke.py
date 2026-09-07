@@ -96,6 +96,30 @@ class SmokeFailure(RuntimeError):
 class RetryableSimulatorFailure(SmokeFailure):
     """A CoreSimulator startup failure safe to retry on a fresh device."""
 
+    def __init__(
+        self, message: str, *, stage: str = "unspecified", reason: str = "unspecified"
+    ) -> None:
+        super().__init__(message)
+        # Only closed, path-free codes may reach public retry/exhaustion logs.
+        self.stage = stage if stage in {
+            "boot-request", "boot-readiness", "install", "launch"
+        } else "unspecified"
+        self.reason = reason if reason in {
+            "timeout", "os-error", "command-failure", "invalid-acknowledgement"
+        } else "unspecified"
+
+    @property
+    def diagnostic_code(self) -> str:
+        return f"stage={self.stage}, reason={self.reason}"
+
+
+def startup_failure_reason(error: SmokeFailure) -> str:
+    if isinstance(error.__cause__, subprocess.TimeoutExpired):
+        return "timeout"
+    if isinstance(error.__cause__, OSError):
+        return "os-error"
+    return "command-failure"
+
 
 MAX_SIMULATOR_ATTEMPTS = 2
 SIMULATOR_LAUNCH_TIMEOUT_SECONDS = 60
@@ -498,26 +522,32 @@ def launch_application(device: str) -> None:
         )
     except SmokeFailure as error:
         raise RetryableSimulatorFailure(
-            "simulator launch did not become ready"
+            "simulator launch did not become ready",
+            stage="launch", reason=startup_failure_reason(error),
         ) from error
     acknowledgement = result.stdout.strip()
     if not re.fullmatch(rf"{re.escape(BUNDLE_ID)}:\s+[1-9][0-9]*", acknowledgement):
         raise RetryableSimulatorFailure(
-            "simctl returned an invalid launch acknowledgement"
+            "simctl returned an invalid launch acknowledgement",
+            stage="launch", reason="invalid-acknowledgement",
         )
 
 
 def prepare_application_for_launch(device: str, app: Path) -> None:
+    stage = "boot-request"
     try:
         run("xcrun", "simctl", "boot", device)
+        stage = "boot-readiness"
         run("xcrun", "simctl", "bootstatus", device, "-b", timeout=180)
+        stage = "install"
         run("xcrun", "simctl", "install", device, str(app), timeout=90)
         launch_application(device)
     except RetryableSimulatorFailure:
         raise
     except SmokeFailure as error:
         raise RetryableSimulatorFailure(
-            "simulator did not reach an acknowledged application launch"
+            "simulator did not reach an acknowledged application launch",
+            stage=stage, reason=startup_failure_reason(error),
         ) from error
 
 
@@ -633,11 +663,12 @@ def execute(app: Path, output: Path, timeout_seconds: int) -> None:
             if attempt_number == MAX_SIMULATOR_ATTEMPTS:
                 raise SmokeFailure(
                     "CoreSimulator remained unavailable after "
-                    f"{MAX_SIMULATOR_ATTEMPTS} isolated attempts"
+                    f"{MAX_SIMULATOR_ATTEMPTS} isolated attempts "
+                    f"({error.diagnostic_code})"
                 ) from error
             print(
                 "CoreSimulator startup was inconclusive; retrying once "
-                "with a fresh isolated device",
+                f"with a fresh isolated device ({error.diagnostic_code})",
                 file=sys.stderr,
             )
 
