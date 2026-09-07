@@ -237,7 +237,9 @@ jobs:
     needs: quality-gates
     if: needs.quality-gates.outputs.full_build == 'true'
     runs-on: windows-2025
-    timeout-minutes: 15
+    # The cold product build (including SDL3) can exceed 15 minutes on hosted
+    # Windows runners. Keep all tests/license checks; bound the whole job.
+    timeout-minutes: 25
 
     steps:
       - name: Check out sources
