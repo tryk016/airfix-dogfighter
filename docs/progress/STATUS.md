@@ -1401,6 +1401,16 @@
 
 ## Next
 
+Current execution priority (2026-09-07): playable Classic first. Focus on
+flight, camera, collision, weapons, AI, and mission completion. Keep native
+resolution, Hor+, sharp UI, controls, and diagnostics working; defer new
+lighting/materials/shadows/reflections/post-processing and HD-texture expansion.
+Ray tracing remains excluded. Optional work resumes only after explicit
+reprioritization following the playable slice; do not remove working features.
+Windows and portable tests plus automated iOS CI remain active. Manual Mac and
+iPhone acceptance is grouped into a later stable gameplay milestone; device
+behavior and performance remain unverified until those tests are performed.
+
 1. Build the trace-driven 12 ms AirCraft producer without treating the separate
    60 Hz input clock as physics. Confirm the Q15-to-legacy-event timing and
    payload policy, then publish one coherent changing pose/health/inactive/
@@ -1495,26 +1505,21 @@
    the fixed-capacity activation runtime, advance its active slots through the
    collision transaction, and add tracer/effect adapters before wiring
    primary-fire intent into runtime.
-9. In parallel with gameplay reconstruction, extend the implemented ADR-0013
-   resolution/Hor+/UI/input/offscreen-target foundation with independent UI
-   scale plus HUD/reticle/weapon/effect projection integration. Render scale,
+9. Maintain the implemented ADR-0013 resolution/Hor+/UI/input/offscreen-target
+   foundation and connect gameplay-required HUD/reticle/weapon projection.
+   New image-quality features are deferred. Render scale,
    Original 4:3, safe FOV settings, and the backend-neutral
    world/reference-camera-to-native-output bridge are implemented. Connect
    actual HUD, reticle, weapon, and screen-effect consumers next without
    inventing their visibility or gameplay rules. The Windows capture-only
    complete HUD/sight validation is implemented; ordinary frames remain
    correctly disconnected from fixed validation values.
-   Validate the implemented diagnostic overlay on both physical iPhones before
-   lighting, materials, shadows, or post-processing. Then implement Enhanced
-   as a scalable raster pipeline in this order: end-to-end color correctness;
-   dynamic directional, point, and spot lights; plastic-tuned materials;
-   cascaded/atlas/budgeted-cube shadow maps; reflection probes and selected
-   planar reflections; optional High/Ultra SSR and SSAO; and finally HDR,
-   atmosphere, and post-processing. Ray tracing is explicitly outside the
-   product roadmap: D3D11/HLSL and Metal remain the primary render paths, with
-   quality budgets covering iPhone SE 3 through high-end iPhone and Windows
-   targets.
-10. Keep ADR-0019's private HD texture mode as a separate staged workstream.
+   Physical-iPhone diagnostic acceptance remains pending for the later device
+   milestone. Enhanced lighting, materials, shadow maps, reflections, SSR/SSAO,
+   HDR, atmosphere, and post-processing remain a deferred design in ADR-0013,
+   not work to begin automatically after device tests. Ray tracing is outside
+   the roadmap. D3D11/HLSL and Metal remain the primary render paths.
+10. Maintain the implemented ADR-0019 private HD texture path; defer expansion.
     Public-boundary hardening and the bounded, accepted-only reviewed-manifest
     parser/index, root-confined file capability, source resolver, base checksum,
     byte-identical per-texture GTI fallback, and bounded PNG RGBA8/mip-chain
@@ -1529,8 +1534,9 @@
     mission reload are complete. The iOS owner-import, durable locator/session,
     availability-gated settings, and atomic Metal mission-reload source path are
     now implemented. Hosted unsigned iPhoneOS and iPhoneSimulator builds are
-    green. Next validate both target phones; do not add private resources to
-    CMake/CI or begin streaming/compressed derivatives.
+    green. Acceptance on both target phones remains pending for the later
+    device milestone; do not add private resources to CMake/CI or begin
+    streaming/compressed derivatives.
 
 ## Open questions
 
