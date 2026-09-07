@@ -179,7 +179,8 @@ jobs:
           - os: ubuntu-24.04
             timeout_minutes: 15
           - os: windows-2025
-            timeout_minutes: 15
+            # MSVC is a cold build (no compiler cache); retain all tests.
+            timeout_minutes: 25
           - os: macos-26
             timeout_minutes: 30
 
