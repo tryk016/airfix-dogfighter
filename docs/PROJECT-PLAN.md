@@ -57,10 +57,18 @@ immutable baseline
   -> cross-product release readiness
 ```
 
-The native-resolution foundation, projection tests, and renderer API are
-cross-cutting work and may advance alongside reconstruction. Costly visual
-effects follow the playable parity slice. ADR-0013 is the authoritative
-rendering contract.
+The native-resolution foundation, projection tests, and renderer API remain
+cross-cutting correctness requirements. As of 2026-09-07, implementation effort
+prioritizes the playable Classic slice: flight, camera, collision, weapons,
+AI, and mission completion. New visual effects and further HD-texture work are
+deferred until explicit reprioritization after that slice. Preserve working
+native resolution, widescreen, sharp UI, and existing optional features; ray
+tracing remains excluded. ADR-0013 is the authoritative rendering contract.
+
+Windows is the primary development and reference-comparison environment for
+this phase. Keep automated portable, Windows, and iOS CI checks active. Group
+manual Mac/iPhone acceptance into a later stable gameplay milestone, retaining
+unverified platform behavior and device performance as open acceptance items.
 
 ## Phase 0 — provenance and immutable baseline
 
@@ -559,6 +567,10 @@ contract, evidence, implementation, tests, parity result, and documentation agre
 
 ## Immediate ordered backlog
 
+Execution priority: advance Classic playability and the evidence needed to
+connect its runtime. Optional image-quality and HD-texture expansion below are
+deferred, not parallel tasks. Existing features still receive regression fixes.
+
 1. **Completed:** immutable inventory, pinned toolchain, module reports, portable
    C++/CMake skeleton, public GitHub boundary, and portable/unsigned-iOS CI.
 2. **Completed:** bounded UDSP listing/verification/decompression, AFPACK v1,
@@ -602,8 +614,9 @@ contract, evidence, implementation, tests, parity result, and documentation agre
    disabled until its traversal semantics are proven.
 11. Implement native UIKit touch capture and Apple Game Controller adapters,
     followed by the configurable visual overlay and on-device usability tests.
-12. Continue the implemented ADR-0013 foundation without blocking active
-    player/gameplay reconstruction: extend the completed native-resolution,
-    50-200% scene-scale, telemetry, independent UI-scale, and profile-dependent
-    texture-sampling foundation into HUD/effect projection and explicit color
-    handling before lighting or post-effects.
+12. Maintain the implemented ADR-0013 native-resolution, 50-200% scene-scale,
+    telemetry, independent UI-scale, and texture-sampling foundation. Connect
+    gameplay-required HUD/reticle projection and correct rendering defects;
+    defer new image-quality stages and HD expansion under the current
+    Classic-first priority. Later enhancements must not become a dependency
+    of the playable mission.

@@ -25,6 +25,26 @@ target architecture.
 
 ## Decision
 
+### Current execution priority (2026-09-07)
+
+Prioritize the playable `Classic` vertical slice: controllable flight, camera,
+collision, weapons, AI, and a complete mission. New visual enhancements are
+deferred; the image-quality stages below remain a future design, not an active
+parallel workstream or a prerequisite for the first playable slice.
+
+Keep the implemented native-resolution, Hor+, scalable UI, texture, and
+diagnostic foundations working. Correctness fixes needed for gameplay remain
+in scope. Do not remove existing Enhanced settings or working backend paths,
+but defer new lighting, materials, shadows, reflections, HDR, bloom, SSAO,
+post-processing, and HD-texture expansion. Ray tracing remains excluded.
+Resuming optional visual work requires explicit reprioritization after the
+playable slice, not merely completion of an unrelated renderer task.
+
+Continue portable/Windows validation and automated iOS builds and simulator
+smokes in CI. Group manual Mac and iPhone acceptance into a later stable
+gameplay milestone; do not treat CI or Windows results as device acceptance.
+Any platform-only behavior not yet observed remains explicitly unverified.
+
 ### Implementation status
 
 The first non-visual-quality stage is implemented:
