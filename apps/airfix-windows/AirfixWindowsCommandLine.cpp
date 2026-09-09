@@ -136,6 +136,10 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
         invalidCommandLine();
       }
       options.smokeTest = true;
+    } else if (option == "--flight-preview") {
+      if (options.flightPreview)
+        invalidCommandLine();
+      options.flightPreview = true;
     } else if (option == "--render-scale") {
       if (options.renderOverrides.renderScalePercent.has_value()) {
         invalidCommandLine();
@@ -394,6 +398,11 @@ AirfixWindowsCommandLineOptions parseAirfixWindowsCommandLine(
       options.renderOverrides.visualProfile.has_value() ||
       options.renderOverrides.diagnosticsOverlayEnabled.has_value();
   const bool hasImport = importAfPackSource.has_value();
+  if (options.flightPreview &&
+      (!hasContentSelection || !hasMissionPair || options.smokeTest ||
+       options.validateContentOnly || hasAnyCapture || hasImport ||
+       options.manageInstalledContent))
+    invalidCommandLine();
   if ((options.smokeTest &&
        (hasContentSelection || hasContentSpecificOption ||
         captureDiagnosticFrameOutput.has_value() ||

@@ -42,6 +42,7 @@ struct AirfixWindowsTexturePackLocation final {
 
 struct AirfixWindowsCommandLineOptions final {
   bool smokeTest{};
+  bool flightPreview{};
   bool validateContentOnly{};
   bool useInstalledContent{};
   bool manageInstalledContent{};
@@ -92,6 +93,7 @@ parseAirfixWindowsCommandLine(std::span<const std::string_view> arguments);
          "--content-root <path> [--setup <logical-path> "
          "--level <logical-path> [--player-object <logical-path>] "
          "[--start-index <uint32>] "
+         "[--flight-preview] "
          "[--texture-mode <classic|enhanced> "
          "[--texture-pack-root <path> "
          "--texture-pack-manifest <relative-jsonl>]] "

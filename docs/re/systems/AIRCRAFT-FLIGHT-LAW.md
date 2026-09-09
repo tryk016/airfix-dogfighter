@@ -3,6 +3,11 @@
 **Status:** complete static algebra for the reference force step; not yet
 implemented for parity
 
+The separate [ADR-0022 free-air preview](../../adr/0022-classic-free-air-flight-preview.md)
+now consumes the intact/positive-health/off-ground subset under an explicit
+port policy. The native-parity and contact evidence boundaries below remain
+unchanged; this preview is not the full force law or a playable mission.
+
 **Evidence:** `EV-20260724-001`, `EV-20260724-002`,
 `EV-20260724-003`, `EV-20260724-004`, `EV-20260727-002`,
 `EV-20260728-011`, `EV-20260728-012`, `EV-20260728-013`,
