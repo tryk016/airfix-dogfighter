@@ -93,6 +93,7 @@ def sample_responses() -> dict[str, object]:
                 "minbound": 0x10003F40,
                 "name": "sym.AircraftFlightForceStep",
                 "nargs": 2,
+                "nbbs": 2,
                 "offset": 0x10003F40,
                 "realsz": 0x70,
                 "signature": "void AircraftFlightForceStep(void *, float)",
@@ -141,18 +142,14 @@ def sample_responses() -> dict[str, object]:
                 },
             ]
         },
-        f"agfj @ {at}": [
+        f"afbj @ {at}": [
             {
-                "blocks": [
-                    {
-                        "offset": 0x10004180,
-                        "size": 0x30,
-                        "jump": 0x100041C0,
-                        "fail": 0x100041B0,
-                    },
-                    {"offset": 0x10003F40, "size": 0x40, "jump": 0x10004180},
-                ],
-            }
+                "addr": 0x10004180,
+                "size": 0x30,
+                "jump": 0x100041C0,
+                "fail": 0x100041B0,
+            },
+            {"addr": 0x10003F40, "size": 0x40, "jump": 0x10004180},
         ],
         f"axfj @ {at}": [
             {
@@ -263,6 +260,15 @@ class RizinExportTests(unittest.TestCase):
         self.assertEqual(function["signature"]["calling_convention"], "thiscall")
         self.assertEqual(function["signature"]["arguments"], 2)
         self.assertEqual(
+            function["cfg"]["blocks"],
+            [
+                {"start": "0x10003F40", "size": 0x40, "jump": "0x10004180"},
+                {"start": "0x10004180", "size": 0x30,
+                 "jump": "0x100041C0", "fail": "0x100041B0"},
+            ],
+        )
+        self.assertEqual(len(function["cfg"]["edges"]), 3)
+        self.assertEqual(
             [call["target"] for call in function["calls"]],
             ["0x100065B0"],
         )
@@ -293,7 +299,7 @@ class RizinExportTests(unittest.TestCase):
                 "iSj",
                 "afij @ 0x10003F40",
                 "pdfj @ 0x10003F40",
-                "agfj @ 0x10003F40",
+                "afbj @ 0x10003F40",
                 "axfj @ 0x10003F40",
             ],
         )
@@ -306,7 +312,7 @@ class RizinExportTests(unittest.TestCase):
         first = sample_responses()
         second = sample_responses()
         second["pdfj @ 0x10003F40"]["ops"].reverse()
-        second["agfj @ 0x10003F40"][0]["blocks"].reverse()
+        second["afbj @ 0x10003F40"].reverse()
         second["axfj @ 0x10003F40"].reverse()
 
         first_report = EXPORTER.build_report(
@@ -354,6 +360,89 @@ class RizinExportTests(unittest.TestCase):
             },
         )
         self.assertNotIn("Local Tools", json.dumps(report, sort_keys=True))
+
+    def test_missing_or_malformed_analysis_is_not_an_empty_success(self) -> None:
+        cases = [
+            ("afbj", None, "afbj"),
+            ("afbj", [], "afbj"),
+            ("afbj", {"nodes": []}, "afbj"),
+            ("afbj", [None], "malformed block"),
+            ("afbj", [{}], "invalid or duplicate block"),
+            ("afbj", [{"addr": 1, "size": 0}], "invalid or duplicate block"),
+            ("afbj", [{"addr": 1, "size": 1}] * 2, "invalid or duplicate block"),
+            ("afbj", [{"addr": 1, "size": 1}], "block count"),
+            ("afbj", [{"addr": 1, "size": 1, "jump": None}], "edge target"),
+            ("afbj", [{"addr": 1, "size": 1, "fail": -1}], "edge target"),
+            ("afbj", [{"addr": 2**64, "size": 1}], "invalid or duplicate block"),
+            ("pdfj", None, "instructions"),
+            ("pdfj", {"ops": []}, "instructions"),
+            ("axfj", None, "reference list"),
+        ]
+        for query, response, message in cases:
+            with self.subTest(query=query, response=response):
+                responses = sample_responses()
+                responses[f"{query} @ 0x10003F40"] = response
+                with self.assertRaisesRegex(EXPORTER.ExportError, message):
+                    EXPORTER.build_report(
+                        FakePipe(responses), source_sha256="a" * 64,
+                        function_id="FN-AIRCRAFT-00003F40", rva=0x3F40,
+                        rizin_metadata=tool_metadata(),
+                    )
+
+    def test_terminal_block_and_no_references_are_valid(self) -> None:
+        responses = sample_responses()
+        responses["afij @ 0x10003F40"][0]["nbbs"] = 1
+        responses["afbj @ 0x10003F40"] = [{"addr": 0x10003F40, "size": 3}]
+        responses["axfj @ 0x10003F40"] = []
+        report = EXPORTER.build_report(
+            FakePipe(responses), source_sha256="a" * 64,
+            function_id="FN-AIRCRAFT-00003F40", rva=0x3F40,
+            rizin_metadata=tool_metadata(),
+        )
+        self.assertEqual(report["functions"][0]["cfg"]["edges"], [])
+        self.assertEqual(report["functions"][0]["xrefs"], [])
+        self.assertNotIn("pseudocode", report["functions"][0])
+
+    def test_requested_empty_decompilation_fails(self) -> None:
+        for output in ("", " \r\n\t"):
+            with self.subTest(output=output):
+                responses = sample_responses()
+                responses["pdg @ 0x10003F40"] = output
+                with self.assertRaisesRegex(EXPORTER.ExportError, "pseudocode is empty"):
+                    EXPORTER.build_report(
+                        FakePipe(responses), source_sha256="a" * 64,
+                        function_id="FN-AIRCRAFT-00003F40", rva=0x3F40,
+                        rizin_metadata=tool_metadata(), sleigh_home="synthetic-sleigh",
+                    )
+
+    def test_failed_analysis_preserves_existing_report_and_closes_pipe(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            input_path = root / "reference.bin"
+            input_path.write_bytes(b"synthetic bytes")
+            expected_hash = hashlib.sha256(input_path.read_bytes()).hexdigest()
+            output_path = root / "report.json"
+            previous = b'{"previous":"synthetic report"}\n'
+            output_path.write_bytes(previous)
+            rizin_home = root / "rizin"
+            rizin_home.mkdir()
+            (rizin_home / ("rizin.exe" if EXPORTER.os.name == "nt" else "rizin")).touch()
+            for query, response in (("afbj", None), ("pdfj", None), ("axfj", None)):
+                with self.subTest(query=query):
+                    responses = sample_responses()
+                    responses[f"{query} @ 0x10003F40"] = response
+                    pipe = FakePipe(responses)
+                    with self.assertRaises(EXPORTER.ExportError):
+                        EXPORTER.export_to_file(
+                            input_path=input_path, output_path=output_path,
+                            rizin_home=rizin_home, function_id="FN-AIRCRAFT-00003F40",
+                            rva=0x3F40, expected_sha256=expected_hash,
+                            pipe_opener=lambda _input, _home: pipe,
+                            rizin_metadata_provider=lambda _home: tool_metadata(),
+                        )
+                    self.assertTrue(pipe.quit_called)
+                    self.assertEqual(output_path.read_bytes(), previous)
+                    self.assertFalse(output_path.with_name("report.json.tmp").exists())
 
     def test_hash_mismatch_does_not_open_rizin_or_write_output(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

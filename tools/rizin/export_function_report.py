@@ -290,27 +290,33 @@ def _normalize_instructions(pdf: Any) -> list[dict[str, Any]]:
     return instructions
 
 
-def _graph_blocks(graph: Any) -> list[Mapping[str, Any]]:
-    graphs = _mapping_list(graph)
-    if not graphs:
-        return []
-    blocks = graphs[0].get("blocks", [])
-    return _mapping_list(blocks)
-
-
-def _normalize_cfg(graph: Any) -> dict[str, Any]:
+def _normalize_cfg(raw_blocks: Any) -> dict[str, Any]:
+    # Rizin 0.9.1 exposes the structured analysis blocks through afbj.
+    # The old agfj spelling is not a command, and agf's presentation JSON
+    # contains rendered graph nodes, not analysis block records.
+    if not isinstance(raw_blocks, list) or not raw_blocks:
+        raise ExportError("Rizin afbj did not return non-empty analysis blocks")
     blocks: list[dict[str, Any]] = []
     edges: list[dict[str, str]] = []
-    for block in _graph_blocks(graph):
+    seen: set[int] = set()
+    for block in raw_blocks:
+        if not isinstance(block, Mapping):
+            raise ExportError("Rizin afbj returned a malformed block")
         start = _first_integer(block, ("offset", "addr", "address"))
-        if start is None:
-            continue
+        size = _first_integer(block, ("size",))
+        if (start is None or start < 0 or size is None or size <= 0
+                or start + size > 0x10000000000000000 or start in seen):
+            raise ExportError("Rizin afbj returned an invalid or duplicate block")
+        seen.add(start)
         normalized: dict[str, Any] = {
-            "size": _first_integer(block, ("size",)),
+            "size": size,
             "start": format_address(start),
         }
         jump = _first_integer(block, ("jump",))
         fail = _first_integer(block, ("fail",))
+        for key, target in (("jump", jump), ("fail", fail)):
+            if key in block and (target is None or not 0 <= target <= 0xFFFFFFFFFFFFFFFF):
+                raise ExportError("Rizin afbj returned an invalid edge target")
         if jump is not None:
             normalized["jump"] = format_address(jump)
             edges.append(
@@ -576,7 +582,7 @@ def build_report(
         pipe.cmd(f"af @ {at}")
         raw_function = pipe.cmdj(f"afij @ {at}")
     raw_pdf = pipe.cmdj(f"pdfj @ {at}")
-    raw_graph = pipe.cmdj(f"agfj @ {at}")
+    raw_blocks = pipe.cmdj(f"afbj @ {at}")
     raw_xrefs = pipe.cmdj(f"axfj @ {at}")
 
     function = _select_function(raw_function, va)
@@ -598,6 +604,14 @@ def build_report(
         raise ExportError("Rizin afij reported an inverted function boundary")
 
     instructions = _normalize_instructions(raw_pdf)
+    if not instructions:
+        raise ExportError("Rizin pdfj did not return function instructions")
+    cfg = _normalize_cfg(raw_blocks)
+    reported_blocks = _first_integer(function, ("nbbs",))
+    if reported_blocks is not None and reported_blocks != len(cfg["blocks"]):
+        raise ExportError("Rizin afbj block count disagrees with afij nbbs")
+    if not isinstance(raw_xrefs, list):
+        raise ExportError("Rizin axfj did not return a reference list")
     xrefs = _normalize_xrefs(raw_xrefs)
     calls, data_refs = _function_references(
         function,
@@ -617,7 +631,7 @@ def build_report(
             "start": format_address(start),
         },
         "calls": calls,
-        "cfg": _normalize_cfg(raw_graph),
+        "cfg": cfg,
         "data_refs": data_refs,
         "discovery": {
             "automatic": automatically_discovered,
@@ -635,6 +649,11 @@ def build_report(
     if sleigh_home is not None:
         pipe.cmd(_sleigh_config_command(sleigh_home))
         pseudocode = pipe.cmd(f"pdg @ {at}")
+        if not pseudocode.strip():
+            raise ExportError(
+                "requested rz-ghidra pseudocode is empty; verify the Rizin "
+                "plugin installation (Sleigh definitions alone are insufficient)"
+            )
         function_report["pseudocode"] = {
             "engine": "rz-ghidra",
             "text": pseudocode.replace("\r\n", "\n").replace("\r", "\n").rstrip(),
