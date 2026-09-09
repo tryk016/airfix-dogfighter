@@ -53,6 +53,12 @@ in the public document but are skipped by the importer.
 
 ## One-command function report
 
+Incoming relations are module-relative instruction/data sites. Ghidra's
+synthetic external-entry annotations on PE exports have no source RVA and are
+not emitted as callers/xrefs; they are not executable callers. Real in-module
+call sites and data references remain present, including calls to external
+targets. The normalizer still rejects unaddressed, kind-only relations.
+
 For a program already present in the local Ghidra project:
 
 ```powershell

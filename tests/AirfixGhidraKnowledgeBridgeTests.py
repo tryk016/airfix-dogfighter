@@ -408,6 +408,38 @@ class FunctionReportTests(unittest.TestCase):
         with self.assertRaisesRegex(BRIDGE.BridgeError, "direction"):
             BRIDGE.normalize_function_report(document)
 
+    def test_unaddressed_external_entry_markers_are_not_callers(self) -> None:
+        # Ghidra's synthetic PE entry annotation has no source RVA. The Java
+        # exporter must omit it, not weaken validation or invent a self-call.
+        for category in ("callers", "xrefs"):
+            document = ghidra_report()
+            marker = {"kind": "EXTERNAL"}
+            if category == "xrefs":
+                marker["direction"] = "incoming"
+            document["functions"][0][category] = [marker]
+            with self.assertRaisesRegex(BRIDGE.BridgeError, "target_rva or site_rva"):
+                BRIDGE.normalize_function_report(document)
+
+    def test_addressed_incoming_data_and_call_relations_are_preserved(self) -> None:
+        document = ghidra_report()
+        relations = [
+            {"site_rva": "0x7000", "kind": "DATA"},
+            {"site_rva": "0x5010", "target_rva": "0x5000", "kind": "UNCONDITIONAL_CALL"},
+        ]
+        document["functions"][0]["callers"] = relations
+        document["functions"][0]["xrefs"] = [
+            {**relation, "direction": "incoming"} for relation in relations
+        ]
+        normalized = BRIDGE.normalize_function_report(document)["functions"][0]
+        for category in ("callers", "xrefs"):
+            by_site = {relation["site_rva"]: relation for relation in normalized[category]}
+            self.assertEqual(set(by_site), {"0x00007000", "0x00005010"})
+            self.assertEqual(by_site["0x00007000"]["kind"], "DATA")
+            self.assertNotIn("target_rva", by_site["0x00007000"])
+            self.assertEqual(by_site["0x00005010"]["target_rva"], "0x00005000")
+            if category == "xrefs":
+                self.assertTrue(all(item["direction"] == "incoming" for item in by_site.values()))
+
     def test_rejects_function_id_rva_mismatch(self) -> None:
         document = ghidra_report()
         document["functions"][0]["id"] = "FN-AIRCRAFT-00003F41"
