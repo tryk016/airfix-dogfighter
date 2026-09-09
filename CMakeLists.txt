@@ -203,6 +203,7 @@ endif()
 
 add_library(airfix_script
     src/airfix/script/LegacyAfsFunctionSchedule.cpp
+    src/airfix/script/LegacyAfsWordcode.cpp
 )
 add_library(airfix::script ALIAS airfix_script)
 
@@ -213,7 +214,7 @@ target_include_directories(airfix_script
 target_compile_features(airfix_script PUBLIC cxx_std_20)
 
 if(MSVC)
-    target_compile_options(airfix_script PRIVATE /W4 /permissive-)
+    target_compile_options(airfix_script PRIVATE /W4 /permissive- /EHsc)
 else()
     target_compile_options(airfix_script PRIVATE -Wall -Wextra -Wpedantic)
 endif()
@@ -661,6 +662,15 @@ if(AIRFIX_BUILD_TESTS)
     add_test(
         NAME airfix_legacy_afs_function_schedule_tests
         COMMAND airfix_legacy_afs_function_schedule_tests)
+
+    add_executable(airfix_legacy_afs_wordcode_tests
+        tests/LegacyAfsWordcodeTests.cpp)
+    target_link_libraries(airfix_legacy_afs_wordcode_tests PRIVATE airfix::script)
+    if(MSVC)
+        target_compile_options(airfix_legacy_afs_wordcode_tests PRIVATE /EHsc)
+    endif()
+    add_test(NAME airfix_legacy_afs_wordcode_tests
+        COMMAND airfix_legacy_afs_wordcode_tests)
 
     add_executable(airfix_udsp_tests tests/UdspArchiveTests.cpp)
     target_link_libraries(airfix_udsp_tests PRIVATE airfix::udsp)

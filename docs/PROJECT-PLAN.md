@@ -70,6 +70,12 @@ this phase. Keep automated portable, Windows, and iOS CI checks active. Group
 manual Mac/iPhone acceptance into a later stable gameplay milestone, retaining
 unverified platform behavior and device performance as open acceptance items.
 
+The [Windows Classic playability gates](design/WINDOWS-PLAYABILITY.md) define
+the ordered integration and end-to-end acceptance path. The immediate AFS
+track now has all 70 opcode widths and bounded structural CFG inspection;
+source parsing, typed stack/link validation, execution and mission wiring
+remain separate work, not completion implied by that decoder.
+
 ## Phase 0 — provenance and immutable baseline
 
 **Goal:** make every later claim reproducible and prevent accidental damage to

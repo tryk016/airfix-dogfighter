@@ -412,6 +412,60 @@ class DiagnosticHardeningTests(unittest.TestCase):
         self.assertEqual(attempt.call_args_list[0].args[-1], 1)
         self.assertEqual(attempt.call_args_list[1].args[-1], 2)
 
+    def test_startup_failure_reports_exact_stage_without_source_text(self) -> None:
+        completed = subprocess.CompletedProcess(["xcrun", "simctl"], 0, "", "")
+        for index, stage in enumerate(("boot-request", "boot-readiness", "install")):
+            with self.subTest(stage=stage):
+                failure = MODULE.SmokeFailure("sensitive-source-token")
+                failure.__cause__ = subprocess.TimeoutExpired(
+                    "sensitive-command-token", 180
+                )
+                with (
+                    mock.patch.object(
+                        MODULE, "run", side_effect=[completed] * index + [failure]
+                    ) as run,
+                    mock.patch.object(MODULE, "launch_application") as launch,
+                    self.assertRaises(MODULE.RetryableSimulatorFailure) as caught,
+                ):
+                    MODULE.prepare_application_for_launch(
+                        "00000000-0000-0000-0000-000000000000",
+                        Path("AirfixDogfighter.app"),
+                    )
+                self.assertEqual(
+                    caught.exception.diagnostic_code, f"stage={stage}, reason=timeout"
+                )
+                self.assertNotIn("sensitive", str(caught.exception))
+                self.assertEqual(run.call_count, index + 1)
+                launch.assert_not_called()
+
+    def test_startup_diagnostic_codes_are_closed(self) -> None:
+        failure = MODULE.RetryableSimulatorFailure(
+            "retry", stage="sensitive-stage", reason="sensitive-reason"
+        )
+        self.assertEqual(
+            failure.diagnostic_code, "stage=unspecified, reason=unspecified"
+        )
+        error = MODULE.SmokeFailure("sensitive-command-failure")
+        self.assertEqual(MODULE.startup_failure_reason(error), "command-failure")
+        error.__cause__ = OSError("sensitive-os-error")
+        self.assertEqual(MODULE.startup_failure_reason(error), "os-error")
+
+    def test_launch_timeout_retains_its_stage(self) -> None:
+        completed = subprocess.CompletedProcess(["xcrun", "simctl"], 0, "", "")
+        error = MODULE.SmokeFailure("sensitive-launch-timeout")
+        error.__cause__ = subprocess.TimeoutExpired("sensitive-command", 60)
+        with (
+            mock.patch.object(MODULE, "run", side_effect=[completed] * 3 + [error]),
+            self.assertRaises(MODULE.RetryableSimulatorFailure) as caught,
+        ):
+            MODULE.prepare_application_for_launch(
+                "00000000-0000-0000-0000-000000000000", Path("AirfixDogfighter.app")
+            )
+        self.assertEqual(
+            caught.exception.diagnostic_code, "stage=launch, reason=timeout"
+        )
+        self.assertNotIn("sensitive", str(caught.exception))
+
     def test_execute_does_not_retry_a_result_timeout(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             app = Path(directory) / "AirfixDogfighter.app"
@@ -445,12 +499,15 @@ class DiagnosticHardeningTests(unittest.TestCase):
                 mock.patch.object(
                     MODULE,
                     "execute_attempt",
-                    side_effect=MODULE.RetryableSimulatorFailure("retry"),
+                    side_effect=MODULE.RetryableSimulatorFailure(
+                        "sensitive-retry", stage="boot-readiness", reason="timeout"
+                    ),
                 ) as attempt,
                 mock.patch("builtins.print"),
             ):
                 with self.assertRaisesRegex(
-                    MODULE.SmokeFailure, "after 2 isolated attempts"
+                    MODULE.SmokeFailure,
+                    "after 2 isolated attempts .*stage=boot-readiness, reason=timeout",
                 ):
                     MODULE.execute(app, output, 60)
         self.assertEqual(attempt.call_count, 2)

@@ -1445,7 +1445,13 @@ behavior and performance remain unverified until those tests are performed.
    water, collision, engine-transition, and too-high branches; establish
    x87-versus-portable numeric tolerances and deterministic replacement PRNG
    sequencing before composing the statically recovered 12 ms flight law.
-3. Keep the isolated mission-outcome state, initial AFS function schedule, and
+3. The 70-opcode AFS decoder and structural wordcode inspector now validate
+   bounded framing, inline text, local/process indices, absolute branch targets,
+   and labelled continuation edges with atomic failure. They execute nothing.
+   Next add typed stack/link validation and bounded source compilation before
+   VM/scheduler integration; see the
+   [Windows playability gates](../design/WINDOWS-PLAYABILITY.md).
+   Keep the isolated mission-outcome state, initial AFS function schedule, and
    downstream result/progression consumer unwired until representative
    bytecode, a bounded VM, the `Load`/`Start` lifecycle, mutation during
    refresh, and global dispatcher/presentation order are proven. Then recover
@@ -1548,6 +1554,15 @@ These questions do not block static analysis or the archive work.
 
 ## Latest validation
 
+- The bounded AFS wordcode inspector covers all 70 opcode IDs from
+  `EV-20260803-003`, preserves raw immediates and opaque descriptor words,
+  validates NUL/payload/index/branch boundaries, and retains yield and `0x46`
+  continuation semantics. Synthetic MSVC x64 Release tests cover all widths,
+  gate flags, control-flow edges, budget boundaries, allocation-failure cleanup
+  and retry, plus 10,000 deterministic mutations. A clean MSVC x64 Release
+  product build and all 188 Windows tests, including hidden D3D11/XAudio2
+  product smokes, pass. This is structural inspection
+  only, not a source compiler, typed-stack proof, interpreter, or live mission.
 - Touch preferences V3 add a persistent Off/System feedback policy and migrate
   exact V1/V2 documents in memory without startup writes. Portable C++20 maps
   non-fire press edges and hysteretic 0/50/100% throttle detents; UIKit uses a

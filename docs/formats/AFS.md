@@ -1,7 +1,9 @@
 # FMT-AFS — mission scripting source and compiled wordcode
 
 **State:** source ingress, declaration classes, compiler product, and complete
-runtime opcode framing are statically recovered; no parser or VM is implemented
+runtime opcode framing are statically recovered. Portable instruction decoding
+and structural wordcode inspection are implemented; no general AFS source
+parser/compiler or executing VM is implemented.
 
 **Evidence IDs:** `EV-20260731-001`, `EV-20260731-002`,
 `EV-20260803-003`
@@ -99,6 +101,55 @@ There are no VM registers. The persistent execution state is a binary32 delay,
 instruction pointer, stack pointer and allocation, function-local variable
 array, process/object variable array, handler, compiled-record pointer, parent
 process pointer, and intrusive queue links.
+
+## Portable structural inspection
+
+`airfix::script` implements `decodeLegacyAfsInstruction` and
+`inspectLegacyAfsWordcode` in
+[LegacyAfsWordcode.hpp](../../src/airfix/script/LegacyAfsWordcode.hpp).
+The input is an explicitly bounded span of numeric 32-bit words, not a script
+file and not a public bytecode interchange format. The inspection does not
+execute instructions or dereference descriptors, object words, or handlers.
+
+The allocation-free decoder covers all 70 IDs. It preserves immediate bits
+(including NaN payloads and signed zero), checks exact instruction extents, and
+finds a NUL within the declared inline-text payload in little-endian byte order.
+Padding after the first NUL is opaque; it is neither required to be zero nor
+decoded as instructions. The default safe-port limits are 262,144 words,
+65,536 instructions, and 16,384 bytes per inline payload including padding.
+Callers can supply explicit budgets; these are not inferred native limits.
+
+Opcode metadata also records recovered stack word shapes without executing
+them: in particular `0x37` consumes six and produces three words, `0x3C`/`0x3E`
+consume one and produce zero on null or one on nonnull, and `0x25`/`0x26`/`0x27`
+remain explicitly descriptor-dependent. These shapes are prerequisites for a
+future checked stack/type verifier, not a substitute for it.
+
+Whole-function inspection returns ordered instructions and labelled local
+control-flow edges. It validates local/process indices against caller-supplied
+record sizes and checks every absolute branch destination against instruction
+starts. A target inside an operand/text payload or one-past-end is rejected.
+`0x43` has a resumption edge, `0x44`/`0x45` terminate, and `0x46` continues.
+Even unreachable words must frame valid instructions with bounded continuations.
+A structural self-loop is permitted; inspection does not promise termination.
+
+Any rejection returns an error enum and owning instruction word offset, with
+no partial graph, copied text, or private diagnostics. Allocation failures are
+also atomic. MSVC builds explicitly enable C++ unwinding for this boundary and
+its allocation-fault tests so intermediate vectors are released on failure.
+
+**Structural validity is not execution authorization.** Stack depth/types,
+object layouts, typed descriptor linkage, reference ownership, numeric policy,
+call/step budgets, source parsing, and scheduler lifecycle remain separate
+gates. The result retains the unresolved T/N/L requirement flags from the
+evidence table; opaque descriptor bits never become host pointers. Input is
+not retained, and metadata does not authorize executing subsequently mutated
+words. No mission loader or platform runtime is connected in this stage.
+
+Synthetic tests cover every opcode, bit preservation, text/branch/index bounds,
+yield/termination edges, exact and exceeded budgets, allocation-failure cleanup
+and retries, and 10,000 deterministic mutations. No original script or
+compiled native wordcode is a test fixture.
 
 ## Type and value representation
 
@@ -207,5 +258,5 @@ with malformed native behavior is **NO-GO** and should not be pursued.
 | accept or reproduce malformed native behavior | **NO-GO** |
 | treat internal wordcode as a disk format | **NO-GO** |
 | use native descriptor/object pointers in a port | **NO-GO** |
-| decode IDs `0x01–0x46` from validated wordcode | static specification **GO**, execution still gated per opcode family |
+| decode IDs `0x01–0x46` and inspect bounded wordcode structure | implemented with synthetic tests; execution still gated per opcode family |
 | complete source/bytecode compatibility | **NO-GO** pending a safe parser, fixtures, and controlled traces |
