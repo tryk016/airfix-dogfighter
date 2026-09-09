@@ -714,14 +714,23 @@ public class ExportAirfixFunction extends GhidraScript {
                 throw new IllegalStateException(
                     "function exceeds the combined-reference limit");
             }
-            JsonObject caller = new JsonObject();
             Address from = reference.getFromAddress();
-            if (from.isMemoryAddress()) {
-                try { caller.addProperty("site_rva", rvaText(from)); }
-                catch (IllegalArgumentException ignored) {
-                    caller.addProperty("site_space", from.getAddressSpace().getName());
-                }
+            // PE exports have synthetic EXTERNAL entry references with no
+            // source instruction/data address. They are not callers. Keep
+            // the module+RVA relation contract strict instead of emitting a
+            // kind-only record (or inventing a self-call at the entry RVA).
+            if (!from.isMemoryAddress()) {
+                continue;
             }
+            String siteRva;
+            try {
+                siteRva = rvaText(from);
+            }
+            catch (IllegalArgumentException ignored) {
+                continue;
+            }
+            JsonObject caller = new JsonObject();
+            caller.addProperty("site_rva", siteRva);
             Function owner = currentProgram.getFunctionManager().getFunctionContaining(from);
             if (owner != null) {
                 caller.addProperty("target_rva", rvaText(owner.getEntryPoint()));
