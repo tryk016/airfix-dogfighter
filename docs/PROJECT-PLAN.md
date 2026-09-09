@@ -76,6 +76,11 @@ track now has all 70 opcode widths and bounded structural CFG inspection;
 source parsing, typed stack/link validation, execution and mission wiring
 remain separate work, not completion implied by that decoder.
 
+The opt-in Windows free-air flight checkpoint now uses the explicit
+[ADR-0022 compatibility policy](adr/0022-classic-free-air-flight-preview.md).
+It connects controls, recovered equations, pose and chase camera while keeping
+aircraft contact/room transitions and complete playable-mission acceptance open.
+
 ## Phase 0 — provenance and immutable baseline
 
 **Goal:** make every later claim reproducible and prevent accidental damage to

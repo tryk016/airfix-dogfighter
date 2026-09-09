@@ -11,7 +11,7 @@ Original content and executable-reference captures stay owner-local.
 | Gate | Present boundary | Acceptance needed to close it |
 |---|---|---|
 | 1. Build, content, presentation | SDL3/D3D11/XAudio2 shell, authenticated content import, room/model rendering, input/settings, diagnostic paths exist | Clean x64 build/tests; private mission load/reload without stale resources; keyboard/mouse/controller and lifecycle checks |
-| 2. Controllable aircraft | Input intentions and isolated legacy reducers exist; a changing flight producer is not connected | Document and validate numerical/timing policy; coherent changing position/orientation/health per simulation step; throttle/pitch/bank affect flight, not only counters |
+| 2. Controllable aircraft | Opt-in Windows free-air producer now connects input, recovered equations, live pose and camera under ADR-0022; default viewer stays frozen | Validate contacts/takeoff and native trajectories; coherent changing position/orientation/health per simulation step; no claim of full gameplay or bit parity from free-air tests |
 | 3. Camera and collisions | Recovered projection, camera, pose publication, and collision boundaries exist separately | Chase/rear/cycle use live state; takeoff, walls, ground, inverted/water branches and pause/resume pass reference comparisons without camera or collider desynchronization |
 | 4. Combat and actors | Weapon/projectile/damage helpers exist separately | Live muzzle and target transforms, ammo, primary/secondary fire, collision, damage, destruction, HUD and audio agree within the same simulation generation |
 | 5. AI | Task/controls/dispatcher research and isolated control helpers exist | Recovered tasks, target transitions, event ordering and force timing drive live actors; remaining wrappers and numerical assumptions are resolved or explicitly policy-labelled |
@@ -32,7 +32,16 @@ An alternative compatibility policy must be explicit and tested, not reported
 as native bit parity. A device-only unknown blocks its dependent acceptance,
 not unrelated Windows code or static research.
 
-## Immediate independent implementation track: AFS
+## Current flight checkpoint
+
+[ADR-0022](../adr/0022-classic-free-air-flight-preview.md) defines the approved
+compatibility policy and opt-in `--flight-preview`. This is not a completed
+mission: aircraft collisions, ground support, damage, audio and mission logic
+are still disconnected. No artificial launch or floor clamp hides that gap.
+Next connect bounded contact/room transitions while keeping pose and camera
+on the independent 12 ms clock.
+
+## Independent implementation track: AFS
 
 1. **Implemented:** all 70 opcode widths/operands, bounded inline text, local
    and process indices, absolute instruction-boundary targets, labelled CFG,

@@ -5,6 +5,10 @@ policy-conditioned research oracle implemented; no portable runtime kernel
 **Evidence:** `EV-20260724-003`, `EV-20260730-004`, `EV-20260730-008`
 **Reference build:** SHA-256 values in `docs/evidence/source-manifest.sha256`
 
+Implementation exception: [ADR-0022](../../adr/0022-classic-free-air-flight-preview.md)
+selects a separate finite-domain port policy for the opt-in free-air preview.
+It does not implement exact x87 scheduling or lift the native bit-parity NO-GO.
+
 This note is the durable system boundary for the `Cc.dll` rigid-body
 integrator. The full address ledger, x87 spill schedule, exact-bit vectors,
 confidence table, and synthetic test plan are in

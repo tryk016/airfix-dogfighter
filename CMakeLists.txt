@@ -141,6 +141,7 @@ endif()
 
 add_library(airfix_runtime
     src/airfix/runtime/AppSession.cpp
+    src/airfix/runtime/ClassicFlightPreviewSession.cpp
     src/airfix/runtime/PlayerAircraftPresentationCoordinator.cpp
 )
 add_library(airfix::runtime ALIAS airfix_runtime)
@@ -220,6 +221,7 @@ else()
 endif()
 
 add_library(airfix_simulation
+    src/airfix/simulation/ClassicFlightPreview.cpp
     src/airfix/simulation/LegacyAfsMissionOutcomeCall.cpp
     src/airfix/simulation/LegacyAircraftAiControlDispatcher.cpp
     src/airfix/simulation/LegacyAircraftAiControls.cpp
@@ -257,6 +259,10 @@ target_include_directories(airfix_simulation
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
 )
 target_compile_features(airfix_simulation PUBLIC cxx_std_20)
+set_property(SOURCE src/airfix/simulation/ClassicFlightPreview.cpp APPEND
+    PROPERTY COMPILE_OPTIONS
+    "$<$<CXX_COMPILER_ID:MSVC>:/fp:strict>"
+    "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 target_link_libraries(airfix_simulation
     PUBLIC airfix::audio airfix::campaign airfix::input)
 
@@ -1228,6 +1234,13 @@ if(AIRFIX_BUILD_TESTS)
     target_link_libraries(airfix_simulation_tests
         PRIVATE airfix::simulation)
     add_test(NAME airfix_simulation_tests COMMAND airfix_simulation_tests)
+
+    add_executable(airfix_classic_flight_preview_tests tests/ClassicFlightPreviewTests.cpp)
+    target_link_libraries(airfix_classic_flight_preview_tests PRIVATE airfix::simulation)
+    add_test(NAME airfix_classic_flight_preview_tests COMMAND airfix_classic_flight_preview_tests)
+    add_executable(airfix_classic_flight_preview_session_tests tests/ClassicFlightPreviewSessionTests.cpp)
+    target_link_libraries(airfix_classic_flight_preview_session_tests PRIVATE airfix::runtime)
+    add_test(NAME airfix_classic_flight_preview_session_tests COMMAND airfix_classic_flight_preview_session_tests)
 
     add_executable(airfix_legacy_vehicle_sleep_state_tests
         tests/LegacyVehicleSleepStateTests.cpp)

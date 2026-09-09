@@ -1401,6 +1401,14 @@
 
 ## Next
 
+Flight checkpoint (2026-09-09): opt-in Windows `--flight-preview` connects the
+free-air equations, independent 12 ms clock, live actor pose and chase camera
+under [ADR-0022](../adr/0022-classic-free-air-flight-preview.md). This explicit
+port policy is not native bit parity or a playable mission. Default mission
+viewing and iOS behavior are unchanged. Next add aircraft contacts/room
+transitions, then coherent collision/HUD/audio ownership and reference tests;
+the native-parity evidence work below remains open.
+
 Current execution priority (2026-09-07): playable Classic first. Focus on
 flight, camera, collision, weapons, AI, and mission completion. Keep native
 resolution, Hor+, sharp UI, controls, and diagnostics working; defer new

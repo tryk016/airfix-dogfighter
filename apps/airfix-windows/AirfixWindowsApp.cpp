@@ -24,7 +24,9 @@
 #include "airfix/content/MissionWorldRoomLoader.hpp"
 #include "airfix/content/VerifiedContentSession.hpp"
 #include "airfix/package/AfPackRecovery.hpp"
+#include "airfix/render/LegacyGameplayCameraMissionRuntime.hpp"
 #include "airfix/runtime/AppSession.hpp"
+#include "airfix/runtime/ClassicFlightPreviewSession.hpp"
 #include "airfix/runtime/PlayerAircraftPresentationCoordinator.hpp"
 #include "airfix/settings/ControllerInputProfileStore.hpp"
 #include "airfix/settings/RenderPresentationSettingsStore.hpp"
@@ -654,6 +656,7 @@ missionTextureReplacementContext(
 
 struct PublishedPrivateMissionState final {
   airfix::simulation::PlayerSpawnPose playerSpawnPose;
+  std::optional<airfix::runtime::ClassicFlightPreviewBootstrap> flightBootstrap;
   airfix::runtime::PlayerActorPoseRuntimeEndpoint playerActorPoseRuntime;
   std::weak_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>
       gameplayCameraMissionRuntime;
@@ -669,6 +672,13 @@ struct PublishedPrivateMissionState final {
 publishPrivateMissionVisuals(airfix::windows::AirfixD3D11Renderer &renderer,
                              LoadedPrivateMissionVisuals &&visuals) {
   const auto spawn = visuals.missionRoom.playerSpawnPose;
+  std::optional<airfix::runtime::ClassicFlightPreviewBootstrap> flightBootstrap;
+  if (visuals.missionRoom.playerVisual &&
+      visuals.missionRoom.playerVisual->aircraftType) {
+    flightBootstrap = airfix::runtime::ClassicFlightPreviewBootstrap{
+        spawn, visuals.missionRoom.runtimeBasis,
+        *visuals.missionRoom.playerVisual->aircraftType};
+  }
   std::cout << "Mission textures: enhanced="
             << visuals.missionRoom.enhancedTextureCount
             << " classic=" << visuals.missionRoom.classicTextureCount
@@ -683,6 +693,7 @@ publishPrivateMissionVisuals(airfix::windows::AirfixD3D11Renderer &renderer,
       std::move(visuals.aircraftHudIdentityStatusTextures), visuals.revision);
   return {
       .playerSpawnPose = spawn,
+      .flightBootstrap = flightBootstrap,
       .playerActorPoseRuntime = renderer.playerActorPoseRuntimeEndpoint(),
       .gameplayCameraMissionRuntime =
           renderer.gameplayCameraMissionRuntimeEndpoint(),
@@ -695,6 +706,8 @@ struct WindowsMissionTextureReloadContext final {
   airfix::windows::AirfixWindowsTexturePackSession *texturePack{};
   airfix::windows::AirfixD3D11Renderer *renderer{};
   std::optional<airfix::simulation::PlayerSpawnPose> *playerSpawnPose{};
+  std::optional<airfix::runtime::ClassicFlightPreviewBootstrap>
+      *flightBootstrap{};
   airfix::runtime::PlayerActorPoseRuntimeEndpoint *playerActorPoseRuntime{};
   std::weak_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>
       *gameplayCameraMissionRuntime{};
@@ -709,6 +722,7 @@ struct WindowsMissionTextureReloadContext final {
   if (context == nullptr || context->contentRoot == nullptr ||
       context->mission == nullptr || context->renderer == nullptr ||
       context->playerSpawnPose == nullptr ||
+      context->flightBootstrap == nullptr ||
       context->playerActorPoseRuntime == nullptr ||
       context->gameplayCameraMissionRuntime == nullptr ||
       context->simulationPipelineReady == nullptr) {
@@ -734,6 +748,7 @@ struct WindowsMissionTextureReloadContext final {
     // swap. Only after that swap do the simulation-facing weak endpoints move
     // to the new renderer-owned scene.
     *context->playerSpawnPose = published.playerSpawnPose;
+    *context->flightBootstrap = published.flightBootstrap;
     *context->playerActorPoseRuntime = published.playerActorPoseRuntime;
     *context->gameplayCameraMissionRuntime =
         published.gameplayCameraMissionRuntime;
@@ -1182,6 +1197,7 @@ int run(const int argumentCount, char *arguments[]) {
                  "used for this mission\n";
   }
   std::optional<airfix::simulation::PlayerSpawnPose> playerSpawnPose;
+  std::optional<airfix::runtime::ClassicFlightPreviewBootstrap> flightBootstrap;
   airfix::runtime::PlayerActorPoseRuntimeEndpoint playerActorPoseRuntime;
   std::weak_ptr<airfix::render::LegacyGameplayCameraMissionRuntime>
       gameplayCameraMissionRuntime;
@@ -1199,6 +1215,7 @@ int run(const int argumentCount, char *arguments[]) {
           "authenticated Windows mission was not published");
     }
     playerSpawnPose = published.playerSpawnPose;
+    flightBootstrap = published.flightBootstrap;
     playerActorPoseRuntime = published.playerActorPoseRuntime;
     gameplayCameraMissionRuntime = published.gameplayCameraMissionRuntime;
     if (!published.complete()) {
@@ -1328,15 +1345,35 @@ int run(const int argumentCount, char *arguments[]) {
 
   if (renderer.missionWorldRoomInstalled() && playerSpawnPose.has_value() &&
       !gameplayCameraMissionRuntime.expired()) {
-    // Windows commits the authenticated room, audio clips, frozen spawn
-    // pose, pose runtime, and replacement-safe gameplay-camera runtime as
-    // one startup transaction. Supplying changing camera inputs remains a
-    // later trace-driven milestone.
+    // Content and endpoints are installed atomically; live movement is a
+    // separate, explicitly enabled free-air preview below.
     session.setContentState(airfix::runtime::ContentState::ready);
   }
   airfix::windows::AirfixSdlInputAdapter input{controllerInputConfiguration};
   airfix::runtime::PlayerAircraftPresentationCoordinator
       playerAircraftPresentation;
+  std::optional<airfix::runtime::ClassicFlightPreviewSession> flightPreview;
+  airfix::simulation::ClassicFlightClock flightClock;
+  std::weak_ptr<airfix::render::PlayerActorPoseRuntime> flightPoseOwner;
+  bool flightWasRunning = false;
+  bool flightInputReady = false;
+  if (options.flightPreview) {
+    if (!flightBootstrap)
+      throw std::runtime_error(
+          "Flight preview requires an authenticated aircraft type");
+    flightPreview =
+        airfix::runtime::ClassicFlightPreviewSession::create(*flightBootstrap);
+    if (!flightPreview || !playerActorPoseRuntime)
+      throw std::runtime_error("Flight preview bootstrap rejected");
+    flightPoseOwner = *playerActorPoseRuntime;
+    (void)SDL_SetWindowTitle(
+        window.get(),
+        "Airfix - FREE-AIR FLIGHT PREVIEW (no aircraft collisions)");
+    std::cout << "Flight policy: classic-free-air-v1; 12 ms; no aircraft "
+                 "collisions, damage, weapons or AI; "
+                 "not native parity. W/S: throttle, arrows: pitch/bank, C: "
+                 "camera, R: rear, Esc: pause.\n";
+  }
   std::optional<airfix::windows::AirfixWindowsRenderSettingsPanel>
       renderSettingsPanel;
   std::optional<airfix::windows::AirfixWindowsRenderSettingsViewSnapshot>
@@ -1357,6 +1394,7 @@ int run(const int argumentCount, char *arguments[]) {
         .texturePack = texturePackSession.get(),
         .renderer = &renderer,
         .playerSpawnPose = &playerSpawnPose,
+        .flightBootstrap = &flightBootstrap,
         .playerActorPoseRuntime = &playerActorPoseRuntime,
         .gameplayCameraMissionRuntime = &gameplayCameraMissionRuntime,
         .simulationPipelineReady = &simulationPipelineReady,
@@ -1510,6 +1548,9 @@ int run(const int argumentCount, char *arguments[]) {
           const bool resumed = session.resume();
           audio.setActive(resumed);
           if (resumed) {
+            flightInputReady = false;
+            flightWasRunning = false;
+            flightClock.reset();
             if (uiAutomationAvailable) {
               (void)uiAutomation.publish(std::nullopt);
             }
@@ -1661,7 +1702,7 @@ int run(const int argumentCount, char *arguments[]) {
       if (session.simulationRunning()) {
         const auto advanced = playerAircraftPresentation.tryAdvance(
             inputFrame.frame, actorWorldFrom(*playerSpawnPose),
-            playerActorPoseRuntime);
+            options.flightPreview ? std::nullopt : playerActorPoseRuntime);
         if (!advanced.accepted()) {
           simulationPipelineReady = false;
           if (!input.resetForGameplayBoundary()) {
@@ -1672,16 +1713,74 @@ int run(const int argumentCount, char *arguments[]) {
           session.pause();
           std::cerr << "Windows deterministic input consumer halted after "
                        "an invalid state transition\n";
+        } else {
+          flightInputReady = true;
         }
-        // Do not call gameplayCameraMissionRuntime.tryAdvance() from
-        // this 60 Hz input loop. The recovered camera consumes the
-        // complete trace-driven AirCraft producer state on its
-        // independent 12 ms cadence; guessing that contract here would
-        // break parity.
+        // Input intention recording stays on its own 60 Hz clock.
       }
       inputAccumulator -= inputStepNanoseconds;
     }
 
+    if (options.flightPreview) {
+      const bool active = session.simulationRunning() &&
+                          simulationPipelineReady && flightInputReady;
+      const auto pose =
+          playerActorPoseRuntime ? playerActorPoseRuntime->lock() : nullptr;
+      const auto camera = gameplayCameraMissionRuntime.lock();
+      bool previewOk = pose != nullptr && camera != nullptr;
+      // A texture/mission transaction replaces both endpoints. Never publish
+      // the previous aircraft's state into the newly bootstrapped scene.
+      if (previewOk && (flightPoseOwner.owner_before(pose) ||
+                        pose.owner_before(flightPoseOwner))) {
+        flightPreview =
+            flightBootstrap
+                ? airfix::runtime::ClassicFlightPreviewSession::create(
+                      *flightBootstrap,
+                      playerAircraftPresentation.state().cameraCyclePressCount)
+                : std::nullopt;
+        flightPoseOwner = pose;
+        flightClock.reset();
+        flightWasRunning = false;
+      }
+      previewOk = previewOk && flightPreview.has_value();
+      const auto batch =
+          flightClock.consume(active && flightWasRunning ? elapsed : 0, active);
+      flightWasRunning = active;
+      if (batch.droppedSteps != 0)
+        std::cerr << "Flight preview: catch-up budget exceeded\n";
+      for (std::uint32_t step = 0; active && previewOk && step < batch.steps;
+           ++step) {
+        const auto frame =
+            flightPreview->tryStep(playerAircraftPresentation.state());
+        if (!frame) {
+          previewOk = false;
+          break;
+        }
+        const auto poseResult =
+            pose->tryPublish(frame->actorWorld, frame->camera.simulationStep);
+        using PoseStatus = airfix::render::PlayerActorPoseRuntimePublishResult;
+        if (poseResult.result == PoseStatus::busy)
+          continue;
+        if (poseResult.result != PoseStatus::published) {
+          previewOk = false;
+          break;
+        }
+        const auto cameraResult = camera->tryAdvance(frame->camera);
+        using CameraStatus =
+            airfix::render::LegacyGameplayCameraMissionRuntimeAdvanceStatus;
+        previewOk = cameraResult.status == CameraStatus::published ||
+                    cameraResult.status == CameraStatus::advancedPacketBusy;
+      }
+      if (!previewOk && simulationPipelineReady) {
+        simulationPipelineReady = false;
+        flightClock.reset();
+        audio.setActive(false);
+        session.pause();
+        (void)input.resetForGameplayBoundary();
+        std::cerr << "Flight preview halted: invalid state or presentation "
+                     "endpoint; no native parity claimed\n";
+      }
+    }
     (void)renderer.renderFrame(false);
     SDL_Delay(1U);
   }
@@ -1690,6 +1789,9 @@ int run(const int argumentCount, char *arguments[]) {
             << playerAircraftPresentation.state().completedSteps
             << " steps, hash " << playerAircraftPresentation.stateHash()
             << '\n';
+  if (flightPreview)
+    std::cout << "Windows free-air physics steps: "
+              << flightPreview->state().completedSteps << '\n';
   return 0;
 }
 

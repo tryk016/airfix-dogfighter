@@ -4,6 +4,7 @@
 #include "airfix/render/DrawSubmissionPlan.hpp"
 #include "airfix/render/LegacyGameplayCameraCollision.hpp"
 #include "airfix/render/LegacyGameplayCameraMissionRuntime.hpp"
+#include "airfix/runtime/ClassicFlightPreviewSession.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -273,20 +274,21 @@ void exerciseMissionCameraRuntime(AirfixD3D11Renderer &renderer) {
               bootstrap->publicationGeneration == 1U,
           "Windows camera runtime did not preserve the bootstrap generation");
 
-  const auto advanced = firstRuntime->tryAdvance({
-      .vehicleChaseWorldPosition = {},
-      .vehicleWorldAnchor = {},
-      .vehicleWorldRotation = {},
-      .refreshDeltaSeconds =
-          airfix::render::legacyAircraftNominalRefreshDeltaSeconds,
-      .vehicleHealth = 1.0F,
-      .vehicleInactive = false,
-      .cameraCyclePressCount = 0U,
-      .rearViewHeld = false,
-      .simulationStep = 1U,
-  });
-  require(advanced.published(),
-          "synthetic camera producer did not publish generation two");
+  auto flight = airfix::runtime::ClassicFlightPreviewSession::create({});
+  require(flight.has_value(), "synthetic flight producer bootstrap");
+  airfix::simulation::PlayerAircraftState controls;
+  controls.throttleDeltaIntentQ15 = airfix::input::q15One;
+  controls.bankIntentQ15 = 10000;
+  for (unsigned step = 1; step <= 12; ++step) {
+    const auto frame = flight->tryStep(controls);
+    require(frame.has_value(), "synthetic physics frame");
+    require(firstRuntime->tryAdvance(frame->camera).published(),
+            "physics-generated camera publication");
+    require(renderer.renderFrame(false),
+            "D3D11 consumes physics-generated camera");
+  }
+  require(flight->state().position != airfix::simulation::FlightVector{},
+          "synthetic flight actually moved");
   firstRuntime.reset();
   require(renderer.renderFrame(false),
           "D3D11 did not consume the advanced synthetic camera packet");

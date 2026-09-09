@@ -585,6 +585,7 @@ if(AIRFIX_BUILD_TESTS)
     endif()
     target_link_libraries(airfix_windows_renderer_tests PRIVATE
         airfix_windows_renderer
+        airfix::runtime
         SDL3::SDL3-static
     )
     add_test(NAME airfix_windows_renderer_tests

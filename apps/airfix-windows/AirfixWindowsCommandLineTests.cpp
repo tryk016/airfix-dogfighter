@@ -741,6 +741,24 @@ void testPublicControllerBindingsPanelCaptureRequest() {
 
 int main() {
   try {
+    require(!parse(std::array<std::string_view, 0>{}).flightPreview,
+            "preview defaults off");
+    require(parse(std::array{"--installed-content"sv, "--setup"sv, "setup"sv,
+                             "--level"sv, "level"sv, "--flight-preview"sv})
+                .flightPreview,
+            "explicit preview mission");
+    requireRejected(std::array{"--flight-preview"sv},
+                    "preview requires mission");
+    requireRejected(std::array{"--smoke-test"sv, "--flight-preview"sv},
+                    "public smoke not private preview");
+    requireRejected(std::array{"--installed-content"sv, "--setup"sv, "setup"sv,
+                               "--level"sv, "level"sv, "--flight-preview"sv,
+                               "--flight-preview"sv},
+                    "duplicate preview");
+    requireRejected(std::array{"--installed-content"sv, "--setup"sv, "setup"sv,
+                               "--level"sv, "level"sv, "--flight-preview"sv,
+                               "--capture-frame"sv, "frame.bmp"sv},
+                    "capture remains frozen reference");
     testEmptyAndSmokeModes();
     testPresentationOptions();
     testAuthenticatedMissionRequest();
