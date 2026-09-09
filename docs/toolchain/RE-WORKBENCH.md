@@ -181,7 +181,7 @@ Function discovery and one normalized read-only session:
 & "$rizinBin\rizin.exe" -N -q -e scr.color=false `
   -c 'aaa; aflj; q' $copy
 & "$rizinBin\rizin.exe" -N -q -e scr.color=false `
-  -c 'aaa; s 0x1001FDD0; afij; pdfj; agfj; axfj; q' $copy
+  -c 'aaa; s 0x1001FDD0; afij; pdfj; afbj; axfj; q' $copy
 ```
 
 Searches:
@@ -234,8 +234,22 @@ checks its hash before and after analysis, opens Rizin read-only with user
 startup configuration disabled, anchors the request by canonical RVA, records
 image-base/VA observations, and validates the resulting
 `airfix.re.rizin-function.v1` JSON under `artifacts/rizin`. Optional pseudocode
-may be requested with Cutter's verified Sleigh directory; it remains a
-Rizin-family result and is labeled as such.
+may be requested using Cutter's verified bundled Rizin executable **and**
+Sleigh directory; the standalone Rizin installation does not gain a
+`rz-ghidra` plugin merely by receiving `-SleighHome`. This remains a
+Rizin-family result and is labeled as such. Requested but empty pseudocode
+fails the export; omit `-SleighHome` for an intentionally disassembly-only
+report.
+
+CFG blocks come from `afbj`, the Rizin 0.9.1 structured analysis interface.
+The obsolete `agfj` spelling is not supported; `agf json` is a presentation
+graph and is not a replacement for block records. Missing, empty, malformed,
+duplicate, or count-inconsistent blocks fail the export, as do missing
+instructions and a missing reference-list response. A legitimate empty
+reference list remains valid. Earlier reports with `cfg.blocks=[]` do not
+establish a zero-block function: regenerate them before CFG comparison.
+Existing evidence claims are not automatically promoted or withdrawn by
+this tooling correction.
 
 Automatic function discovery is the default and a missing `afij` result fails
 closed. After Ghidra or instruction evidence independently confirms the exact
