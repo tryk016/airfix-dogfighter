@@ -250,6 +250,11 @@ struct CcfSrtMetadata {
     std::array<CcfVector3, 3> orientation{};
 };
 
+struct CcfOpaqueRange {
+    std::uint64_t offset{};
+    std::uint32_t length{};
+};
+
 struct CcfBlueprintMetadata {
     CcfBlueprintKind kind{CcfBlueprintKind::mesh};
     std::string name;
@@ -260,6 +265,9 @@ struct CcfBlueprintMetadata {
     CcfSrtMetadata authoredTransform;
     std::optional<std::size_t> meshIndex;
     std::uint64_t offset{};
+    // Zero-copy 0x4210 bytes in the source CCF, not a placed-node lookup.
+    // Independent of any similarly named node in the 0x4000 scene table.
+    std::optional<CcfOpaqueRange> nullData4210;
 };
 
 enum class CcfPlacedNodeKind : std::uint8_t {
@@ -279,11 +287,6 @@ struct CcfPlacedSrtMetadata {
     // a single F040 vector, retained as the second variant without assigning
     // higher-level rotation semantics to it.
     CcfPlacedOrientation orientation{std::array<CcfVector3, 3>{}};
-};
-
-struct CcfOpaqueRange {
-    std::uint64_t offset{};
-    std::uint32_t length{};
 };
 
 struct CcfPlacedObjectMetadata {
