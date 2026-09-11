@@ -258,17 +258,12 @@ struct MeshCcfOptions {
 }
 
 [[nodiscard]] Bytes makeNonMeshBlueprint(
-    const std::uint16_t id,
-    const std::string& name,
-    const std::string& prefix,
-    const std::uint32_t reference,
-    const std::uint32_t auxiliaryReference,
-    const std::uint32_t parentReference,
-    const airfix::assets::CcfVector3& position,
-    const float rawScalar,
-    const std::array<airfix::assets::CcfVector3, 3>& orientation,
-    const std::size_t retainedFixedTailBytes =
-        std::numeric_limits<std::size_t>::max()) {
+    const std::uint16_t id, const std::string &name, const std::string &prefix,
+    const std::uint32_t reference, const std::uint32_t auxiliaryReference,
+    const std::uint32_t parentReference, const airfix::assets::CcfVector3 &position,
+    const float rawScalar, const std::array<airfix::assets::CcfVector3, 3> &orientation,
+    const std::size_t retainedFixedTailBytes = std::numeric_limits<std::size_t>::max(),
+    const Bytes &children = {}) {
     Bytes payload = ccfNamed(name, prefix);
     const auto nameBytes = payload.size();
     appendU32(payload, reference);
@@ -287,6 +282,7 @@ struct MeshCcfOptions {
     if (retainedFixedTailBytes < payload.size() - nameBytes) {
         payload.resize(nameBytes + retainedFixedTailBytes);
     }
+    appendBytes(payload, children);
     return ccfChunk(id, payload);
 }
 
@@ -855,6 +851,100 @@ void testCcf() {
     const auto descriptorBomb = ccfDocument(
         ccfChunk(0x1000U, descriptorBombPayload));
     requireParseError([&] { (void)airfix::assets::parseCcf(descriptorBomb); });
+}
+
+void testCcfBlueprintNullData() {
+    const auto blueprint = [](const Bytes &children, const std::uint16_t id = 0x4200U) {
+        return makeNonMeshBlueprint(id, "Null", "Room", 100U, 0U, 0U, {0.0F, 0.0F, 0.0F}, 1.0F,
+                                    {{{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}}},
+                                    std::numeric_limits<std::size_t>::max(), children);
+    };
+    const auto document = [&](const Bytes &children) {
+        return ccfDocument(ccfChunk(0x3000U, blueprint(children)));
+    };
+    const auto property = [](const Bytes &bytes) {
+        Bytes payload;
+        appendU32(payload, static_cast<std::uint32_t>(bytes.size()));
+        appendBytes(payload, bytes);
+        return ccfChunk(0x4210U, payload);
+    };
+    const auto bytesAt = [](const Bytes &bytes, const airfix::assets::CcfOpaqueRange range) {
+        Bytes result;
+        for (std::uint32_t index = 0U; index < range.length; ++index) {
+            result.push_back(bytes.at(static_cast<std::size_t>(range.offset + index)));
+        }
+        return result;
+    };
+
+    const Bytes expected{0U, 0x80U, 0xFFU};
+    const auto nullProperty = property(expected);
+    Bytes children = ccfChunk(0x42FFU, Bytes{0xA5U});
+    appendBytes(children, nullProperty);
+    appendBytes(children, ccfChunk(0x42FEU, Bytes{0x5AU}));
+    const auto bytes = document(children);
+    const auto parsed = airfix::assets::parseCcf(bytes);
+    require(parsed.blueprints.size() == 1U && parsed.placedNodes.empty(),
+            "blueprint null data must not require placed scene records");
+    const auto range = parsed.blueprints[0].nullData4210;
+    require(range.has_value() && range->length == expected.size() &&
+                bytesAt(bytes, *range) == expected,
+            "blueprint null data did not preserve its exact source byte range");
+    const auto &rawChildren = parsed.topLevelChunks[0].directChildren[0].directChildren;
+    require(rawChildren.size() == 3U && rawChildren[1].id == 0x4210U &&
+                range->offset == rawChildren[1].offset + 10U,
+            "blueprint null data must retain raw descriptors and an absolute byte offset");
+    require(!airfix::assets::parseCcf(document({})).blueprints[0].nullData4210.has_value(),
+            "absent blueprint null data must remain absent");
+
+    const auto emptyBytes = document(property({}));
+    const auto empty = airfix::assets::parseCcf(emptyBytes).blueprints[0].nullData4210;
+    require(empty.has_value() && empty->length == 0U && empty->offset == emptyBytes.size(),
+            "present empty blueprint null data must differ from absence");
+
+    // Matching names/references do not join the blueprint and placed tables.
+    Bytes bothSections = ccfChunk(0x3000U, blueprint(nullProperty));
+    appendBytes(bothSections, ccfChunk(0x4000U, makePlacedRecord(0x4200U, property(Bytes{0x11U}))));
+    const auto bothBytes = ccfDocument(bothSections);
+    const auto both = airfix::assets::parseCcf(bothBytes);
+    const auto placedRange =
+        std::get<airfix::assets::CcfPlacedNullMetadata>(both.placedNodes[0].data).block4210;
+    require(both.blueprints[0].name == both.placedNodes[0].name &&
+                both.blueprints[0].nullData4210.has_value() && placedRange.has_value() &&
+                bytesAt(bothBytes, *both.blueprints[0].nullData4210) == expected &&
+                bytesAt(bothBytes, *placedRange) == Bytes{0x11U},
+            "blueprint and placed null data must keep separate byte ranges");
+
+    // 0x4210 is only interpreted for null blueprints, not other node kinds.
+    const auto light = airfix::assets::parseCcf(
+        ccfDocument(ccfChunk(0x3000U, blueprint(ccfChunk(0x4210U, {}), 0x4300U))));
+    require(!light.blueprints[0].nullData4210.has_value(),
+            "light blueprint must not acquire null metadata");
+
+    const auto requireInvalid = [&](const Bytes &invalid) {
+        requireParseError([&] { (void)airfix::assets::parseCcf(document(invalid)); });
+    };
+    Bytes duplicate = nullProperty;
+    appendBytes(duplicate, nullProperty);
+    requireInvalid(duplicate);
+    duplicate = property({});
+    appendBytes(duplicate, property({}));
+    requireInvalid(duplicate);
+    for (std::size_t length = 0U; length < 4U; ++length) {
+        requireInvalid(ccfChunk(0x4210U, Bytes(length, 0U)));
+    }
+    for (const auto declaredLength : {0U, 2U, 4U, 0xFFFFFFFFU}) {
+        Bytes payload;
+        appendU32(payload, declaredLength);
+        appendBytes(payload, expected);
+        requireInvalid(ccfChunk(0x4210U, payload));
+    }
+    auto truncated = nullProperty;
+    truncated.pop_back();
+    requireInvalid(truncated);
+    require(!airfix::assets::parseCcf(document(ccfChunk(0x42FFU, nullProperty)))
+                 .blueprints[0]
+                 .nullData4210.has_value(),
+            "null metadata must not be inferred from bytes inside an unknown child");
 }
 
 void testCcfRoomSpatialMetadata() {
@@ -1659,6 +1749,7 @@ int main() {
     try {
         testGti();
         testCcf();
+        testCcfBlueprintNullData();
         testCcfRoomSpatialMetadata();
         testCcfRoomSpatialFailures();
         testCcfPlacedNodes();
