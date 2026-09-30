@@ -488,6 +488,8 @@ void testInvalidInputsFailAtomically() {
                                 std::numeric_limits<float>::max(),
                                 std::numeric_limits<float>::max()};
   auto overflowCcf = nullRootScene();
+  // Keep this overflow fixture independent of the forward rotation's sign.
+  overflowCcf.blueprints[0].authoredTransform.orientation = identity();
   overflowCcf.blueprints[0].authoredTransform.position = {
       -std::numeric_limits<float>::max(), 0.0F, 0.0F};
   const std::array overflowSources{source(

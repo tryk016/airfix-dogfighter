@@ -100,7 +100,8 @@ struct ConvertedNodeTransform {
 };
 
 // Legacy source space is right-handed: +X right, +Y up, +Z forward.
-// Raw CCF orientation columns were consumed by legacy row vectors.
+// CCF/SRT forward transforms consume basis columns (CcCoord3d::ChangeBase).
+// applyLegacyRow models the distinct dot-column operation, not CCF placement.
 [[nodiscard]] Vec3 applyLegacyRow(const Mat3& rawLegacyMatrix, const Vec3& vector) noexcept;
 [[nodiscard]] Vec3 applyRuntimeColumn(const Mat3& matrix, const Vec3& vector) noexcept;
 [[nodiscard]] Mat3 transpose(const Mat3& matrix) noexcept;
@@ -159,8 +160,8 @@ tryComposeNodeTransforms(
     const ConvertedNodeTransform& parentWorld,
     const ConvertedNodeTransform& local) noexcept;
 
-// Converts raw row-vector orientation to the runtime column-vector convention:
-// B * transpose(raw) * inverse(B).
+// Converts the native forward orientation through the runtime basis:
+// B * raw * inverse(B). Transposing raw reverses authored rotations.
 [[nodiscard]] Mat3 toRuntimeColumnMatrix(
     const Mat3& rawLegacyMatrix,
     const Mat3& sourceToRuntime);

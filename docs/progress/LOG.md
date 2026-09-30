@@ -5839,3 +5839,21 @@ superseded evidence.
   path; a future Windows sideloader must sign locally without cloud upload or
   payload injection. Original AFPACK and optional HD content remain separate
   owner-local imports after installation.
+
+## 2026-09-30 - Forward CCF transform integration
+
+- `EV-20260930-001` corrects the forward-pose transpose inferred in
+  `EV-20260721-030` and `EV-20260727-003`. The corrected contract and scope are
+  recorded in [COORDINATE-CONTRACT](../re/systems/COORDINATE-CONTRACT.md).
+- The parallel scene research supplied the defect; an independent headless
+  Ghidra/Rizin integration check confirms ChangeBase at Cc.dll RVA
+  `[0x0002B800, 0x0002B8D6)`, one block and 76 matching instruction records.
+  Source forward columns and destination inverse are distinct operations.
+- Forward geometry/start-pose conversion now uses `B * raw * inverse(B)`.
+  Camera look-at no longer transposes that already-forward output; the
+  downstream world-to-view inverse remains unchanged. Physics row-operator
+  consumers, trigonometry and composition precision are outside this change.
+- Public fixtures are synthetic, including an integer world point and an
+  independent yaw spawn/first-flight-frame continuity check. Original model
+  vertices, native captures and databases remain private. No new native
+  bit-parity, full mission or collision acceptance claim is made.

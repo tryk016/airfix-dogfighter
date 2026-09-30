@@ -643,6 +643,19 @@ the selected node and its descendants only; it does not include ancestors.
 Consequently a null blueprint is a valid transform-group root and cannot be
 replaced by an arbitrary mesh child.
 
+The portable decoder also retains a null blueprint's optional direct `0x4210`
+child as `CcfBlueprintMetadata::nullData4210`: an absolute byte offset and
+length into the caller's original CCF buffer, not an owned copy. Its payload
+is a little-endian `u32` byte count followed by exactly that many opaque bytes.
+The buffer must remain available when consuming this range. An absent property
+and a present zero-length property remain distinct. Duplicate properties,
+incomplete length words, length mismatches and parent-chunk overruns fail closed;
+the existing shared descriptor budget still applies. Unknown direct children
+remain raw descriptors. This does not interpret the bytes as gameplay state or
+execute them. A similarly named `0x4000` placed null's `block4210` is independent:
+neither table supplies missing bytes for the other. Synthetic parser tests cover
+both tables together, empty/absent data, unrelated children and malformed input.
+
 The later Level `OBJE` path applies one external root pose and named-room
 admission after this subtree clone; it does not substitute a `0x4000` record or
 independently place every selected node. The exact sequence, root-scalar

@@ -1701,22 +1701,42 @@ struct CcfName {
         static_cast<std::size_t>(blueprintEnd),
         "CCF non-mesh blueprint child",
         budget);
+    std::optional<CcfOpaqueRange> nullData4210;
+    if (blueprint.id == 0x4200U) {
+        for (const auto &property : blueprint.directChildren) {
+            if (property.id != 0x4210U) {
+                continue;
+            }
+            if (nullData4210.has_value() || property.totalSize < 10U) {
+                throw ParseError("CCF null blueprint has an invalid 0x4210 property");
+            }
+            const auto length = readU32(bytes, static_cast<std::size_t>(property.offset + 6U),
+                                        "CCF null blueprint 0x4210 length");
+            if (checkedAdd(10U, length, "CCF null blueprint 0x4210 length") != property.totalSize) {
+                throw ParseError("CCF null blueprint 0x4210 length does not match its chunk");
+            }
+            nullData4210 = CcfOpaqueRange{
+                .offset = checkedAdd(property.offset, 10U, "CCF null blueprint 0x4210 block"),
+                .length = length,
+            };
+        }
+    }
     return {
-        .kind = blueprint.id == 0x4200U
-            ? CcfBlueprintKind::nullNode
-            : CcfBlueprintKind::light,
+        .kind = blueprint.id == 0x4200U ? CcfBlueprintKind::nullNode : CcfBlueprintKind::light,
         .name = name.name,
         .prefix = name.prefix,
         .reference = reference,
         .auxiliaryReference = auxiliaryReference,
         .parentReference = parentReference,
-        .authoredTransform = {
-            .position = position,
-            .rawScalar = rawScalar,
-            .orientation = orientation,
-        },
+        .authoredTransform =
+            {
+                .position = position,
+                .rawScalar = rawScalar,
+                .orientation = orientation,
+            },
         .meshIndex = std::nullopt,
         .offset = blueprint.offset,
+        .nullData4210 = nullData4210,
     };
 }
 

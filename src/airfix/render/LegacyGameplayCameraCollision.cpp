@@ -913,9 +913,9 @@ legacyGameplayCameraLookAt(
         return std::nullopt;
     }
 
-    // The existing axis-rotation reconstruction publishes transpose(raw) as
-    // a runtime column matrix. Transpose it back to the raw CcMatrixRot/SRT
-    // linear matrix expected by the legacy camera world-to-view relation.
+    // With the identity runtime basis, the axis adapter already publishes
+    // native forward CcMatrixRot/SRT columns. World-to-view applies its own
+    // inverse; do not transpose the camera world orientation here.
     const auto runtimePose =
         tryConvertLegacyAxisRotationWorldPose(
             {},
@@ -927,8 +927,7 @@ legacyGameplayCameraLookAt(
     if (!runtimePose.has_value()) {
         return std::nullopt;
     }
-    const Mat3 cameraWorldLinear =
-        transpose(runtimePose->linear);
+    const Mat3 cameraWorldLinear = runtimePose->linear;
     if (!finite(cameraWorldLinear)) {
         return std::nullopt;
     }

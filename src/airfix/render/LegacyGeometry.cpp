@@ -365,9 +365,8 @@ tryConvertLegacyAxisRotationWorldPose(
     translation.x *= basis.runtimeUnitsPerSourceUnit;
     translation.y *= basis.runtimeUnitsPerSourceUnit;
     translation.z *= basis.runtimeUnitsPerSourceUnit;
-    const Mat3 runtimeRotation = multiply(
-        multiply(basis.sourceToRuntime, transpose(rawLegacyMatrix)),
-        *basisInverse);
+    const Mat3 runtimeRotation =
+        multiply(multiply(basis.sourceToRuntime, rawLegacyMatrix), *basisInverse);
     if (!finite(translation) || !finite(runtimeRotation)) {
         return std::nullopt;
     }
@@ -465,9 +464,7 @@ Mat3 toRuntimeColumnMatrix(
         fail(GeometryErrorCode::singularBasis, "basis is singular");
     }
 
-    const Mat3 converted = multiply(
-        multiply(sourceToRuntime, transpose(rawLegacyMatrix)),
-        *basisInverse);
+    const Mat3 converted = multiply(multiply(sourceToRuntime, rawLegacyMatrix), *basisInverse);
     requireFinite(converted, "converted orientation");
     return converted;
 }

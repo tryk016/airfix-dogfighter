@@ -3,7 +3,7 @@
 **State:** static geometry and hierarchy contracts confirmed; geometry,
 authored-world, and parent-relative local conversions implemented
 
-**Evidence:** `EV-20260721-030`, `EV-20260721-033`
+**Evidence:** `EV-20260721-030`, `EV-20260721-033`, `EV-20260930-001`
 
 ## Source basis
 
@@ -24,22 +24,31 @@ The loader at RVA `0x00029DA0` copies them to three contiguous 12-byte matrix
 columns. `Cc3Matrix::SetCol` (`0x0002B5E0`) writes contiguous values, while
 `SetRow` (`0x0002B5C0`) writes with a 12-byte stride.
 
-Legacy application is row-vector algebra:
+There are two distinct native operations. `Cc3Matrix::operator*` at RVA
+`0x0002B670` computes dot products against the stored columns:
 
 ```text
-legacyApply(v) = { dot(v, c0), dot(v, c1), dot(v, c2) }
+legacyRowApply(v) = { dot(v, c0), dot(v, c1), dot(v, c2) }
 ```
 
-`Cc3Matrix::operator*` at RVA `0x0002B670` confirms that order. A conventional
-runtime column-vector matrix is therefore the transpose of the mathematical
-legacy matrix. With a source-to-runtime basis `B`, the adapter is:
+That operation does NOT describe the forward source-to-world transform.
+`CcCoord3d::ChangeBase` at RVA `0x0002B800` forms the source-world point from
+the forward columns, then independently applies the destination inverse:
 
 ```text
-runtimeRotation = B * transpose(legacyMatrix) * inverse(B)
+worldPoint = c0 * local.x + c1 * local.y + c2 * local.z + translation
 ```
 
-The raw three CCF columns remain preserved as evidence. They are not copied
-directly into a column-vector shader matrix.
+With a source-to-runtime basis `B`, the forward adapter is therefore:
+
+```text
+runtimeRotation = B * legacyMatrix * inverse(B)
+```
+
+The three raw CCF columns are already forward columns. The former transpose
+rule incorrectly generalized the distinct dot-column operator to placement;
+it reversed authored rotations and is superseded by `EV-20260930-001`.
+The row helper and the physics consumers of that operator remain unchanged.
 
 ## Authored world transforms and parent-relative locals
 
@@ -52,19 +61,9 @@ contract when that table is loaded.
 
 `CcSrtNode::SetParent` at RVA `0x0000E0F0` first materializes the child's world
 relation, attaches it to the parent, and derives a local transform that
-preserves the previous world result. In legacy row-vector notation:
-
-```text
-M_world = M_local * M_parent
-t_world = t_local * M_parent + t_parent
-
-M_local = M_child_world * inverse(M_parent_world)
-t_local = (t_child_world - t_parent_world) * inverse(M_parent_world)
-```
-
-For the observed F050 form, the loader fixes matrix scale and inverse-scale
-metadata to 1.0, so the orthogonal parent inverse is its transpose. The runtime
-column-vector equivalent is:
+preserves the previous world result. For the observed F050 form, the loader
+fixes matrix scale and inverse-scale metadata to 1.0, so the orthogonal parent
+inverse is its transpose. With native forward columns:
 
 ```text
 R_local = transpose(R_parent_world) * R_child_world
@@ -154,7 +153,39 @@ indices.
 ## Data-less acceptance fixtures
 
 The portable contract is protected with asymmetric identity geometry, explicit
-row/column matrix application, a +90-degree X rotation, the recovered reverse
+row/column matrix application, an explicit signed X rotation, the recovered reverse
 cross, a reflected basis that requires one index swap, exact UV preservation
 plus opt-in V flip, and invalid basis/float/index/limit cases. No original mesh
 or derived geometry belongs in the public fixtures.
+
+## Forward-transform correction (`EV-20260930-001`)
+
+The parallel scene reconstruction identified the misplaced transpose through
+private native-function comparisons. Integration independently rechecked
+`Cc.dll` SHA-256
+`18002a3af1405d932579c6d6888256ce26b8a479735093d33441f10fc27aa8af` using
+Ghidra Headless 12.1.2 and Rizin 0.9.1/rz-ghidra, without executing the game.
+The normalized reports agree on the range `[0x0002B800, 0x0002B8D6)`, one
+basic block, no callees, and the compared reference categories. Their 76
+addressed instruction records match byte-for-byte. Constants and indirect-call
+categories are unavailable in the Rizin comparison schema, not proven empty.
+
+The source SRT contributes offsets `+00/+0C/+18` to X, `+04/+10/+1C` to Y,
+and `+08/+14/+20` to Z, plus translation `+2C/+30/+34`. The destination
+subtraction/dot-column inverse follows separately. The ABI uses `ECX` for
+the point, followed by stack output-buffer, source-SRT and destination-SRT
+pointers; `RET 0x0C` confirms three stack words. The decompiler's inferred
+signature omits the explicit hidden return buffer, so parameter labels alone
+must not be used to identify source and destination.
+
+The integration changes only forward orientation conversion and its dependent
+camera look-at compensation. It retains the existing trigonometry and matrix
+arithmetic policy; the separate composition-order and sine/cosine precision
+work is not imported. Positive axis rotations send Y toward -Z for X, X
+toward -Z for Y, and X toward -Y for Z. The mixed forward rotation is
+`Ry * Rx * Rz`. Camera world-to-view still performs its required inverse.
+Synthetic tests cover an integer world point, asymmetric bases, mixed angles,
+and first-flight-frame orientation continuity with an independently authored
+spawn matrix. No original vertex or authored game pose is used as a fixture.
+This closes the transform-direction defect, not native x87 bit parity, full
+scene/frame parity, or aircraft collision acceptance.

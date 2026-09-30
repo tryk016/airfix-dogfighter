@@ -300,12 +300,12 @@ next room through its owning portal object.
 ## World-to-view
 
 The camera world SRT contains a 3x3 orthogonal basis with uniform scale, a
-translation, and cached `q = 1 / scale²`. Legacy composition uses row vectors.
-For one world point:
+translation, and cached `q = 1 / scale²`. Expressed using the native forward
+columns clarified in [EV-20260930-001](COORDINATE-CONTRACT.md), for one world point:
 
 ```text
 delta  = worldPoint - cameraWorldTranslation
-view   = q * delta * transpose(cameraWorldLinear)
+view   = q * transpose(cameraWorldLinear) * delta
 ```
 
 The implementation subtracts first, evaluates the three basis dot products,
@@ -315,10 +315,10 @@ inverse to prepare object-to-camera scratch SRT before
 
 ```text
 relation.linear =
-    q * objectWorldLinear * transpose(cameraWorldLinear)
+    q * transpose(cameraWorldLinear) * objectWorldLinear
 relation.translation =
-    q * (objectWorldTranslation - cameraWorldTranslation)
-      * transpose(cameraWorldLinear)
+    q * transpose(cameraWorldLinear)
+      * (objectWorldTranslation - cameraWorldTranslation)
 ```
 
 `CcLight::GetCameraRelation` delegates to this path, while

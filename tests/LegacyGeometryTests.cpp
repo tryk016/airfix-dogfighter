@@ -104,7 +104,7 @@ void requireGeometryError(
     airfix::assets::CcfSrtMetadata transform;
     transform.position = {2.0F, 3.0F, 4.0F};
     transform.rawScalar = 19.0F;
-    // Legacy row-vector encoding of a runtime +90-degree X rotation.
+    // Native forward columns for a -90-degree X rotation.
     transform.orientation = {
         airfix::assets::CcfVector3{1.0F, 0.0F, 0.0F},
         airfix::assets::CcfVector3{0.0F, 0.0F, -1.0F},
@@ -132,9 +132,8 @@ void testLegacyNodeTransformConversion() {
     }};
     const auto basisInverse = airfix::render::inverse(basis);
     require(basisInverse.has_value(), "node conversion test basis is singular");
-    const Mat3 expectedLinear = airfix::render::multiply(
-        airfix::render::multiply(basis, airfix::render::transpose(raw)),
-        *basisInverse);
+    const Mat3 expectedLinear =
+        airfix::render::multiply(airfix::render::multiply(basis, raw), *basisInverse);
     requireMatrix(converted.linear, expectedLinear,
                   "node transform did not conjugate the legacy orientation");
     require(converted.rawScalar == 19.0F,
@@ -362,12 +361,12 @@ void testAsymmetricDefaultIdentity() {
             "default conversion changed raw UVs");
 
     const Mat3 expectedOrientation{{
-        Vec3{1.0F, 0.0F, 5.0F},
-        Vec3{2.0F, 1.0F, 6.0F},
-        Vec3{3.0F, 4.0F, 0.0F},
+        Vec3{1.0F, 2.0F, 3.0F},
+        Vec3{0.0F, 1.0F, 4.0F},
+        Vec3{5.0F, 6.0F, 0.0F},
     }};
     requireMatrix(converted.orientation, expectedOrientation,
-                  "identity basis did not transpose raw orientation");
+                  "identity basis changed native forward orientation");
 }
 
 void testLegacyRowMatrixColumns() {
@@ -384,8 +383,8 @@ void testLegacyRowMatrixColumns() {
                Vec3{3.0F, 6.0F, 9.0F}, "legacy row Z basis mismatch");
 }
 
-void testPositiveNinetyDegreesAroundX() {
-    // Raw columns encode the transpose of a standard column-vector +90 X rotation.
+void testNativeNegativeNinetyDegreesAroundX() {
+    // These native forward columns send +Y toward -Z.
     const Mat3 raw{{
         Vec3{1.0F, 0.0F, 0.0F},
         Vec3{0.0F, 0.0F, -1.0F},
@@ -393,7 +392,25 @@ void testPositiveNinetyDegreesAroundX() {
     }};
     const Mat3 converted = airfix::render::toRuntimeColumnMatrix(raw, Mat3{});
     requireVec(airfix::render::applyRuntimeColumn(converted, Vec3{0.0F, 1.0F, 0.0F}),
-               Vec3{0.0F, 0.0F, 1.0F}, "+90 X did not send +Y to +Z");
+               Vec3{0.0F, 0.0F, -1.0F}, "native X columns did not send +Y to -Z");
+}
+
+void testSyntheticForwardWorldPoint() {
+    // Invented integer fixture for ChangeBase's source-to-world direction.
+    // No coordinates, matrices or vertices are taken from game resources.
+    airfix::assets::CcfSrtMetadata source;
+    source.position = {7.0F, 11.0F, -3.0F};
+    source.rawScalar = 9.0F; // Retained metadata, not an extra F050 scale.
+    source.orientation = {{
+        {0.0F, 0.0F, -1.0F},
+        {0.0F, 1.0F, 0.0F},
+        {1.0F, 0.0F, 0.0F},
+    }};
+    const auto pose = airfix::render::convertLegacyTransform(source);
+    const auto relative = airfix::render::applyRuntimeColumn(pose.linear, Vec3{2.0F, -4.0F, 5.0F});
+    requireVec(Vec3{relative.x + pose.translation.x, relative.y + pose.translation.y,
+                    relative.z + pose.translation.z},
+               Vec3{12.0F, 7.0F, -5.0F}, "forward CCF world point used the inverse rotation");
 }
 
 void testLegacyWindingNormal() {
@@ -475,15 +492,13 @@ void testBasisConjugationAndScaling() {
                "basis and unit scale were not applied to vertices");
     require(converted.rawScalar == source.scalar, "unit scale changed raw scalar");
 
-    const Mat3 expected = airfix::render::multiply(
-        airfix::render::multiply(
-            basis,
-            airfix::render::transpose(Mat3{{
-                Vec3{1.0F, 2.0F, 3.0F},
-                Vec3{0.0F, 1.0F, 4.0F},
-                Vec3{5.0F, 6.0F, 0.0F},
-            }})),
-        *basisInverse);
+    const Mat3 expected =
+        airfix::render::multiply(airfix::render::multiply(basis, Mat3{{
+                                                                     Vec3{1.0F, 2.0F, 3.0F},
+                                                                     Vec3{0.0F, 1.0F, 4.0F},
+                                                                     Vec3{5.0F, 6.0F, 0.0F},
+                                                                 }}),
+                                 *basisInverse);
     requireMatrix(converted.orientation, expected, "basis conjugation mismatch");
 
     const Vec3 sourceVector{0.25F, -2.0F, 1.5F};
@@ -496,7 +511,7 @@ void testBasisConjugationAndScaling() {
     const Vec3 runtimeOutput = airfix::render::applyRuntimeColumn(
         converted.orientation, runtimeInput);
     const Vec3 expectedRuntimeOutput = airfix::render::applyRuntimeColumn(
-        basis, airfix::render::applyLegacyRow(raw, sourceVector));
+        basis, airfix::render::applyRuntimeColumn(raw, sourceVector));
     requireVec(runtimeOutput, expectedRuntimeOutput,
                "basis conversion does not preserve the legacy transform property");
 
@@ -567,32 +582,20 @@ void testMissionStartAxisRotationConversion() {
 
     const auto x = airfix::render::convertLegacyAxisRotationWorldPose(
         {}, {halfPi, 0.0F, 0.0F});
-    requireVec(
-        airfix::render::applyRuntimeColumn(
-            x.linear, Vec3{0.0F, 1.0F, 0.0F}),
-        Vec3{0.0F, 0.0F, 1.0F},
-        "positive legacy X did not rotate +Y toward +Z");
+    requireVec(airfix::render::applyRuntimeColumn(x.linear, Vec3{0.0F, 1.0F, 0.0F}),
+               Vec3{0.0F, 0.0F, -1.0F}, "positive legacy X did not rotate +Y toward -Z");
 
     const auto y = airfix::render::convertLegacyAxisRotationWorldPose(
         {}, {0.0F, halfPi, 0.0F});
-    requireVec(
-        airfix::render::applyRuntimeColumn(
-            y.linear, Vec3{1.0F, 0.0F, 0.0F}),
-        Vec3{0.0F, 0.0F, 1.0F},
-        "positive legacy Y did not rotate +X toward +Z");
-    requireVec(
-        airfix::render::applyRuntimeColumn(
-            y.linear, Vec3{0.0F, 0.0F, 1.0F}),
-        Vec3{-1.0F, 0.0F, 0.0F},
-        "positive legacy Y did not rotate +Z toward -X");
+    requireVec(airfix::render::applyRuntimeColumn(y.linear, Vec3{1.0F, 0.0F, 0.0F}),
+               Vec3{0.0F, 0.0F, -1.0F}, "positive legacy Y did not rotate +X toward -Z");
+    requireVec(airfix::render::applyRuntimeColumn(y.linear, Vec3{0.0F, 0.0F, 1.0F}),
+               Vec3{1.0F, 0.0F, 0.0F}, "positive legacy Y did not rotate +Z toward +X");
 
     const auto z = airfix::render::convertLegacyAxisRotationWorldPose(
         {}, {0.0F, 0.0F, halfPi});
-    requireVec(
-        airfix::render::applyRuntimeColumn(
-            z.linear, Vec3{1.0F, 0.0F, 0.0F}),
-        Vec3{0.0F, 1.0F, 0.0F},
-        "positive legacy Z did not rotate +X toward +Y");
+    requireVec(airfix::render::applyRuntimeColumn(z.linear, Vec3{1.0F, 0.0F, 0.0F}),
+               Vec3{0.0F, -1.0F, 0.0F}, "positive legacy Z did not rotate +X toward -Y");
 
     constexpr std::array<float, 3> mixed{0.3F, -0.7F, 1.1F};
     const auto mixedPose =
@@ -605,25 +608,22 @@ void testMissionStartAxisRotationConversion() {
     const float sz = std::sin(mixed[2]);
     const Mat3 runtimeX{{
         Vec3{1.0F, 0.0F, 0.0F},
-        Vec3{0.0F, cx, sx},
-        Vec3{0.0F, -sx, cx},
+        Vec3{0.0F, cx, -sx},
+        Vec3{0.0F, sx, cx},
     }};
-    const Mat3 runtimeYNegative{{
-        Vec3{cy, 0.0F, sy},
+    const Mat3 runtimeY{{
+        Vec3{cy, 0.0F, -sy},
         Vec3{0.0F, 1.0F, 0.0F},
-        Vec3{-sy, 0.0F, cy},
+        Vec3{sy, 0.0F, cy},
     }};
     const Mat3 runtimeZ{{
-        Vec3{cz, sz, 0.0F},
-        Vec3{-sz, cz, 0.0F},
+        Vec3{cz, -sz, 0.0F},
+        Vec3{sz, cz, 0.0F},
         Vec3{0.0F, 0.0F, 1.0F},
     }};
-    requireMatrix(
-        mixedPose.linear,
-        airfix::render::multiply(
-            runtimeZ,
-            airfix::render::multiply(runtimeX, runtimeYNegative)),
-        "mixed start rotation did not preserve Z-X-Y legacy order");
+    requireMatrix(mixedPose.linear,
+                  airfix::render::multiply(runtimeY, airfix::render::multiply(runtimeX, runtimeZ)),
+                  "mixed start rotation did not preserve Z-X-Y legacy order");
 
     const Mat3 basis{{
         Vec3{0.0F, 1.0F, 0.0F},
@@ -689,7 +689,8 @@ int main() {
     try {
         testAsymmetricDefaultIdentity();
         testLegacyRowMatrixColumns();
-        testPositiveNinetyDegreesAroundX();
+        testNativeNegativeNinetyDegreesAroundX();
+        testSyntheticForwardWorldPoint();
         testLegacyWindingNormal();
         testReflectedBasisSwapsExactlyOnce();
         testUvPolicies();
