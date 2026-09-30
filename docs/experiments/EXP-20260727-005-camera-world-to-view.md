@@ -5,6 +5,13 @@
 **Scope:** `CcSRT` layout, camera world snapshots, object-to-camera relation,
 and the point transform consumed by polygon rendering
 
+**Notation correction (2026-09-30):** `EV-20260930-001` distinguishes native
+forward CCF/SRT columns from the separate dot-column operator. The current
+[world-to-view equations](../re/systems/CAMERA-PROJECTION.md#world-to-view)
+use column-vector notation consistently. The recovered subtraction and
+basis-dot-product implementation is unchanged; do not infer an additional
+forward-pose transpose from this historical report's row-vector notation.
+
 ## Question
 
 Recover the exact transform that moves world-space geometry into the

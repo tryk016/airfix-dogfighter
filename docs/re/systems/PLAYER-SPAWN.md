@@ -94,11 +94,12 @@ copies the position and converts the matrix directly to its quaternion; no
 room transform participates. The start is an absolute source-world pose with
 separate room membership, not a room-local transform.
 
-The legacy row-vector matrix is transposed and conjugated through the same
-source-to-runtime basis used by room geometry:
+The native forward matrix is conjugated through the same source-to-runtime
+basis used by room geometry. `EV-20260930-001` corrects the former extra
+transpose; see the [coordinate contract](COORDINATE-CONTRACT.md):
 
 ```text
-Rruntime = B * transpose(Rlegacy) * inverse(B)
+Rruntime = B * Rlegacy * inverse(B)
 truntime = B * tlegacy * runtimeUnitsPerSourceUnit
 ```
 

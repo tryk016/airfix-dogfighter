@@ -4,6 +4,12 @@
 **Evidence:** `EV-20260727-003`
 **Scope:** `AddStartPos`, `CcAxisRot`, `CcMatrixRot`, and player spawn events
 
+**Correction (2026-09-30):** `EV-20260930-001` supersedes the transpose
+conversion and resulting axis-direction bullets below. Native CCF/SRT forward
+columns use `B * Rlegacy * inverse(B)`, not the extra transpose. Radians,
+Z-X-Y application order and absolute-world placement remain valid. See the
+[current coordinate contract](../re/systems/COORDINATE-CONTRACT.md).
+
 ## Question
 
 Determine whether the three authored rotation values are degrees or radians,

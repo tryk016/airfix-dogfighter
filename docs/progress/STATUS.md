@@ -819,8 +819,9 @@
   instruction listings. The report wrapper can now process a literal program
   already in the ignored local Ghidra project without requiring or recording
   the original file path; its import/reuse/error contracts have Windows tests.
-- Established the recovered right-handed CCF basis, row-vector matrix
-  convention, reverse-cross winding, degenerate `+Y` normal, and raw UV policy;
+- Established the recovered right-handed CCF basis, forward-column placement
+  (corrected by `EV-20260930-001`; the dot-column operator remains separate),
+  reverse-cross winding, degenerate `+Y` normal, and raw UV policy;
   the bounded API-neutral converter validates all 6,995 corpus meshes.
 - Implemented owned RGBA8 decoding for complete GTI mip chains. Corpus policy
   uploads all authored levels for 3,974 variants and uses base-plus-Metal
